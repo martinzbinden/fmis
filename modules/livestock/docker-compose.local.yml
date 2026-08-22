@@ -1,0 +1,32 @@
+# Nur für lokales Testen. Nutzung:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+# web-netzwerk wird hier lokal erzeugt statt (wie in Produktion) extern erwartet.
+#
+# KEIN Traefik hier: der in Traefik v2.10 UND v3.1 gebündelte Docker-Client
+# bekommt auf dieser Maschine (Colima mit sehr aktueller Docker-Engine) von
+# der Engine ein "client version 1.24 too old" zurück — eine Eigenheit dieser
+# lokalen Testumgebung, unabhängig von unserer Compose-Konfiguration. Backend
+# und Frontend werden stattdessen direkt per Port getestet; die Traefik-
+# Pfadregel selbst wurde stattdessen Zeile für Zeile gegen alle Backend-Routen
+# abgeglichen (siehe Commit-Historie).
+services:
+  backend:
+    ports:
+      - "8000:8000"
+
+  frontend:
+    # Ohne Traefik ist Frontend (8081) nicht same-origin mit Backend (8000) —
+    # relative Pfade (Produktions-Default) würden ins Leere laufen.
+    build:
+      args:
+        VITE_API_URL: "http://localhost:8000"
+    ports:
+      - "8081:80"
+
+  postgres:
+    ports:
+      - "5434:5432"
+
+networks:
+  web-netzwerk:
+    external: false

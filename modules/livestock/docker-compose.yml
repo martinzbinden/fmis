@@ -28,6 +28,9 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM:-mastplaner@localhost}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      # NUR für Test-/Entwicklungsumgebungen setzen — leer lassen in Produktion!
+      # Aktiviert POST /auth/password-login (Admin-Login ohne Magic-Link).
+      TEST_LOGIN_PASSWORD: ${TEST_LOGIN_PASSWORD:-}
       SCHEMA_DIR: /schema
       AUTH_SCHEMA_DIR: /auth-schema
     volumes:

@@ -20,6 +20,10 @@ MAGIC_LINK_TTL_MINUTES = 30
 INITIAL_ADMIN_EMAIL = os.environ.get("INITIAL_ADMIN_EMAIL", "").strip().lower()
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "http://localhost:5173").rstrip("/")
 ADMIN_ROLE_ID = "00000000-0000-0000-0000-000000000001"
+# Nur für Test-/Entwicklungsumgebungen: wenn gesetzt, kann man sich per
+# Passwort direkt als INITIAL_ADMIN_EMAIL einloggen, ohne Magic-Link/E-Mail.
+# In Produktion NIE setzen — leer/unset deaktiviert diesen Weg komplett.
+TEST_LOGIN_PASSWORD = os.environ.get("TEST_LOGIN_PASSWORD", "").strip()
 
 router = APIRouter()
 bearer_scheme = HTTPBearer()
@@ -31,6 +35,10 @@ class RequestLinkBody(BaseModel):
 
 class VerifyBody(BaseModel):
     token: str
+
+
+class PasswordLoginBody(BaseModel):
+    password: str
 
 
 class VerifyResponse(BaseModel):
@@ -54,6 +62,11 @@ class CurrentUser:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _issue_session_jwt(user_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(days=SESSION_TTL_DAYS)
+    return jwt.encode({"sub": str(user_id), "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
 @router.post("/auth/request-link")
@@ -146,9 +159,39 @@ async def verify(body: VerifyBody) -> VerifyResponse:
             status_code=403, detail="Konto wartet auf Freischaltung durch einen Admin"
         )
 
-    expire = datetime.now(timezone.utc) + timedelta(days=SESSION_TTL_DAYS)
-    jwt_token = jwt.encode({"sub": str(user_id), "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    return VerifyResponse(access_token=jwt_token)
+    return VerifyResponse(access_token=_issue_session_jwt(user_id))
+
+
+@router.post("/auth/password-login", response_model=VerifyResponse)
+async def password_login(body: PasswordLoginBody) -> VerifyResponse:
+    """Nur für Test-/Entwicklungsumgebungen (TEST_LOGIN_PASSWORD gesetzt) —
+    loggt direkt als INITIAL_ADMIN_EMAIL ein, ohne Magic-Link/E-Mail-Versand.
+    In Produktion ist TEST_LOGIN_PASSWORD leer, der Endpunkt lehnt dann immer ab.
+    """
+    if not TEST_LOGIN_PASSWORD or body.password != TEST_LOGIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Ungültiges Passwort")
+    if not INITIAL_ADMIN_EMAIL:
+        raise HTTPException(status_code=500, detail="INITIAL_ADMIN_EMAIL ist nicht konfiguriert")
+
+    async with pool.connection() as conn:
+        row = await (
+            await conn.execute("select id from users where email = %s", (INITIAL_ADMIN_EMAIL,))
+        ).fetchone()
+        if row:
+            user_id = row[0]
+            await conn.execute(
+                "update users set last_login_at = now() where id = %s", (user_id,)
+            )
+        else:
+            user_id = str(uuidlib.uuid4())
+            await conn.execute(
+                "insert into users (id, email, role_id, status, last_login_at) "
+                "values (%s, %s, %s, 'active', now())",
+                (user_id, INITIAL_ADMIN_EMAIL, ADMIN_ROLE_ID),
+            )
+        await conn.commit()
+
+    return VerifyResponse(access_token=_issue_session_jwt(user_id))
 
 
 async def require_auth(

@@ -31,7 +31,7 @@ export default function App() {
   }
 
   if (!loggedIn) {
-    return <Login />
+    return <Login onLoggedIn={() => setLoggedIn(true)} />
   }
 
   return (
