@@ -24,10 +24,14 @@ berechnet, da beide dasselbe Schema inkl. Views laden.
 
 ## Auth
 
-`POST /auth/login`
-Request: `{"password": "..."}`
-Response 200: `{"access_token": "...", "token_type": "bearer"}`
-Response 401: falsches Passwort
+E-Mail-Magic-Link statt Passwort — siehe `backend/schema/0001_auth.sql` für
+das Nutzer/Rollen-Modell (nicht Teil dieses geteilten Schemas, rein
+serverseitig).
+
+`POST /auth/request-link {"email": "..."}` → immer 200, generische Antwort.
+`POST /auth/verify {"token": "..."}` → `{"access_token": "...", "token_type": "bearer"}`
+(401 falls ungültig/abgelaufen/bereits benutzt, 403 falls Konto noch nicht
+freigeschaltet). `GET /auth/me` → aktuelle Rolle + Permissions.
 
 Alle `/sync/*`-Endpunkte erfordern `Authorization: Bearer <token>`.
 
@@ -49,6 +53,11 @@ behandelt, ausser NOT NULL-Spalten ohne Default — dort muss der Client immer e
 Server-Verhalten: pro Zeile `INSERT ... ON CONFLICT (id) DO UPDATE SET ... WHERE
 {table}.updated_at < EXCLUDED.updated_at` (last-write-wins über `updated_at`).
 
+**Rechteprüfung (all-or-nothing):** fehlt für irgendeine im Request enthaltene
+Tabelle das `<area>:write`-Recht der aktuellen Rolle (Mapping in
+`backend/app/tables.py:TABLE_AREA`), wird der GESAMTE Request mit 403
+abgelehnt — kein teilweises Übernehmen einzelner Tabellen.
+
 Response 200: `{"accepted": {"animals": 3, "weighings": 12, ...}}`
 
 ## Pull
@@ -69,6 +78,10 @@ Client speichert `server_time` als neuen `since`-Wasserstand für den nächsten 
 (vermeidet Uhr-Drift zwischen Client und Server). Bei leerem `since` werden alle
 nicht-gelöschten UND gelöschten Zeilen zurückgegeben (Client muss `deleted_at`
 selbst lokal anwenden, auch beim ersten Vollsync gibt es i.d.R. keine).
+
+**Rechteprüfung:** Tabellen, für die der Rolle das `<area>:read`-Recht fehlt,
+fehlen im `tables`-Objekt komplett (nicht leeres Array — der Key fehlt ganz).
+Der bestehende Client-Code kommt damit unverändert klar (`if (!rows) continue`).
 
 ## Health
 

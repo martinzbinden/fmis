@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import SyncStatusDot from './SyncStatusDot'
 import { logout } from '../db/auth'
+import { useHasPermission } from '../db/AuthContext'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: '🏠' },
@@ -18,12 +19,19 @@ export default function Layout({
   children: ReactNode
   onLoggedOut: () => void
 }) {
+  const canManageUsers = useHasPermission('users:manage')
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">
         <span className="text-lg font-bold text-brand-800">Mastplaner</span>
         <div className="flex items-center gap-1">
           <SyncStatusDot />
+          {canManageUsers && (
+            <NavLink to="/admin" className="rounded px-2 py-1 text-lg active:bg-gray-100">
+              ⚙️
+            </NavLink>
+          )}
           <button
             type="button"
             onClick={() => {

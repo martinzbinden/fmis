@@ -34,3 +34,17 @@ SYNC_TABLES: dict[str, list[str]] = {
         "updated_at", "deleted_at",
     ],
 }
+
+# Ordnet jede Sync-Tabelle einem Berechtigungsbereich zu (siehe backend/schema/0001_auth.sql
+# für die Rollen/Permissions selbst). Treibt die Rechteprüfung in sync.py an:
+# push braucht "<area>:write", pull liefert eine Tabelle nur mit "<area>:read".
+TABLE_AREA: dict[str, str] = {
+    "animals": "animals",
+    "animal_groups": "groups",
+    "group_memberships": "groups",
+    "weighings": "weighings",
+    "medications": "medications",
+    "feed_records": "feed",
+    "expenses": "expenses",
+    "slaughter_results": "slaughter",
+}

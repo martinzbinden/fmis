@@ -8,17 +8,22 @@ DATABASE_URL = os.environ.get(
 )
 # Default assumes running from backend/ during local dev (schema/ is one level up).
 SCHEMA_DIR = Path(os.environ.get("SCHEMA_DIR", Path(__file__).resolve().parents[2] / "schema"))
+# Nutzer/Rollen/Login-Tokens: nur serverseitig, NICHT Teil des geteilten
+# schema/*.sql, das auch client-seitig in pglite läuft (siehe backend/schema/0001_auth.sql).
+AUTH_SCHEMA_DIR = Path(
+    os.environ.get("AUTH_SCHEMA_DIR", Path(__file__).resolve().parents[1] / "schema")
+)
 
 pool = AsyncConnectionPool(DATABASE_URL, open=False)
 
 
 async def run_migrations() -> None:
-    """Applies schema/*.sql files in filename order, tracked in schema_migrations.
-
-    This mirrors the migration runner in frontend/src/db/pglite.ts so that both
-    Postgres and pglite end up with the identical schema.
+    """Applies schema/*.sql (geteilt, auch in pglite) und backend/schema/*.sql
+    (nur serverseitig) in Dateinamen-Reihenfolge an, getrackt in derselben
+    schema_migrations-Tabelle. Mirrors the migration runner in
+    frontend/src/db/pglite.ts for the shared schema half.
     """
-    migration_files = sorted(SCHEMA_DIR.glob("*.sql"))
+    migration_files = sorted(SCHEMA_DIR.glob("*.sql")) + sorted(AUTH_SCHEMA_DIR.glob("*.sql"))
     async with pool.connection() as conn:
         await conn.execute(
             """

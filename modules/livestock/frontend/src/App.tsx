@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { DbProvider } from './db/DbContext'
+import { AuthUserProvider } from './db/AuthContext'
 import { isLoggedIn } from './db/auth'
 import { startSyncLoop } from './db/sync'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import VerifyToken from './pages/VerifyToken'
 import Dashboard from './pages/Dashboard'
 import Animals from './pages/Animals'
 import AnimalDetail from './pages/AnimalDetail'
@@ -16,17 +18,27 @@ import MedicationEntry from './pages/MedicationEntry'
 import FeedEntry from './pages/FeedEntry'
 import SlaughterEntry from './pages/SlaughterEntry'
 import Economics from './pages/Economics'
+import Admin from './pages/Admin'
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn())
+  const location = useLocation()
+
+  // /verify muss auch OHNE bestehende Session erreichbar sein (der
+  // Magic-Link-Klick tauscht den Token erst noch gegen ein Session-JWT).
+  if (location.pathname === '/verify') {
+    return <VerifyToken onVerified={() => setLoggedIn(true)} />
+  }
 
   if (!loggedIn) {
-    return <Login onLoggedIn={() => setLoggedIn(true)} />
+    return <Login />
   }
 
   return (
     <DbProvider>
-      <AppShell onLoggedOut={() => setLoggedIn(false)} />
+      <AuthUserProvider>
+        <AppShell onLoggedOut={() => setLoggedIn(false)} />
+      </AuthUserProvider>
     </DbProvider>
   )
 }
@@ -50,6 +62,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
         <Route path="/futter" element={<FeedEntry />} />
         <Route path="/schlachtung" element={<SlaughterEntry />} />
         <Route path="/wirtschaftlichkeit" element={<Economics />} />
+        <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

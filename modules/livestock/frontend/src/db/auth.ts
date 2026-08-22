@@ -1,6 +1,9 @@
 const TOKEN_KEY = 'mastplaner_token'
 
-export const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// `??` statt `||`: ein bewusst leerer VITE_API_URL (Produktions-Build, gleiche
+// Origin wie das Frontend) soll NICHT auf localhost zurückfallen — nur ein
+// tatsächlich fehlender (undefined) Wert tut das, praktisch für Ad-hoc-Dev.
+export const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
@@ -14,16 +17,43 @@ export function logout(): void {
   localStorage.removeItem(TOKEN_KEY)
 }
 
-export async function login(password: string): Promise<void> {
-  const res = await fetch(`${API_URL}/auth/login`, {
+export async function requestMagicLink(email: string): Promise<void> {
+  const res = await fetch(`${API_URL}/auth/request-link`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email }),
   })
   if (!res.ok) {
-    if (res.status === 401) throw new Error('Falsches Passwort')
-    throw new Error(`Anmeldung fehlgeschlagen (${res.status})`)
+    throw new Error(`Anfrage fehlgeschlagen (${res.status})`)
+  }
+}
+
+export async function verifyToken(token: string): Promise<void> {
+  const res = await fetch(`${API_URL}/auth/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Anmeldung fehlgeschlagen (${res.status})`)
   }
   const data = (await res.json()) as { access_token: string }
   localStorage.setItem(TOKEN_KEY, data.access_token)
+}
+
+export interface CurrentUser {
+  email: string
+  role: string | null
+  permissions: string[]
+}
+
+export async function fetchMe(): Promise<CurrentUser> {
+  const res = await fetch(`${API_URL}/auth/me`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+  if (!res.ok) {
+    throw new Error(`Nutzerdaten konnten nicht geladen werden (${res.status})`)
+  }
+  return (await res.json()) as CurrentUser
 }

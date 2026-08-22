@@ -11,9 +11,9 @@ stehst.
 
 ## Architektur
 
-- **Backend** (`backend/`): FastAPI, bewusst dünn — nur Login (`/auth/login`)
-  und Sync-Relay (`/sync/push`, `/sync/pull`). Speichert dauerhaft in
-  PostgreSQL.
+- **Backend** (`backend/`): FastAPI, bewusst dünn — E-Mail-Magic-Link-Login
+  (`/auth/*`), Nutzerverwaltung (`/admin/*`) und Sync-Relay (`/sync/push`,
+  `/sync/pull`). Speichert dauerhaft in PostgreSQL.
 - **Frontend** (`frontend/`): React + Vite + TypeScript. Die gesamte
   Anwendungslogik (CRUD, Formulare, Wirtschaftlichkeits-Auswertung) läuft
   gegen **pglite** — ein vollständiges Postgres im Browser (WASM), das
@@ -23,6 +23,39 @@ stehst.
 - **`schema/`**: das kanonische SQL-Schema — einzige Quelle der Wahrheit,
   wird identisch in PostgreSQL und pglite angewendet. `schema/SYNC_API.md`
   dokumentiert den Sync-Kontrakt zwischen Frontend und Backend.
+- **`backend/schema/`**: Nutzer/Rollen/Login-Tokens — bewusst NICHT Teil von
+  `schema/*.sql`, läuft also nie in pglite mit (Nutzerdaten gehören nicht
+  auf jedes Gerät repliziert).
+
+## Login & Rechte
+
+Kein Passwort mehr — Login per **E-Mail-Magic-Link**:
+
+1. Nutzer gibt seine E-Mail-Adresse ein → bekommt einen Login-Link (30 Min.
+   gültig, einmal verwendbar).
+2. **Neue Adressen starten als "wartet auf Freischaltung"** — erst wenn ein
+   Admin eine Rolle zuweist, funktioniert der Login. Die Adresse aus
+   `INITIAL_ADMIN_EMAIL` wird beim ersten Login automatisch als Admin
+   freigeschaltet (Bootstrap).
+3. Die resultierende Session ist standardmässig bis zu **1 Jahr** gültig
+   (`SESSION_TTL_DAYS`) — ein neuer Link kann jederzeit angefordert werden.
+   Sperrt ein Admin ein Konto oder ändert die Rolle, wirkt das **sofort**
+   (jeder Request prüft Rolle/Status live in der DB, kein Token-Blacklist
+   nötig).
+
+**Rollen sind feingranular** (Bereich × Lesen/Schreiben, z.B.
+`medications:write`, `economics:read`) statt nur Admin/Nutzer-Binär.
+Vordefiniert: *Admin* (alles inkl. Nutzerverwaltung), *Vollzugriff* (alles
+ausser Nutzerverwaltung), *Nur Lesen*. Weitere Rollen lassen sich unter
+"⚙️ → Nutzerverwaltung" (nur für Admins sichtbar) frei zusammenstellen.
+
+Durchgesetzt wird das serverseitig beim Sync: `POST /sync/push` lehnt den
+kompletten Request ab, wenn für irgendeine enthaltene Tabelle das
+Schreibrecht fehlt; `GET /sync/pull` lässt Tabellen ohne Leserecht im
+Response komplett weg — die Daten landen so nie lokal in pglite. Das
+Frontend blendet zusätzlich UI aus, die eh nicht genutzt werden darf (reine
+UX, keine Sicherheitsgrenze).
+
 ## Tiere importieren
 
 Auf der Seite "Tiere" → "Tiere importieren" können neue Einstallungen direkt
@@ -40,18 +73,30 @@ oder nach git übernommen — echte Tierdaten gehören nicht ins Repo (siehe
 `.gitignore`: `modules/livestock/seed/` ist bewusst ausgeschlossen, falls
 du dort lokale Kopien ablegen willst).
 
-## Starten
+## Produktions-Deployment (Docker + bestehendes Traefik)
 
-### Mit Docker (empfohlen für den Server-Teil)
+Setzt voraus: Traefik läuft bereits auf dem Docker-Host (Docker-Netzwerk
+z.B. `web-netzwerk`), TLS wird vorgelagert terminiert (z.B. Nginx Proxy
+Manager auf der Firewall, der `Host`-Header beim Weiterleiten erhält) —
+Traefik selbst braucht hier **keinen eigenen certresolver**, das Backend
+läuft auf reinem HTTP (`entrypoints=web`).
 
 ```bash
-APP_PASSWORD=dein-passwort docker compose up --build
+cp .env.example .env   # JWT_SECRET, INITIAL_ADMIN_EMAIL, SMTP_*, DOMAIN/PUBLIC_URL setzen
+docker compose up --build -d
 ```
 
-Backend läuft danach auf `http://localhost:8000` (OpenAPI-Doku unter
-`/docs`), PostgreSQL auf Port 5432.
+Frontend und Backend hängen sich über Labels an die vorhandene
+Traefik-Instanz und teilen sich **eine Domain** (Pfad-basiertes Routing:
+`/auth`, `/sync`, `/health`, `/docs` → Backend, alles andere → Frontend-SPA)
+— dadurch ist alles same-origin, kein CORS-Setup nötig. Der
+Postgres-Container hat kein `ports:`-Mapping mehr (nur intern erreichbar).
 
-### Ohne Docker (lokale PostgreSQL-Installation)
+Falls dein Traefik-Netzwerk anders heisst als `web-netzwerk`: in
+`docker-compose.yml` die beiden `networks: web-netzwerk` sowie
+`traefik.docker.network=web-netzwerk`-Zeilen anpassen.
+
+## Lokale Entwicklung (ohne Docker)
 
 ```bash
 brew install postgresql@16
@@ -62,24 +107,27 @@ cd backend
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e .
 DATABASE_URL=postgresql://$(whoami)@localhost:5432/mastplaner \
-  APP_PASSWORD=dein-passwort \
   JWT_SECRET=irgendein-secret \
+  INITIAL_ADMIN_EMAIL=deine@adresse.ch \
+  PUBLIC_URL=http://localhost:5173 \
+  SMTP_HOST=localhost SMTP_PORT=1025 SMTP_USE_TLS=false \
   uvicorn app.main:app --reload
 ```
 
-Die Migrationen aus `schema/*.sql` werden beim Start automatisch angewendet.
-
-### Frontend
+Die Migrationen aus `schema/*.sql` UND `backend/schema/*.sql` (Nutzer/
+Rollen) werden beim Start automatisch angewendet. Ohne echten SMTP-Server
+kann man lokal `python -m aiosmtpd -n -l localhost:1025` als Debug-Mailserver
+laufen lassen — Mails werden dann als Klartext auf der Konsole ausgegeben
+(Login-Link zum Copy-Pasten).
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env   # VITE_API_URL ggf. anpassen
+cp .env.example .env   # VITE_API_URL=http://localhost:8000 für lokale Entwicklung
 npm run dev
 ```
 
-Öffnet auf `http://localhost:5173`. Beim ersten Login das oben gesetzte
-`APP_PASSWORD` verwenden. Die App lässt sich als PWA installieren
+Öffnet auf `http://localhost:5173`. Die App lässt sich als PWA installieren
 (Homescreen-Icon) und funktioniert danach auch ohne Netzverbindung — Sync
 läuft automatisch im Hintergrund, sobald wieder online.
 

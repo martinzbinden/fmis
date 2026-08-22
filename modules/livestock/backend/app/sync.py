@@ -1,13 +1,13 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .auth import require_auth
+from .auth import CurrentUser, require_auth
 from .db import pool
-from .tables import SYNC_TABLES
+from .tables import SYNC_TABLES, TABLE_AREA
 
-router = APIRouter(dependencies=[Depends(require_auth)])
+router = APIRouter()
 
 
 class PushRequest(BaseModel):
@@ -24,7 +24,15 @@ class PullResponse(BaseModel):
 
 
 @router.post("/sync/push", response_model=PushResponse)
-async def push(body: PushRequest) -> PushResponse:
+async def push(body: PushRequest, user: CurrentUser = Depends(require_auth)) -> PushResponse:
+    # All-or-nothing: fehlt für irgendeine der enthaltenen Tabellen das
+    # Schreibrecht, wird der GESAMTE Request abgelehnt. Die UI sollte ohnehin
+    # nie einen Request ohne die nötigen Rechte schicken (siehe AuthContext).
+    for table in body.tables:
+        area = TABLE_AREA.get(table)
+        if area is None or f"{area}:write" not in user.permissions:
+            raise HTTPException(status_code=403, detail=f"Keine Schreibrechte für {table}")
+
     accepted: dict[str, int] = {}
     async with pool.connection() as conn:
         for table, rows in body.tables.items():
@@ -51,12 +59,17 @@ async def push(body: PushRequest) -> PushResponse:
 
 
 @router.get("/sync/pull", response_model=PullResponse)
-async def pull(since: str | None = None) -> PullResponse:
+async def pull(since: str | None = None, user: CurrentUser = Depends(require_auth)) -> PullResponse:
     tables: dict[str, list[dict[str, Any]]] = {}
     async with pool.connection() as conn:
         server_time_row = await (await conn.execute("select now()")).fetchone()
         server_time = server_time_row[0].isoformat()
         for table, columns in SYNC_TABLES.items():
+            area = TABLE_AREA.get(table)
+            if area is None or f"{area}:read" not in user.permissions:
+                # Tabelle wird komplett weggelassen statt leer zurückgegeben —
+                # Daten ohne Leserecht landen so nie lokal in pglite.
+                continue
             col_list = ", ".join(f'"{c}"' for c in columns)
             if since:
                 sql = f'select {col_list} from "{table}" where updated_at > %s'
