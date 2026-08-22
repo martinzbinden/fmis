@@ -44,8 +44,8 @@ services:
       - traefik.docker.network=web-netzwerk
       - >-
         traefik.http.routers.livestock-api.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
-        (PathPrefix(`/auth`) || PathPrefix(`/sync`) || PathPrefix(`/health`) ||
-        PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
+        (PathPrefix(`/auth`) || PathPrefix(`/sync`) || PathPrefix(`/admin`) ||
+        PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
       - traefik.http.routers.livestock-api.entrypoints=web
       - traefik.http.routers.livestock-api.priority=10
       - traefik.http.services.livestock-api.loadbalancer.server.port=8000
