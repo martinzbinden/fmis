@@ -52,7 +52,10 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      # Modul-Root (nicht ./frontend!) — das Frontend braucht schema/*.sql
+      # zur Build-Zeit, das liegt ausserhalb von frontend/. Siehe frontend/Dockerfile.
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         VITE_API_URL: ""
     networks:
