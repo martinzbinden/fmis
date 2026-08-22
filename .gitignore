@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+dist/
+.env
+*.local
+.DS_Store
+frontend/dev-dist/
+
+# Echte Tierdaten (Ohrmarken, Geburtsdaten etc.) gehören nie ins Repo.
+# Import läuft zur Laufzeit per Datei-Upload (PDF/CSV) direkt in der App,
+# hochgeladene Dateien landen nie im Projektverzeichnis oder in git.
+modules/livestock/seed/

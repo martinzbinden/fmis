@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mastplaner
+      POSTGRES_PASSWORD: mastplaner
+      POSTGRES_DB: mastplaner
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mastplaner"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://mastplaner:mastplaner@postgres:5432/mastplaner
+      APP_PASSWORD: ${APP_PASSWORD:-changeme}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      SCHEMA_DIR: /schema
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./schema:/schema:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
