@@ -18,6 +18,7 @@ import MedicationEntry from './pages/MedicationEntry'
 import FeedEntry from './pages/FeedEntry'
 import SlaughterEntry from './pages/SlaughterEntry'
 import Economics from './pages/Economics'
+import History from './pages/History'
 import Admin from './pages/Admin'
 
 export default function App() {
@@ -62,6 +63,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
         <Route path="/futter" element={<FeedEntry />} />
         <Route path="/schlachtung" element={<SlaughterEntry />} />
         <Route path="/wirtschaftlichkeit" element={<Economics />} />
+        <Route path="/verlauf" element={<History />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

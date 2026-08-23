@@ -17,6 +17,10 @@ Diese Reihenfolge ist verbindlich für Push-Payloads (Backend validiert per Name
 - `feed_records`: id, group_id, date, feed_type, quantity, unit, cost_total, supplier, notes, updated_at, deleted_at
 - `expenses`: id, group_id, date, category, description, amount, updated_at, deleted_at
 - `slaughter_results`: id, animal_id, slaughter_date, slaughterhouse, carcass_weight_kg, classification, fat_class, price_per_kg, total_revenue, notes, updated_at, deleted_at
+- `data_history`: id, table_name, row_id, action, changed_by, changed_at, snapshot, updated_at — Audit-Log, wird
+  ausschliesslich automatisch von `upsertRow()`/`softDeleteRow()` befüllt (siehe `frontend/src/db/write.ts`),
+  nie direkt von einem Formular. Kein `deleted_at` (unveränderlich). `snapshot` ist die komplette Zeile NACH
+  der Änderung als JSON-Text.
 
 Views (`v_animal_group_days`, `v_group_costs`, `v_animal_economics`) werden NICHT
 gesynct — sie werden lokal in pglite genau wie auf dem Server aus den Basistabellen
@@ -58,7 +62,12 @@ Server-Verhalten: pro Zeile `INSERT ... ON CONFLICT (id) DO UPDATE SET ... WHERE
 **Rechteprüfung (all-or-nothing):** fehlt für irgendeine im Request enthaltene
 Tabelle das `<area>:write`-Recht der aktuellen Rolle (Mapping in
 `backend/app/tables.py:TABLE_AREA`), wird der GESAMTE Request mit 403
-abgelehnt — kein teilweises Übernehmen einzelner Tabellen.
+abgelehnt — kein teilweises Übernehmen einzelner Tabellen. Ausnahme:
+`data_history` ist von dieser Prüfung ausgenommen (entsteht immer als
+Nebeneffekt einer im selben Request bereits geprüften Schreibung auf einer
+anderen Tabelle) — sonst bräuchte jede Rolle mit irgendeinem Schreibrecht
+zusätzlich explizit `history:write`, sonst würde jeder Push komplett
+abgelehnt.
 
 Response 200: `{"accepted": {"animals": 3, "weighings": 12, ...}}`
 

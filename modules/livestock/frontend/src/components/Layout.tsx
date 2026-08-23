@@ -20,6 +20,7 @@ export default function Layout({
   onLoggedOut: () => void
 }) {
   const canManageUsers = useHasPermission('users:manage')
+  const canViewHistory = useHasPermission('history:read')
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
@@ -27,6 +28,11 @@ export default function Layout({
         <span className="text-lg font-bold text-brand-800">Mastplaner</span>
         <div className="flex items-center gap-1">
           <SyncStatusDot />
+          {canViewHistory && (
+            <NavLink to="/verlauf" className="rounded px-2 py-1 text-lg active:bg-gray-100">
+              📜
+            </NavLink>
+          )}
           {canManageUsers && (
             <NavLink to="/admin" className="rounded px-2 py-1 text-lg active:bg-gray-100">
               ⚙️

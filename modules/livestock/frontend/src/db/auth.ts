@@ -1,4 +1,5 @@
 const TOKEN_KEY = 'mastplaner_token'
+const EMAIL_KEY = 'mastplaner_email'
 
 // `??` statt `||`: ein bewusst leerer VITE_API_URL (Produktions-Build, gleiche
 // Origin wie das Frontend) soll NICHT auf localhost zurückfallen — nur ein
@@ -15,6 +16,21 @@ export function isLoggedIn(): boolean {
 
 export function logout(): void {
   localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(EMAIL_KEY)
+}
+
+/**
+ * Für write.ts (data_history.changed_by): unabhängig vom React-Context in
+ * localStorage gespiegelt, damit die E-Mail auch offline direkt nach
+ * App-Start verfügbar ist (vor dem ersten erfolgreichen /auth/me), nicht
+ * erst nachdem AuthUserProvider fertig geladen hat.
+ */
+export function setCurrentUserEmail(email: string): void {
+  localStorage.setItem(EMAIL_KEY, email)
+}
+
+export function getCurrentUserEmail(): string | null {
+  return localStorage.getItem(EMAIL_KEY)
 }
 
 export async function requestMagicLink(email: string): Promise<void> {

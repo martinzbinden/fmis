@@ -106,6 +106,19 @@ export interface SlaughterResult {
   deleted_at: string | null
 }
 
+export type HistoryAction = 'insert' | 'update' | 'delete'
+
+export interface DataHistory {
+  id: string
+  table_name: string
+  row_id: string
+  action: HistoryAction
+  changed_by: string | null
+  changed_at: string
+  snapshot: string
+  updated_at: string
+}
+
 export interface AnimalEconomics {
   animal_id: string
   ear_tag: string

@@ -33,6 +33,10 @@ SYNC_TABLES: dict[str, list[str]] = {
         "classification", "fat_class", "price_per_kg", "total_revenue", "notes",
         "updated_at", "deleted_at",
     ],
+    "data_history": [
+        "id", "table_name", "row_id", "action", "changed_by", "changed_at",
+        "snapshot", "updated_at",
+    ],
 }
 
 # Ordnet jede Sync-Tabelle einem Berechtigungsbereich zu (siehe backend/schema/0001_auth.sql
@@ -47,4 +51,5 @@ TABLE_AREA: dict[str, str] = {
     "feed_records": "feed",
     "expenses": "expenses",
     "slaughter_results": "slaughter",
+    "data_history": "history",
 }

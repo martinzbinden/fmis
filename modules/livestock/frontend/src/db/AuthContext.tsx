@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { fetchMe, type CurrentUser } from './auth'
+import { fetchMe, setCurrentUserEmail, type CurrentUser } from './auth'
 
 /**
  * Lädt /auth/me einmal nach dem Login und stellt Rolle/Permissions bereit.
@@ -14,7 +14,10 @@ export function AuthUserProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchMe()
-      .then(setUser)
+      .then((u) => {
+        setUser(u)
+        setCurrentUserEmail(u.email)
+      })
       .catch((err) => console.error('auth/me fehlgeschlagen', err))
   }, [])
 

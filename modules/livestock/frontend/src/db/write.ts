@@ -1,6 +1,7 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { getDb } from './pglite'
 import { SYNC_TABLES, type SyncTable } from './tables'
+import { getCurrentUserEmail } from './auth'
 
 // Simpler Pub/Sub, damit Seiten nach lokalen Schreibungen oder einem Pull neu
 // laden können, ohne auf pglite Live-Queries angewiesen zu sein.
@@ -45,19 +46,57 @@ async function ready(): Promise<PGlite> {
   return pg
 }
 
+type HistoryAction = 'insert' | 'update' | 'delete'
+
 /**
- * Generischer Upsert-Helfer für alle 8 syncbaren Tabellen. Jede Schreiboperation
+ * Schreibt einen Eintrag in data_history direkt per SQL (NICHT über
+ * upsertRow — das würde rekursiv wieder einen History-Eintrag auslösen).
+ * Wird von upsertRow() für jede Tabelle ausser data_history selbst
+ * aufgerufen, siehe schema/0002_history.sql.
+ */
+async function recordHistory(
+  pg: PGlite,
+  table: SyncTable,
+  rowId: string,
+  action: HistoryAction,
+  snapshot: Record<string, unknown>,
+): Promise<void> {
+  const id = crypto.randomUUID()
+  const changedAt = new Date().toISOString()
+  await pg.query(
+    `insert into data_history (id, table_name, row_id, action, changed_by, changed_at, snapshot, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [id, table, rowId, action, getCurrentUserEmail(), changedAt, JSON.stringify(snapshot), changedAt],
+  )
+  await pg.query(
+    `insert into sync_outbox (table_name, row_id, updated_at) values ($1, $2, $3)
+     on conflict (table_name, row_id) do update set updated_at = excluded.updated_at`,
+    ['data_history', id, changedAt],
+  )
+}
+
+/**
+ * Generischer Upsert-Helfer für alle syncbaren Tabellen. Jede Schreiboperation
  * der App MUSS hierüber laufen (nicht direkt per SQL), damit die Sync-Outbox
  * konsistent bleibt. Stempelt updated_at immer auf "jetzt" (lokale Schreibungen
- * sind per Definition die aktuellste Version).
+ * sind per Definition die aktuellste Version). Schreibt ausserdem automatisch
+ * einen data_history-Eintrag (siehe recordHistory) — ohne explizites
+ * `options.action` wird per Existenz-Check zwischen insert/update unterschieden.
  */
 export async function upsertRow<T extends SyncTable>(
   table: T,
   row: Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string },
+  options?: { action?: HistoryAction },
 ): Promise<void> {
   const pg = await ready()
   const columns = SYNC_TABLES[table] as readonly string[]
   const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
+
+  let action = options?.action
+  if (!action) {
+    const { rows: existing } = await pg.query(`select 1 from "${table}" where id = $1`, [row.id])
+    action = existing.length > 0 ? 'update' : 'insert'
+  }
 
   const colList = columns.map((c) => `"${c}"`).join(', ')
   const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
@@ -79,6 +118,12 @@ export async function upsertRow<T extends SyncTable>(
     [table, row.id, stamped.updated_at],
   )
 
+  // Guard gegen versehentliche Rekursion, falls table_name mal 'data_history'
+  // wäre (kommt im normalen Betrieb nie vor, recordHistory() umgeht upsertRow).
+  if (table !== 'data_history') {
+    await recordHistory(pg, table, row.id, action, stamped)
+  }
+
   notifyDataChanged()
 }
 
@@ -90,5 +135,9 @@ export async function softDeleteRow(table: SyncTable, id: string): Promise<void>
     [id],
   )
   if (rows.length === 0) return
-  await upsertRow(table, { ...rows[0], id, deleted_at: new Date().toISOString() } as never)
+  await upsertRow(
+    table,
+    { ...rows[0], id, deleted_at: new Date().toISOString() } as never,
+    { action: 'delete' },
+  )
 }

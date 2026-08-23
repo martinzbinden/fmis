@@ -34,6 +34,10 @@ export const SYNC_TABLES = {
     'classification', 'fat_class', 'price_per_kg', 'total_revenue', 'notes',
     'updated_at', 'deleted_at',
   ],
+  data_history: [
+    'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
+    'snapshot', 'updated_at',
+  ],
 } as const
 
 export type SyncTable = keyof typeof SYNC_TABLES
@@ -50,4 +54,5 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   feed_records: new Set(['date']),
   expenses: new Set(['date']),
   slaughter_results: new Set(['slaughter_date']),
+  data_history: new Set(),
 }

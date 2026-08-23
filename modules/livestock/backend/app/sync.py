@@ -29,6 +29,14 @@ async def push(body: PushRequest, user: CurrentUser = Depends(require_auth)) -> 
     # Schreibrecht, wird der GESAMTE Request abgelehnt. Die UI sollte ohnehin
     # nie einen Request ohne die nötigen Rechte schicken (siehe AuthContext).
     for table in body.tables:
+        if table == "data_history":
+            # Entsteht immer als Nebeneffekt einer im selben Request bereits
+            # geprüften Schreibung auf einer anderen Tabelle (siehe
+            # frontend/src/db/write.ts: recordHistory()) — kein eigenes
+            # Schreibrecht nötig. Sonst müsste jede Rolle mit irgendeinem
+            # Schreibrecht zusätzlich explizit history:write bekommen, sonst
+            # würde JEDER Push (nicht nur die History-Zeile) abgelehnt.
+            continue
         area = TABLE_AREA.get(table)
         if area is None or f"{area}:write" not in user.permissions:
             raise HTTPException(status_code=403, detail=f"Keine Schreibrechte für {table}")

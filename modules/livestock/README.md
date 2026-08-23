@@ -76,6 +76,22 @@ oder nach git übernommen — echte Tierdaten gehören nicht ins Repo (siehe
 `.gitignore`: `modules/livestock/seed/` ist bewusst ausgeschlossen, falls
 du dort lokale Kopien ablegen willst).
 
+Laufende Gewichtsreihen lassen sich auf "Gewichte" → "CSV importieren"
+ebenfalls per CSV nachtragen: eine Spalte mit der Ohrmarke plus eine oder
+mehrere Gewichts-Spalten (z.B. eine pro Wägedatum) — welche Spalten
+importiert werden und welches Datum ihnen zugeordnet wird, wählst du beim
+Import selbst aus. Statt einer Datei kann die Tabelle auch direkt aus
+Excel kopiert und in ein Textfeld eingefügt werden (Tab-getrennt).
+
+## Bearbeiten, Löschen & Verlauf
+
+Alle erfassten Datensätze (Tiere, Gruppen, Wägungen, Medikamente,
+Futter-/Kosteneinträge, Schlachtresultate) lassen sich über die jeweilige
+Detailseite nachträglich korrigieren oder löschen (Soft-Delete —
+`deleted_at`, siehe `schema/SYNC_API.md`). Jede solche Änderung wird
+automatisch historisiert: wer, wann, was geändert hat, sichtbar unter
+"📜 Verlauf" (nur mit `history:read`-Recht, standardmässig alle Rollen).
+
 ## Produktions-Deployment (Docker + bestehendes Traefik)
 
 Setzt voraus: Traefik läuft bereits auf dem Docker-Host (Docker-Netzwerk
