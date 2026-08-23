@@ -17,10 +17,17 @@ const LABELS: Record<string, string> = {
 
 export default function SyncStatusDot() {
   const { status, error } = useSyncStatus()
+  function handleClick() {
+    // Auf dem Handy gibt es keinen Hover für den title-Tooltip — bei Fehler
+    // also zusätzlich direkt anzeigen, bevor erneut synchronisiert wird.
+    if (status === 'error' && error) window.alert(error)
+    void syncNow()
+  }
+
   return (
     <button
       type="button"
-      onClick={() => void syncNow()}
+      onClick={handleClick}
       title={error ?? LABELS[status]}
       className="flex items-center gap-2 rounded-full px-2 py-1 text-xs text-gray-600 active:bg-gray-100"
     >

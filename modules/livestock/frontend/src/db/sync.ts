@@ -155,6 +155,10 @@ export async function syncNow(): Promise<void> {
     await pull()
     setStatus('synced')
   } catch (err) {
+    // War bisher NUR im Hover-Tooltip des Sync-Punkts sichtbar (auf dem Handy
+    // im Stall unbrauchbar) — jetzt zusätzlich in der Konsole, für Fehlersuche
+    // per Screenshot/Fernwartung.
+    console.error('Sync fehlgeschlagen', err)
     setStatus('error', err instanceof Error ? err.message : String(err))
   } finally {
     syncing = false
