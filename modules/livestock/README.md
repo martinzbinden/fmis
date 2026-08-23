@@ -92,6 +92,22 @@ Detailseite nachträglich korrigieren oder löschen (Soft-Delete —
 automatisch historisiert: wer, wann, was geändert hat, sichtbar unter
 "📜 Verlauf" (nur mit `history:read`-Recht, standardmässig alle Rollen).
 
+## Medikamenten- und Futtermittel-Referenz
+
+Weder für das Tierarzneimittelkompendium (vetpharm.uzh.ch /
+tierarzneimittel.ch) noch für Futtermittel-Hersteller (UFA, FORS, …) gibt
+es eine öffentliche API oder einen Datenexport — nur durchsuchbare
+HTML-Seiten, und `robots.txt` von vetpharm.uzh.ch sperrt grosse Teile davon
+für automatisierte Zugriffe. Da Absetzfristen rechtlich bindende,
+lebensmittelsicherheitsrelevante Werte sind, gibt es deshalb bewusst
+**keinen automatischen Hintergrund-Scraper**. Stattdessen: unter
+"Medikamente" → "Referenz verwalten" bzw. "Futter" → "Referenz verwalten"
+pflegt der Betrieb selbst eine kurze Liste (Absetzfrist pro Medikament,
+Gehalte pro Futtermittel), die beim Erfassen automatisch vorschlägt. Ein
+Link pro Eintrag öffnet eine Suche bei der jeweiligen Quelle, um den Wert
+bei Bedarf schnell manuell gegenzuprüfen ("zuletzt geprüft"-Datum wird
+dabei mitgeführt).
+
 ## Produktions-Deployment (Docker + bestehendes Traefik)
 
 Setzt voraus: Traefik läuft bereits auf dem Docker-Host (Docker-Netzwerk

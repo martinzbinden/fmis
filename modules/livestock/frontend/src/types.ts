@@ -119,6 +119,35 @@ export interface DataHistory {
   updated_at: string
 }
 
+export interface MedicationReference {
+  id: string
+  name: string
+  active_ingredient: string | null
+  default_withdrawal_days: number
+  notes: string | null
+  verified_at: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface FeedReference {
+  id: string
+  name: string
+  supplier: string | null
+  crude_protein_pct: number | null
+  energy_mj: number | null
+  crude_fiber_pct: number | null
+  crude_ash_pct: number | null
+  crude_fat_pct: number | null
+  calcium_pct: number | null
+  phosphorus_pct: number | null
+  sodium_pct: number | null
+  notes: string | null
+  verified_at: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
 export interface AnimalEconomics {
   animal_id: string
   ear_tag: string

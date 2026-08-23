@@ -37,6 +37,16 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
     ],
+    "medication_reference": [
+        "id", "name", "active_ingredient", "default_withdrawal_days", "notes",
+        "verified_at", "updated_at", "deleted_at",
+    ],
+    "feed_reference": [
+        "id", "name", "supplier", "crude_protein_pct", "energy_mj",
+        "crude_fiber_pct", "crude_ash_pct", "crude_fat_pct", "calcium_pct",
+        "phosphorus_pct", "sodium_pct", "notes", "verified_at", "updated_at",
+        "deleted_at",
+    ],
 }
 
 # Ordnet jede Sync-Tabelle einem Berechtigungsbereich zu (siehe backend/schema/0001_auth.sql
@@ -52,4 +62,6 @@ TABLE_AREA: dict[str, str] = {
     "expenses": "expenses",
     "slaughter_results": "slaughter",
     "data_history": "history",
+    "medication_reference": "medications",
+    "feed_reference": "feed",
 }

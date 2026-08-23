@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useEarTagFilter } from '../hooks/useEarTagFilter'
 import EarTagFilterInput from '../components/EarTagFilterInput'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
+import type { MedicationReference } from '../types'
 
 interface AnimalOption {
   id: string
@@ -28,6 +30,12 @@ async function loadAnimals(pg: PGlite): Promise<AnimalOption[]> {
 async function loadGroups(pg: PGlite): Promise<GroupOption[]> {
   const { rows } = await pg.query<GroupOption>(
     "select id, name from animal_groups where deleted_at is null and status = 'aktiv' order by created_date desc",
+  )
+  return rows
+}
+async function loadMedicationReferences(pg: PGlite): Promise<MedicationReference[]> {
+  const { rows } = await pg.query<MedicationReference>(
+    'select * from medication_reference where deleted_at is null order by name',
   )
   return rows
 }
@@ -79,16 +87,31 @@ export default function MedicationEntry() {
     setSelectedIds(allSelected ? new Set() : new Set((members ?? []).map((m) => m.animal_id)))
   }
 
+  const { data: medicationRefs } = useQuery(loadMedicationReferences)
+
   const [date, setDate] = useState(todayIso())
   const [name, setName] = useState('')
   const [dose, setDose] = useState('')
   const [reason, setReason] = useState('')
   const [withdrawalDays, setWithdrawalDays] = useState('0')
+  const [withdrawalTouched, setWithdrawalTouched] = useState(false)
   const [administeredBy, setAdministeredBy] = useState('')
   const [cost, setCost] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Bei Treffer in der Referenzliste die Absetzfrist vorschlagen — nur
+  // solange der Nutzer sie nicht manuell überschrieben hat (gleiches Muster
+  // wie der Erlös-Vorschlag in SlaughterEntry.tsx).
+  const matchedReference = medicationRefs?.find(
+    (r) => r.name.toLowerCase() === name.trim().toLowerCase(),
+  )
+  useEffect(() => {
+    if (matchedReference && !withdrawalTouched) {
+      setWithdrawalDays(String(matchedReference.default_withdrawal_days))
+    }
+  }, [matchedReference, withdrawalTouched])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -121,6 +144,7 @@ export default function MedicationEntry() {
       setDose('')
       setReason('')
       setCost('')
+      setWithdrawalTouched(false)
     } finally {
       setSaving(false)
     }
@@ -220,11 +244,26 @@ export default function MedicationEntry() {
         <Field label="Medikament">
           <input
             type="text"
+            list="medication-names"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full rounded border border-gray-300 px-3 py-3 text-base"
             placeholder="z.B. Baytril"
           />
+          <datalist id="medication-names">
+            {(medicationRefs ?? []).map((r) => (
+              <option key={r.id} value={r.name} />
+            ))}
+          </datalist>
+          {matchedReference && (
+            <p className="mt-1 text-xs text-gray-500">
+              {matchedReference.active_ingredient && `Wirkstoff: ${matchedReference.active_ingredient} · `}
+              Absetzfrist aus Referenz übernommen ({matchedReference.default_withdrawal_days} Tage)
+            </p>
+          )}
+          <Link to="/medikamente/referenz" className="mt-1 inline-block text-xs text-brand-700">
+            Referenz verwalten →
+          </Link>
         </Field>
         <Field label="Dosierung">
           <input
@@ -247,7 +286,10 @@ export default function MedicationEntry() {
             type="number"
             inputMode="numeric"
             value={withdrawalDays}
-            onChange={(e) => setWithdrawalDays(e.target.value)}
+            onChange={(e) => {
+              setWithdrawalTouched(true)
+              setWithdrawalDays(e.target.value)
+            }}
             className="w-full rounded border border-gray-300 px-3 py-3 text-base"
           />
         </Field>

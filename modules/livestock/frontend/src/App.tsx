@@ -15,7 +15,9 @@ import GroupDetail from './pages/GroupDetail'
 import Erfassen from './pages/Erfassen'
 import WeighIn from './pages/WeighIn'
 import MedicationEntry from './pages/MedicationEntry'
+import MedicationReference from './pages/MedicationReference'
 import FeedEntry from './pages/FeedEntry'
+import FeedReference from './pages/FeedReference'
 import SlaughterEntry from './pages/SlaughterEntry'
 import Economics from './pages/Economics'
 import History from './pages/History'
@@ -60,7 +62,9 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
         <Route path="/erfassen" element={<Erfassen />} />
         <Route path="/gewichte" element={<WeighIn />} />
         <Route path="/medikamente" element={<MedicationEntry />} />
+        <Route path="/medikamente/referenz" element={<MedicationReference />} />
         <Route path="/futter" element={<FeedEntry />} />
+        <Route path="/futter/referenz" element={<FeedReference />} />
         <Route path="/schlachtung" element={<SlaughterEntry />} />
         <Route path="/wirtschaftlichkeit" element={<Economics />} />
         <Route path="/verlauf" element={<History />} />

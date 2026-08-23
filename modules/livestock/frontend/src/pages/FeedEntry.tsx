@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
+import type { FeedReference } from '../types'
 
 interface GroupOption {
   id: string
@@ -15,12 +17,22 @@ async function loadGroups(pg: PGlite): Promise<GroupOption[]> {
   )
   return rows
 }
+async function loadFeedReferences(pg: PGlite): Promise<FeedReference[]> {
+  const { rows } = await pg.query<FeedReference>(
+    'select * from feed_reference where deleted_at is null order by name',
+  )
+  return rows
+}
 
 export default function FeedEntry() {
   const { data: groups } = useQuery(loadGroups)
+  const { data: feedRefs } = useQuery(loadFeedReferences)
   const [groupId, setGroupId] = useState('')
   const [date, setDate] = useState(todayIso())
   const [feedType, setFeedType] = useState('')
+  const matchedReference = feedRefs?.find(
+    (r) => r.name.toLowerCase() === feedType.trim().toLowerCase(),
+  )
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('kg')
   const [costTotal, setCostTotal] = useState('')
@@ -95,11 +107,30 @@ export default function FeedEntry() {
         <Field label="Futterart">
           <input
             type="text"
+            list="feed-names"
             value={feedType}
             onChange={(e) => setFeedType(e.target.value)}
-            placeholder="z.B. Kraftfutter Mast"
+            placeholder="z.B. UFA 867"
             className="w-full rounded border border-gray-300 px-3 py-3 text-base"
           />
+          <datalist id="feed-names">
+            {(feedRefs ?? []).map((r) => (
+              <option key={r.id} value={r.name} />
+            ))}
+          </datalist>
+          {matchedReference && (
+            <p className="mt-1 text-xs text-gray-500">
+              {[
+                matchedReference.crude_protein_pct != null && `Rohprotein ${matchedReference.crude_protein_pct}%`,
+                matchedReference.energy_mj != null && `Energie ${matchedReference.energy_mj} MJ`,
+              ]
+                .filter(Boolean)
+                .join(' · ') || 'Referenzeintrag gefunden'}
+            </p>
+          )}
+          <Link to="/futter/referenz" className="mt-1 inline-block text-xs text-brand-700">
+            Referenz verwalten →
+          </Link>
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Menge">

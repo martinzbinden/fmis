@@ -38,6 +38,16 @@ export const SYNC_TABLES = {
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
   ],
+  medication_reference: [
+    'id', 'name', 'active_ingredient', 'default_withdrawal_days', 'notes',
+    'verified_at', 'updated_at', 'deleted_at',
+  ],
+  feed_reference: [
+    'id', 'name', 'supplier', 'crude_protein_pct', 'energy_mj',
+    'crude_fiber_pct', 'crude_ash_pct', 'crude_fat_pct', 'calcium_pct',
+    'phosphorus_pct', 'sodium_pct', 'notes', 'verified_at', 'updated_at',
+    'deleted_at',
+  ],
 } as const
 
 export type SyncTable = keyof typeof SYNC_TABLES
@@ -55,4 +65,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   expenses: new Set(['date']),
   slaughter_results: new Set(['slaughter_date']),
   data_history: new Set(),
+  medication_reference: new Set(['verified_at']),
+  feed_reference: new Set(['verified_at']),
 }

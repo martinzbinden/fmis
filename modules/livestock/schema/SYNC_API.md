@@ -21,6 +21,12 @@ Diese Reihenfolge ist verbindlich für Push-Payloads (Backend validiert per Name
   ausschliesslich automatisch von `upsertRow()`/`softDeleteRow()` befüllt (siehe `frontend/src/db/write.ts`),
   nie direkt von einem Formular. Kein `deleted_at` (unveränderlich). `snapshot` ist die komplette Zeile NACH
   der Änderung als JSON-Text.
+- `medication_reference`: id, name, active_ingredient, default_withdrawal_days, notes, verified_at, updated_at,
+  deleted_at — vom Betrieb manuell gepflegte Referenzliste (keine offizielle Schnittstelle verfügbar, siehe
+  `frontend/src/pages/MedicationReference.tsx`), treibt nur die Autocomplete-Vorschläge beim Erfassen.
+- `feed_reference`: id, name, supplier, crude_protein_pct, energy_mj, crude_fiber_pct, crude_ash_pct,
+  crude_fat_pct, calcium_pct, phosphorus_pct, sodium_pct, notes, verified_at, updated_at, deleted_at — analog
+  für Futtermittel-Gehalte, siehe `frontend/src/pages/FeedReference.tsx`.
 
 Views (`v_animal_group_days`, `v_group_costs`, `v_animal_economics`) werden NICHT
 gesynct — sie werden lokal in pglite genau wie auf dem Server aus den Basistabellen
