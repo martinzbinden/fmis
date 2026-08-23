@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
+import { useEarTagFilter } from '../hooks/useEarTagFilter'
+import EarTagFilterInput from '../components/EarTagFilterInput'
 import { useDb } from '../db/DbContext'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
@@ -21,7 +23,15 @@ async function loadAnimals(pg: PGlite): Promise<AnimalOption[]> {
 export default function SlaughterEntry() {
   const db = useDb()
   const { data: animals } = useQuery(loadAnimals)
+  const { filter, setFilter, filtered: visibleAnimals } = useEarTagFilter(animals, (a) => a.ear_tag)
   const [animalId, setAnimalId] = useState('')
+  // Ausgewähltes Tier bleibt in der Liste sichtbar, auch wenn der Filter
+  // danach geändert wird — sonst würde die Auswahl im <select> "verschwinden".
+  const selectedAnimal = animals?.find((a) => a.id === animalId)
+  const selectOptions =
+    selectedAnimal && !(visibleAnimals ?? []).some((a) => a.id === animalId)
+      ? [selectedAnimal, ...(visibleAnimals ?? [])]
+      : (visibleAnimals ?? [])
   const [date, setDate] = useState(todayIso())
   const [slaughterhouse, setSlaughterhouse] = useState('')
   const [carcassWeight, setCarcassWeight] = useState('')
@@ -95,13 +105,16 @@ export default function SlaughterEntry() {
       <h1 className="text-xl font-bold text-gray-800">Schlachtung erfassen</h1>
       <form onSubmit={handleSubmit} className="space-y-3 rounded-lg bg-white p-4 shadow-sm">
         <Field label="Ohrmarke">
+          <div className="mb-2">
+            <EarTagFilterInput value={filter} onChange={setFilter} />
+          </div>
           <select
             value={animalId}
             onChange={(e) => setAnimalId(e.target.value)}
             className="w-full rounded border border-gray-300 px-3 py-3 text-base"
           >
             <option value="">Bitte wählen…</option>
-            {(animals ?? []).map((a) => (
+            {selectOptions.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.ear_tag}
               </option>
