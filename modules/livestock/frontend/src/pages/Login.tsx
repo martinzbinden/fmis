@@ -51,8 +51,8 @@ function EmailLogin() {
         <p className="text-lg">📬</p>
         <p className="font-medium text-gray-800">Prüfe dein E-Mail-Postfach</p>
         <p className="text-sm text-gray-500">
-          Falls die Adresse bekannt ist, haben wir dir einen Login-Link geschickt (30 Minuten
-          gültig).
+          Falls die Adresse bekannt ist, haben wir dir einen Login-Link geschickt. Der Link bleibt
+          bis zu 1 Jahr gültig — du kannst ihn z.B. als Lesezeichen speichern.
         </p>
         <button type="button" onClick={() => setSent(false)} className="text-sm text-brand-700 underline">
           Andere Adresse verwenden

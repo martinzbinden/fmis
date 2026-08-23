@@ -30,8 +30,10 @@ serverseitig).
 
 `POST /auth/request-link {"email": "..."}` → immer 200, generische Antwort.
 `POST /auth/verify {"token": "..."}` → `{"access_token": "...", "token_type": "bearer"}`
-(401 falls ungültig/abgelaufen/bereits benutzt, 403 falls Konto noch nicht
-freigeschaltet). `GET /auth/me` → aktuelle Rolle + Permissions.
+(401 falls ungültig/abgelaufen/durch neueren Link ersetzt, 403 falls Konto
+noch nicht freigeschaltet). Der Link ist persistent (`SESSION_TTL_DAYS`,
+mehrfach verwendbar, kein Verbrauch bei `verify`) — nur ein neu angeforderter
+Link invalidiert den alten. `GET /auth/me` → aktuelle Rolle + Permissions.
 
 Alle `/sync/*`-Endpunkte erfordern `Authorization: Bearer <token>`.
 

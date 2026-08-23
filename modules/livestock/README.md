@@ -31,17 +31,20 @@ stehst.
 
 Kein Passwort mehr — Login per **E-Mail-Magic-Link**:
 
-1. Nutzer gibt seine E-Mail-Adresse ein → bekommt einen Login-Link (30 Min.
-   gültig, einmal verwendbar).
+1. Nutzer gibt seine E-Mail-Adresse ein → bekommt einen Login-Link.
+   **Der Link ist persistent** (`SESSION_TTL_DAYS`, standardmässig bis zu
+   **1 Jahr**) und nicht nur einmalig — er kann z.B. als Lesezeichen/
+   Homescreen-Shortcut gespeichert und beliebig oft geklickt werden, bis er
+   abläuft oder ein neuer Link angefordert wird (das invalidiert ältere
+   Links für diese Adresse). Da der Link so lange gültig ist, wirkt er wie
+   ein Passwort — nicht weiterleiten.
 2. **Neue Adressen starten als "wartet auf Freischaltung"** — erst wenn ein
    Admin eine Rolle zuweist, funktioniert der Login. Die Adresse aus
    `INITIAL_ADMIN_EMAIL` wird beim ersten Login automatisch als Admin
    freigeschaltet (Bootstrap).
-3. Die resultierende Session ist standardmässig bis zu **1 Jahr** gültig
-   (`SESSION_TTL_DAYS`) — ein neuer Link kann jederzeit angefordert werden.
-   Sperrt ein Admin ein Konto oder ändert die Rolle, wirkt das **sofort**
+3. Sperrt ein Admin ein Konto oder ändert die Rolle, wirkt das **sofort**
    (jeder Request prüft Rolle/Status live in der DB, kein Token-Blacklist
-   nötig).
+   nötig) — unabhängig davon, ob der Link selbst noch gültig wäre.
 
 **Rollen sind feingranular** (Bereich × Lesen/Schreiben, z.B.
 `medications:write`, `economics:read`) statt nur Admin/Nutzer-Binär.

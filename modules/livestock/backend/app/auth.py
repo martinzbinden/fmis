@@ -16,7 +16,10 @@ from .email import send_magic_link
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
 SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "365"))
-MAGIC_LINK_TTL_MINUTES = 30
+# Der Login-Link selbst ist persistent (kann z.B. als Homescreen-Shortcut
+# gespeichert und beliebig oft geklickt werden), nicht nur ein kurzlebiger
+# Einmal-Code — verwendet dieselbe Gültigkeitsdauer wie die Session.
+MAGIC_LINK_TTL_DAYS = SESSION_TTL_DAYS
 INITIAL_ADMIN_EMAIL = os.environ.get("INITIAL_ADMIN_EMAIL", "").strip().lower()
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "http://localhost:5173").rstrip("/")
 ADMIN_ROLE_ID = "00000000-0000-0000-0000-000000000001"
@@ -91,15 +94,16 @@ async def request_link(body: RequestLinkBody) -> dict[str, str]:
                 ),
             )
 
-        # Ältere, noch unbenutzte Links für diesen Nutzer invalidieren — es soll
-        # immer nur der zuletzt angeforderte Link gültig sein.
+        # Ältere Links für diesen Nutzer invalidieren ("used_at" = durch einen
+        # neueren Link ersetzt, nicht "angeklickt") — es soll immer nur der
+        # zuletzt angeforderte Link gültig sein.
         await conn.execute(
             "update login_tokens set used_at = now() where user_id = %s and used_at is null",
             (user_id,),
         )
 
         token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=MAGIC_LINK_TTL_MINUTES)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=MAGIC_LINK_TTL_DAYS)
         await conn.execute(
             "insert into login_tokens (id, user_id, token_hash, expires_at) values (%s, %s, %s, %s)",
             (str(uuidlib.uuid4()), user_id, _hash_token(token), expires_at),
@@ -115,37 +119,28 @@ async def request_link(body: RequestLinkBody) -> dict[str, str]:
 
 @router.post("/auth/verify", response_model=VerifyResponse)
 async def verify(body: VerifyBody) -> VerifyResponse:
+    """Der Link ist persistent und NICHT einmalig — er darf beliebig oft
+    (z.B. als gespeichertes Lesezeichen) verwendet werden, bis er abläuft
+    (MAGIC_LINK_TTL_DAYS) oder durch einen neu angeforderten Link ersetzt wird
+    (used_at wird dann in request_link() gesetzt, nicht hier)."""
     token_hash = _hash_token(body.token)
     async with pool.connection() as conn:
-        # Atomar prüfen+verbrauchen (UPDATE...WHERE used_at is null RETURNING),
-        # statt SELECT dann UPDATE — sonst können zwei nahezu gleichzeitige
-        # Requests (z.B. React StrictMode-Doppel-Effect, Doppelklick) beide den
-        # "noch nicht benutzt"-Zustand sehen, bevor einer von beiden committet.
         row = await (
             await conn.execute(
-                """
-                update login_tokens set used_at = now()
-                where token_hash = %s and used_at is null
-                returning user_id, expires_at
-                """,
+                "select user_id, expires_at from login_tokens "
+                "where token_hash = %s and used_at is null",
                 (token_hash,),
             )
         ).fetchone()
 
         if row is None:
-            exists = await (
-                await conn.execute(
-                    "select 1 from login_tokens where token_hash = %s", (token_hash,)
-                )
-            ).fetchone()
-            await conn.commit()
-            if exists:
-                raise HTTPException(status_code=401, detail="Link wurde bereits verwendet")
-            raise HTTPException(status_code=401, detail="Ungültiger Link")
+            raise HTTPException(
+                status_code=401,
+                detail="Link ist ungültig oder wurde durch einen neueren Link ersetzt",
+            )
 
         user_id, expires_at = row
         if expires_at < datetime.now(timezone.utc):
-            await conn.commit()
             raise HTTPException(status_code=401, detail="Link ist abgelaufen, bitte neu anfordern")
 
         user_row = await (

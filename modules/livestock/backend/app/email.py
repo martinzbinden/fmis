@@ -18,10 +18,13 @@ async def send_magic_link(to_email: str, link: str) -> None:
     message["Subject"] = "Dein Mastplaner-Login-Link"
     message.set_content(
         "Hallo\n\n"
-        "Mit diesem Link kannst du dich im Mastplaner anmelden (30 Minuten gültig, "
-        "nur einmal verwendbar):\n\n"
+        "Mit diesem Link kannst du dich im Mastplaner anmelden. Der Link bleibt "
+        "bis zu 1 Jahr gültig und kann mehrfach verwendet werden — du kannst ihn "
+        "z.B. als Lesezeichen speichern:\n\n"
         f"{link}\n\n"
-        "Falls du diese E-Mail nicht angefordert hast, kannst du sie ignorieren."
+        "Da der Link lange gültig ist: bitte nicht weiterleiten, er wirkt wie ein "
+        "Passwort. Falls du diese E-Mail nicht angefordert hast, kannst du sie "
+        "ignorieren."
     )
 
     await aiosmtplib.send(
