@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
+import { useEarTagFilter } from '../hooks/useEarTagFilter'
+import EarTagFilterInput from '../components/EarTagFilterInput'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
 
@@ -11,6 +13,10 @@ interface AnimalOption {
 interface GroupOption {
   id: string
   name: string
+}
+interface GroupMember {
+  animal_id: string
+  ear_tag: string
 }
 
 async function loadAnimals(pg: PGlite): Promise<AnimalOption[]> {
@@ -25,16 +31,17 @@ async function loadGroups(pg: PGlite): Promise<GroupOption[]> {
   )
   return rows
 }
-function loadGroupMemberIds(groupId: string | null) {
-  return async (pg: PGlite): Promise<string[]> => {
+function loadGroupMembers(groupId: string | null) {
+  return async (pg: PGlite): Promise<GroupMember[]> => {
     if (!groupId) return []
-    const { rows } = await pg.query<{ animal_id: string }>(
-      `select gm.animal_id from group_memberships gm
+    const { rows } = await pg.query<GroupMember>(
+      `select a.id as animal_id, a.ear_tag from group_memberships gm
        join animals a on a.id = gm.animal_id and a.status = 'aktiv' and a.deleted_at is null
-       where gm.group_id = $1 and gm.deleted_at is null and gm.end_date is null`,
+       where gm.group_id = $1 and gm.deleted_at is null and gm.end_date is null
+       order by a.ear_tag`,
       [groupId],
     )
-    return rows.map((r) => r.animal_id)
+    return rows
   }
 }
 
@@ -45,10 +52,32 @@ export default function MedicationEntry() {
 
   const [animalId, setAnimalId] = useState('')
   const [groupId, setGroupId] = useState('')
-  const { data: memberIds } = useQuery(loadGroupMemberIds(wholeGroup ? groupId || null : null), [
+  const { data: members } = useQuery(loadGroupMembers(wholeGroup ? groupId || null : null), [
     wholeGroup,
     groupId,
   ])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const { filter, setFilter, filtered: visibleMembers } = useEarTagFilter(members, (m) => m.ear_tag)
+
+  // Bei Gruppenwechsel/-laden startet die Auswahl standardmässig mit allen
+  // Mitgliedern — einzelne Tiere können danach gezielt abgewählt werden.
+  useEffect(() => {
+    setSelectedIds(new Set((members ?? []).map((m) => m.animal_id)))
+  }, [members])
+
+  function toggleMember(id: string) {
+    setSelectedIds((s) => {
+      const next = new Set(s)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const allSelected = !!members && members.length > 0 && selectedIds.size === members.length
+  function toggleAll() {
+    setSelectedIds(allSelected ? new Set() : new Set((members ?? []).map((m) => m.animal_id)))
+  }
 
   const [date, setDate] = useState(todayIso())
   const [name, setName] = useState('')
@@ -66,7 +95,7 @@ export default function MedicationEntry() {
     setError(null)
     setSavedMsg(null)
 
-    const targetIds = wholeGroup ? memberIds ?? [] : animalId ? [animalId] : []
+    const targetIds = wholeGroup ? [...selectedIds] : animalId ? [animalId] : []
     if (targetIds.length === 0 || !name) {
       setError('Bitte Tier/Gruppe und Medikament angeben.')
       return
@@ -126,7 +155,42 @@ export default function MedicationEntry() {
                 </option>
               ))}
             </select>
-            {groupId && <p className="mt-1 text-xs text-gray-500">{(memberIds ?? []).length} Tiere betroffen</p>}
+
+            {groupId && members && members.length > 0 && (
+              <div className="mt-2 space-y-2">
+                <EarTagFilterInput value={filter} onChange={setFilter} />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">
+                    {selectedIds.size} von {members.length} ausgewählt
+                  </span>
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    className="text-xs font-medium text-brand-700"
+                  >
+                    {allSelected ? 'Alle abwählen' : 'Alle auswählen'}
+                  </button>
+                </div>
+                <ul className="max-h-64 divide-y overflow-y-auto rounded border border-gray-200">
+                  {(visibleMembers ?? []).map((m) => (
+                    <li key={m.animal_id}>
+                      <label className="flex items-center gap-3 px-3 py-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(m.animal_id)}
+                          onChange={() => toggleMember(m.animal_id)}
+                          className="h-5 w-5"
+                        />
+                        <span className="text-gray-800">{m.ear_tag}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {groupId && members && members.length === 0 && (
+              <p className="mt-1 text-xs text-gray-500">Keine aktiven Tiere in dieser Gruppe.</p>
+            )}
           </Field>
         ) : (
           <Field label="Tier">

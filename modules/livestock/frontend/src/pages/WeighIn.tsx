@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
+import { useEarTagFilter } from '../hooks/useEarTagFilter'
+import EarTagFilterInput from '../components/EarTagFilterInput'
 import { useDb } from '../db/DbContext'
 import { upsertRow } from '../db/write'
 import { todayIso, num } from '../lib/format'
@@ -257,6 +259,7 @@ export default function WeighIn() {
   }, [groups, groupId])
 
   const { data: animals, loading: animalsLoading } = useQuery(loadAnimalsForGroup(groupId), [groupId])
+  const { filter, setFilter, filtered: visibleAnimals } = useEarTagFilter(animals, (a) => a.ear_tag)
 
   const filledCount = useMemo(
     () => Object.values(weights).filter((v) => v.trim() !== '').length,
@@ -342,8 +345,12 @@ export default function WeighIn() {
         <p className="text-center text-gray-500">Keine aktiven Tiere in dieser Gruppe.</p>
       )}
 
+      {animals && animals.length > 0 && (
+        <EarTagFilterInput value={filter} onChange={setFilter} />
+      )}
+
       <ul className="space-y-2">
-        {(animals ?? []).map((a) => (
+        {(visibleAnimals ?? []).map((a) => (
           <li key={a.animal_id} className="flex items-center gap-3 rounded-lg bg-white p-3 shadow-sm">
             <div className="flex-1">
               <div className="font-semibold text-gray-800">{a.ear_tag}</div>

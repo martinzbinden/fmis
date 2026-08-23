@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
+import { useEarTagFilter } from '../hooks/useEarTagFilter'
+import EarTagFilterInput from '../components/EarTagFilterInput'
 import { importAnimalRows, parseIntakeCsv, type SeedRow } from '../lib/importCsv'
 import { parseIntakePdf } from '../lib/parsePdfIntake'
 import { fmtKg, fmtAge, num } from '../lib/format'
@@ -166,12 +168,14 @@ function ImportForm({ onDone }: { onDone: () => void }) {
 export default function Animals() {
   const { data, loading, refresh } = useQuery(loadAnimals)
   const [showImport, setShowImport] = useState(false)
+  const { filter, setFilter, filtered } = useEarTagFilter(data, (a) => a.ear_tag)
 
   if (loading && !data) {
     return <div className="p-4 text-center text-gray-400">Lädt…</div>
   }
 
   const animals = data ?? []
+  const visibleAnimals = filtered ?? []
 
   if (animals.length === 0) {
     return (
@@ -204,8 +208,14 @@ export default function Animals() {
           />
         </div>
       )}
+      <div className="mb-3">
+        <EarTagFilterInput value={filter} onChange={setFilter} />
+      </div>
+      {visibleAnimals.length === 0 && (
+        <p className="text-center text-gray-500">Keine Tiere gefunden.</p>
+      )}
       <ul className="space-y-2">
-        {animals.map((a) => (
+        {visibleAnimals.map((a) => (
           <li key={a.id}>
             <Link
               to={`/tiere/${a.id}`}
