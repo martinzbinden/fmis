@@ -99,7 +99,9 @@ export async function pull(): Promise<void> {
   const pg = await getDb()
   const since = localStorage.getItem(SINCE_KEY)
 
-  const url = new URL(`${API_URL}/sync/pull`)
+  // Zweiter Parameter (base) nötig: API_URL ist in Produktion bewusst leer
+  // (same-origin), und new URL() akzeptiert relative Strings nur mit base.
+  const url = new URL(`${API_URL}/sync/pull`, window.location.origin)
   if (since) url.searchParams.set('since', since)
 
   const res = await fetch(url.toString(), { headers: authHeaders() })
