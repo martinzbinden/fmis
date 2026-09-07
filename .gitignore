@@ -13,3 +13,9 @@ frontend/dev-dist/
 # Import läuft zur Laufzeit per Datei-Upload (PDF/CSV) direkt in der App,
 # hochgeladene Dateien landen nie im Projektverzeichnis oder in git.
 modules/livestock/seed/
+
+# Rohdaten für den geplanten Milchleistungs-Bereich (Milchwägungsdaten,
+# Herkunft z.B. Milchkontroll-Exporte) — lokal auf dem Server abgelegt,
+# nie im Repo. Import läuft künftig zur Laufzeit in der App.
+input/*
+!input/.gitkeep
