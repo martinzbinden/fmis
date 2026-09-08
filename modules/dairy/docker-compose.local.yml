@@ -1,0 +1,30 @@
+# Nur für lokales Testen. Nutzung:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+# web-netzwerk wird hier lokal erzeugt statt (wie in Produktion) extern erwartet.
+# Ports unterscheiden sich bewusst von modules/livestock (das gleichzeitig auf
+# demselben Rechner laufen kann): Backend 8001 statt 8000, Frontend 8082 statt
+# 8081, Postgres 5435 statt 5434.
+#
+# KEIN Traefik hier, siehe modules/livestock/docker-compose.local.yml für den
+# Hintergrund (Docker-Client-Versionskonflikt in dieser Testumgebung).
+services:
+  backend:
+    ports:
+      - "8001:8000"
+
+  frontend:
+    # Ohne Traefik ist Frontend (8082) nicht same-origin mit Backend (8001) —
+    # relative Pfade (Produktions-Default) würden ins Leere laufen.
+    build:
+      args:
+        VITE_API_URL: "http://localhost:8001"
+    ports:
+      - "8082:80"
+
+  postgres:
+    ports:
+      - "5435:5432"
+
+networks:
+  web-netzwerk:
+    external: false

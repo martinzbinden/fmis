@@ -11,7 +11,10 @@ künftigen FMIS-Core eingebunden werden können.
 - **[modules/livestock](modules/livestock/README.md)** — Lämmermast:
   Gewichtsüberwachung, Medikamenteneinsatz, Schlachtresultate,
   Futtermittel, Wirtschaftlichkeit. Offline-fähig (pglite), Sync zu
-  PostgreSQL. Aktuell das einzige Modul.
+  PostgreSQL.
+- **[modules/dairy](modules/dairy/README.md)** — Milchleistung: kg
+  Fett/Eiweiss pro Kuh, Joghurt-Kuhauswahl. Gleiche Architektur wie
+  `modules/livestock` (offline-fähig, eigenes Login/Postgres).
 
 ## Warum ein Modul und (noch) kein eigenes Repo
 
