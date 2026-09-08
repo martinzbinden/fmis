@@ -1,17 +1,28 @@
 import { useMemo, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { fmtDate, fmtKg, fmtPct } from '../lib/format'
+import { fmtDate, fmtKg, fmtPct, num } from '../lib/format'
 import { selectYogurtCows, TARGET_PROTEIN_PCT, type YogurtSelectionResult } from '../lib/yogurtSelection'
 import type { AnimalMilkCurrent } from '../types'
 
 type SortKey = 'name' | 'test_date' | 'milk_kg' | 'fat_kg' | 'protein_kg' | 'protein_pct'
 
+// pglite liefert numeric-Spalten als string (siehe lib/format.ts) — hier auf
+// echte number normalisieren, damit Sortierung und die Joghurt-Auswahl
+// (Addition/Division) nicht versehentlich auf Strings arbeiten (Verkettung
+// statt Summe).
 async function loadCurrentMilk(pg: PGlite): Promise<AnimalMilkCurrent[]> {
   const { rows } = await pg.query<AnimalMilkCurrent>(
     `select * from v_animal_milk_current where status = 'aktiv' order by protein_pct desc`,
   )
-  return rows
+  return rows.map((r) => ({
+    ...r,
+    milk_kg: num(r.milk_kg) ?? 0,
+    fat_pct: num(r.fat_pct) ?? 0,
+    protein_pct: num(r.protein_pct) ?? 0,
+    fat_kg: num(r.fat_kg) ?? 0,
+    protein_kg: num(r.protein_kg) ?? 0,
+  }))
 }
 
 export default function Milk() {
