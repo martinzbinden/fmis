@@ -110,9 +110,10 @@ function ImportForm({ onImported }: { onImported: () => void }) {
         <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
           <p>{summary.animalsImported} Kühe importiert.</p>
           <p>{summary.milkTestsImported} Milchtests importiert.</p>
+          <p>{summary.lactationsImported} Laktationsdaten importiert.</p>
           {summary.unmatchedEarTags.length > 0 && (
             <p className="mt-1 text-amber-700">
-              {summary.unmatchedEarTags.length} Milchtests ohne passende Kuh übersprungen:{' '}
+              {summary.unmatchedEarTags.length} Einträge ohne passende Kuh übersprungen:{' '}
               {summary.unmatchedEarTags.join(', ')}
             </p>
           )}

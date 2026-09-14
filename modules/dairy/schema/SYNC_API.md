@@ -11,12 +11,13 @@ Diese Reihenfolge ist verbindlich für Push-Payloads (Backend validiert per Name
 
 - `animals`: id, ear_tag, name, breed_code, birth_date, sex, status, entry_date, exit_date, notes, updated_at, deleted_at
 - `milk_tests`: id, animal_id, test_date, calving_date, lactation_number, milk_kg, fat_pct, protein_pct, lactose_pct, cell_count, urea_mg_dl, updated_at, deleted_at
+- `lactations`: id, animal_id, lactation_number, calving_date, closure_type, days_in_milk, milk_kg, fat_kg, fat_pct, protein_kg, protein_pct, updated_at, deleted_at
 - `data_history`: id, table_name, row_id, action, changed_by, changed_at, snapshot, updated_at — Audit-Log, wird
   ausschliesslich automatisch von `upsertRow()`/`softDeleteRow()` befüllt (siehe `frontend/src/db/write.ts`),
   nie direkt von einem Formular. Kein `deleted_at` (unveränderlich). `snapshot` ist die komplette Zeile NACH
   der Änderung als JSON-Text.
 
-Views (`v_animal_milk_current`) werden NICHT gesynct — sie werden lokal in
+Views (`v_animal_milk_current`, `v_lactation_summary`) werden NICHT gesynct — sie werden lokal in
 pglite genau wie auf dem Server aus den Basistabellen berechnet, da beide
 dasselbe Schema inkl. Views laden.
 

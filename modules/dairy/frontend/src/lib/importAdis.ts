@@ -3,13 +3,13 @@
 // in den ersten 3 Zeichen JEDER ZEILE, nicht im Dateinamen (z.B. enthält eine
 // Datei mit der Endung .Y01 tatsächlich K01-Sätze). Unbekannte Satzarten
 // werden einfach übersprungen (K05/K07-K11, B01/B04, CODE.C01, Y02, ...) —
-// für die zwei MVP-Features werden nur K01 (Tier-Stammdaten) und K33 (alle
-// Milchproben) gebraucht. Spaltenoffsets 1:1 aus der offiziellen Spec
-// übernommen und gegen echte Exportdateien verifiziert.
+// gebraucht werden K01 (Tier-Stammdaten), K33 (alle Milchproben) und K04
+// (Laktationsdaten). Spaltenoffsets 1:1 aus der offiziellen Spec übernommen
+// und gegen echte Exportdateien verifiziert.
 
 import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
-import type { AnimalSex, AnimalStatus } from '../types'
+import type { AnimalSex, AnimalStatus, LactationClosureType } from '../types'
 
 export interface ParsedAnimal {
   ear_tag: string
@@ -35,9 +35,23 @@ export interface ParsedMilkTest {
   urea_mg_dl: number | null
 }
 
+export interface ParsedLactation {
+  ear_tag: string
+  lactation_number: number
+  calving_date: string | null
+  closure_type: LactationClosureType
+  days_in_milk: number | null
+  milk_kg: number | null
+  fat_kg: number | null
+  fat_pct: number | null
+  protein_kg: number | null
+  protein_pct: number | null
+}
+
 export interface ParseResult {
   animals: ParsedAnimal[]
   milkTests: ParsedMilkTest[]
+  lactations: ParsedLactation[]
   warnings: string[]
   ignoredLines: number
 }
@@ -115,9 +129,34 @@ function parseK33Line(line: string): ParsedMilkTest | null {
   }
 }
 
+function parseK04Line(line: string): ParsedLactation | null {
+  const ear_tag = trimmed(field(line, 23, 36))
+  const lactation_number = parseAdisInt(field(line, 69, 70))
+  const closure_type = parseAdisInt(field(line, 84, 84))
+  const milk_kg = parseAdisInt(field(line, 89, 93))
+  // Die Tier-Kopfzeile (Laktationsnummer 0, keine Werte) wird hier über das
+  // fehlende milk_kg herausgefiltert, wie bei K33 auch.
+  if (!ear_tag || lactation_number == null || closure_type == null || milk_kg == null) {
+    return null
+  }
+  return {
+    ear_tag,
+    lactation_number,
+    calving_date: parseAdisDate(field(line, 71, 78)),
+    closure_type: closure_type as LactationClosureType,
+    days_in_milk: parseAdisInt(field(line, 85, 88)),
+    milk_kg,
+    fat_kg: parseAdisInt(field(line, 94, 97)),
+    fat_pct: parseAdisNumber(field(line, 98, 101)),
+    protein_kg: parseAdisInt(field(line, 102, 105)),
+    protein_pct: parseAdisNumber(field(line, 106, 109)),
+  }
+}
+
 export function parseAdisFiles(files: { name: string; text: string }[]): ParseResult {
   const animals: ParsedAnimal[] = []
   const milkTests: ParsedMilkTest[] = []
+  const lactations: ParsedLactation[] = []
   const warnings: string[] = []
   let ignoredLines = 0
 
@@ -133,18 +172,24 @@ export function parseAdisFiles(files: { name: string; text: string }[]): ParseRe
         const parsed = parseK33Line(line)
         if (parsed) milkTests.push(parsed)
         else warnings.push(`${file.name}: K33-Zeile mit fehlenden Pflichtwerten übersprungen`)
+      } else if (tag === 'K04') {
+        const parsed = parseK04Line(line)
+        if (parsed) lactations.push(parsed)
+        // Keine Warnung bei null: die häufige Tier-Kopfzeile (Laktation 0)
+        // wäre sonst pro Tier eine Warnung, ohne echten Informationswert.
       } else {
         ignoredLines++
       }
     }
   }
 
-  return { animals, milkTests, warnings, ignoredLines }
+  return { animals, milkTests, lactations, warnings, ignoredLines }
 }
 
 export interface ImportSummary {
   animalsImported: number
   milkTestsImported: number
+  lactationsImported: number
   unmatchedEarTags: string[]
 }
 
@@ -152,7 +197,10 @@ export interface ImportSummary {
  * Importiert das Parse-Ergebnis in pglite: erst alle Tiere (K01) upserten
  * (per ear_tag mit bestehenden Tieren abgleichen, damit ein wiederholter
  * Import keine Duplikate erzeugt), dann alle Milchtests (K33) — dedupliziert
- * über (animal_id, test_date), da ein Test pro Kuh und Tag eindeutig ist.
+ * über (animal_id, test_date), da ein Test pro Kuh und Tag eindeutig ist —
+ * und zuletzt alle Laktationsdaten (K04), dedupliziert über (animal_id,
+ * lactation_number, closure_type): mehrere Zeilen pro Laktation mit
+ * unterschiedlicher Abschlussart sind gewollt (siehe schema/0003_lactations.sql).
  */
 export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<ImportSummary> {
   const { rows: existingAnimals } = await pg.query<{ id: string; ear_tag: string }>(
@@ -187,9 +235,35 @@ export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<I
     milkTestsImported++
   }
 
+  const { rows: existingLactations } = await pg.query<{
+    id: string
+    animal_id: string
+    lactation_number: number
+    closure_type: number
+  }>('select id, animal_id, lactation_number, closure_type from lactations')
+  const lactationKeyToId = new Map(
+    existingLactations.map((l) => [`${l.animal_id}|${l.lactation_number}|${l.closure_type}`, l.id]),
+  )
+
+  let lactationsImported = 0
+  for (const lactation of parsed.lactations) {
+    const animalId = earTagToId.get(lactation.ear_tag)
+    if (!animalId) {
+      unmatchedEarTags.add(lactation.ear_tag)
+      continue
+    }
+    const key = `${animalId}|${lactation.lactation_number}|${lactation.closure_type}`
+    const id = lactationKeyToId.get(key) ?? crypto.randomUUID()
+    lactationKeyToId.set(key, id)
+    const { ear_tag: _earTag, ...rest } = lactation
+    await upsertRow('lactations', { id, animal_id: animalId, ...rest })
+    lactationsImported++
+  }
+
   return {
     animalsImported: parsed.animals.length,
     milkTestsImported,
+    lactationsImported,
     unmatchedEarTags: [...unmatchedEarTags],
   }
 }

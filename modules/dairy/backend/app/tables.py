@@ -11,6 +11,11 @@ SYNC_TABLES: dict[str, list[str]] = {
         "milk_kg", "fat_pct", "protein_pct", "lactose_pct", "cell_count",
         "urea_mg_dl", "updated_at", "deleted_at",
     ],
+    "lactations": [
+        "id", "animal_id", "lactation_number", "calving_date", "closure_type",
+        "days_in_milk", "milk_kg", "fat_kg", "fat_pct", "protein_kg",
+        "protein_pct", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
@@ -23,5 +28,6 @@ SYNC_TABLES: dict[str, list[str]] = {
 TABLE_AREA: dict[str, str] = {
     "animals": "animals",
     "milk_tests": "milk",
+    "lactations": "milk",
     "data_history": "history",
 }

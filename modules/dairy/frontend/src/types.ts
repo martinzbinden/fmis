@@ -34,8 +34,8 @@ export interface MilkTest {
   deleted_at: string | null
 }
 
-// Spiegelt v_animal_milk_current (schema/0001_init.sql) — jeweils neuester
-// Test pro Kuh inkl. berechneter kg Fett/Eiweiss.
+// Spiegelt v_animal_milk_current (schema/0003_lactations.sql) — jeweils
+// neuester Test pro Kuh inkl. berechneter kg Fett/Eiweiss/ECM.
 export interface AnimalMilkCurrent {
   animal_id: string
   ear_tag: string
@@ -47,6 +47,47 @@ export interface AnimalMilkCurrent {
   protein_pct: number
   fat_kg: number
   protein_kg: number
+  fat_protein_kg: number
+  ecm_kg: number
+}
+
+// ADIS Satzart K04 — Abschlussart-Code, siehe schema/0003_lactations.sql.
+// 8 = laufender Stand, 9 = Prognose, 1/4-7 = abgeschlossen (Varianten),
+// 2 = Standardabschluss (305 Tage), 3 = Vollabschluss.
+export type LactationClosureType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+
+export interface Lactation {
+  id: string
+  animal_id: string
+  lactation_number: number
+  calving_date: string | null
+  closure_type: LactationClosureType
+  days_in_milk: number | null
+  milk_kg: number | null
+  fat_kg: number | null
+  fat_pct: number | null
+  protein_kg: number | null
+  protein_pct: number | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+// Spiegelt v_lactation_summary — die "beste" Zeile pro (Kuh, Laktation).
+export interface LactationSummary {
+  lactation_id: string
+  animal_id: string
+  ear_tag: string
+  name: string | null
+  lactation_number: number
+  calving_date: string | null
+  closure_type: LactationClosureType
+  days_in_milk: number | null
+  milk_kg: number | null
+  fat_kg: number | null
+  fat_pct: number | null
+  protein_kg: number | null
+  protein_pct: number | null
+  fat_protein_kg: number | null
 }
 
 export type HistoryAction = 'insert' | 'update' | 'delete'

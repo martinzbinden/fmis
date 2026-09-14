@@ -12,6 +12,11 @@ export const SYNC_TABLES = {
     'milk_kg', 'fat_pct', 'protein_pct', 'lactose_pct', 'cell_count',
     'urea_mg_dl', 'updated_at', 'deleted_at',
   ],
+  lactations: [
+    'id', 'animal_id', 'lactation_number', 'calving_date', 'closure_type',
+    'days_in_milk', 'milk_kg', 'fat_kg', 'fat_pct', 'protein_kg',
+    'protein_pct', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -26,5 +31,6 @@ export type SyncTable = keyof typeof SYNC_TABLES
 export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   animals: new Set(['birth_date', 'entry_date', 'exit_date']),
   milk_tests: new Set(['test_date', 'calving_date']),
+  lactations: new Set(['calving_date']),
   data_history: new Set(),
 }
