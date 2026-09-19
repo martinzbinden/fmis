@@ -66,14 +66,37 @@ export default function FieldMap({
   declarations,
   farmNameById,
   focusLineageId,
+  selectionMode = false,
+  selectedIds,
+  onToggleSelect,
 }: {
   declarations: FieldDeclaration[]
   farmNameById: Map<string, string>
   focusLineageId?: string | null
+  /** Auswahl-Modus: Klick auf eine Parzelle togglet ihre Auswahl statt das Info-Popup zu öffnen. */
+  selectionMode?: boolean
+  selectedIds?: Set<string>
+  onToggleSelect?: (declarationId: string) => void
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const byId = useMemo(() => new Map(declarations.map((d) => [d.id, d])), [declarations])
   const popupsRef = useRef(new Map<string, L.Layer>())
+  const layersRef = useRef(new Map<string, { layer: L.Layer; popupHtml: string }>())
+  const mapRef = useRef<L.Map | null>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  // Aktuelle Werte per Ref verfügbar halten, damit die einmal in
+  // onEachFeature registrierten Leaflet-Click-Handler (kein Re-Mount bei
+  // jedem Render) nicht auf veralteten Closures hängen bleiben.
+  const selectionModeRef = useRef(selectionMode)
+  useEffect(() => {
+    selectionModeRef.current = selectionMode
+  }, [selectionMode])
+  const onToggleSelectRef = useRef(onToggleSelect)
+  useEffect(() => {
+    onToggleSelectRef.current = onToggleSelect
+  }, [onToggleSelect])
 
   const features = useMemo<Feature[]>(
     () =>
@@ -93,9 +116,60 @@ export default function FieldMap({
     return ids.length > 0 ? new Set(ids) : null
   }, [declarations, focusLineageId])
 
+  // Popups im Auswahl-Modus deaktivieren (kein Aufpoppen beim Klicken zum
+  // Auswählen) und beim Verlassen wieder herstellen.
+  useEffect(() => {
+    for (const { layer, popupHtml } of layersRef.current.values()) {
+      if (selectionMode) layer.unbindPopup()
+      else layer.bindPopup(popupHtml)
+    }
+  }, [selectionMode])
+
+  // Ausgewählte Parzellen visuell hervorheben.
+  useEffect(() => {
+    for (const [id, { layer }] of layersRef.current.entries()) {
+      if (!(layer instanceof L.Path)) continue
+      const decl = byId.get(id)
+      const isSelected = selectedIds?.has(id) ?? false
+      layer.setStyle({
+        color: decl ? colorForKultur(decl.kultur_code) : '#666',
+        weight: isSelected ? 4 : 1,
+        fillOpacity: isSelected ? 0.65 : 0.45,
+        dashArray: isSelected ? '6 4' : undefined,
+      })
+    }
+  }, [selectedIds, byId])
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      const active = document.fullscreenElement === wrapperRef.current
+      setIsFullscreen(active)
+      // Leaflet misst die Kartengrösse beim Erstellen — nach einer
+      // Grössenänderung (Vollbild rein/raus) muss neu gemessen werden,
+      // sonst bleiben Teile der Karte grau/abgeschnitten.
+      setTimeout(() => mapRef.current?.invalidateSize(), 50)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen()
+    } else {
+      void wrapperRef.current?.requestFullscreen()
+    }
+  }
+
+  function zoomToAll() {
+    if (features.length === 0) return
+    const bounds = L.geoJSON(features as never).getBounds()
+    if (bounds.isValid()) mapRef.current?.fitBounds(bounds, { padding: [24, 24] })
+  }
+
   return (
-    <div className="overflow-hidden rounded-lg bg-white shadow-sm">
-      <div className="flex gap-2 border-b p-2 text-xs">
+    <div ref={wrapperRef} className="overflow-hidden rounded-lg bg-white shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b p-2 text-xs">
         {(Object.entries(BACKGROUND_LAYERS) as [BackgroundKey, (typeof BACKGROUND_LAYERS)[BackgroundKey]][]).map(
           ([key, cfg]) => (
             <button
@@ -110,8 +184,29 @@ export default function FieldMap({
             </button>
           ),
         )}
+        <button
+          type="button"
+          onClick={zoomToAll}
+          title="Auf Gesamtbetrieb zoomen"
+          className="rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
+        >
+          Gesamtbetrieb
+        </button>
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild'}
+          className="ml-auto rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
+        >
+          {isFullscreen ? '⤡' : '⤢'}
+        </button>
       </div>
-      <MapContainer center={[46.92, 7.6]} zoom={13} style={{ height: 480, width: '100%' }}>
+      <MapContainer
+        ref={mapRef}
+        center={[46.92, 7.6]}
+        zoom={13}
+        style={{ height: isFullscreen ? 'calc(100vh - 41px)' : 480, width: '100%' }}
+      >
         <TileLayer
           key={background}
           url={swisstopoUrl(BACKGROUND_LAYERS[background].wmtsLayer)}
@@ -138,12 +233,16 @@ export default function FieldMap({
               const decl = byId.get((feature.properties as { declarationId: string }).declarationId)
               if (!decl) return
               popupsRef.current.set(decl.id, layer)
-              layer.bindPopup(
+              const popupHtml =
                 `<strong>${decl.flurname ?? decl.kultur_name_de ?? decl.kultur_code}</strong><br/>` +
-                  `${decl.kultur_name_de ?? decl.kultur_code} (${decl.kultur_code})<br/>` +
-                  `${fmtArea(decl.area_a)}<br/>` +
-                  `${farmNameById.get(decl.farm_id) ?? ''}`,
-              )
+                `${decl.kultur_name_de ?? decl.kultur_code} (${decl.kultur_code})<br/>` +
+                `${fmtArea(decl.area_a)}<br/>` +
+                `${farmNameById.get(decl.farm_id) ?? ''}`
+              layersRef.current.set(decl.id, { layer, popupHtml })
+              if (!selectionModeRef.current) layer.bindPopup(popupHtml)
+              layer.on('click', () => {
+                if (selectionModeRef.current) onToggleSelectRef.current?.(decl.id)
+              })
             }}
           />
         )}

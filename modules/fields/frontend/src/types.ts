@@ -72,6 +72,30 @@ export interface FieldLineageSummary {
   latest_jahr: number
 }
 
+// Schreibbarer, versionierter Planungs-Layer — jede Zeile ist eine
+// unveränderliche Version, siehe schema/0005_plan_layer.sql und
+// lib/planLayer.ts für die Schreiblogik.
+export interface PlanParcel {
+  id: string
+  plan_id: string
+  version_number: number
+  is_current: boolean
+  farm_id: string
+  source_declaration_id: string | null
+  jahr: number
+  kultur_code: string | null
+  kultur_name_de: string | null
+  kultur_name_fr: string | null
+  sorte: string | null
+  flurname: string | null
+  area_a: number | null
+  geometry: string | null
+  notes: string | null
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
 export type HistoryAction = 'insert' | 'update' | 'delete'
 
 export interface DataHistory {

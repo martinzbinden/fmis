@@ -18,6 +18,12 @@ export const SYNC_TABLES = {
     'geometry', 'source', 'notes', 'start_date', 'end_date', 'sorte',
     'updated_at', 'deleted_at',
   ],
+  plan_parcels: [
+    'id', 'plan_id', 'version_number', 'is_current', 'farm_id',
+    'source_declaration_id', 'jahr', 'kultur_code', 'kultur_name_de',
+    'kultur_name_fr', 'sorte', 'flurname', 'area_a', 'geometry',
+    'notes', 'created_by', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -33,5 +39,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   farms: new Set(),
   management_units: new Set(),
   field_declarations: new Set(['start_date', 'end_date']),
+  plan_parcels: new Set(),
   data_history: new Set(),
 }
