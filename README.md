@@ -15,6 +15,12 @@ künftigen FMIS-Core eingebunden werden können.
 - **[modules/dairy](modules/dairy/README.md)** — Milchleistung: kg
   Fett/Eiweiss pro Kuh, Joghurt-Kuhauswahl. Gleiche Architektur wie
   `modules/livestock` (offline-fähig, eigenes Login/Postgres).
+- **[modules/fields](modules/fields/README.md)** — Kulturen: Kulturflächen
+  aus dem kantonalen Raumdatenexport auf einer Karte (swisstopo-
+  Hintergrund) plus mehrjährige Fruchtfolgeplanung. Gleiche Architektur wie
+  `modules/livestock`, verwaltet aber zwei Betriebe (Betriebszweig-
+  gemeinschaft) in einer gemeinsamen Datenbank, erreichbar über zwei
+  Domains.
 
 ## Warum ein Modul und (noch) kein eigenes Repo
 
