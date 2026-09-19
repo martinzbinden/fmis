@@ -1,10 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FieldDeclaration } from '../types'
 import { fmtArea } from '../lib/format'
 import { colorForKultur } from '../lib/kulturColor'
+
+// Einzelbäume/Hochstammfeldobstbäume (Kronendurchmesser ca. 3m) liegen im
+// Raumdatenexport uneinheitlich vor: teils als Punkt-Geometrie (Layer
+// lnf_nutzung_punkt, z.B. "Einheimische standortgerechte Einzelbäume und
+// Alleen"), teils als winzige Polygon-Fläche, die die Baumkrone umreisst
+// (z.B. "Hochstammfeldobstbäume", area_a rundet auf 0.00). Beide Formen
+// überdecken bei normaler Betriebsübersicht die ganze Karte, wenn sie
+// als fixe Marker/Flächen dargestellt werden — deshalb werden sie erst
+// ab diesem Zoom-Level überhaupt gerendert.
+const MIN_ZOOM_FOR_TREES = 17
+// Flächen unter diesem Wert (in Aren) gelten als Einzelbaum-Fläche statt
+// echter Kulturfläche — deutlich kleiner als die kleinsten realen
+// Feldsplitter (die liegen typischerweise bei 0.02a und mehr).
+const TREE_SCALE_AREA_A = 0.01
 
 // swisstopo-WMTS, kein API-Key nötig (öffentlicher Web-Kartendienst,
 // api3.geo.admin.ch) — Pflicht-Attribution "© swisstopo". EPSG:3857
@@ -62,6 +76,12 @@ function FitToFeatures({
   return null
 }
 
+/** Meldet Zoom-Änderungen nach aussen (für die Einzelbaum-Sichtbarkeit). */
+function TrackZoom({ onZoom }: { onZoom: (zoom: number) => void }) {
+  const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) })
+  return null
+}
+
 export default function FieldMap({
   declarations,
   farmNameById,
@@ -80,6 +100,7 @@ export default function FieldMap({
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [zoom, setZoom] = useState(13)
   const byId = useMemo(() => new Map(declarations.map((d) => [d.id, d])), [declarations])
   const popupsRef = useRef(new Map<string, L.Layer>())
   const layersRef = useRef(new Map<string, { layer: L.Layer; popupHtml: string }>())
@@ -108,6 +129,20 @@ export default function FieldMap({
           geometry: JSON.parse(d.geometry!),
         })),
     [declarations],
+  )
+
+  // Einzelbäume (Punkt-Geometrien oder winzige Krondurchmesser-Polygone,
+  // siehe TREE_SCALE_AREA_A) erst ab MIN_ZOOM_FOR_TREES anzeigen — echte
+  // Kulturflächen sind davon nicht betroffen.
+  const visibleFeatures = useMemo(
+    () =>
+      features.filter((f) => {
+        if (zoom >= MIN_ZOOM_FOR_TREES) return true
+        if (f.geometry.type === 'Point') return false
+        const areaA = byId.get(f.properties.declarationId)?.area_a
+        return areaA == null || areaA >= TREE_SCALE_AREA_A
+      }),
+    [features, zoom, byId],
   )
 
   const focusFeatureIds = useMemo(() => {
@@ -213,18 +248,21 @@ export default function FieldMap({
           maxZoom={BACKGROUND_LAYERS[background].maxZoom}
           attribution="&copy; swisstopo"
         />
-        {features.length > 0 && (
+        <TrackZoom onZoom={setZoom} />
+        {visibleFeatures.length > 0 && (
           <GeoJSON
-            key={features.map((f) => f.properties.declarationId).join(',')}
-            data={{ type: 'FeatureCollection', features } as never}
+            key={visibleFeatures.map((f) => f.properties.declarationId).join(',')}
+            data={{ type: 'FeatureCollection', features: visibleFeatures } as never}
             style={(feature) => {
               const decl = byId.get((feature?.properties as { declarationId: string }).declarationId)
               return { color: decl ? colorForKultur(decl.kultur_code) : '#666', weight: 1, fillOpacity: 0.45 }
             }}
             pointToLayer={(feature, latlng) => {
               const decl = byId.get((feature.properties as { declarationId: string }).declarationId)
-              return L.circleMarker(latlng, {
-                radius: 6,
+              // Realer Radius (Meter) statt fixer Pixelgrösse — Kreis
+              // skaliert damit organisch mit dem Zoom (~3m Kronendurchmesser).
+              return L.circle(latlng, {
+                radius: 1.5,
                 color: decl ? colorForKultur(decl.kultur_code) : '#666',
                 fillOpacity: 0.7,
               })
