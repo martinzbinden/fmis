@@ -72,12 +72,23 @@ export interface FieldLineageSummary {
   latest_jahr: number
 }
 
+// Ein benannter Planungs-Layer (Szenario) — mehrere können parallel
+// existieren, siehe schema/0006_plan_layers.sql.
+export interface PlanLayer {
+  id: string
+  name: string
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
 // Schreibbarer, versionierter Planungs-Layer — jede Zeile ist eine
-// unveränderliche Version, siehe schema/0005_plan_layer.sql und
-// lib/planLayer.ts für die Schreiblogik.
+// unveränderliche Version, siehe schema/0005_plan_layer.sql,
+// schema/0006_plan_layers.sql und lib/planLayer.ts für die Schreiblogik.
 export interface PlanParcel {
   id: string
   plan_id: string
+  layer_id: string
   version_number: number
   is_current: boolean
   farm_id: string

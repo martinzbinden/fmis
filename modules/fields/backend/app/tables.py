@@ -17,8 +17,11 @@ SYNC_TABLES: dict[str, list[str]] = {
         "geometry", "source", "notes", "start_date", "end_date", "sorte",
         "updated_at", "deleted_at",
     ],
+    "plan_layers": [
+        "id", "name", "created_by", "updated_at", "deleted_at",
+    ],
     "plan_parcels": [
-        "id", "plan_id", "version_number", "is_current", "farm_id",
+        "id", "plan_id", "layer_id", "version_number", "is_current", "farm_id",
         "source_declaration_id", "jahr", "kultur_code", "kultur_name_de",
         "kultur_name_fr", "sorte", "flurname", "area_a", "geometry",
         "notes", "created_by", "updated_at", "deleted_at",
@@ -38,6 +41,7 @@ TABLE_AREA: dict[str, str] = {
     "farms": "fields",
     "management_units": "fields",
     "field_declarations": "fields",
+    "plan_layers": "fields",
     "plan_parcels": "fields",
     "data_history": "history",
 }

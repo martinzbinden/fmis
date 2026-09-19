@@ -1,5 +1,5 @@
 import { getDb } from '../db/pglite'
-import { upsertRow } from '../db/write'
+import { upsertRow, softDeleteRow } from '../db/write'
 import { getCurrentUserEmail } from '../db/auth'
 import type { FieldDeclaration, PlanParcel } from '../types'
 
@@ -17,12 +17,34 @@ type PlanParcelInput = Pick<
   | 'notes'
 >
 
+/** Legt einen neuen, leeren Planungslayer an. */
+export async function createLayer(name: string): Promise<string> {
+  const layerId = crypto.randomUUID()
+  await upsertRow('plan_layers', {
+    id: layerId,
+    name,
+    created_by: getCurrentUserEmail(),
+  })
+  return layerId
+}
+
+/**
+ * Soft-Delete eines Layers. Die zugehörigen plan_parcels bleiben
+ * unangetastet (kein Kaskaden-Löschen) — sie verschwinden einfach aus der
+ * Auswahl, weil der Layer selbst nicht mehr gelistet wird. Passt zum
+ * "nichts geht verloren"-Prinzip der Versionierung.
+ */
+export async function deleteLayer(layerId: string): Promise<void> {
+  await softDeleteRow('plan_layers', layerId)
+}
+
 /** Legt eine neue Planungsparzelle (Version 1) an, kopiert von einer Import-Deklaration. */
-export async function copyToPlan(decl: FieldDeclaration): Promise<string> {
+export async function copyToPlan(decl: FieldDeclaration, layerId: string): Promise<string> {
   const planId = crypto.randomUUID()
   await upsertRow('plan_parcels', {
     id: crypto.randomUUID(),
     plan_id: planId,
+    layer_id: layerId,
     version_number: 1,
     is_current: true,
     farm_id: decl.farm_id,
@@ -41,12 +63,26 @@ export async function copyToPlan(decl: FieldDeclaration): Promise<string> {
   return planId
 }
 
+/**
+ * Legt einen neuen Layer an und kopiert alle übergebenen Deklarationen
+ * (typischerweise bereits auf ein Jahr gefiltert) hinein — "Jahr als
+ * Ausgangslage kopieren".
+ */
+export async function copyYearAsLayer(name: string, declarations: FieldDeclaration[]): Promise<string> {
+  const layerId = await createLayer(name)
+  for (const decl of declarations) {
+    await copyToPlan(decl, layerId)
+  }
+  return layerId
+}
+
 /** Legt eine ganz neue Planungsparzelle an — von Grund auf gezeichnet, kein Import-Ursprung. */
-export async function createPlanParcel(input: PlanParcelInput): Promise<string> {
+export async function createPlanParcel(input: PlanParcelInput, layerId: string): Promise<string> {
   const planId = crypto.randomUUID()
   await upsertRow('plan_parcels', {
     id: crypto.randomUUID(),
     plan_id: planId,
+    layer_id: layerId,
     version_number: 1,
     is_current: true,
     source_declaration_id: null,

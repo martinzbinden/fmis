@@ -17,11 +17,14 @@ function swisstopoUrl(wmtsLayer: string): string {
   return `https://wmts.geo.admin.ch/1.0.0/${wmtsLayer}/default/current/3857/{z}/{x}/{y}.jpeg`
 }
 
+const EMPTY_SELECTION = new Set<string>()
+function noop() {}
+
 // leaflet-draw hängt eine Referenz auf das ursprüngliche GeoJSON-Feature
 // nicht automatisch an — wir nutzen dafür die von Leaflet für jeden Layer
 // bereits vorgesehene (aber lose typisierte) `feature`-Eigenschaft, um
 // planId mitzuführen. Siehe onEachLayer unten.
-interface PlanLayer extends L.Layer {
+interface PlanFeatureLayer extends L.Layer {
   feature?: { properties: { planId: string } }
 }
 
@@ -38,19 +41,34 @@ function DrawLayer({
   onEdited,
   onDeleted,
   onSelect,
+  selectionMode,
+  selectedIds,
+  onToggleSelect,
 }: {
   planParcels: PlanParcel[]
   onCreated: (geometry: string) => void
   onEdited: (planId: string, geometry: string) => void
   onDeleted: (planId: string) => void
   onSelect: (planId: string) => void
+  /** Auswahl-Modus: Klick auf eine Parzelle togglet ihre Auswahl statt das Detail-Modal zu öffnen. */
+  selectionMode: boolean
+  selectedIds: Set<string>
+  onToggleSelect: (planId: string) => void
 }) {
   const map = useMap()
   const groupRef = useRef<L.FeatureGroup | null>(null)
-  const callbacksRef = useRef({ onCreated, onEdited, onDeleted, onSelect })
+  const layersRef = useRef(new Map<string, L.Layer>())
+  const callbacksRef = useRef({ onCreated, onEdited, onDeleted, onSelect, onToggleSelect })
   useEffect(() => {
-    callbacksRef.current = { onCreated, onEdited, onDeleted, onSelect }
-  }, [onCreated, onEdited, onDeleted, onSelect])
+    callbacksRef.current = { onCreated, onEdited, onDeleted, onSelect, onToggleSelect }
+  }, [onCreated, onEdited, onDeleted, onSelect, onToggleSelect])
+  // Wie in FieldMap.tsx: per-Feature-Klick-Handler werden einmalig beim
+  // (Neu-)Aufbau der FeatureGroup registriert, deshalb aktuellen
+  // selectionMode-Wert per Ref verfügbar halten statt als Closure-Wert.
+  const selectionModeRef = useRef(selectionMode)
+  useEffect(() => {
+    selectionModeRef.current = selectionMode
+  }, [selectionMode])
 
   // Toolbar + Event-Handler einmalig aufsetzen.
   useEffect(() => {
@@ -79,13 +97,13 @@ function DrawLayer({
     })
     map.on(L.Draw.Event.EDITED, (e) => {
       ;(e as L.DrawEvents.Edited).layers.eachLayer((layer) => {
-        const planId = (layer as PlanLayer).feature?.properties.planId
+        const planId = (layer as PlanFeatureLayer).feature?.properties.planId
         if (planId) callbacksRef.current.onEdited(planId, JSON.stringify((layer as L.Polygon).toGeoJSON().geometry))
       })
     })
     map.on(L.Draw.Event.DELETED, (e) => {
       ;(e as L.DrawEvents.Deleted).layers.eachLayer((layer) => {
-        const planId = (layer as PlanLayer).feature?.properties.planId
+        const planId = (layer as PlanFeatureLayer).feature?.properties.planId
         if (planId) callbacksRef.current.onDeleted(planId)
       })
     })
@@ -109,19 +127,40 @@ function DrawLayer({
     const group = groupRef.current
     if (!group) return
     group.clearLayers()
+    layersRef.current.clear()
     for (const p of planParcels) {
       if (!p.geometry) continue
       const geojsonLayer = L.geoJSON(JSON.parse(p.geometry) as GeoJSON.Geometry as never, {
         style: { color: colorForKultur(p.kultur_code ?? ''), weight: 2, fillOpacity: 0.4 },
       })
       geojsonLayer.eachLayer((layer) => {
-        ;(layer as PlanLayer).feature = { properties: { planId: p.plan_id } }
+        ;(layer as PlanFeatureLayer).feature = { properties: { planId: p.plan_id } }
         layer.bindTooltip(p.kultur_name_de ?? p.flurname ?? 'Ohne Kultur')
-        layer.on('click', () => callbacksRef.current.onSelect(p.plan_id))
+        layer.on('click', () => {
+          if (selectionModeRef.current) callbacksRef.current.onToggleSelect(p.plan_id)
+          else callbacksRef.current.onSelect(p.plan_id)
+        })
+        layersRef.current.set(p.plan_id, layer)
         group.addLayer(layer)
       })
     }
   }, [planParcels])
+
+  // Ausgewählte Parzellen visuell hervorheben — dickerer, gestrichelter
+  // Rand, wie in FieldMap.tsx für die Import-Auswahl.
+  useEffect(() => {
+    for (const [planId, layer] of layersRef.current.entries()) {
+      if (!(layer instanceof L.Path)) continue
+      const p = planParcels.find((pp) => pp.plan_id === planId)
+      const isSelected = selectedIds.has(planId)
+      layer.setStyle({
+        color: p ? colorForKultur(p.kultur_code ?? '') : '#166534',
+        weight: isSelected ? 5 : 2,
+        fillOpacity: isSelected ? 0.6 : 0.4,
+        dashArray: isSelected ? '6 4' : undefined,
+      })
+    }
+  }, [selectedIds, planParcels])
 
   return null
 }
@@ -132,12 +171,21 @@ export default function PlanningMap({
   onEdited,
   onDeleted,
   onSelect,
+  selectionMode = false,
+  selectedIds,
+  onToggleSelect,
+  focusPlanId,
 }: {
   planParcels: PlanParcel[]
   onCreated: (geometry: string) => void
   onEdited: (planId: string, geometry: string) => void
   onDeleted: (planId: string) => void
   onSelect: (planId: string) => void
+  selectionMode?: boolean
+  selectedIds?: Set<string>
+  onToggleSelect?: (planId: string) => void
+  /** Zoomt auf diese Parzelle, wenn gesetzt (z.B. 🌐-Klick in PlanAttributeTable). */
+  focusPlanId?: string | null
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -156,6 +204,15 @@ export default function PlanningMap({
   useEffect(() => {
     if (bounds) mapRef.current?.fitBounds(bounds, { padding: [24, 24] })
   }, [bounds])
+
+  useEffect(() => {
+    if (!focusPlanId) return
+    const p = planParcels.find((pp) => pp.plan_id === focusPlanId)
+    if (!p?.geometry) return
+    const b = L.geoJSON(JSON.parse(p.geometry) as never).getBounds()
+    if (b.isValid()) mapRef.current?.fitBounds(b, { padding: [24, 24], maxZoom: 18 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPlanId])
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -227,6 +284,9 @@ export default function PlanningMap({
           onEdited={onEdited}
           onDeleted={onDeleted}
           onSelect={onSelect}
+          selectionMode={selectionMode}
+          selectedIds={selectedIds ?? EMPTY_SELECTION}
+          onToggleSelect={onToggleSelect ?? noop}
         />
       </MapContainer>
     </div>
