@@ -2,40 +2,22 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "livestock-frontend",
+      "name": "fmis-backend",
       "runtimeExecutable": "bash",
       "runtimeArgs": [
         "-c",
-        "docker run --rm -p 5173:5173 -v /home/martinz/git/fmis/modules/livestock:/workspace -w /workspace/frontend -e VITE_API_URL=http://localhost:8010 node:20-alpine sh -c \"npm install && npm run dev -- --host 0.0.0.0 --port 5173\""
+        "docker network create fmis-preview-net >/dev/null 2>&1; docker rm -f fmis-preview-pg >/dev/null 2>&1; docker volume create fmis-preview-pgdata >/dev/null; docker run -d --rm --name fmis-preview-pg --network fmis-preview-net -v fmis-preview-pgdata:/var/lib/postgresql/data -e POSTGRES_USER=fmis -e POSTGRES_PASSWORD=fmis -e POSTGRES_DB=fmis postgres:16-alpine >/dev/null; trap 'docker rm -f fmis-preview-pg >/dev/null 2>&1' EXIT; until docker exec fmis-preview-pg pg_isready -U fmis >/dev/null 2>&1; do sleep 1; done; docker run --rm --network fmis-preview-net -p 8000:8000 -v /home/martinz/git/fmis-fields:/workspace -w /workspace/backend -e PYTHONPATH=/workspace -e DATABASE_URL=postgresql://fmis:fmis@fmis-preview-pg:5432/fmis -e JWT_SECRET=dev-secret-local-preview -e INITIAL_ADMIN_EMAIL=dev@example.com -e PUBLIC_URL=http://localhost:5173 -e TEST_LOGIN_PASSWORD=devtest123 python:3.12-slim sh -c \"pip install --quiet -e . && uvicorn app.main:app --host 0.0.0.0 --port 8000\""
+      ],
+      "port": 8000
+    },
+    {
+      "name": "fmis-frontend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "docker run --rm -p 5173:5173 -v /home/martinz/git/fmis-fields:/workspace -w /workspace -e VITE_API_URL=http://localhost:8000 node:20-alpine sh -c \"npm install && cd frontend && npm run dev -- --host 0.0.0.0 --port 5173\""
       ],
       "port": 5173
-    },
-    {
-      "name": "livestock-backend",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": [
-        "-c",
-        "docker network create livestock-preview-net >/dev/null 2>&1; docker rm -f livestock-preview-pg >/dev/null 2>&1; docker run -d --rm --name livestock-preview-pg --network livestock-preview-net -e POSTGRES_USER=mastplaner -e POSTGRES_PASSWORD=mastplaner -e POSTGRES_DB=mastplaner postgres:16-alpine >/dev/null; trap 'docker rm -f livestock-preview-pg >/dev/null 2>&1' EXIT; until docker exec livestock-preview-pg pg_isready -U mastplaner >/dev/null 2>&1; do sleep 1; done; docker run --rm --network livestock-preview-net -p 8010:8000 -v /home/martinz/git/fmis/modules/livestock:/workspace -w /workspace/backend -e DATABASE_URL=postgresql://mastplaner:mastplaner@livestock-preview-pg:5432/mastplaner -e JWT_SECRET=dev-secret-local-preview -e INITIAL_ADMIN_EMAIL=dev@example.com -e PUBLIC_URL=http://localhost:5173 -e TEST_LOGIN_PASSWORD=devtest123 python:3.12-slim sh -c \"pip install --quiet -e . && uvicorn app.main:app --host 0.0.0.0 --port 8000\""
-      ],
-      "port": 8010
-    },
-    {
-      "name": "fields-frontend",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": [
-        "-c",
-        "docker run --rm -p 5175:5175 -v /home/martinz/git/fmis/modules/fields:/workspace -w /workspace/frontend -e VITE_API_URL=http://localhost:8012 node:20-alpine sh -c \"npm install && npm run dev -- --host 0.0.0.0 --port 5175\""
-      ],
-      "port": 5175
-    },
-    {
-      "name": "fields-backend",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": [
-        "-c",
-        "docker network create fields-preview-net >/dev/null 2>&1; docker rm -f fields-preview-pg >/dev/null 2>&1; docker volume create fields-preview-pgdata >/dev/null; docker run -d --rm --name fields-preview-pg --network fields-preview-net -v fields-preview-pgdata:/var/lib/postgresql/data -e POSTGRES_USER=fields -e POSTGRES_PASSWORD=fields -e POSTGRES_DB=fields postgres:16-alpine >/dev/null; trap 'docker rm -f fields-preview-pg >/dev/null 2>&1' EXIT; until docker exec fields-preview-pg pg_isready -U fields >/dev/null 2>&1; do sleep 1; done; docker run --rm --network fields-preview-net -p 8012:8000 -v /home/martinz/git/fmis/modules/fields:/workspace -w /workspace/backend -e DATABASE_URL=postgresql://fields:fields@fields-preview-pg:5432/fields -e JWT_SECRET=dev-secret-local-preview -e INITIAL_ADMIN_EMAIL=dev@example.com -e PUBLIC_URL=http://localhost:5175 -e TEST_LOGIN_PASSWORD=devtest123 python:3.12-slim sh -c \"pip install --quiet -e . && uvicorn app.main:app --host 0.0.0.0 --port 8000\""
-      ],
-      "port": 8012
     }
   ]
 }
