@@ -6,30 +6,26 @@ mit swisstopo-Hintergrund (Pixelkarte/Luftbild), plus eine mehrjährige
 Fruchtfolgeplanung pro Parzelle (inkl. Zwischenfutter) als Grundlage für
 ein späteres Feldjournal.
 
-Eigenständiges Modul im [FMIS-Repo](../../README.md), Architektur 1:1
-gespiegelt von [modules/livestock](../livestock/README.md) — siehe dort für
-Details zu Login/Rechten, Sync-Mechanismus, Bearbeiten/Löschen/Verlauf und
-Produktions-Deployment.
+Fachmodul im gemeinsamen [FMIS-Repo](../../README.md) — Login, Rollen,
+Deployment und die App-Shell sind seit dem Merge geteilt (siehe Root-README
+und [`core/`](../../core)); dieses README beschreibt nur, was in diesem
+Modul (`modules/fields/`) fachlich/technisch spezifisch ist. Eigene
+Berechtigung `fields:fields:*`/`fields:history:read`, eigenes
+Postgres-Schema `fields`, eigene IndexedDB `idb://fields`.
 
-## Besonderheit: zwei Betriebe, eine Datenbank, zwei Domains
+## Besonderheit: zwei Betriebe, eine Datenbank
 
-Anders als `modules/dairy`/`modules/livestock` (je eine eigenständige
-Instanz pro Betrieb) verwaltet dieses Modul **zwei Betriebe** (die als
+Anders als `modules/dairy`/`modules/livestock` (je auf einen Betrieb
+bezogen) verwaltet dieses Modul **zwei Betriebe** (die als
 Betriebszweiggemeinschaft/ÖLN-Gemeinschaft zusammenarbeiten) in **einer**
 gemeinsamen Datenbank — jede Zeile ist über `farm_id` einem Betrieb
-zugeordnet (u.a. für die separate Jahresabrechnung je Betrieb). Ein
-Backend/eine Postgres-DB laufen einmal, das Frontend ist aber über **zwei
-Domains** erreichbar (`DOMAIN_1`/`DOMAIN_2` in `.env`, siehe
-`docker-compose.yml` — zwei Traefik-Host-Regeln auf denselben Service),
-damit jeder Betrieb seine eigene, vertraute URL behält.
-
-Da Browser-Storage (localStorage/IndexedDB) origin-gebunden ist, bedeutet
-das konkret: Login-Token und die lokale pglite-Offline-Kopie sind **pro
-Domain separat** (ein Login-Link gilt nicht automatisch für beide Domains
-gleichzeitig — bei Bedarf einfach auf beiden je einmal per Magic-Link
-anmelden). Beide Domains synchronisieren aber gegen dieselbe Datenbank, die
-Karte und alle Daten sind also gemeinsam sichtbar, sobald synchronisiert
-wurde.
+zugeordnet (u.a. für die separate Jahresabrechnung je Betrieb). Vor dem
+Merge lief das Frontend dafür über zwei separate Domains (eine pro
+Betrieb, mit getrennten Browser-Logins/pglite-Kopien); seit dem Merge
+teilen sich alle Module (inkl. beider Betriebe hier) eine Domain und
+Origin — ein Login genügt für beide Betriebe, die lokale pglite-Kopie
+enthält beider Betriebe Daten gemeinsam (weiterhin unterschieden über
+`farm_id`).
 
 ## Datenimport
 
@@ -56,24 +52,9 @@ zukünftiges Jahr kann direkt eine geplante Kultur erfasst werden (inkl.
 Zwischenfutter als zweiter Eintrag im selben Jahr); Fläche/Geometrie/
 Flurname werden dabei von der letzten bekannten Deklaration übernommen.
 
-## Produktions-Deployment (Docker + bestehendes Traefik)
+## Deployment & lokale Entwicklung
 
-```bash
-cp .env.example .env   # JWT_SECRET, INITIAL_ADMIN_EMAIL, SMTP_*, DOMAIN_1/DOMAIN_2/PUBLIC_URL setzen
-docker compose up --build -d
-```
-
-## Lokale Entwicklung
-
-```bash
-cd frontend
-npm install
-cp .env.example .env   # VITE_API_URL=http://localhost:8002 für lokale Entwicklung
-npm run dev
-```
-
-Oder mit Docker (`docker compose -f docker-compose.yml -f
-docker-compose.local.yml up --build`) — Backend auf `:8002`, Frontend auf
-`:8083`, Postgres auf `:5436` (bewusst andere Ports als
-`modules/livestock`/`modules/dairy`, damit alle Module gleichzeitig lokal
-laufen können).
+Es gibt kein eigenständiges Deployment/Dev-Setup für dieses Modul mehr —
+Backend und Frontend werden zusammen mit den anderen Modulen als **eine**
+App gebaut und deployt. Siehe [Root-README](../../README.md) für
+`docker compose up` (Produktion) und den lokalen Dev-Server.
