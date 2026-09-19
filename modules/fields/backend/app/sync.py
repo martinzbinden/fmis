@@ -3,9 +3,15 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .auth import CurrentUser, require_auth
-from .db import pool
+from core.backend.fmis_core.auth import CurrentUser, require_auth
+from core.backend.fmis_core.db import get_pool
 from .tables import SYNC_TABLES, TABLE_AREA
+
+# Eigener Pool mit search_path='fields,public' (siehe fmis_core/db.py) — die
+# untenstehenden Queries bleiben dadurch unqualifiziert (z.B.
+# `select ... from "farms"`) und landen trotzdem im richtigen Postgres-
+# Schema, ohne Änderung an einer einzigen SQL-Zeile.
+pool = get_pool("fields")
 
 router = APIRouter()
 

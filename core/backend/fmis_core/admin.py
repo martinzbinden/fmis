@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import require_permission
-from .db import pool
+from .db import get_pool
 
-router = APIRouter(dependencies=[Depends(require_permission("users:manage"))])
+router = APIRouter(dependencies=[Depends(require_permission("core:users:manage"))])
+
+pool = get_pool("public")
 
 
 class UserOut(BaseModel):

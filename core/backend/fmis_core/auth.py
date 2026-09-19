@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 
-from .db import pool
+from .db import get_pool
 from .email import send_magic_link
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-change-in-production")
@@ -30,6 +30,8 @@ TEST_LOGIN_PASSWORD = os.environ.get("TEST_LOGIN_PASSWORD", "").strip()
 
 router = APIRouter()
 bearer_scheme = HTTPBearer()
+
+pool = get_pool("public")
 
 
 class RequestLinkBody(BaseModel):
@@ -199,8 +201,8 @@ async def require_auth(
 
     user_id = payload.get("sub")
     # Rolle/Status werden bei JEDEM Request frisch geladen (kein Claim im JWT) —
-    # Admin-Aktionen (Rolle ändern, Nutzer sperren) wirken so sofort, ohne
-    # Token-Blacklist verwalten zu müssen.
+    # Admin-Aktionen (Rolle ändern, Nutzer sperren, Modul deaktivieren) wirken
+    # so sofort, ohne Token-Blacklist verwalten zu müssen.
     async with pool.connection() as conn:
         row = await (
             await conn.execute(

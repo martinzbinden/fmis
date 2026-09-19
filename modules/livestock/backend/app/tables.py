@@ -49,19 +49,23 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
 }
 
-# Ordnet jede Sync-Tabelle einem Berechtigungsbereich zu (siehe backend/schema/0001_auth.sql
-# für die Rollen/Permissions selbst). Treibt die Rechteprüfung in sync.py an:
-# push braucht "<area>:write", pull liefert eine Tabelle nur mit "<area>:read".
+# Ordnet jede Sync-Tabelle einem Berechtigungsbereich zu (siehe
+# core/backend/fmis_core/schema/0001_core.sql für die Rollen/Permissions
+# selbst). Treibt die Rechteprüfung in sync.py an: push braucht
+# "<area>:write", pull liefert eine Tabelle nur mit "<area>:read".
+# Modul-präfixiert (seit dem Merge zu einer App) — verhindert, dass z.B.
+# "animals:read" mit dairy's gleichnamiger, aber andersartiger Tabelle
+# kollidiert.
 TABLE_AREA: dict[str, str] = {
-    "animals": "animals",
-    "animal_groups": "groups",
-    "group_memberships": "groups",
-    "weighings": "weighings",
-    "medications": "medications",
-    "feed_records": "feed",
-    "expenses": "expenses",
-    "slaughter_results": "slaughter",
-    "data_history": "history",
-    "medication_reference": "medications",
-    "feed_reference": "feed",
+    "animals": "livestock:animals",
+    "animal_groups": "livestock:groups",
+    "group_memberships": "livestock:groups",
+    "weighings": "livestock:weighings",
+    "medications": "livestock:medications",
+    "feed_records": "livestock:feed",
+    "expenses": "livestock:expenses",
+    "slaughter_results": "livestock:slaughter",
+    "data_history": "livestock:history",
+    "medication_reference": "livestock:medications",
+    "feed_reference": "livestock:feed",
 }

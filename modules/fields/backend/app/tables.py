@@ -32,16 +32,18 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
 }
 
-# Ordnet jede Sync-Tabelle einem Berechtigungsbereich zu (siehe backend/schema/0001_auth.sql
-# für die Rollen/Permissions selbst). Treibt die Rechteprüfung in sync.py an:
-# push braucht "<area>:write", pull liefert eine Tabelle nur mit "<area>:read".
-# Beide Betriebe teilen sich dieselbe Area "fields" (keine getrennten
+# Ordnet jede Sync-Tabelle einem Berechtigungsbereich zu (siehe
+# core/backend/fmis_core/schema/0001_core.sql für die Rollen/Permissions
+# selbst). Treibt die Rechteprüfung in sync.py an: push braucht
+# "<area>:write", pull liefert eine Tabelle nur mit "<area>:read".
+# Modul-präfixiert (seit dem Merge zu einer App). Beide Betriebe teilen
+# sich weiterhin dieselbe Area "fields:fields" (keine getrennten
 # Lese-/Schreibrechte je Betrieb, siehe schema/SYNC_API.md).
 TABLE_AREA: dict[str, str] = {
-    "farms": "fields",
-    "management_units": "fields",
-    "field_declarations": "fields",
-    "plan_layers": "fields",
-    "plan_parcels": "fields",
-    "data_history": "history",
+    "farms": "fields:fields",
+    "management_units": "fields:fields",
+    "field_declarations": "fields:fields",
+    "plan_layers": "fields:fields",
+    "plan_parcels": "fields:fields",
+    "data_history": "fields:history",
 }
