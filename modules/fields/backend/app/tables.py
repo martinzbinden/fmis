@@ -14,7 +14,8 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "farm_id", "lineage_id", "management_unit_external_id",
         "external_kultur_id", "jahr", "sequence_in_year", "kultur_code",
         "kultur_name_de", "kultur_name_fr", "flurname", "area_a", "baeume",
-        "geometry", "source", "notes", "updated_at", "deleted_at",
+        "geometry", "source", "notes", "start_date", "end_date", "sorte",
+        "updated_at", "deleted_at",
     ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",

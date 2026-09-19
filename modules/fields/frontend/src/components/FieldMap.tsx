@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { FieldDeclaration } from '../types'
 import { fmtArea } from '../lib/format'
+import { colorForKultur } from '../lib/kulturColor'
 
 // swisstopo-WMTS, kein API-Key nötig (öffentlicher Web-Kartendienst,
 // api3.geo.admin.ch) — Pflicht-Attribution "© swisstopo". EPSG:3857
@@ -18,42 +19,61 @@ function swisstopoUrl(wmtsLayer: string): string {
   return `https://wmts.geo.admin.ch/1.0.0/${wmtsLayer}/default/current/3857/{z}/{x}/{y}.jpeg`
 }
 
-// Stabile, deterministische Farbe je Kultur-Code (kein manuell gepflegtes
-// Mapping nötig — der amtliche Kulturartenkatalog hat >100 Codes).
-function colorForKultur(code: string): string {
-  let hash = 0
-  for (let i = 0; i < code.length; i++) hash = (hash * 31 + code.charCodeAt(i)) & 0xffffffff
-  const hue = Math.abs(hash) % 360
-  return `hsl(${hue}, 65%, 42%)`
-}
-
 interface Feature {
   type: 'Feature'
   properties: { declarationId: string }
   geometry: { type: string; coordinates: unknown }
 }
 
-/** Zoomt/zentriert die Karte auf die aktuell sichtbaren Parzellen. */
-function FitToFeatures({ features }: { features: Feature[] }) {
+/**
+ * Zoomt/zentriert die Karte auf die aktuell sichtbaren Parzellen — oder,
+ * falls über die Fruchtfolge-Ansicht eine bestimmte Parzelle angesprungen
+ * wurde (focusLineageId), enger auf nur deren Feature(s), mit offenem
+ * Popup. Ist die Ziel-Parzelle im aktuellen Jahr/Filter nicht vorhanden,
+ * fällt es auf alle sichtbaren Features zurück.
+ */
+function FitToFeatures({
+  features,
+  focusFeatureIds,
+  popupsRef,
+}: {
+  features: Feature[]
+  focusFeatureIds: Set<string> | null
+  popupsRef: React.MutableRefObject<Map<string, L.Layer>>
+}) {
   const map = useMap()
   useEffect(() => {
     if (features.length === 0) return
-    const bounds = L.geoJSON(features as never).getBounds()
-    if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24] })
+    const focused =
+      focusFeatureIds && focusFeatureIds.size > 0
+        ? features.filter((f) => focusFeatureIds.has(f.properties.declarationId))
+        : []
+    const target = focused.length > 0 ? focused : features
+    const bounds = L.geoJSON(target as never).getBounds()
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [24, 24], maxZoom: focused.length > 0 ? 18 : undefined })
+    }
+    if (focused.length > 0) {
+      const layer = popupsRef.current.get(focused[0].properties.declarationId)
+      layer?.openPopup?.()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [features, map])
+  }, [features, focusFeatureIds, map])
   return null
 }
 
 export default function FieldMap({
   declarations,
   farmNameById,
+  focusLineageId,
 }: {
   declarations: FieldDeclaration[]
   farmNameById: Map<string, string>
+  focusLineageId?: string | null
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const byId = useMemo(() => new Map(declarations.map((d) => [d.id, d])), [declarations])
+  const popupsRef = useRef(new Map<string, L.Layer>())
 
   const features = useMemo<Feature[]>(
     () =>
@@ -66,6 +86,12 @@ export default function FieldMap({
         })),
     [declarations],
   )
+
+  const focusFeatureIds = useMemo(() => {
+    if (!focusLineageId) return null
+    const ids = declarations.filter((d) => d.lineage_id === focusLineageId).map((d) => d.id)
+    return ids.length > 0 ? new Set(ids) : null
+  }, [declarations, focusLineageId])
 
   return (
     <div className="overflow-hidden rounded-lg bg-white shadow-sm">
@@ -111,6 +137,7 @@ export default function FieldMap({
             onEachFeature={(feature, layer) => {
               const decl = byId.get((feature.properties as { declarationId: string }).declarationId)
               if (!decl) return
+              popupsRef.current.set(decl.id, layer)
               layer.bindPopup(
                 `<strong>${decl.flurname ?? decl.kultur_name_de ?? decl.kultur_code}</strong><br/>` +
                   `${decl.kultur_name_de ?? decl.kultur_code} (${decl.kultur_code})<br/>` +
@@ -120,7 +147,7 @@ export default function FieldMap({
             }}
           />
         )}
-        <FitToFeatures features={features} />
+        <FitToFeatures features={features} focusFeatureIds={focusFeatureIds} popupsRef={popupsRef} />
       </MapContainer>
     </div>
   )

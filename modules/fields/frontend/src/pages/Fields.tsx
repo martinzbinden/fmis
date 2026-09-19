@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { importFieldsZips, type ImportSummary } from '../lib/importFields'
 import FieldMap from '../components/FieldMap'
 import { fmtArea, num } from '../lib/format'
+import { colorForKultur } from '../lib/kulturColor'
 import type { Farm, FieldDeclaration } from '../types'
 
 async function loadFarms(pg: PGlite): Promise<Farm[]> {
@@ -18,21 +20,14 @@ async function loadDeclarations(pg: PGlite): Promise<FieldDeclaration[]> {
   return rows.map((r) => ({ ...r, area_a: num(r.area_a) }))
 }
 
-// Dieselbe Farblogik wie FieldMap.tsx — für die Legende hier separat
-// gehalten statt exportiert, um die Map-Komponente nicht an die Seite zu koppeln.
-function colorForKultur(code: string): string {
-  let hash = 0
-  for (let i = 0; i < code.length; i++) hash = (hash * 31 + code.charCodeAt(i)) & 0xffffffff
-  const hue = Math.abs(hash) % 360
-  return `hsl(${hue}, 65%, 42%)`
-}
-
 export default function Fields() {
+  const location = useLocation()
   const { data: farms } = useQuery(loadFarms)
   const { data: declarations, refresh } = useQuery(loadDeclarations)
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
   const [importing, setImporting] = useState(false)
   const [year, setYear] = useState<number | null>(null)
+  const [focusLineageId, setFocusLineageId] = useState<string | null>(null)
 
   const farmNameById = useMemo(() => new Map((farms ?? []).map((f) => [f.id, f.name])), [farms])
 
@@ -44,6 +39,20 @@ export default function Fields() {
   useEffect(() => {
     if (year == null && years.length > 0) setYear(years[0])
   }, [years, year])
+
+  // Von der Fruchtfolge-Ansicht per Weltkarte-Icon hierher gesprungen
+  // (siehe pages/Rotation.tsx) — einmalig übernehmen, damit ein späterer
+  // erneuter Besuch der Seite (z.B. über die Nav) nicht wieder fokussiert.
+  const consumedFocusRef = useRef(false)
+  useEffect(() => {
+    if (consumedFocusRef.current) return
+    const state = location.state as { focusLineageId?: string; focusJahr?: number } | null
+    if (state?.focusLineageId) {
+      consumedFocusRef.current = true
+      setFocusLineageId(state.focusLineageId)
+      if (state.focusJahr != null) setYear(state.focusJahr)
+    }
+  }, [location.state])
 
   const filtered = useMemo(
     () => (declarations ?? []).filter((d) => year == null || d.jahr === year),
@@ -142,7 +151,7 @@ export default function Fields() {
 
       {filtered.length > 0 && (
         <>
-          <FieldMap declarations={filtered} farmNameById={farmNameById} />
+          <FieldMap declarations={filtered} farmNameById={farmNameById} focusLineageId={focusLineageId} />
           <div className="flex flex-wrap gap-x-3 gap-y-1 rounded-lg bg-white p-3 text-xs shadow-sm">
             {legend.map(([code, name]) => (
               <span key={code} className="flex items-center gap-1.5">

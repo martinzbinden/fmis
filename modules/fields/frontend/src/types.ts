@@ -52,6 +52,12 @@ export interface FieldDeclaration {
   geometry: string | null
   source: FieldDeclarationSource
   notes: string | null
+  // Saat-/Erntedatum, falls Kulturmassnahmen erfasst wurden (siehe
+  // schema/0003_dates.sql) — sonst null, die Zeitstrahl-Ansicht nimmt dann
+  // ersatzweise das volle Kalenderjahr.
+  start_date: string | null
+  end_date: string | null
+  sorte: string | null
   updated_at: string
   deleted_at: string | null
 }

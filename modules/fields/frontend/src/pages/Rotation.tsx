@@ -1,9 +1,21 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { upsertRow } from '../db/write'
 import { fmtArea, num } from '../lib/format'
+import { classifyKultur, isGeholz, KULTUR_CATEGORY_LABEL, type KulturCategory } from '../lib/kulturCategory'
+import RotationTimeline from '../components/RotationTimeline'
+import Modal from '../components/Modal'
 import type { FieldDeclaration, FieldLineageSummary } from '../types'
+
+const FILTERS: ('alle' | KulturCategory)[] = ['alle', 'acker', 'futter']
+const FILTER_LABEL: Record<'alle' | KulturCategory, string> = {
+  alle: 'Alle',
+  acker: KULTUR_CATEGORY_LABEL.acker,
+  futter: KULTUR_CATEGORY_LABEL.futter,
+  andere: KULTUR_CATEGORY_LABEL.andere,
+}
 
 const SOURCE_LABEL: Record<FieldDeclaration['source'], string> = {
   import: 'Import',
@@ -30,9 +42,12 @@ interface CropOption {
 }
 
 export default function Rotation() {
+  const navigate = useNavigate()
   const { data: lineages } = useQuery(loadLineages)
   const { data: declarations, refresh } = useQuery(loadDeclarations)
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'alle' | KulturCategory>('alle')
+  const [showGeholz, setShowGeholz] = useState(false)
+  const [detailsLineage, setDetailsLineage] = useState<FieldLineageSummary | null>(null)
 
   const byLineage = useMemo(() => {
     const map = new Map<string, FieldDeclaration[]>()
@@ -43,6 +58,21 @@ export default function Rotation() {
     }
     return map
   }, [declarations])
+
+  // Filtert nach der Kultur der jüngsten Deklaration je Parzelle (die
+  // v_field_lineage_summary-Zeile selbst) — eine Parzelle kann über die
+  // Jahre zwischen Acker- und Futternutzung wechseln, "Alle" zeigt
+  // trotzdem immer die volle Historie inkl. früherer Nutzungsarten.
+  // Gehölze (Obst-/Nussbäume, Hecken, Wald) sind standardmässig ausgeblendet,
+  // da sie nicht rotieren und den Zeitstrahl sonst zumüllen — eigener
+  // Umschalter, unabhängig vom Acker-/Futterfläche-Filter.
+  const filteredLineages = useMemo(() => {
+    return (lineages ?? []).filter((l) => {
+      if (filter !== 'alle' && classifyKultur(l.kultur_code) !== filter) return false
+      if (!showGeholz && isGeholz(l.kultur_code)) return false
+      return true
+    })
+  }, [lineages, filter, showGeholz])
 
   // Kultur-Auswahl wächst organisch mit jedem Import — kein separates
   // Katalog-Schema nötig (siehe Plan).
@@ -62,69 +92,90 @@ export default function Rotation() {
     )
   }
 
+  const detailsRows = detailsLineage ? (byLineage.get(detailsLineage.lineage_id) ?? []) : []
+
   return (
     <div className="mx-auto max-w-3xl space-y-3 p-4 pb-24">
       <h1 className="text-xl font-bold text-gray-800">Fruchtfolge</h1>
 
-      <ul className="space-y-2">
-        {(lineages ?? []).map((lineage) => {
-          const rows = byLineage.get(lineage.lineage_id) ?? []
-          const isOpen = expanded === lineage.lineage_id
-          return (
-            <li key={lineage.lineage_id} className="rounded-lg bg-white shadow-sm">
-              <button
-                type="button"
-                onClick={() => setExpanded(isOpen ? null : lineage.lineage_id)}
-                className="flex w-full items-center justify-between gap-2 p-3 text-left"
-              >
-                <div>
-                  <div className="font-semibold text-gray-800">
-                    {lineage.flurname ?? lineage.kultur_name_de ?? lineage.kultur_code}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {lineage.kultur_name_de ?? lineage.kultur_code} · zuletzt {lineage.latest_jahr}
-                  </div>
-                </div>
-                <span className="text-gray-400">{isOpen ? '▾' : '▸'}</span>
-              </button>
-              {isOpen && (
-                <div className="border-t p-3">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs text-gray-500">
-                        <th className="py-1 pr-2 font-medium">Jahr</th>
-                        <th className="py-1 pr-2 font-medium">Kultur</th>
-                        <th className="py-1 pr-2 font-medium">Fläche</th>
-                        <th className="py-1 font-medium">Quelle</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => (
-                        <tr key={r.id} className="border-t">
-                          <td className="py-1 pr-2 text-gray-600">
-                            {r.jahr}
-                            {r.sequence_in_year > 1 ? ` (${r.sequence_in_year}.)` : ''}
-                          </td>
-                          <td className="py-1 pr-2 text-gray-800">{r.kultur_name_de ?? r.kultur_code}</td>
-                          <td className="py-1 pr-2 text-gray-600">{fmtArea(r.area_a)}</td>
-                          <td className="py-1 text-gray-500">{SOURCE_LABEL[r.source]}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <PlanForm
-                    lineage={lineage}
-                    latestDeclaration={rows[0]}
-                    existingYears={rows.map((r) => r.jahr)}
-                    cropOptions={cropOptions}
-                    onPlanned={refresh}
-                  />
-                </div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      <div className="flex flex-wrap items-center gap-2">
+        {FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+              filter === f ? 'bg-brand-700 text-white' : 'bg-white text-gray-600 shadow-sm'
+            }`}
+          >
+            {FILTER_LABEL[f]}
+          </button>
+        ))}
+        <label className="ml-1 flex items-center gap-1.5 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={showGeholz}
+            onChange={(e) => setShowGeholz(e.target.checked)}
+          />
+          Gehölze (Obst, Hecken, Wald)
+        </label>
+      </div>
+
+      {filteredLineages.length === 0 ? (
+        <p className="text-center text-gray-500">Keine Parzellen für diesen Filter.</p>
+      ) : (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-gray-500">Zeitstrahl</h2>
+          <RotationTimeline
+            lineages={filteredLineages}
+            declarationsByLineage={byLineage}
+            onFocusMap={(lineage) =>
+              navigate('/', { state: { focusLineageId: lineage.lineage_id, focusJahr: lineage.latest_jahr } })
+            }
+            onOpenDetails={(lineage) => setDetailsLineage(lineage)}
+          />
+        </div>
+      )}
+
+      {detailsLineage && (
+        <Modal
+          title={detailsLineage.flurname ?? detailsLineage.kultur_name_de ?? detailsLineage.kultur_code}
+          onClose={() => setDetailsLineage(null)}
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-gray-500">
+                <th className="py-1 pr-2 font-medium">Jahr</th>
+                <th className="py-1 pr-2 font-medium">Kultur</th>
+                <th className="py-1 pr-2 font-medium">Sorte</th>
+                <th className="py-1 pr-2 font-medium">Fläche</th>
+                <th className="py-1 font-medium">Quelle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detailsRows.map((r) => (
+                <tr key={r.id} className="border-t">
+                  <td className="py-1 pr-2 text-gray-600">
+                    {r.jahr}
+                    {r.sequence_in_year > 1 ? ` (${r.sequence_in_year}.)` : ''}
+                  </td>
+                  <td className="py-1 pr-2 text-gray-800">{r.kultur_name_de ?? r.kultur_code}</td>
+                  <td className="py-1 pr-2 text-gray-600">{r.sorte ?? '–'}</td>
+                  <td className="py-1 pr-2 text-gray-600">{fmtArea(r.area_a)}</td>
+                  <td className="py-1 text-gray-500">{SOURCE_LABEL[r.source]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <PlanForm
+            lineage={detailsLineage}
+            latestDeclaration={detailsRows[0]}
+            existingYears={detailsRows.map((r) => r.jahr)}
+            cropOptions={cropOptions}
+            onPlanned={refresh}
+          />
+        </Modal>
+      )}
     </div>
   )
 }
@@ -147,6 +198,7 @@ function PlanForm({
   const [year, setYear] = useState(String(suggestedYear))
   const [kulturCode, setKulturCode] = useState('')
   const [customName, setCustomName] = useState('')
+  const [sorte, setSorte] = useState('')
   const [zwischenfutter, setZwischenfutter] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -184,11 +236,13 @@ function PlanForm({
         area_a: latestDeclaration?.area_a ?? null,
         baeume: null,
         geometry: latestDeclaration?.geometry ?? null,
+        sorte: sorte.trim() || null,
         source: 'plan',
       })
       setShow(false)
       setKulturCode('')
       setCustomName('')
+      setSorte('')
       setZwischenfutter(false)
       onPlanned()
     } catch (err) {
@@ -258,6 +312,16 @@ function PlanForm({
           className="w-full rounded border border-gray-300 p-2 text-sm"
         />
       )}
+      <label className="block text-sm">
+        Sorte (optional)
+        <input
+          type="text"
+          placeholder="z.B. Runal"
+          value={sorte}
+          onChange={(e) => setSorte(e.target.value)}
+          className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
+        />
+      </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button
