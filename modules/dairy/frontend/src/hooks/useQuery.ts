@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
-import { useDb } from '../db/DbContext'
+import { useDb } from '@fmis/core/DbContext'
 import { subscribeDataChanged } from '../db/write'
 
 /**

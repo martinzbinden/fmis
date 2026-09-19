@@ -1,7 +1,7 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { getDb } from './pglite'
 import { SYNC_TABLES, type SyncTable } from './tables'
-import { getCurrentUserEmail } from './auth'
+import { getCurrentUserEmail } from '@fmis/core/auth'
 
 // Simpler Pub/Sub, damit Seiten nach lokalen Schreibungen oder einem Pull neu
 // laden können, ohne auf pglite Live-Queries angewiesen zu sein.

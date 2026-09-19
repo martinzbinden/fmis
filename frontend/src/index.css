@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Modul-Markenfarben (CSS-Variablen, siehe modules/<name>/frontend/src/theme.css)
+   — je nach data-module-Attribut aktiv, gesetzt vom aktiven Modul in Layout.tsx. */
+:root {
+  /* Neutrale Default-Palette ausserhalb jeder Modul-Route (Login, Dashboard, Admin). */
+  --brand-50: #f8fafc;
+  --brand-100: #f1f5f9;
+  --brand-200: #e2e8f0;
+  --brand-300: #cbd5e1;
+  --brand-400: #94a3b8;
+  --brand-500: #64748b;
+  --brand-600: #475569;
+  --brand-700: #334155;
+  --brand-800: #1e293b;
+  --brand-900: #0f172a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* Touch-friendly base for stable/barn usage on mobile */
+input,
+select,
+textarea,
+button {
+  font-size: 16px;
+}

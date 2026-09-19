@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { useDb } from '../db/DbContext'
+import { useDb } from '@fmis/core/DbContext'
 import { parseAdisFiles, importAdisData, type ImportSummary } from '../lib/importAdis'
 import { fmtDate } from '../lib/format'
 import type { Animal } from '../types'

@@ -1,0 +1,5 @@
+{
+  "name": "fmis",
+  "private": true,
+  "workspaces": ["frontend"]
+}

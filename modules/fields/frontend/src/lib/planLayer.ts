@@ -1,6 +1,6 @@
 import { getDb } from '../db/pglite'
 import { upsertRow, softDeleteRow } from '../db/write'
-import { getCurrentUserEmail } from '../db/auth'
+import { getCurrentUserEmail } from '@fmis/core/auth'
 import type { FieldDeclaration, PlanParcel } from '../types'
 
 type PlanParcelInput = Pick<
