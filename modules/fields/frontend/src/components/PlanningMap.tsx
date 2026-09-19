@@ -132,6 +132,17 @@ function DrawLayer({
       if (!p.geometry) continue
       const geojsonLayer = L.geoJSON(JSON.parse(p.geometry) as GeoJSON.Geometry as never, {
         style: { color: colorForKultur(p.kultur_code ?? ''), weight: 2, fillOpacity: 0.4 },
+        // Einzelbäume (aus Einzelbaum-/Hochstammfeldobstbäume-Deklarationen
+        // übernommen) liegen als Punkt-Geometrie vor — ohne pointToLayer
+        // würde Leaflet dafür den Default-Pin-Marker zeichnen, wie in
+        // FieldMap.tsx durch einen kleinen farbigen Kreis ersetzt. Anders
+        // als dort wird hier bewusst NICHT zusätzlich nach Zoom gefiltert:
+        // diese Layer stecken in der editierbaren FeatureGroup von
+        // leaflet-draw, und ein Neuaufbau der Gruppe bei jedem Zoomschritt
+        // würde eine gerade laufende Bearbeitung (verschobene, noch nicht
+        // gespeicherte Stützpunkte) kommentarlos verwerfen.
+        pointToLayer: (_feature, latlng) =>
+          L.circle(latlng, { radius: 1.5, color: colorForKultur(p.kultur_code ?? ''), fillOpacity: 0.7 }),
       })
       geojsonLayer.eachLayer((layer) => {
         ;(layer as PlanFeatureLayer).feature = { properties: { planId: p.plan_id } }
