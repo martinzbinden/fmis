@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
+import { useDb } from '@fmis/core/DbContext'
+import { API_URL, getToken } from '@fmis/core/auth'
 import { useQuery } from '../hooks/useQuery'
 import { upsertRow, softDeleteRow } from '../db/write'
+import { addEarTagsToGroup, type EarTagImportResult } from '../lib/importCsv'
 import { fmtDate, fmtChf, num, todayIso } from '../lib/format'
 import type { AnimalGroup, FeedRecord, Expense, GroupStatus } from '../types'
 
@@ -270,6 +273,7 @@ export default function GroupDetail() {
             ))}
           </ul>
         )}
+        <ReaderImportPanel groupId={group.id} onImported={refresh} />
       </section>
 
       <section className="rounded-lg bg-white p-4 shadow-sm">
@@ -504,6 +508,175 @@ export default function GroupDetail() {
           Gruppe löschen
         </button>
       </section>
+    </div>
+  )
+}
+
+interface Datapool {
+  group_id: string
+  name: string | null
+  count: number | null
+  error?: string
+}
+
+/** APR600-Datenpool-Import: nur sichtbar wenn der Leser für livestock
+ * aktiviert ist (Verwaltung → Module). Fügt ausschliesslich bereits
+ * bekannte Tiere hinzu (siehe lib/importCsv.ts:addEarTagsToGroup) — der
+ * Leser liefert keine Pflichtfelder wie Geschlecht, ein unbekanntes Tier
+ * würde sonst mit fabrizierten Daten angelegt. */
+function ReaderImportPanel({ groupId, onImported }: { groupId: string; onImported: () => void }) {
+  const db = useDb()
+  const [readerEnabled, setReaderEnabled] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [datapools, setDatapools] = useState<Datapool[] | null>(null)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [tags, setTags] = useState<string[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<EarTagImportResult | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_URL}/livestock/reader/status`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then((res) => res.json())
+      .then((data: { enabled: boolean }) => setReaderEnabled(data.enabled))
+      .catch(() => setReaderEnabled(false))
+  }, [])
+
+  async function loadDatapools() {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API_URL}/livestock/reader/datapools`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) throw new Error(`Fehler ${res.status}`)
+      setDatapools(await res.json())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Datenpools konnten nicht geladen werden')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function loadTags(dp: Datapool) {
+    setBusy(true)
+    setError(null)
+    setSelected(dp.group_id)
+    try {
+      const res = await fetch(`${API_URL}/livestock/reader/datapools/${dp.group_id}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) throw new Error(`Fehler ${res.status}`)
+      const rows: { ear_tag: string }[] = await res.json()
+      setTags(rows.map((r) => r.ear_tag))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ohrmarken konnten nicht geladen werden')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function confirmImport() {
+    if (!tags) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await addEarTagsToGroup(db, groupId, tags, todayIso())
+      setResult(res)
+      onImported()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function reset() {
+    setOpen(false)
+    setDatapools(null)
+    setSelected(null)
+    setTags(null)
+    setResult(null)
+    setError(null)
+  }
+
+  if (!readerEnabled) return null
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true)
+          void loadDatapools()
+        }}
+        className="mt-3 w-full rounded border border-gray-300 py-2 text-sm text-gray-700"
+      >
+        📡 Ohrmarken vom Lesegerät importieren
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded border border-gray-200 p-3">
+      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+      {result ? (
+        <div className="space-y-1 text-sm">
+          <p>{result.added} Tier(e) hinzugefügt.</p>
+          {result.alreadyMember > 0 && <p className="text-gray-500">{result.alreadyMember} bereits Mitglied.</p>}
+          {result.unmatched.length > 0 && (
+            <p className="text-amber-700">
+              {result.unmatched.length} unbekannte Ohrmarke(n) übersprungen (manuell nachtragen):{' '}
+              {result.unmatched.join(', ')}
+            </p>
+          )}
+          <button type="button" onClick={reset} className="mt-2 text-brand-700">
+            Schliessen
+          </button>
+        </div>
+      ) : tags ? (
+        <div className="space-y-2 text-sm">
+          <p>{tags.length} Ohrmarke(n) in diesem Datenpool.</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void confirmImport()}
+              disabled={busy}
+              className="rounded bg-brand-700 px-3 py-1.5 text-white disabled:opacity-50"
+            >
+              {busy ? 'Importiere…' : 'In diese Gruppe importieren'}
+            </button>
+            <button type="button" onClick={reset} className="rounded border border-gray-300 px-3 py-1.5 text-gray-700">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      ) : datapools ? (
+        datapools.length === 0 ? (
+          <p className="text-sm text-gray-400">Keine Datenpools auf dem Lesegerät gefunden.</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {datapools.map((dp) => (
+              <li key={dp.group_id}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void loadTags(dp)}
+                  className={`w-full rounded border px-3 py-1.5 text-left ${
+                    selected === dp.group_id ? 'border-brand-700 bg-brand-50' : 'border-gray-300'
+                  }`}
+                >
+                  {dp.name ?? dp.group_id} {dp.count != null && `(${dp.count})`}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : (
+        <p className="text-sm text-gray-400">Lädt…</p>
+      )}
     </div>
   )
 }

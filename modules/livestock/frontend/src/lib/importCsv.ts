@@ -1,3 +1,4 @@
+import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
 
 export interface SeedRow {
@@ -72,4 +73,64 @@ export async function importAnimalRows(
   }
 
   return { groupId, count: rows.length }
+}
+
+export interface EarTagImportResult {
+  added: number
+  alreadyMember: number
+  unmatched: string[]
+}
+
+/**
+ * Fügt anhand einer Ohrmarken-Liste (z.B. von einem APR600-Datenpool)
+ * BEREITS EXISTIERENDE Tiere einer Gruppe hinzu — legt bewusst KEIN neues
+ * Tier an, wenn die Ohrmarke unbekannt ist: der Leser liefert nur die
+ * Ohrmarke, keine Pflichtfelder wie `sex` (not null), ein fabriziertes Tier
+ * wäre falscher als eine sichtbare "unbekannt"-Meldung. Unbekannte Ohrmarken
+ * werden stattdessen zurückgegeben, damit sie manuell (CSV/PDF-Import,
+ * Ersterfassung) nachgetragen werden können. Wiederholter Import derselben
+ * Ohrmarken ist idempotent (keine doppelten Mitgliedschaften).
+ */
+export async function addEarTagsToGroup(
+  pg: PGlite,
+  groupId: string,
+  earTags: string[],
+  startDate: string,
+): Promise<EarTagImportResult> {
+  const { rows: animals } = await pg.query<{ id: string; ear_tag: string }>(
+    'select id, ear_tag from animals where deleted_at is null',
+  )
+  const earTagToId = new Map(animals.map((a) => [a.ear_tag, a.id]))
+
+  const { rows: openMemberships } = await pg.query<{ animal_id: string }>(
+    'select animal_id from group_memberships where group_id = $1 and end_date is null and deleted_at is null',
+    [groupId],
+  )
+  const alreadyMemberIds = new Set(openMemberships.map((m) => m.animal_id))
+
+  let added = 0
+  let alreadyMember = 0
+  const unmatched: string[] = []
+  for (const earTag of earTags) {
+    const animalId = earTagToId.get(earTag)
+    if (!animalId) {
+      unmatched.push(earTag)
+      continue
+    }
+    if (alreadyMemberIds.has(animalId)) {
+      alreadyMember++
+      continue
+    }
+    await upsertRow('group_memberships', {
+      id: crypto.randomUUID(),
+      animal_id: animalId,
+      group_id: groupId,
+      start_date: startDate,
+      end_date: null,
+    })
+    alreadyMemberIds.add(animalId)
+    added++
+  }
+
+  return { added, alreadyMember, unmatched }
 }
