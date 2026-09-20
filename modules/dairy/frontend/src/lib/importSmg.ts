@@ -16,7 +16,7 @@
 //   umgerechnet wird, um die richtige Kuh/Aue per ear_tag zu finden — ein
 //   separater Import der Y01-Stammdaten ist dafür nicht nötig.
 
-import { read, utils } from 'xlsx'
+import { read, utils, type WorkSheet } from 'xlsx'
 import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
 import type { ParsedLactation, ParsedMilkTest } from './importAdis'
@@ -35,7 +35,14 @@ export interface TvdAnimal {
 
 function excelDateToIso(value: unknown): string | null {
   if (value instanceof Date) {
-    return value.toISOString().slice(0, 10)
+    // SheetJS (cellDates) liefert Excel-Datumszellen als Date auf LOKALE
+    // Mitternacht. toISOString() würde nach UTC umrechnen und in jeder
+    // Zeitzone östlich von UTC (Zürich!) jedes Datum um einen Tag
+    // zurücksetzen — deshalb die lokalen Komponenten verwenden.
+    const y = value.getFullYear()
+    const m = String(value.getMonth() + 1).padStart(2, '0')
+    const d = String(value.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
   }
   if (typeof value === 'string') {
     // Fallback, falls die Zelle als Text statt als Excel-Datum vorliegt
@@ -46,11 +53,34 @@ function excelDateToIso(value: unknown): string | null {
   return null
 }
 
+/** Der TVD-Export schreibt einen falschen <dimension>-Tag (deklariert
+ * "A1:C1" für ein 116x15-Blatt). SheetJS vertraut dem und liefert sonst
+ * 0 Datenzeilen; pandas/openpyxl ignorieren ihn. Deshalb den echten
+ * Bereich aus den tatsächlich vorhandenen Zellen neu bestimmen. */
+function fixSheetRange(sheet: WorkSheet): void {
+  let minR = Infinity
+  let minC = Infinity
+  let maxR = -1
+  let maxC = -1
+  for (const key of Object.keys(sheet)) {
+    if (key.startsWith('!')) continue
+    const { r, c } = utils.decode_cell(key)
+    if (r < minR) minR = r
+    if (r > maxR) maxR = r
+    if (c < minC) minC = c
+    if (c > maxC) maxC = c
+  }
+  if (maxR >= 0) {
+    sheet['!ref'] = utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } })
+  }
+}
+
 /** Liest den TVD-Tierbestand (eine Zeile pro aktuellem Tier). */
 export async function parseTierbestand(file: File): Promise<TvdAnimal[]> {
   const buf = await file.arrayBuffer()
   const workbook = read(buf, { type: 'array', cellDates: true })
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
+  fixSheetRange(sheet)
   const rows = utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null })
 
   return rows
