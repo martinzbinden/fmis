@@ -15,14 +15,17 @@ from modules.livestock.backend.app import sync as livestock_sync
 from modules.wiesenjournal.backend.app import reports as wiesenjournal_reports
 from modules.wiesenjournal.backend.app import sync as wiesenjournal_sync
 
-# Explizite Zuordnung Modul-Key -> dessen (unveränderter) Sync-Router, siehe
-# core/backend/fmis_core/module_registry.py für die Begründung "Liste statt
-# Verzeichnis-Scan".
-_MODULE_ROUTERS = {
-    "livestock": livestock_sync.router,
-    "dairy": dairy_sync.router,
-    "fields": fields_sync.router,
-    "wiesenjournal": wiesenjournal_sync.router,
+# Zuordnung ModuleSpec.source -> Router-Factory (nimmt den Instanz-Key,
+# gibt einen frischen APIRouter zurück). Keyed by SOURCE statt KEY, weil ein
+# Modul mehrfach instanziert werden kann (siehe module_registry.py) — z.B.
+# "dairy" für sowohl den Key "dairy" (Kühe) als auch "dairy_schafe" (Schafe).
+# Module ohne eigene Factory (noch keine Instanzierung gebraucht) werden
+# hier einfach auf ihren bisherigen Singleton-Router "zurückgebogen".
+_MODULE_ROUTER_FACTORIES = {
+    "livestock": lambda key: livestock_sync.router,
+    "dairy": dairy_sync.build_router,
+    "fields": lambda key: fields_sync.router,
+    "wiesenjournal": lambda key: wiesenjournal_sync.router,
 }
 
 
@@ -57,7 +60,7 @@ app.include_router(modules_admin.router)
 
 for _spec in MODULE_SPECS:
     app.include_router(
-        _MODULE_ROUTERS[_spec.key],
+        _MODULE_ROUTER_FACTORIES[_spec.source](_spec.key),
         prefix=f"/{_spec.key}",
         dependencies=[Depends(require_module_enabled(_spec.key))],
     )

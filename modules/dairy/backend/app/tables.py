@@ -29,9 +29,15 @@ SYNC_TABLES: dict[str, list[str]] = {
 # Modul-präfixiert (seit dem Merge zu einer App) — verhindert, dass z.B.
 # "animals:read" mit livestock's gleichnamiger, aber andersartiger Tabelle
 # kollidiert.
-TABLE_AREA: dict[str, str] = {
-    "animals": "dairy:animals",
-    "milk_tests": "dairy:milk",
-    "lactations": "dairy:milk",
-    "data_history": "dairy:history",
-}
+#
+# Als Funktion statt fixem Dict, weil dieses Modul mehrfach instanziert
+# werden kann (siehe module_registry.py, ModuleSpec.source) — jede Instanz
+# (z.B. "dairy" für Kühe, "dairy_schafe" für Schafe) bekommt ihren eigenen
+# Rechte-Prefix, obwohl beide dieselben Tabellen/Spalten verwenden.
+def table_area(key: str) -> dict[str, str]:
+    return {
+        "animals": f"{key}:animals",
+        "milk_tests": f"{key}:milk",
+        "lactations": f"{key}:milk",
+        "data_history": f"{key}:history",
+    }

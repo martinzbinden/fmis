@@ -38,8 +38,11 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // App shell only — never cache API/sync calls.
-        navigateFallbackDenylist: [/^\/auth\//, /^\/(livestock|dairy|fields|wiesenjournal)\/sync\//, /^\/core\//, /^\/admin\//],
+        // App shell only — never cache API/sync calls. Modul-Key-Pattern statt
+        // fester Liste, damit weitere Modul-INSTANZEN (z.B. "dairy_schafe",
+        // siehe module_registry.py ModuleSpec.source) automatisch mit-denylistet
+        // werden, ohne diese Datei anfassen zu müssen.
+        navigateFallbackDenylist: [/^\/auth\//, /^\/[a-z_]+\/sync\//, /^\/core\//, /^\/admin\//],
         // pglite's wasm/data assets are large (~10MB) but are part of the
         // app shell (not user data) and must be cached for offline use.
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
