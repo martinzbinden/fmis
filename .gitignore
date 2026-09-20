@@ -20,3 +20,7 @@ modules/livestock/seed/
 # nie im Repo. Import läuft künftig zur Laufzeit in der App.
 input/*
 !input/.gitkeep
+
+# Ausgabe von tools/apr600_diagnostic.py (enthält reale Ohrmarken-Lesungen) —
+# nie ins Repo, nur lokal zur Auswertung.
+tools/apr600_diagnostic_*.log
