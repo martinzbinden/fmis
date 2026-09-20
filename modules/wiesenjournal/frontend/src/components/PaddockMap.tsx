@@ -5,7 +5,9 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
 import 'leaflet-draw/dist/leaflet.draw.css'
 import { loadFieldsBackground, type FieldsBackgroundFeature } from '../lib/fieldsBackground'
-import type { Paddock, Parcel } from '../types'
+import { WEED_TYPE_COLOR, WEED_TYPE_LABEL } from '../lib/format'
+import type { TrackPoint } from '../lib/tracking'
+import type { Paddock, Parcel, Track, WeedObservation } from '../types'
 
 const BACKGROUND_LAYERS = {
   pixelkarte: { label: 'Pixelkarte', wmtsLayer: 'ch.swisstopo.pixelkarte-farbe', maxZoom: 18 },
@@ -164,22 +166,153 @@ function FieldsTemplateLayer({ onAdopt }: { onAdopt: (geometry: string, label: s
   return null
 }
 
+/** "Mein Standort" — Leaflets eingebaute Geolocation (map.locate), kein
+ * zusätzliches Plugin nötig. Zeigt einen blauen Punkt, meldet die Position
+ * nach aussen (z.B. für den Unkraut-Knopf: "aktuellen Fix verwenden"). */
+function LocateControl({ onLocationFound }: { onLocationFound?: (lat: number, lng: number) => void }) {
+  const map = useMap()
+  const markerRef = useRef<L.CircleMarker | null>(null)
+  const callbackRef = useRef(onLocationFound)
+  callbackRef.current = onLocationFound
+  useEffect(() => {
+    function handleFound(e: L.LocationEvent) {
+      if (!markerRef.current) {
+        markerRef.current = L.circleMarker(e.latlng, {
+          radius: 8,
+          color: '#2563eb',
+          fillColor: '#3b82f6',
+          fillOpacity: 0.9,
+          weight: 2,
+        }).addTo(map)
+      } else {
+        markerRef.current.setLatLng(e.latlng)
+      }
+      callbackRef.current?.(e.latlng.lat, e.latlng.lng)
+    }
+    map.on('locationfound', handleFound)
+    return () => {
+      map.off('locationfound', handleFound)
+      if (markerRef.current) map.removeLayer(markerRef.current)
+      markerRef.current = null
+    }
+  }, [map])
+  return null
+}
+
+/** Vergangene (abgeschlossene) Tracks als dünne Linien, plus die gerade
+ * laufende Aufzeichnung live in Rot — Tracks sind nicht nutzer-editiert
+ * (anders als paddocks), deshalb reines L.polyline statt leaflet-draw. */
+function TracksLayer({ tracks, livePoints }: { tracks: Track[]; livePoints: TrackPoint[] | null }) {
+  const map = useMap()
+  useEffect(() => {
+    const group = L.layerGroup()
+    for (const t of tracks) {
+      if (!t.geometry) continue
+      const geo = JSON.parse(t.geometry) as { coordinates: [number, number][] }
+      const latlngs = geo.coordinates.map(([lng, lat]) => [lat, lng] as [number, number])
+      L.polyline(latlngs, { color: '#7c3aed', weight: 3, opacity: 0.55 })
+        .bindTooltip(t.label ?? 'Track')
+        .addTo(group)
+    }
+    group.addTo(map)
+    return () => {
+      map.removeLayer(group)
+    }
+  }, [map, tracks])
+
+  useEffect(() => {
+    if (!livePoints || livePoints.length < 2) return
+    const latlngs = livePoints.map((p) => [p.lat, p.lng] as [number, number])
+    const line = L.polyline(latlngs, { color: '#dc2626', weight: 4 }).addTo(map)
+    return () => {
+      map.removeLayer(line)
+    }
+  }, [map, livePoints])
+
+  return null
+}
+
+/** Unkraut-Beobachtungen als kleine farbige Punkte (Farbe nach Art), Klick öffnet die Bearbeitung. */
+function WeedMarkersLayer({
+  observations,
+  onSelect,
+}: {
+  observations: WeedObservation[]
+  onSelect: (observation: WeedObservation) => void
+}) {
+  const map = useMap()
+  const onSelectRef = useRef(onSelect)
+  onSelectRef.current = onSelect
+  useEffect(() => {
+    const group = L.layerGroup()
+    for (const o of observations) {
+      const geo = JSON.parse(o.geometry) as { coordinates: [number, number] }
+      const [lng, lat] = geo.coordinates
+      const color = WEED_TYPE_COLOR[o.weed_type] ?? '#6b7280'
+      const marker = L.circleMarker([lat, lng], { radius: 6, color, fillColor: color, fillOpacity: 0.85, weight: 1 })
+      marker.bindTooltip(`${WEED_TYPE_LABEL[o.weed_type] ?? o.weed_type}${o.treatment ? ' · behandelt' : ''}`)
+      marker.on('click', () => onSelectRef.current(o))
+      marker.addTo(group)
+    }
+    group.addTo(map)
+    return () => {
+      map.removeLayer(group)
+    }
+  }, [map, observations])
+  return null
+}
+
+/** Aktiv nur solange `active` — nimmt den nächsten Kartenklick entgegen
+ * (Fallback für den Unkraut-Knopf, wenn kein GPS-Fix vorliegt). */
+function MapClickCatcher({ active, onPick }: { active: boolean; onPick: (lat: number, lng: number) => void }) {
+  const map = useMap()
+  const activeRef = useRef(active)
+  activeRef.current = active
+  const onPickRef = useRef(onPick)
+  onPickRef.current = onPick
+  useEffect(() => {
+    function handler(e: L.LeafletMouseEvent) {
+      if (activeRef.current) onPickRef.current(e.latlng.lat, e.latlng.lng)
+    }
+    map.on('click', handler)
+    return () => {
+      map.off('click', handler)
+    }
+  }, [map])
+  return null
+}
+
 export default function PaddockMap({
   paddocks,
   parcels,
+  tracks,
+  livePoints,
+  weedObservations,
+  pickingLocation = false,
   onCreated,
   onEdited,
   onDeleted,
   onSelect,
   onAdoptFieldsGeometry,
+  onLocationFound,
+  onWeedSelect,
+  onPickLocation,
 }: {
   paddocks: Paddock[]
   parcels: Parcel[]
+  tracks: Track[]
+  livePoints: TrackPoint[] | null
+  weedObservations: WeedObservation[]
+  /** Wenn true: der nächste Kartenklick wird an onPickLocation gemeldet statt normal verarbeitet. */
+  pickingLocation?: boolean
   onCreated: (geometry: string) => void
   onEdited: (paddockId: string, geometry: string) => void
   onDeleted: (paddockId: string) => void
   onSelect: (paddockId: string) => void
   onAdoptFieldsGeometry: (geometry: string, label: string) => void
+  onLocationFound?: (lat: number, lng: number) => void
+  onWeedSelect: (observation: WeedObservation) => void
+  onPickLocation?: (lat: number, lng: number) => void
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const [showTemplate, setShowTemplate] = useState(false)
@@ -243,6 +376,14 @@ export default function PaddockMap({
         </button>
         <button
           type="button"
+          onClick={() => mapRef.current?.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true })}
+          title="Auf meinen Standort zoomen"
+          className="rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
+        >
+          📍 Mein Standort
+        </button>
+        <button
+          type="button"
           onClick={toggleFullscreen}
           title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild'}
           className="ml-auto rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
@@ -265,7 +406,16 @@ export default function PaddockMap({
         <BaseGeometryLayer parcels={parcels} />
         {showTemplate && <FieldsTemplateLayer onAdopt={onAdoptFieldsGeometry} />}
         <DrawLayer paddocks={paddocks} onCreated={onCreated} onEdited={onEdited} onDeleted={onDeleted} onSelect={onSelect} />
+        <TracksLayer tracks={tracks} livePoints={livePoints} />
+        <WeedMarkersLayer observations={weedObservations} onSelect={onWeedSelect} />
+        <LocateControl onLocationFound={onLocationFound} />
+        {onPickLocation && <MapClickCatcher active={pickingLocation} onPick={onPickLocation} />}
       </MapContainer>
+      {pickingLocation && (
+        <div className="border-t bg-amber-50 p-2 text-center text-xs font-medium text-amber-800">
+          Tippe auf die Karte, um den Standort zu wählen…
+        </div>
+      )}
     </div>
   )
 }

@@ -93,6 +93,44 @@ export interface DailyFarmLog {
   deleted_at: string | null
 }
 
+export interface Track {
+  id: string
+  season_year: number
+  label: string | null
+  started_at: string
+  ended_at: string | null
+  width_m: number | null
+  geometry: string | null
+  point_times: string | null
+  point_count: number
+  notes: string | null
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type WeedType = 'blacken' | 'disteln' | 'andere'
+export type WeedSeverity = 'einzeln' | 'nest' | 'flaechig'
+export type WeedSource = 'manual' | 'gps_dwell'
+
+export interface WeedObservation {
+  id: string
+  season_year: number
+  parcel_id: string | null
+  track_id: string | null
+  observed_at: string
+  weed_type: WeedType
+  severity: WeedSeverity | null
+  treatment: string | null
+  treated_at: string | null
+  source: WeedSource
+  geometry: string
+  notes: string | null
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
 export type HistoryAction = 'insert' | 'update' | 'delete'
 
 export interface DataHistory {

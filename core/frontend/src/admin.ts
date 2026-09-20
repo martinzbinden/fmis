@@ -38,6 +38,7 @@ export const ALL_PERMISSIONS = [
   'wiesenjournal:nutzung:read', 'wiesenjournal:nutzung:write',
   'wiesenjournal:duengung:read', 'wiesenjournal:duengung:write',
   'wiesenjournal:tagesmeldung:read', 'wiesenjournal:tagesmeldung:write',
+  'wiesenjournal:tracking:read', 'wiesenjournal:tracking:write',
   'wiesenjournal:history:read',
   'core:users:manage',
   'core:modules:manage',

@@ -27,6 +27,16 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "entry_date", "laufhof_kuehe", "laufhof_rinder", "wetter_code",
         "niederschlag_mm", "mond_phase", "notes", "updated_at", "deleted_at",
     ],
+    "tracks": [
+        "id", "season_year", "label", "started_at", "ended_at", "width_m",
+        "geometry", "point_times", "point_count", "notes", "created_by",
+        "updated_at", "deleted_at",
+    ],
+    "weed_observations": [
+        "id", "season_year", "parcel_id", "track_id", "observed_at",
+        "weed_type", "severity", "treatment", "treated_at", "source",
+        "geometry", "notes", "created_by", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
@@ -46,6 +56,8 @@ TABLE_AREA: dict[str, str] = {
     "fertilization_entries": "wiesenjournal:duengung",
     "n_dose_summary": "wiesenjournal:duengung",
     "daily_farm_log": "wiesenjournal:tagesmeldung",
+    "tracks": "wiesenjournal:tracking",
+    "weed_observations": "wiesenjournal:tracking",
     "data_history": "wiesenjournal:history",
 }
 
@@ -57,4 +69,6 @@ TABLE_AREA: dict[str, str] = {
 GEOMETRY_COLUMNS: dict[str, set[str]] = {
     "parcels": {"base_geometry"},
     "paddocks": {"geometry"},
+    "tracks": {"geometry"},
+    "weed_observations": {"geometry"},
 }
