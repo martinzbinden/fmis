@@ -9,7 +9,7 @@ import {
   type AdminRole,
   type AdminUser,
 } from './admin'
-import { fetchModules, setModuleEnabled, type ModuleInfo } from './modulesApi'
+import { fetchModules, setModuleEnabled, setReaderSettings, type ModuleInfo } from './modulesApi'
 import { useHasPermission } from './AuthContext'
 
 const STATUS_LABEL: Record<AdminUser['status'], string> = {
@@ -79,24 +79,113 @@ function ModulesSection() {
       ) : (
         <ul className="space-y-2">
           {modules.map((m) => (
-            <li
-              key={m.key}
-              className="flex items-center justify-between rounded-lg bg-white p-3 shadow-sm"
-            >
-              <span className="font-medium text-gray-800">{m.title}</span>
-              <button
-                type="button"
-                onClick={() => toggle(m)}
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  m.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'
-                }`}
-              >
-                {m.enabled ? 'Aktiviert' : 'Deaktiviert'}
-              </button>
+            <li key={m.key} className="rounded-lg bg-white p-3 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-gray-800">{m.title}</span>
+                <button
+                  type="button"
+                  onClick={() => toggle(m)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    m.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  {m.enabled ? 'Aktiviert' : 'Deaktiviert'}
+                </button>
+              </div>
+              {m.reader_capable && m.reader && <ReaderRow moduleKey={m.key} reader={m.reader} onSaved={reload} />}
             </li>
           ))}
         </ul>
       )}
+    </div>
+  )
+}
+
+/** Leser-Ein/Aus + Adresse/Port für eine leser-fähige Modul-Instanz (dairy/
+ * dairy_schafe/livestock — siehe modules_admin.py's _READER_CAPABLE_KEYS).
+ * Eigene Zeile unter dem Modul-Eintrag, statt ein zweites Toggle daneben,
+ * weil Adresse/Port nur bei aktivem Leser überhaupt sichtbar sein sollen. */
+function ReaderRow({
+  moduleKey,
+  reader,
+  onSaved,
+}: {
+  moduleKey: string
+  reader: { enabled: boolean; host: string; port: number }
+  onSaved: () => void
+}) {
+  const [host, setHost] = useState(reader.host)
+  const [port, setPort] = useState(String(reader.port))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function toggleReader() {
+    setBusy(true)
+    setError(null)
+    try {
+      await setReaderSettings(moduleKey, { enabled: !reader.enabled, host, port: Number(port) })
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Aktion fehlgeschlagen')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveAddress() {
+    setBusy(true)
+    setError(null)
+    try {
+      await setReaderSettings(moduleKey, { enabled: reader.enabled, host, port: Number(port) })
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
+      <span className="text-xs text-gray-500">Ohrmarkenleser</span>
+      <button
+        type="button"
+        onClick={toggleReader}
+        disabled={busy}
+        className={`rounded-full px-3 py-1 text-xs font-medium ${
+          reader.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'
+        }`}
+      >
+        {reader.enabled ? 'Aktiv' : 'Inaktiv'}
+      </button>
+      {reader.enabled && (
+        <>
+          <input
+            type="text"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="Adresse"
+            className="w-32 rounded border border-gray-300 p-1 text-xs"
+          />
+          <input
+            type="text"
+            inputMode="numeric"
+            value={port}
+            onChange={(e) => setPort(e.target.value)}
+            placeholder="Port"
+            className="w-16 rounded border border-gray-300 p-1 text-xs"
+          />
+          <button
+            type="button"
+            onClick={saveAddress}
+            disabled={busy}
+            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600"
+          >
+            Speichern
+          </button>
+        </>
+      )}
+      {error && <p className="w-full text-xs text-red-600">{error}</p>}
     </div>
   )
 }

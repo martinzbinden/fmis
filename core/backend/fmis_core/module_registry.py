@@ -26,8 +26,8 @@ class ModuleSpec:
 # steuerbar (siehe modules_admin.py) — kein Redeploy nötig.
 MODULE_SPECS: list[ModuleSpec] = [
     ModuleSpec(key="livestock", source="livestock", title="Mastplaner", schema_dir=REPO_ROOT / "modules" / "livestock" / "schema"),
-    ModuleSpec(key="dairy", source="dairy", title="Milchleistung", schema_dir=REPO_ROOT / "modules" / "dairy" / "schema"),
-    ModuleSpec(key="dairy_schafe", source="dairy", title="Milchleistung Schafe", schema_dir=REPO_ROOT / "modules" / "dairy" / "schema"),
+    ModuleSpec(key="dairy", source="dairy", title="Milchkühe", schema_dir=REPO_ROOT / "modules" / "dairy" / "schema"),
+    ModuleSpec(key="dairy_schafe", source="dairy", title="Milchschafe", schema_dir=REPO_ROOT / "modules" / "dairy" / "schema"),
     ModuleSpec(key="fields", source="fields", title="Kulturen", schema_dir=REPO_ROOT / "modules" / "fields" / "schema"),
     ModuleSpec(key="wiesenjournal", source="wiesenjournal", title="Wiesenjournal", schema_dir=REPO_ROOT / "modules" / "wiesenjournal" / "schema"),
 ]

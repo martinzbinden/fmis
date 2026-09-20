@@ -23,8 +23,8 @@ import Dashboard from './pages/Dashboard'
 // Schafe, mit demselben Code aber eigenem Key/Schema/Sync-Prefix/Rechten.
 const AVAILABLE_MODULES: ModuleDescriptor[] = [
   livestockModule,
-  createDairyModule('dairy', 'Milchleistung Kühe'),
-  createDairyModule('dairy_schafe', 'Milchleistung Schafe'),
+  createDairyModule('dairy', 'Milchkühe'),
+  createDairyModule('dairy_schafe', 'Milchschafe'),
   fieldsModule,
   wiesenjournalModule,
 ]
