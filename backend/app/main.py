@@ -12,6 +12,7 @@ from core.backend.fmis_core.modules_admin import require_module_enabled
 from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import sync as livestock_sync
+from modules.wiesenjournal.backend.app import reports as wiesenjournal_reports
 from modules.wiesenjournal.backend.app import sync as wiesenjournal_sync
 
 # Explizite Zuordnung Modul-Key -> dessen (unveränderter) Sync-Router, siehe
@@ -60,6 +61,16 @@ for _spec in MODULE_SPECS:
         prefix=f"/{_spec.key}",
         dependencies=[Depends(require_module_enabled(_spec.key))],
     )
+
+# Zusätzlicher Router NUR für wiesenjournal (Jahresauswertung, verschneidet
+# gegen fields.field_declarations) — bewusst nicht Teil von _MODULE_ROUTERS,
+# das schema-weit von "ein Router pro Modul" ausgeht; ein zweiter, expliziter
+# include_router hier ändert an der generischen Schleife oben nichts.
+app.include_router(
+    wiesenjournal_reports.router,
+    prefix="/wiesenjournal",
+    dependencies=[Depends(require_module_enabled("wiesenjournal"))],
+)
 
 
 @app.get("/health")

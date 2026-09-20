@@ -8,6 +8,7 @@ import JournalGrid from './pages/JournalGrid'
 import Journal from './pages/Journal'
 import Map from './pages/Map'
 import Parcels from './pages/Parcels'
+import Report from './pages/Report'
 import History from './pages/History'
 import './theme.css'
 
@@ -24,6 +25,7 @@ const wiesenjournalModule: ModuleDescriptor = {
     { to: 'liste', label: 'Journal', icon: '📋' },
     { to: 'karte', label: 'Karte', icon: '🗺️' },
     { to: 'parzellen', label: 'Parzellen', icon: '🌱' },
+    { to: 'auswertung', label: 'Auswertung', icon: '📊' },
   ],
   historyPermission: 'wiesenjournal:history:read',
   routes: [
@@ -31,6 +33,7 @@ const wiesenjournalModule: ModuleDescriptor = {
     { path: 'liste', element: <Journal /> },
     { path: 'karte', element: <Map /> },
     { path: 'parzellen', element: <Parcels /> },
+    { path: 'auswertung', element: <Report /> },
     { path: 'verlauf', element: <History /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],
