@@ -4,6 +4,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
 import 'leaflet-draw/dist/leaflet.draw.css'
+import LocateControl from '@fmis/core/LocateControl'
 import { loadFieldsBackground, type FieldsBackgroundFeature } from '../lib/fieldsBackground'
 import { WEED_TYPE_COLOR, WEED_TYPE_LABEL } from '../lib/format'
 import type { TrackPoint } from '../lib/tracking'
@@ -163,39 +164,6 @@ function FieldsTemplateLayer({ onAdopt }: { onAdopt: (geometry: string, label: s
       map.removeLayer(layer)
     }
   }, [map, features, onAdopt])
-  return null
-}
-
-/** "Mein Standort" — Leaflets eingebaute Geolocation (map.locate), kein
- * zusätzliches Plugin nötig. Zeigt einen blauen Punkt, meldet die Position
- * nach aussen (z.B. für den Unkraut-Knopf: "aktuellen Fix verwenden"). */
-function LocateControl({ onLocationFound }: { onLocationFound?: (lat: number, lng: number) => void }) {
-  const map = useMap()
-  const markerRef = useRef<L.CircleMarker | null>(null)
-  const callbackRef = useRef(onLocationFound)
-  callbackRef.current = onLocationFound
-  useEffect(() => {
-    function handleFound(e: L.LocationEvent) {
-      if (!markerRef.current) {
-        markerRef.current = L.circleMarker(e.latlng, {
-          radius: 8,
-          color: '#2563eb',
-          fillColor: '#3b82f6',
-          fillOpacity: 0.9,
-          weight: 2,
-        }).addTo(map)
-      } else {
-        markerRef.current.setLatLng(e.latlng)
-      }
-      callbackRef.current?.(e.latlng.lat, e.latlng.lng)
-    }
-    map.on('locationfound', handleFound)
-    return () => {
-      map.off('locationfound', handleFound)
-      if (markerRef.current) map.removeLayer(markerRef.current)
-      markerRef.current = null
-    }
-  }, [map])
   return null
 }
 
