@@ -5,59 +5,42 @@ Gewichtsverlauf, Medikamenteneinsatz inkl. Absetzfristen, Schlachtresultate
 pro Ohrmarke, Futtermitteleinsatz pro Gruppe, und die Wirtschaftlichkeit pro
 Tier und Gruppe.
 
-Eigenständiges Modul im [FMIS-Repo](../../README.md). Alle Befehle unten
-gehen davon aus, dass du in diesem Verzeichnis (`modules/livestock/`)
-stehst.
+Fachmodul im gemeinsamen [FMIS-Repo](../../README.md) — Login, Rollen,
+Deployment und die App-Shell sind seit dem Merge geteilt (siehe Root-README
+und [`core/`](../../core)); dieses README beschreibt nur, was in diesem
+Modul (`modules/livestock/`) fachlich/technisch spezifisch ist.
 
 ## Architektur
 
-- **Backend** (`backend/`): FastAPI, bewusst dünn — E-Mail-Magic-Link-Login
-  (`/auth/*`), Nutzerverwaltung (`/admin/*`) und Sync-Relay (`/sync/push`,
-  `/sync/pull`). Speichert dauerhaft in PostgreSQL.
-- **Frontend** (`frontend/`): React + Vite + TypeScript. Die gesamte
+- **`backend/app/{tables,sync}.py`**: die modulspezifische Hälfte des
+  Backends — welche Tabellen syncbar sind (`SYNC_TABLES`) und welchem
+  Berechtigungsbereich sie zugeordnet sind (`TABLE_AREA`, präfixiert mit
+  `livestock:`, z.B. `livestock:medications:write`). Auth/Admin/DB/E-Mail
+  sind geteilter Code in [`core/backend/fmis_core`](../../core/backend/fmis_core).
+- **`frontend/src/`**: React-Seiten/-Komponenten dieses Moduls, plus
+  `module.tsx` (der "Descriptor", über den sich das Modul bei der
+  App-Shell anmeldet — Navigation, Routen, eigene pglite-Instanz/Sync-Client)
+  und `theme.css` (Markenfarbe, siehe Root-README "Theming"). Die gesamte
   Anwendungslogik (CRUD, Formulare, Wirtschaftlichkeits-Auswertung) läuft
   gegen **pglite** — ein vollständiges Postgres im Browser (WASM), das
-  identisch zum Server-Schema ist. Dadurch funktioniert die App **100%
-  offline im Stall**; ein Hintergrund-Sync gleicht Änderungen mit dem
-  zentralen PostgreSQL ab, sobald wieder Internet verfügbar ist.
-- **`schema/`**: das kanonische SQL-Schema — einzige Quelle der Wahrheit,
-  wird identisch in PostgreSQL und pglite angewendet. `schema/SYNC_API.md`
-  dokumentiert den Sync-Kontrakt zwischen Frontend und Backend.
-- **`backend/schema/`**: Nutzer/Rollen/Login-Tokens — bewusst NICHT Teil von
-  `schema/*.sql`, läuft also nie in pglite mit (Nutzerdaten gehören nicht
-  auf jedes Gerät repliziert).
+  identisch zum Server-Schema dieses Moduls ist (eigenes Postgres-Schema
+  `livestock`, eigene IndexedDB `idb://mastplaner`). Dadurch funktioniert
+  die App **100% offline im Stall**; ein Hintergrund-Sync gleicht
+  Änderungen mit PostgreSQL ab, sobald wieder Internet verfügbar ist.
+- **`schema/`**: das kanonische SQL-Schema dieses Moduls — einzige Quelle
+  der Wahrheit, wird identisch in Postgres (Schema `livestock`) und pglite
+  angewendet. `schema/SYNC_API.md` dokumentiert den Sync-Kontrakt.
 
 ## Login & Rechte
 
-Kein Passwort mehr — Login per **E-Mail-Magic-Link**:
-
-1. Nutzer gibt seine E-Mail-Adresse ein → bekommt einen Login-Link.
-   **Der Link ist persistent** (`SESSION_TTL_DAYS`, standardmässig bis zu
-   **1 Jahr**) und nicht nur einmalig — er kann z.B. als Lesezeichen/
-   Homescreen-Shortcut gespeichert und beliebig oft geklickt werden, bis er
-   abläuft oder ein neuer Link angefordert wird (das invalidiert ältere
-   Links für diese Adresse). Da der Link so lange gültig ist, wirkt er wie
-   ein Passwort — nicht weiterleiten.
-2. **Neue Adressen starten als "wartet auf Freischaltung"** — erst wenn ein
-   Admin eine Rolle zuweist, funktioniert der Login. Die Adresse aus
-   `INITIAL_ADMIN_EMAIL` wird beim ersten Login automatisch als Admin
-   freigeschaltet (Bootstrap).
-3. Sperrt ein Admin ein Konto oder ändert die Rolle, wirkt das **sofort**
-   (jeder Request prüft Rolle/Status live in der DB, kein Token-Blacklist
-   nötig) — unabhängig davon, ob der Link selbst noch gültig wäre.
-
-**Rollen sind feingranular** (Bereich × Lesen/Schreiben, z.B.
-`medications:write`, `economics:read`) statt nur Admin/Nutzer-Binär.
-Vordefiniert: *Admin* (alles inkl. Nutzerverwaltung), *Vollzugriff* (alles
-ausser Nutzerverwaltung), *Nur Lesen*. Weitere Rollen lassen sich unter
-"⚙️ → Nutzerverwaltung" (nur für Admins sichtbar) frei zusammenstellen.
-
-Durchgesetzt wird das serverseitig beim Sync: `POST /sync/push` lehnt den
-kompletten Request ab, wenn für irgendeine enthaltene Tabelle das
-Schreibrecht fehlt; `GET /sync/pull` lässt Tabellen ohne Leserecht im
-Response komplett weg — die Daten landen so nie lokal in pglite. Das
-Frontend blendet zusätzlich UI aus, die eh nicht genutzt werden darf (reine
-UX, keine Sicherheitsgrenze).
+Login (E-Mail-Magic-Link) und Rollenverwaltung sind jetzt app-weit geteilt
+— siehe [Root-README](../../README.md#login--rechte) für den Ablauf.
+Dieses Modul bringt nur seine eigenen, präfixierten Berechtigungen mit
+(`livestock:animals:*`, `livestock:groups:*`, `livestock:weighings:*`,
+`livestock:medications:*`, `livestock:feed:*`, `livestock:expenses:*`,
+`livestock:slaughter:*`, `livestock:economics:read`,
+`livestock:history:read`) — durchgesetzt serverseitig in `sync.py` (siehe
+`core/backend/fmis_core/schema/0001_core.sql` für die Standardrollen).
 
 ## Tiere importieren
 
@@ -108,79 +91,21 @@ Link pro Eintrag öffnet eine Suche bei der jeweiligen Quelle, um den Wert
 bei Bedarf schnell manuell gegenzuprüfen ("zuletzt geprüft"-Datum wird
 dabei mitgeführt).
 
-## Produktions-Deployment (Docker + bestehendes Traefik)
+## Deployment & lokale Entwicklung
 
-Setzt voraus: Traefik läuft bereits auf dem Docker-Host (Docker-Netzwerk
-z.B. `web-netzwerk`), TLS wird vorgelagert terminiert (z.B. Nginx Proxy
-Manager auf der Firewall, der `Host`-Header beim Weiterleiten erhält) —
-Traefik selbst braucht hier **keinen eigenen certresolver**, das Backend
-läuft auf reinem HTTP (`entrypoints=web`).
-
-```bash
-cp .env.example .env   # JWT_SECRET, INITIAL_ADMIN_EMAIL, SMTP_*, DOMAIN/PUBLIC_URL setzen
-docker compose up --build -d
-```
-
-Frontend und Backend hängen sich über Labels an die vorhandene
-Traefik-Instanz und teilen sich **eine Domain** (Pfad-basiertes Routing:
-`/auth`, `/sync`, `/health`, `/docs` → Backend, alles andere → Frontend-SPA)
-— dadurch ist alles same-origin, kein CORS-Setup nötig. Der
-Postgres-Container hat kein `ports:`-Mapping mehr (nur intern erreichbar).
-
-Falls dein Traefik-Netzwerk anders heisst als `web-netzwerk`: in
-`docker-compose.yml` die beiden `networks: web-netzwerk` sowie
-`traefik.docker.network=web-netzwerk`-Zeilen anpassen.
-
-## Lokale Entwicklung (ohne Docker)
-
-```bash
-brew install postgresql@16
-brew services start postgresql@16
-createdb mastplaner
-
-cd backend
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e .
-DATABASE_URL=postgresql://$(whoami)@localhost:5432/mastplaner \
-  JWT_SECRET=irgendein-secret \
-  INITIAL_ADMIN_EMAIL=deine@adresse.ch \
-  PUBLIC_URL=http://localhost:5173 \
-  SMTP_HOST=localhost SMTP_PORT=1025 SMTP_USE_TLS=false \
-  uvicorn app.main:app --reload
-```
-
-Die Migrationen aus `schema/*.sql` UND `backend/schema/*.sql` (Nutzer/
-Rollen) werden beim Start automatisch angewendet. Ohne echten SMTP-Server
-kann man lokal `python -m aiosmtpd -n -l localhost:1025` als Debug-Mailserver
-laufen lassen — Mails werden dann als Klartext auf der Konsole ausgegeben
-(Login-Link zum Copy-Pasten).
-
-```bash
-cd frontend
-npm install
-cp .env.example .env   # VITE_API_URL=http://localhost:8000 für lokale Entwicklung
-npm run dev
-```
-
-Öffnet auf `http://localhost:5173`. Die App lässt sich als PWA installieren
-(Homescreen-Icon) und funktioniert danach auch ohne Netzverbindung — Sync
-läuft automatisch im Hintergrund, sobald wieder online.
+Es gibt kein eigenständiges Deployment/Dev-Setup für dieses Modul mehr —
+Backend und Frontend werden zusammen mit den anderen Modulen als **eine**
+App gebaut und deployt. Siehe [Root-README](../../README.md) für
+`docker compose up` (Produktion) und den lokalen Dev-Server
+(`.claude/launch.json` bzw. `cd backend && uvicorn app.main:app`,
+`cd frontend && npm run dev`, jeweils vom Repo-Root aus mit
+`PYTHONPATH`/Workspace wie dort beschrieben).
 
 ## Wichtige Design-Entscheidung: pglite ist führend
 
 Alle Lese-/Schreibzugriffe der UI laufen **immer** gegen lokales pglite,
 nie direkt gegen die REST-API. Das Backend wird nur für Login und den
-Push/Pull-Sync kontaktiert. Das bedeutet: neue Tiere, Wägungen etc. offline
-erfassen funktioniert ohne Einschränkung — der Sync holt es nach, sobald
-wieder eine Verbindung besteht (last-write-wins über `updated_at`, siehe
-`schema/SYNC_API.md`).
-
-## Später: Ausbau zum FMIS
-
-Das Datenmodell ist bewusst einzelbetrieblich (kein Mandanten-Feld) und auf
-Lämmermast fokussiert gehalten. Für einen späteren Ausbau zu einem
-umfassenderen Farm-Management-System sollten vor allem `schema/*.sql` um
-weitere Bereiche (Flächen, Maschinen, ggf. Mandantentrennung) erweitert
-werden — die Sync-Architektur (Tabellen-Registry in
-`backend/app/tables.py` + `schema/SYNC_API.md`) skaliert dafür bereits.
-Siehe auch die [Modul-Struktur im Root-README](../../README.md).
+Push/Pull-Sync (`/livestock/sync/*`) kontaktiert. Das bedeutet: neue Tiere,
+Wägungen etc. offline erfassen funktioniert ohne Einschränkung — der Sync
+holt es nach, sobald wieder eine Verbindung besteht (last-write-wins über
+`updated_at`, siehe `schema/SYNC_API.md`).

@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "resolveJsonModule": true,
+    "allowJs": false,
+    "forceConsistentCasingInFileNames": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@fmis/core": ["../core/frontend/src"],
+      "@fmis/core/*": ["../core/frontend/src/*"],
+      "@fmis/livestock": ["../modules/livestock/frontend/src"],
+      "@fmis/livestock/*": ["../modules/livestock/frontend/src/*"],
+      "@fmis/dairy": ["../modules/dairy/frontend/src"],
+      "@fmis/dairy/*": ["../modules/dairy/frontend/src/*"],
+      "@fmis/fields": ["../modules/fields/frontend/src"],
+      "@fmis/fields/*": ["../modules/fields/frontend/src/*"],
+      "@fmis/wiesenjournal": ["../modules/wiesenjournal/frontend/src"],
+      "@fmis/wiesenjournal/*": ["../modules/wiesenjournal/frontend/src/*"]
+    }
+  },
+  "include": [
+    "src",
+    "src/vite-env.d.ts",
+    "../core/frontend/src",
+    "../modules/livestock/frontend/src",
+    "../modules/dairy/frontend/src",
+    "../modules/fields/frontend/src",
+    "../modules/wiesenjournal/frontend/src"
+  ]
+}
