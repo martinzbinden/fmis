@@ -51,6 +51,7 @@ services:
         traefik.http.routers.fmis-api.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
         (PathPrefix(`/auth`) || PathPrefix(`/core`) || PathPrefix(`/admin`) ||
         PathPrefix(`/livestock/sync`) || PathPrefix(`/dairy/sync`) || PathPrefix(`/fields/sync`) ||
+        PathPrefix(`/wiesenjournal/sync`) ||
         PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
       - traefik.http.routers.fmis-api.entrypoints=web
       - traefik.http.routers.fmis-api.priority=10

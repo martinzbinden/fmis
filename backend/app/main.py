@@ -12,6 +12,7 @@ from core.backend.fmis_core.modules_admin import require_module_enabled
 from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import sync as livestock_sync
+from modules.wiesenjournal.backend.app import sync as wiesenjournal_sync
 
 # Explizite Zuordnung Modul-Key -> dessen (unveränderter) Sync-Router, siehe
 # core/backend/fmis_core/module_registry.py für die Begründung "Liste statt
@@ -20,6 +21,7 @@ _MODULE_ROUTERS = {
     "livestock": livestock_sync.router,
     "dairy": dairy_sync.router,
     "fields": fields_sync.router,
+    "wiesenjournal": wiesenjournal_sync.router,
 }
 
 

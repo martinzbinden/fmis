@@ -21,4 +21,5 @@ MODULE_SPECS: list[ModuleSpec] = [
     ModuleSpec(key="livestock", title="Mastplaner", schema_dir=REPO_ROOT / "modules" / "livestock" / "schema"),
     ModuleSpec(key="dairy", title="Milchleistung", schema_dir=REPO_ROOT / "modules" / "dairy" / "schema"),
     ModuleSpec(key="fields", title="Kulturen", schema_dir=REPO_ROOT / "modules" / "fields" / "schema"),
+    ModuleSpec(key="wiesenjournal", title="Wiesenjournal", schema_dir=REPO_ROOT / "modules" / "wiesenjournal" / "schema"),
 ]
