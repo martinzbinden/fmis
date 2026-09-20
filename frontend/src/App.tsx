@@ -12,13 +12,14 @@ import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import livestockModule from '@fmis/livestock/module'
 import dairyModule from '@fmis/dairy/module'
 import fieldsModule from '@fmis/fields/module'
+import wiesenjournalModule from '@fmis/wiesenjournal/module'
 import Dashboard from './pages/Dashboard'
 
 // Statische Registry der im Frontend-Build vorhandenen Module (Pendant zu
 // MODULE_SPECS in core/backend/fmis_core/module_registry.py) — welche davon
 // tatsächlich aktiv sind, entscheidet zur Laufzeit GET /core/modules
 // (AppShell unten), nicht diese Liste.
-const AVAILABLE_MODULES: ModuleDescriptor[] = [livestockModule, dairyModule, fieldsModule]
+const AVAILABLE_MODULES: ModuleDescriptor[] = [livestockModule, dairyModule, fieldsModule, wiesenjournalModule]
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn())

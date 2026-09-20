@@ -16,8 +16,13 @@ Laufzeit (ohne Neustart/Redeploy) aktivieren/deaktivieren.
   aus dem kantonalen Raumdatenexport auf einer Karte (swisstopo-
   Hintergrund) plus mehrjährige Fruchtfolgeplanung. Verwaltet zwei
   Betriebe (Betriebszweiggemeinschaft) in einer gemeinsamen Datenbank.
+- **[modules/wiesenjournal](modules/wiesenjournal/README.md)** —
+  Wiesenjournal: digitales Weide-/Wiesenjournal (Nutzung/Düngung pro
+  Parzelle und Tag als Raster oder flaches Journal, freiform gezeichnete
+  Weidegänge auf der Karte statt nur fixer Parzellen, Tagesmeldung).
+  Erster Wurf, Stand 2026-09-20.
 
-Alle drei sind **offline-fähig** (pglite — vollständiges Postgres im
+Alle vier sind **offline-fähig** (pglite — vollständiges Postgres im
 Browser, WASM) mit Hintergrund-Sync gegen PostgreSQL, sobald wieder
 Internet verfügbar ist.
 

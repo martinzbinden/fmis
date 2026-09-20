@@ -14,6 +14,7 @@ export default defineConfig({
       '@fmis/livestock': fileURLToPath(new URL('../modules/livestock/frontend/src', import.meta.url)),
       '@fmis/dairy': fileURLToPath(new URL('../modules/dairy/frontend/src', import.meta.url)),
       '@fmis/fields': fileURLToPath(new URL('../modules/fields/frontend/src', import.meta.url)),
+      '@fmis/wiesenjournal': fileURLToPath(new URL('../modules/wiesenjournal/frontend/src', import.meta.url)),
     },
   },
   plugins: [
@@ -38,7 +39,7 @@ export default defineConfig({
       },
       workbox: {
         // App shell only — never cache API/sync calls.
-        navigateFallbackDenylist: [/^\/auth\//, /^\/(livestock|dairy|fields)\/sync\//, /^\/core\//, /^\/admin\//],
+        navigateFallbackDenylist: [/^\/auth\//, /^\/(livestock|dairy|fields|wiesenjournal)\/sync\//, /^\/core\//, /^\/admin\//],
         // pglite's wasm/data assets are large (~10MB) but are part of the
         // app shell (not user data) and must be cached for offline use.
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
