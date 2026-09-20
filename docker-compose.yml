@@ -1,6 +1,11 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # postgis/postgis statt postgres:16-alpine (Debian-basiert, gleiches
+    # Postgres-16-Datenformat) — für echte PostGIS-Geometrie-Spalten in
+    # modules/fields und modules/wiesenjournal, siehe core/backend/fmis_core/
+    # schema/0003_postgis.sql (create extension, idempotent unabhängig davon,
+    # ob dieses Image die Extension bereits selbst beim Erstinit angelegt hat).
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_USER: fmis
       POSTGRES_PASSWORD: fmis
@@ -51,7 +56,7 @@ services:
         traefik.http.routers.fmis-api.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
         (PathPrefix(`/auth`) || PathPrefix(`/core`) || PathPrefix(`/admin`) ||
         PathPrefix(`/livestock/sync`) || PathPrefix(`/dairy/sync`) || PathPrefix(`/fields/sync`) ||
-        PathPrefix(`/wiesenjournal/sync`) ||
+        PathPrefix(`/wiesenjournal/sync`) || PathPrefix(`/wiesenjournal/reports`) ||
         PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
       - traefik.http.routers.fmis-api.entrypoints=web
       - traefik.http.routers.fmis-api.priority=10

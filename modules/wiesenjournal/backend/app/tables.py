@@ -48,3 +48,13 @@ TABLE_AREA: dict[str, str] = {
     "daily_farm_log": "wiesenjournal:tagesmeldung",
     "data_history": "wiesenjournal:history",
 }
+
+# Welche Spalten pro Tabelle echte PostGIS-`geometry`-Spalten sind (seit
+# schema/0004_postgis_geometry.sql) statt gewöhnlicher Werte — treibt in
+# sync.py die ST_AsGeoJSON/ST_GeomFromGeoJSON-Konvertierung an der Sync-
+# Grenze an. Der Client (pglite) sieht davon nichts, er sendet/empfängt
+# weiterhin reinen GeoJSON-Text.
+GEOMETRY_COLUMNS: dict[str, set[str]] = {
+    "parcels": {"base_geometry"},
+    "paddocks": {"geometry"},
+}
