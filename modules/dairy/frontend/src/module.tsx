@@ -7,15 +7,16 @@ import { createDairySyncClient } from './db/sync'
 import Milk from './pages/Milk'
 import Animals from './pages/Animals'
 import History from './pages/History'
+import Melken from './pages/Melken'
 import './theme.css'
 
 /**
  * Baut den ModuleDescriptor für EINE Instanz dieses Moduls. Dieses Modul
  * kann mehrfach instanziert werden (siehe core/backend/fmis_core/
  * module_registry.py, ModuleSpec.source) — z.B. `createDairyModule('dairy',
- * 'Milchleistung Kühe')` und `createDairyModule('dairy_schafe', 'Milchleistung
- * Schafe')` nebeneinander in frontend/src/App.tsx, beide mit demselben Code,
- * aber eigener pglite-Instanz/eigenem Sync-Prefix/eigenen Rechten (`key`).
+ * 'Milchkühe')` und `createDairyModule('dairy_schafe', 'Milchschafe')`
+ * nebeneinander in frontend/src/App.tsx, beide mit demselben Code, aber
+ * eigener pglite-Instanz/eigenem Sync-Prefix/eigenen Rechten (`key`).
  */
 export function createDairyModule(key: string, title: string): ModuleDescriptor {
   function DairyDbProvider({ children }: { children: ReactNode }) {
@@ -28,13 +29,15 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     icon: '🥛',
     navItems: [
       { to: '', label: 'Milch', icon: '🥛' },
-      { to: 'kuehe', label: 'Kühe', icon: '🐄' },
+      { to: 'kuehe', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
+      { to: 'melken', label: 'Melken', icon: '📡' },
     ],
     historyPermission: `${key}:history:read`,
     routes: [
       { path: '', element: <Milk /> },
-      { path: 'kuehe', element: <Animals /> },
+      { path: 'kuehe', element: <Animals moduleKey={key} /> },
       { path: 'verlauf', element: <History /> },
+      { path: 'melken', element: <Melken moduleKey={key} /> },
       { path: '*', element: <Navigate to="." replace /> },
     ],
     DbProvider: DairyDbProvider,

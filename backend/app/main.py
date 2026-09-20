@@ -9,8 +9,10 @@ from core.backend.fmis_core import modules_admin
 from core.backend.fmis_core.db import close_pools, get_pool, open_pools, run_migrations
 from core.backend.fmis_core.module_registry import MODULE_SPECS
 from core.backend.fmis_core.modules_admin import require_module_enabled
+from modules.dairy.backend.app import reader as dairy_reader
 from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
+from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
 from modules.wiesenjournal.backend.app import reports as wiesenjournal_reports
 from modules.wiesenjournal.backend.app import sync as wiesenjournal_sync
@@ -64,15 +66,29 @@ for _spec in MODULE_SPECS:
         prefix=f"/{_spec.key}",
         dependencies=[Depends(require_module_enabled(_spec.key))],
     )
+    # APR600-Leser (siehe core/backend/fmis_core/agrident.py): nur dairy-
+    # Instanzen bekommen die Live-Melkliste; livestock ist nicht instanziert
+    # und wird separat unten gemountet (Datenpool-Import, kein Loop nötig).
+    if _spec.source == "dairy":
+        app.include_router(
+            dairy_reader.build_reader_router(_spec.key),
+            prefix=f"/{_spec.key}",
+            dependencies=[Depends(require_module_enabled(_spec.key))],
+        )
 
-# Zusätzlicher Router NUR für wiesenjournal (Jahresauswertung, verschneidet
-# gegen fields.field_declarations) — bewusst nicht Teil von _MODULE_ROUTERS,
-# das schema-weit von "ein Router pro Modul" ausgeht; ein zweiter, expliziter
-# include_router hier ändert an der generischen Schleife oben nichts.
+# Zusätzliche Router, bewusst nicht Teil von _MODULE_ROUTERS/der Schleife
+# oben (die von "ein Router pro Modul" ausgeht): wiesenjournal's
+# Jahresauswertung (verschneidet gegen fields.field_declarations) und
+# livestock's APR600-Datenpool-Import (Gruppen-Ohrmarken vom Leser).
 app.include_router(
     wiesenjournal_reports.router,
     prefix="/wiesenjournal",
     dependencies=[Depends(require_module_enabled("wiesenjournal"))],
+)
+app.include_router(
+    livestock_reader.router,
+    prefix="/livestock",
+    dependencies=[Depends(require_module_enabled("livestock"))],
 )
 
 
