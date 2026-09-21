@@ -22,6 +22,8 @@ COPY modules/dairy/frontend/src ./modules/dairy/frontend/src
 COPY modules/dairy/schema ./modules/dairy/schema
 COPY modules/fields/frontend/src ./modules/fields/frontend/src
 COPY modules/fields/schema ./modules/fields/schema
+COPY modules/wiesenjournal/frontend/src ./modules/wiesenjournal/frontend/src
+COPY modules/wiesenjournal/schema ./modules/wiesenjournal/schema
 
 # Leer = same-origin (Frontend+Backend hinter Traefik unter derselben Domain).
 ARG VITE_API_URL=

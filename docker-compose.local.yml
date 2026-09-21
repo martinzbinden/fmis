@@ -1,9 +1,10 @@
-# Nur für lokales Testen. Nutzung:
+# Nur für lokales Testen OHNE Reverse-Proxy (nackte Ports). Nutzung:
 #   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
 # web-netzwerk wird hier lokal erzeugt statt (wie in Produktion) extern erwartet.
-# KEIN Traefik hier — siehe modules/livestock/docker-compose.local.yml (aus
-# der Zeit vor dem Merge) für den Hintergrund (Docker-Client-Versionskonflikt
-# in dieser Testumgebung).
+# Bevorzugt ist inzwischen der lokale Traefik (~/git/dev-traefik-localhost):
+# dann reicht `docker compose up --build -d` mit TRAEFIK_*/DOMAIN in .env
+# (siehe .env.example), Ergebnis https://fmis.riedackerhof.localhost — und
+# diese Override-Datei wird nicht gebraucht.
 services:
   backend:
     ports:

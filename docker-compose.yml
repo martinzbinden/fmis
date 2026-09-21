@@ -46,7 +46,7 @@ services:
       - web-netzwerk
     labels:
       - traefik.enable=true
-      - traefik.docker.network=web-netzwerk
+      - traefik.docker.network=${TRAEFIK_NETWORK:-web-netzwerk}
       # Ein Backend/eine DB für ALLE Module (siehe core/backend/fmis_core) —
       # /<modul>/sync/* je aktiviertem Modul (backend/app/main.py), plus die
       # geteilten Core-Routen. Höhere Priorität als der Frontend-Router unten,
@@ -58,7 +58,8 @@ services:
         PathPrefix(`/livestock/sync`) || PathPrefix(`/dairy/sync`) || PathPrefix(`/fields/sync`) ||
         PathPrefix(`/wiesenjournal/sync`) || PathPrefix(`/wiesenjournal/reports`) ||
         PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
-      - traefik.http.routers.fmis-api.entrypoints=web
+      - traefik.http.routers.fmis-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
+      - traefik.http.routers.fmis-api.tls=${TRAEFIK_TLS:-false}
       - traefik.http.routers.fmis-api.priority=10
       - traefik.http.services.fmis-api.loadbalancer.server.port=8000
 
@@ -75,15 +76,22 @@ services:
       - web-netzwerk
     labels:
       - traefik.enable=true
-      - traefik.docker.network=web-netzwerk
+      - traefik.docker.network=${TRAEFIK_NETWORK:-web-netzwerk}
       - traefik.http.routers.fmis-app.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`)
-      - traefik.http.routers.fmis-app.entrypoints=web
+      - traefik.http.routers.fmis-app.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
+      - traefik.http.routers.fmis-app.tls=${TRAEFIK_TLS:-false}
       - traefik.http.routers.fmis-app.priority=1
       - traefik.http.services.fmis-app.loadbalancer.server.port=80
 
 networks:
+  # Externes Traefik-Netz. Auf dem Server heisst es `web-netzwerk` (Traefik
+  # ohne TLS, Entrypoint `web` — TLS terminiert Nginx Proxy Manager davor),
+  # lokal `webproxy` (~/git/dev-traefik-localhost, Entrypoint `websecure`
+  # mit mkcert-TLS) — via TRAEFIK_NETWORK / TRAEFIK_ENTRYPOINT / TRAEFIK_TLS
+  # in .env umschaltbar, der Service-Alias `web-netzwerk` bleibt gleich.
   web-netzwerk:
     external: true
+    name: ${TRAEFIK_NETWORK:-web-netzwerk}
 
 volumes:
   postgres_data:

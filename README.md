@@ -113,9 +113,14 @@ Backend, alles andere → Frontend-SPA) — dadurch ist alles same-origin,
 kein CORS-Setup nötig. Der Postgres-Container hat kein `ports:`-Mapping
 (nur intern erreichbar).
 
-Falls dein Traefik-Netzwerk anders heisst als `web-netzwerk`: in
-`docker-compose.yml` die beiden `networks: web-netzwerk` sowie
-`traefik.docker.network=web-netzwerk`-Zeilen anpassen.
+Traefik-Anbindung ist per `.env` umschaltbar (`TRAEFIK_NETWORK`,
+`TRAEFIK_ENTRYPOINT`, `TRAEFIK_TLS`, siehe `.env.example`): auf dem Server
+(`192.168.0.73`, `/opt/fmis`) `web-netzwerk`/`web`/`false`, lokal hinter
+`~/git/dev-traefik-localhost` `webproxy`/`websecure`/`true` mit
+`DOMAIN=fmis.riedackerhof.localhost` — dann ist die lokale Instanz unter
+`https://fmis.riedackerhof.localhost` erreichbar (mkcert-Zertifikat, keine
+Browserwarnung), same-origin wie in Produktion. Deploy auf den Server
+grundsätzlich erst nach manueller Prüfung der lokalen Instanz.
 
 ## Lokale Entwicklung
 
@@ -147,9 +152,10 @@ cp .env.example .env 2>/dev/null || true   # VITE_API_URL=http://localhost:8000
 npm run dev
 ```
 
-Oder mit Docker (`docker compose -f docker-compose.yml -f
-docker-compose.local.yml up --build`) — Backend auf `:8000`, Frontend auf
-`:8080`, Postgres auf `:5433`.
+Oder als komplette Instanz mit Docker hinter dem lokalen Traefik (siehe
+Deployment oben) — bzw. ohne Proxy mit `docker compose -f
+docker-compose.yml -f docker-compose.local.yml up --build` — Backend auf
+`:8000`, Frontend auf `:8080`, Postgres auf `:5433`.
 
 ## Ein Modul hinzufügen
 
