@@ -211,7 +211,7 @@ export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<I
   for (const animal of parsed.animals) {
     const id = earTagToId.get(animal.ear_tag) ?? crypto.randomUUID()
     earTagToId.set(animal.ear_tag, id)
-    await upsertRow('animals', { id, ...animal })
+    await upsertRow(pg, 'animals', { id, ...animal })
   }
 
   const { rows: existingTests } = await pg.query<{ id: string; animal_id: string; test_date: string }>(
@@ -231,7 +231,7 @@ export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<I
     const id = testKeyToId.get(key) ?? crypto.randomUUID()
     testKeyToId.set(key, id)
     const { ear_tag: _earTag, ...rest } = test
-    await upsertRow('milk_tests', { id, animal_id: animalId, ...rest })
+    await upsertRow(pg, 'milk_tests', { id, animal_id: animalId, ...rest })
     milkTestsImported++
   }
 
@@ -256,7 +256,7 @@ export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<I
     const id = lactationKeyToId.get(key) ?? crypto.randomUUID()
     lactationKeyToId.set(key, id)
     const { ear_tag: _earTag, ...rest } = lactation
-    await upsertRow('lactations', { id, animal_id: animalId, ...rest })
+    await upsertRow(pg, 'lactations', { id, animal_id: animalId, ...rest })
     lactationsImported++
   }
 

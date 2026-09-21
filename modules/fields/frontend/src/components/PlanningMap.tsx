@@ -4,6 +4,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
 import 'leaflet-draw/dist/leaflet.draw.css'
+import LocateControl from '@fmis/core/LocateControl'
 import type { PlanParcel } from '../types'
 import { colorForKultur } from '../lib/kulturColor'
 
@@ -270,6 +271,14 @@ export default function PlanningMap({
         </button>
         <button
           type="button"
+          onClick={() => mapRef.current?.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true })}
+          title="Auf meinen Standort zoomen"
+          className="rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
+        >
+          📍 Mein Standort
+        </button>
+        <button
+          type="button"
           onClick={toggleFullscreen}
           title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild'}
           className="ml-auto rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
@@ -299,6 +308,7 @@ export default function PlanningMap({
           selectedIds={selectedIds ?? EMPTY_SELECTION}
           onToggleSelect={onToggleSelect ?? noop}
         />
+        <LocateControl />
       </MapContainer>
     </div>
   )

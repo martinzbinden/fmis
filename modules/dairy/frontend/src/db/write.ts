@@ -1,5 +1,4 @@
 import type { PGlite } from '@electric-sql/pglite'
-import { getDb } from './pglite'
 import { SYNC_TABLES, type SyncTable } from './tables'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 
@@ -38,10 +37,16 @@ export async function ensureOutbox(pg: PGlite): Promise<void> {
   `)
 }
 
-let outboxReady: Promise<void> | null = null
-async function ready(): Promise<PGlite> {
-  const pg = await getDb()
-  if (!outboxReady) outboxReady = ensureOutbox(pg)
+// Pro pglite-Instanz (nicht global) gecacht — dieses Modul kann mehrfach
+// instanziert werden (siehe module_registry.py, ModuleSpec.source), jede
+// Instanz hat ihre eigene PGlite-Instanz und damit ihre eigene Outbox.
+const outboxReadyByDb = new WeakMap<PGlite, Promise<void>>()
+async function ready(pg: PGlite): Promise<PGlite> {
+  let outboxReady = outboxReadyByDb.get(pg)
+  if (!outboxReady) {
+    outboxReady = ensureOutbox(pg)
+    outboxReadyByDb.set(pg, outboxReady)
+  }
   await outboxReady
   return pg
 }
@@ -84,11 +89,12 @@ async function recordHistory(
  * `options.action` wird per Existenz-Check zwischen insert/update unterschieden.
  */
 export async function upsertRow<T extends SyncTable>(
+  pg: PGlite,
   table: T,
   row: Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string },
   options?: { action?: HistoryAction },
 ): Promise<void> {
-  const pg = await ready()
+  await ready(pg)
   const columns = SYNC_TABLES[table] as readonly string[]
   const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
 
@@ -128,14 +134,15 @@ export async function upsertRow<T extends SyncTable>(
 }
 
 /** Soft-Delete: setzt deleted_at und stösst die Zeile via upsertRow erneut in die Outbox. */
-export async function softDeleteRow(table: SyncTable, id: string): Promise<void> {
-  const pg = await ready()
+export async function softDeleteRow(pg: PGlite, table: SyncTable, id: string): Promise<void> {
+  await ready(pg)
   const { rows } = await pg.query<Record<string, unknown>>(
     `select * from "${table}" where id = $1`,
     [id],
   )
   if (rows.length === 0) return
   await upsertRow(
+    pg,
     table,
     { ...rows[0], id, deleted_at: new Date().toISOString() } as never,
     { action: 'delete' },

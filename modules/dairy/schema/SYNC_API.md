@@ -56,7 +56,7 @@ Server-Verhalten: pro Zeile `INSERT ... ON CONFLICT (id) DO UPDATE SET ... WHERE
 
 **Rechteprüfung (all-or-nothing):** fehlt für irgendeine im Request enthaltene
 Tabelle das `<area>:write`-Recht der aktuellen Rolle (Mapping in
-`backend/app/tables.py:TABLE_AREA`), wird der GESAMTE Request mit 403
+`backend/app/tables.py:table_area()`), wird der GESAMTE Request mit 403
 abgelehnt — kein teilweises Übernehmen einzelner Tabellen. Ausnahme:
 `data_history` ist von dieser Prüfung ausgenommen (entsteht immer als
 Nebeneffekt einer im selben Request bereits geprüften Schreibung auf einer

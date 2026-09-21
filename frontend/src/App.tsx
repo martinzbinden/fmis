@@ -10,7 +10,7 @@ import Layout from '@fmis/core/Layout'
 import { fetchModules, type ModuleInfo } from '@fmis/core/modulesApi'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import livestockModule from '@fmis/livestock/module'
-import dairyModule from '@fmis/dairy/module'
+import { createDairyModule } from '@fmis/dairy/module'
 import fieldsModule from '@fmis/fields/module'
 import wiesenjournalModule from '@fmis/wiesenjournal/module'
 import Dashboard from './pages/Dashboard'
@@ -18,8 +18,16 @@ import Dashboard from './pages/Dashboard'
 // Statische Registry der im Frontend-Build vorhandenen Module (Pendant zu
 // MODULE_SPECS in core/backend/fmis_core/module_registry.py) — welche davon
 // tatsächlich aktiv sind, entscheidet zur Laufzeit GET /core/modules
-// (AppShell unten), nicht diese Liste.
-const AVAILABLE_MODULES: ModuleDescriptor[] = [livestockModule, dairyModule, fieldsModule, wiesenjournalModule]
+// (AppShell unten), nicht diese Liste. `dairy` kann mehrfach instanziert
+// werden (siehe module.tsx) — hier zwei unabhängige Instanzen für Kühe und
+// Schafe, mit demselben Code aber eigenem Key/Schema/Sync-Prefix/Rechten.
+const AVAILABLE_MODULES: ModuleDescriptor[] = [
+  livestockModule,
+  createDairyModule('dairy', 'Milchkühe'),
+  createDairyModule('dairy_schafe', 'Milchschafe'),
+  fieldsModule,
+  wiesenjournalModule,
+]
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn())

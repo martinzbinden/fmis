@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
-from .tables import SYNC_TABLES, TABLE_AREA
+from .tables import GEOMETRY_COLUMNS, SYNC_TABLES, TABLE_AREA
 
 # Eigener Pool mit search_path='wiesenjournal,public' (siehe fmis_core/db.py)
 # — die untenstehenden Queries bleiben dadurch unqualifiziert und landen
@@ -45,9 +45,19 @@ async def push(body: PushRequest, user: CurrentUser = Depends(require_auth)) -> 
             columns = SYNC_TABLES.get(table)
             if columns is None or not rows:
                 continue
+            geometry_cols = GEOMETRY_COLUMNS.get(table, set())
             set_clause = ", ".join(f'"{c}" = excluded."{c}"' for c in columns if c != "id")
             col_list = ", ".join(f'"{c}"' for c in columns)
-            placeholders = ", ".join(f"%({c})s" for c in columns)
+            # Geometrie-Spalten (siehe schema/0004_postgis_geometry.sql) sind
+            # server-seitig echtes PostGIS `geometry` — der Client schickt
+            # aber weiterhin reinen GeoJSON-Text, deshalb hier explizit
+            # konvertieren statt den rohen Wert zu binden. `excluded."{c}"`
+            # im ON CONFLICT (oben) braucht dafür keine Änderung, da es den
+            # bereits konvertierten Wert aus genau diesem Ausdruck referenziert.
+            placeholders = ", ".join(
+                f"ST_SetSRID(ST_GeomFromGeoJSON(%({c})s), 4326)" if c in geometry_cols else f"%({c})s"
+                for c in columns
+            )
             sql = (
                 f'insert into "{table}" ({col_list}) values ({placeholders}) '
                 f'on conflict (id) do update set {set_clause} '
@@ -74,7 +84,13 @@ async def pull(since: str | None = None, user: CurrentUser = Depends(require_aut
             area = TABLE_AREA.get(table)
             if area is None or f"{area}:read" not in user.permissions:
                 continue
-            col_list = ", ".join(f'"{c}"' for c in columns)
+            geometry_cols = GEOMETRY_COLUMNS.get(table, set())
+            # ST_AsGeoJSON liefert für Geometrie-Spalten wieder reinen
+            # GeoJSON-Text zurück — der Client sieht dadurch nie den echten
+            # PostGIS-Typ, nur das gewohnte GeoJSON.
+            col_list = ", ".join(
+                f'ST_AsGeoJSON("{c}") as "{c}"' if c in geometry_cols else f'"{c}"' for c in columns
+            )
             if since:
                 sql = f'select {col_list} from "{table}" where updated_at > %s'
                 rows = await (await conn.execute(sql, (since,))).fetchall()

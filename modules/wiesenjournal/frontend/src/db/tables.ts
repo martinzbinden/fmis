@@ -28,6 +28,16 @@ export const SYNC_TABLES = {
     'id', 'entry_date', 'laufhof_kuehe', 'laufhof_rinder', 'wetter_code',
     'niederschlag_mm', 'mond_phase', 'notes', 'updated_at', 'deleted_at',
   ],
+  tracks: [
+    'id', 'season_year', 'label', 'started_at', 'ended_at', 'width_m',
+    'geometry', 'point_times', 'point_count', 'notes', 'created_by',
+    'updated_at', 'deleted_at',
+  ],
+  weed_observations: [
+    'id', 'season_year', 'parcel_id', 'track_id', 'observed_at',
+    'weed_type', 'severity', 'treatment', 'treated_at', 'source',
+    'geometry', 'notes', 'created_by', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -46,5 +56,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   fertilization_entries: new Set(['entry_date']),
   n_dose_summary: new Set(),
   daily_farm_log: new Set(['entry_date']),
+  tracks: new Set(),
+  weed_observations: new Set(['treated_at']),
   data_history: new Set(),
 }

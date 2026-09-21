@@ -68,7 +68,19 @@ async def run_migrations() -> None:
         async with public_pool.connection() as conn:
             await conn.execute(f'create schema if not exists "{spec.key}"')
             await conn.commit()
-        await _apply_migrations(spec.key, sorted(spec.schema_dir.glob("*.sql")), get_pool(spec.key))
+        # schema/*.sql wird identisch auch client-seitig in pglite angewendet
+        # (frontend/src/db/pglite.ts) — Migrationen, die NUR auf dem Server
+        # laufen dürfen (z.B. PostGIS-Geometrie-Konvertierungen, die pglite
+        # mangels PostGIS-Extension nicht verstehen würde), liegen deshalb in
+        # einem separaten schema/server/-Unterordner, den pglites einstufiges
+        # glob-Pattern nicht erfasst. Nach den regulären Migrationen
+        # angewendet, damit z.B. eine ALTER-COLUMN-TYPE-Migration auf bereits
+        # existierenden Spalten aufsetzen kann.
+        migration_files = sorted(spec.schema_dir.glob("*.sql"))
+        server_dir = spec.schema_dir / "server"
+        if server_dir.is_dir():
+            migration_files += sorted(server_dir.glob("*.sql"))
+        await _apply_migrations(spec.key, migration_files, get_pool(spec.key))
 
 
 async def _apply_migrations(module: str, files: list[Path], pool: AsyncConnectionPool) -> None:

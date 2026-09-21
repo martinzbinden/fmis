@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import LocateControl from '@fmis/core/LocateControl'
 import type { FieldDeclaration } from '../types'
 import { fmtArea } from '../lib/format'
 import { colorForKultur } from '../lib/kulturColor'
@@ -229,6 +230,14 @@ export default function FieldMap({
         </button>
         <button
           type="button"
+          onClick={() => mapRef.current?.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true })}
+          title="Auf meinen Standort zoomen"
+          className="rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
+        >
+          📍 Mein Standort
+        </button>
+        <button
+          type="button"
           onClick={toggleFullscreen}
           title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild'}
           className="ml-auto rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
@@ -249,6 +258,7 @@ export default function FieldMap({
           attribution="&copy; swisstopo"
         />
         <TrackZoom onZoom={setZoom} />
+        <LocateControl />
         {visibleFeatures.length > 0 && (
           <GeoJSON
             key={visibleFeatures.map((f) => f.properties.declarationId).join(',')}

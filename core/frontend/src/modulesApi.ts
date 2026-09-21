@@ -1,9 +1,17 @@
 import { API_URL, getToken } from './auth'
 
+export interface ReaderInfo {
+  enabled: boolean
+  host: string
+  port: number
+}
+
 export interface ModuleInfo {
   key: string
   title: string
   enabled: boolean
+  reader_capable: boolean
+  reader: ReaderInfo | null
 }
 
 /**
@@ -34,4 +42,22 @@ export async function setModuleEnabled(key: string, enabled: boolean): Promise<M
     throw new Error(body?.detail ?? `Fehler ${res.status}`)
   }
   return (await res.json()) as ModuleInfo
+}
+
+/** Setzt Leser-Aktivierung + Adresse/Port für EINE Modul-Instanz (siehe
+ * PATCH /core/modules/{key}/reader, core/backend/fmis_core/modules_admin.py). */
+export async function setReaderSettings(
+  key: string,
+  settings: { enabled: boolean; host: string; port: number },
+): Promise<ReaderInfo> {
+  const res = await fetch(`${API_URL}/core/modules/${key}/reader`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+    body: JSON.stringify(settings),
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { detail?: string } | null
+    throw new Error(body?.detail ?? `Fehler ${res.status}`)
+  }
+  return (await res.json()) as ReaderInfo
 }

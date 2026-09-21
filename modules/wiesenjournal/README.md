@@ -3,8 +3,11 @@
 Digitales Pendant zum Papier-Wiesenjournal: Nutzung (Weide/Eingrasen) und
 Düngung pro Parzelle und Tag als Raster oder als flaches Journal, Weidegänge
 als freiform gezeichnete Zaun-Geometrie auf der Karte (statt nur fixer
-GELAN-Parzellen), plus betriebsweite Tagesmeldung (Laufhof/Auslauf,
-Wetter/Niederschlag/Mond).
+GELAN-Parzellen), betriebsweite Tagesmeldung (Laufhof/Auslauf,
+Wetter/Niederschlag/Mond), eine Jahresauswertung (echte PostGIS-Verschneidung
+der Weidegänge mit den GELAN-Parzellen aus dem Kulturen-Modul), plus
+GPS-Traktor-Tracking (inkl. GPX-Export) und Unkraut-Erfassung (Blacken/
+Disteln/Andere — manuell oder als Vorschlag aus einer GPS-Verweilpause).
 
 Fachmodul im gemeinsamen [FMIS-Repo](../../README.md) — Login, Rollen,
 Deployment und die App-Shell sind geteilt (siehe Root-README und
@@ -12,8 +15,9 @@ Deployment und die App-Shell sind geteilt (siehe Root-README und
 (`modules/wiesenjournal/`) fachlich/technisch spezifisch ist. Eigene
 Berechtigungen `wiesenjournal:parcels:*`, `wiesenjournal:weide:*`,
 `wiesenjournal:nutzung:*`, `wiesenjournal:duengung:*`,
-`wiesenjournal:tagesmeldung:*`, `wiesenjournal:history:read`, eigenes
-Postgres-Schema `wiesenjournal`, eigene IndexedDB `idb://wiesenjournal`.
+`wiesenjournal:tagesmeldung:*`, `wiesenjournal:tracking:*`,
+`wiesenjournal:history:read`, eigenes Postgres-Schema `wiesenjournal`,
+eigene IndexedDB `idb://wiesenjournal`.
 
 **Status: erster Wurf (2026-09-20)**, mit Beispieldaten für die Saison 2026
 befüllt (siehe `schema/0003_seed_demo.sql`) — noch nicht mit dem Betrieb
@@ -41,6 +45,44 @@ besprochen/final.
   Papierformulars.
 - **`daily_farm_log`** — betriebsweite Tagesmeldung (Laufhof/Auslauf,
   Wetter/Niederschlag/Mond), eine Zeile pro Tag, kein Parzellenbezug.
+- **`tracks`** — GPS-Aufzeichnung einer Traktorfahrt (LineString-Geometrie,
+  wächst während der Aufzeichnung, `point_times` als parallele
+  Zeitstempel-Liste fürs GPX-Export). Nicht versioniert wie `paddocks` —
+  während einer laufenden Aufzeichnung wird die Zeile einfach fortgeschrieben,
+  nach `ended_at` gilt sie als abgeschlossen.
+- **`weed_observations`** — Unkraut-Fund (Punkt-Geometrie): Art
+  (Blacken/Disteln/Andere), Befall, optionale Behandlung. `source` unterscheidet
+  `manual` (Kartenklick/aktueller GPS-Fix) von `gps_dwell` (aus einer erkannten
+  Verweilpause während einer Track-Aufzeichnung vorgeschlagen — die Bestätigung
+  ist aber immer ein manueller Klick, nie vollautomatisch).
+
+## PostGIS (server-seitig) & Jahresauswertung
+
+`geometry`/`base_geometry` (dieses Modul) und `geometry` (Kulturen-Modul)
+sind seit `schema/server/0001_postgis_geometry.sql` echte PostGIS-Spalten
+auf dem Server — der Client (pglite) sieht davon nichts und arbeitet
+weiterhin mit reinem GeoJSON-Text; die Umwandlung passiert ausschliesslich
+in `backend/app/sync.py` (`ST_AsGeoJSON`/`ST_GeomFromGeoJSON` an der
+Sync-Grenze). Bewusste Entscheidung: eine clientseitige PostGIS-Extension
+für pglite existiert zwar (`@electric-sql/pglite-postgis`), ist aber laut
+Hersteller experimentell (unbehandelte C++-Exceptions können die Instanz
+zum Absturz bringen) und würde ~18.8 MB zusätzlich pro Modul-Bundle
+bedeuten — für eine offline im Stall genutzte PWA nicht vertretbar.
+
+Neue Migrationen (egal für welches Modul), die eine `geometry`-Spalte
+brauchen, gehören deshalb NICHT direkt unter `schema/*.sql` (das läuft 1:1
+auch in pglite, das kein PostGIS hat), sondern in einen `schema/server/`-
+Unterordner — pglites Migrations-Glob ist nicht rekursiv und sieht diesen
+Ordner nie (siehe `db/pglite.ts`), während `core/backend/fmis_core/db.py`s
+Migrations-Runner ihn zusätzlich anwendet.
+
+Die **Jahresauswertung** (`GET /wiesenjournal/reports/parcel-overlap`,
+Seite „Auswertung") verschneidet `wiesenjournal.paddocks` mit
+`fields.field_declarations` via `ST_Intersects`/`ST_Intersection` (beide
+Module liegen in derselben physischen Postgres-Datenbank, nur getrennte
+Schemas — eine schema-qualifizierte Abfrage braucht keine zusätzlichen
+Rechte) und zeigt pro GELAN-Parzelle die überlappende Fläche/Prozent —
+ohne dass sich Weidegänge je an Parzellengrenzen halten müssten.
 
 ## Kein technischer Bezug zu livestock/dairy/fields
 
@@ -63,6 +105,32 @@ Weidegang — für den Fall, dass der reale Zaun exakt der deklarierten
 Parzelle entspricht, ohne sie manuell nachzeichnen zu müssen. Funktioniert
 nur, wenn das Kulturen-Modul in diesem Browser schon mal geöffnet/
 synchronisiert wurde; sonst bleibt die Vorlage einfach leer (kein Fehler).
+
+## GPS-Tracking & Unkraut (Karte-Seite)
+
+„🚜 Tracking starten" nutzt `navigator.geolocation.watchPosition` direkt
+(nicht nur Leaflets `map.locate()`, das nur einen einzelnen/zentrierten Fix
+liefert — hier wird jeder rohe Fix gebraucht), schreibt den wachsenden Track
+periodisch nach pglite (`lib/tracking.ts: saveTrackProgress`), damit bei
+einem Tab-Absturz nichts verloren geht. **Bewusst nur im Vordergrund**
+(Bildschirm an, Seite offen — z.B. Tablet in der Traktorkabine): Browser
+können GPS im Hintergrund ohnehin nicht zuverlässig aufzeichnen (v.a.
+iOS-Safari-PWA-Limit), eine native App wäre der einzige Weg dahin.
+
+Die **Verweilpausen-Erkennung** (`lib/geo.ts: detectDwell`, feste Schwellen
+15 m / 60 s) läuft nur während einer aktiven Aufzeichnung und schlägt einen
+Unkraut-Fund lediglich vor — geschrieben wird nichts, bis der Nutzer aktiv
+bestätigt und die Art (Blacken/Disteln/Andere) wählt. Die Schwellenwerte
+sind Startwerte und dürften nach echten Fahrten angepasst werden.
+
+„🌿 Unkraut melden" nutzt den letzten bekannten GPS-Fix (`onLocationFound`,
+z.B. von einem vorherigen „Mein Standort"-Klick oder aus einer laufenden
+Aufzeichnung); ist keiner bekannt, fällt es auf einen Kartenklick zurück
+(`components/PaddockMap.tsx: MapClickCatcher`).
+
+**GPX-Export** (`lib/gpx.ts`) ist ein handgeschriebener, minimaler GPX-1.1-
+Serializer — kein zusätzliches npm-Paket nötig, das Format ist dafür
+einfach genug.
 
 ## Deployment & lokale Entwicklung
 

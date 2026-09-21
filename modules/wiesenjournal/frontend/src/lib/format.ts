@@ -44,3 +44,15 @@ export const INTENSITAET_LABEL: Record<string, string> = {
   e: 'extensiv',
   mi: 'mittel-intensiv',
 }
+
+export const WEED_TYPE_LABEL: Record<string, string> = {
+  blacken: 'Blacken',
+  disteln: 'Disteln',
+  andere: 'Andere',
+}
+
+export const WEED_TYPE_COLOR: Record<string, string> = {
+  blacken: '#16a34a',
+  disteln: '#ca8a04',
+  andere: '#6b7280',
+}

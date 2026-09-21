@@ -3,6 +3,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useDb } from '@fmis/core/DbContext'
 import { parseAdisFiles, importAdisData, type ImportSummary } from '../lib/importAdis'
+import { parseTierbestand, parseSmgFiles, importSmgData, type SmgImportSummary } from '../lib/importSmg'
 import { fmtDate } from '../lib/format'
 import type { Animal } from '../types'
 
@@ -22,19 +23,23 @@ async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
   return rows
 }
 
-export default function Animals() {
+export default function Animals({ moduleKey }: { moduleKey: string }) {
   const { data, loading, refresh } = useQuery(loadAnimals)
   const animals = data ?? []
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4 pb-24">
-      <h1 className="text-xl font-bold text-gray-800">Kühe</h1>
+      <h1 className="text-xl font-bold text-gray-800">Tiere</h1>
 
-      <ImportForm onImported={refresh} />
+      {moduleKey === 'dairy' ? (
+        <ImportForm onImported={refresh} />
+      ) : (
+        <TierbestandImportForm onImported={refresh} />
+      )}
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && animals.length === 0 && (
-        <p className="text-center text-gray-500">Noch keine Kühe importiert.</p>
+        <p className="text-center text-gray-500">Noch keine Tiere importiert.</p>
       )}
 
       <ul className="space-y-2">
@@ -114,6 +119,100 @@ function ImportForm({ onImported }: { onImported: () => void }) {
           {summary.unmatchedEarTags.length > 0 && (
             <p className="mt-1 text-amber-700">
               {summary.unmatchedEarTags.length} Einträge ohne passende Kuh übersprungen:{' '}
+              {summary.unmatchedEarTags.join(', ')}
+            </p>
+          )}
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
+          {warnings.map((w, i) => (
+            <li key={i}>{w}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** Import für die Milchschafe-Instanz: TVD-Tierbestand (Pflicht, liefert
+ * alle aktuellen Tiere) + optional die SMG-Zuchtorganisationsdateien
+ * (Laktationen/Milchkontrollen für die Teilmenge mit Milchleistungsdaten).
+ * Zwei getrennte Dateiauswahlfelder, da unterschiedliche Quellen/Formate —
+ * siehe lib/importSmg.ts für die Herleitung des Ohrmarken-Abgleichs. */
+function TierbestandImportForm({ onImported }: { onImported: () => void }) {
+  const db = useDb()
+  const [tierbestandFile, setTierbestandFile] = useState<File | null>(null)
+  const [smgFiles, setSmgFiles] = useState<File[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [summary, setSummary] = useState<SmgImportSummary | null>(null)
+  const [warnings, setWarnings] = useState<string[]>([])
+
+  async function handleImport() {
+    if (!tierbestandFile) return
+    setBusy(true)
+    setError(null)
+    setSummary(null)
+    try {
+      const tierbestand = await parseTierbestand(tierbestandFile)
+      const smg = smgFiles.length > 0 ? await parseSmgFiles(smgFiles) : { lactations: [], milkTests: [], warnings: [] }
+      const result = await importSmgData(db, tierbestand, smg)
+      setSummary(result)
+      setWarnings(smg.warnings)
+      onImported()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg bg-white p-4 shadow-sm">
+      <h2 className="mb-2 text-sm font-semibold text-gray-700">Tierbestand + SMG-Daten importieren</h2>
+      <p className="mb-3 text-xs text-gray-500">
+        Zuerst den TVD-Tierbestand (<code>Tierbestand.xlsx</code>, alle aktuellen Tiere) auswählen,
+        optional zusätzlich die SMG-Exportdateien (<code>b&lt;nr&gt;.K04</code>,{' '}
+        <code>b&lt;nr&gt;.K33</code>) für Laktationen/Milchkontrollen. Nichts verlässt den Browser.
+      </p>
+      <label className="block text-xs font-medium text-gray-600">
+        TVD-Tierbestand (Excel)
+        <input
+          type="file"
+          accept=".xlsx,.xls"
+          disabled={busy}
+          onChange={(e) => setTierbestandFile(e.target.files?.[0] ?? null)}
+          className="mt-1 block w-full text-sm text-gray-600"
+        />
+      </label>
+      <label className="mt-3 block text-xs font-medium text-gray-600">
+        SMG-Dateien (optional)
+        <input
+          type="file"
+          multiple
+          disabled={busy}
+          onChange={(e) => setSmgFiles(e.target.files ? [...e.target.files] : [])}
+          className="mt-1 block w-full text-sm text-gray-600"
+        />
+      </label>
+      <button
+        type="button"
+        onClick={() => void handleImport()}
+        disabled={busy || !tierbestandFile}
+        className="mt-3 w-full rounded-lg bg-brand-700 py-2 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {busy ? 'Importiere…' : 'Importieren'}
+      </button>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {summary && (
+        <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
+          <p>{summary.animalsImported} Tiere importiert.</p>
+          <p>{summary.lactationsImported} Laktationsdaten importiert.</p>
+          <p>{summary.milkTestsImported} Milchtests importiert.</p>
+          {summary.unmatchedEarTags.length > 0 && (
+            <p className="mt-1 text-amber-700">
+              {summary.unmatchedEarTags.length} Einträge ohne passendes Tier übersprungen:{' '}
               {summary.unmatchedEarTags.join(', ')}
             </p>
           )}

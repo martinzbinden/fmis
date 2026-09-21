@@ -43,20 +43,26 @@ async function runMigrations(pg: PGlite): Promise<void> {
   }
 }
 
-let dbPromise: Promise<PGlite> | null = null
+// Ein Promise pro Instanz-Key (z.B. "dairy" für Kühe, "dairy_schafe" für
+// Schafe) — dieses Modul kann mehrfach instanziert werden (siehe
+// core/backend/fmis_core/module_registry.py, ModuleSpec.source), jede
+// Instanz braucht ihre eigene, unabhängige IndexedDB.
+const dbPromises = new Map<string, Promise<PGlite>>()
 
 /**
- * Singleton-Zugriff auf die lokale pglite-Instanz. pglite ist die einzige
- * Datenquelle für die UI — das Backend wird nur für /auth, /sync/push und
- * /sync/pull kontaktiert (siehe schema/SYNC_API.md).
+ * Key-gecachter Zugriff auf die lokale pglite-Instanz EINER Modul-Instanz.
+ * pglite ist die einzige Datenquelle für die UI — das Backend wird nur für
+ * /auth, /sync/push und /sync/pull kontaktiert (siehe schema/SYNC_API.md).
  */
-export function getDb(): Promise<PGlite> {
+export function getDb(key: string): Promise<PGlite> {
+  let dbPromise = dbPromises.get(key)
   if (!dbPromise) {
     dbPromise = (async () => {
-      const pg = new PGlite('idb://dairy')
+      const pg = new PGlite(`idb://${key}`)
       await runMigrations(pg)
       return pg
     })()
+    dbPromises.set(key, dbPromise)
   }
   return dbPromise
 }
