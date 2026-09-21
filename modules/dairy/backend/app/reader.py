@@ -46,6 +46,7 @@ class SessionState(BaseModel):
     last_read_at: str | None = None
     last_error: str | None = None
     started_by: str | None = None
+    handshake: str | None = None
 
 
 # Modul-Ebene (nicht in build_reader_router): mit `from __future__ import
