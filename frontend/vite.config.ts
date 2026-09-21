@@ -55,6 +55,16 @@ export default defineConfig({
       // zwei Ebenen über frontend/ (Repo-Root), nicht nur eine.
       allow: ['../..'],
     },
+    // Erlaubt den Zugriff über eine `*.localhost`-Subdomain (z.B.
+    // fmis.localhost:5173) statt nur "localhost" — Browser lösen JEDE
+    // *.localhost-Subdomain automatisch auf 127.0.0.1 auf (kein
+    // /etc/hosts-Eintrag nötig), aber als EIGENE Origin: eigener
+    // Service-Worker-/Cache-/LocalStorage-Namensraum, der nicht mit
+    // anderen, unabhängigen Projekten kollidiert, die zufällig denselben
+    // Port unter dem blossen "localhost" benutzt haben. Vites
+    // DNS-Rebinding-Schutz (server.allowedHosts) würde einen Request mit
+    // Host-Header "fmis.localhost" sonst ablehnen.
+    allowedHosts: ['.localhost'],
   },
   optimizeDeps: {
     exclude: ['@electric-sql/pglite'],
