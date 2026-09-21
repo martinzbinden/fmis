@@ -21,6 +21,27 @@ interface SessionState {
   last_error: string | null
   started_by: string | null
   handshake: string | null
+  host: string | null
+  port: number | null
+  connected_since: string | null
+  pings: number
+  pongs: number
+  last_pong_at: string | null
+  rtt_ms: number | null
+  noise_bytes: number
+  frames: number
+}
+
+/** Verbindungsqualität aus Keep-alive-Antworten: Alter der letzten Antwort und Umlaufzeit.
+ * (Eine Funksignalstärke liefert das Protokoll nicht.) */
+function quality(s: SessionState, now: number): { label: string; color: string } {
+  if (!s.active || !s.handshake) return { label: '–', color: 'text-gray-400' }
+  if (s.pings === 0) return { label: 'noch kein Keep-alive', color: 'text-gray-500' }
+  const age = s.last_pong_at ? (now - new Date(s.last_pong_at).getTime()) / 1000 : Infinity
+  if (age > 65) return { label: `keine Antwort seit ${Number.isFinite(age) ? Math.round(age) + ' s' : 'Beginn'}`, color: 'text-red-600' }
+  if ((s.rtt_ms ?? 0) > 1500) return { label: `träge (${Math.round(s.rtt_ms!)} ms)`, color: 'text-amber-600' }
+  if ((s.rtt_ms ?? 0) > 300) return { label: `mässig (${Math.round(s.rtt_ms!)} ms)`, color: 'text-amber-600' }
+  return { label: `gut (${s.rtt_ms != null ? Math.round(s.rtt_ms) + ' ms' : 'ok'})`, color: 'text-green-600' }
 }
 
 interface SlotRow extends MilkingSlot {
@@ -97,6 +118,12 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
     [],
   )
   const [openArchived, setOpenArchived] = useState<Record<string, boolean>>({})
+  const [showDetails, setShowDetails] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5000)
+    return () => clearInterval(t)
+  }, [])
   const esRef = useRef<AbortController | null>(null)
 
   const banks = data ?? []
@@ -310,6 +337,55 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           <p className="text-sm text-gray-500">Ohrmarkenleser für diese Instanz nicht aktiviert (Verwaltung → Module) — manuelle Aufnahme unten.</p>
         )}
         {session?.last_error && <p className="mt-2 text-sm text-red-600">{session.last_error}</p>}
+        {readerEnabled && (
+          <div className="mt-2 text-xs">
+            <button type="button" onClick={() => setShowDetails((v) => !v)} className="text-brand-700">
+              {showDetails ? '▾' : '▸'} Details zur Leserverbindung
+              {session?.active && (
+                <span className={`ml-2 ${quality(session, now).color}`}>Qualität: {quality(session, now).label}</span>
+              )}
+            </button>
+            {showDetails && session && (
+              <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 rounded bg-gray-50 p-2 text-gray-600">
+                <dt>Gerät</dt>
+                <dd>{session.host ? `${session.host}:${session.port}` : '–'}</dd>
+                <dt>Verbunden seit</dt>
+                <dd>{session.connected_since ? fmtDateTime(session.connected_since) : '–'}</dd>
+                <dt>Handshake</dt>
+                <dd>
+                  {session.handshake
+                    ? `OK · ${session.handshake.split('|')[0]} Datensätze im Gerätespeicher (${session.handshake})`
+                    : session.active
+                      ? 'ausstehend'
+                      : '–'}
+                </dd>
+                <dt>Keep-alive</dt>
+                <dd>
+                  {session.pings} gesendet · {session.pongs} beantwortet
+                  {session.last_pong_at ? ` · letzte Antwort vor ${Math.max(0, Math.round((now - new Date(session.last_pong_at).getTime()) / 1000))} s` : ''}
+                  {session.rtt_ms != null ? ` · Umlaufzeit ${Math.round(session.rtt_ms)} ms` : ''}
+                </dd>
+                <dt>Qualität</dt>
+                <dd className={quality(session, now).color}>{quality(session, now).label}</dd>
+                <dt>Lesungen</dt>
+                <dd>
+                  {session.reads} Tiere · {session.frames} Frames
+                  {session.last_read_at ? ` · letzte ${fmtDateTime(session.last_read_at)}` : ''}
+                </dd>
+                <dt>Rauschen</dt>
+                <dd>{session.noise_bytes} Bytes verworfen</dd>
+                <dt>Gestartet von</dt>
+                <dd>{session.started_by ?? '–'}</dd>
+              </dl>
+            )}
+            {showDetails && (
+              <p className="mt-1 text-gray-400">
+                Eine Funksignalstärke (WLAN) liefert der Leser nicht; die Qualität wird aus den Keep-alive-Antworten
+                (alle 20 s) abgeleitet.
+              </p>
+            )}
+          </div>
+        )}
         {session?.active && session.session_date && session.session_date !== date && (
           <p className="mt-2 text-xs text-amber-700">Die laufende Sitzung gehört zum {fmtDate(session.session_date)}.</p>
         )}

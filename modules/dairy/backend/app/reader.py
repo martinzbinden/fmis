@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from core.backend.fmis_core.agrident import ReaderBusyError, ReaderError, acquire_reader, sheep_short_tag
+from core.backend.fmis_core.agrident import ReaderBusyError, ReaderError, acquire_reader, reader_tag_candidates
 from core.backend.fmis_core.auth import CurrentUser, require_auth, require_permission
 from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.modules_admin import get_reader_settings, is_reader_enabled, require_reader_enabled
@@ -47,6 +47,16 @@ class SessionState(BaseModel):
     last_error: str | None = None
     started_by: str | None = None
     handshake: str | None = None
+    # Verbindungsdetails (siehe agrident.ReaderConnection)
+    host: str | None = None
+    port: int | None = None
+    connected_since: str | None = None
+    pings: int = 0
+    pongs: int = 0
+    last_pong_at: str | None = None
+    rtt_ms: float | None = None
+    noise_bytes: int = 0
+    frames: int = 0
 
 
 # Modul-Ebene (nicht in build_reader_router): mit `from __future__ import
@@ -73,6 +83,9 @@ class _Session:
         self.last_error: str | None = None
         # Handshake-Ergebnis: Antwort des Lesers auf [XGMEMINFO] (z.B. "448|1000000|…")
         self.handshake: str | None = None
+        self.host: str | None = None
+        self.port: int | None = None
+        self.conn = None  # ReaderConnection, solange verbunden
         # Version zählt hoch bei jeder DB-Änderung; SSE-Clients warten darauf.
         self.version = 0
         self.changed = asyncio.Event()
@@ -83,6 +96,14 @@ class _Session:
             current_bank_id=str(self.bank_id) if self.bank_id else None, bank_number=self.bank_number,
             reads=self.reads, last_read_at=self.last_read_at.isoformat() if self.last_read_at else None,
             last_error=self.last_error, started_by=self.started_by, handshake=self.handshake,
+            host=self.host, port=self.port,
+            connected_since=datetime.fromtimestamp(self.conn.connected_at, timezone.utc).isoformat() if self.conn else None,
+            pings=self.conn.pings if self.conn else 0,
+            pongs=self.conn.pongs if self.conn else 0,
+            last_pong_at=datetime.fromtimestamp(self.conn.last_pong_at, timezone.utc).isoformat() if self.conn and self.conn.last_pong_at else None,
+            rtt_ms=self.conn.last_rtt_ms if self.conn else None,
+            noise_bytes=self.conn.noise_bytes if self.conn else 0,
+            frames=self.conn.frames if self.conn else 0,
         )
 
     def bump(self) -> None:
@@ -154,11 +175,14 @@ def build_reader_router(key: str) -> APIRouter:
         sess.bump()
 
     async def _record_read(sess: _Session, long_tag: str) -> None:
-        candidate = sheep_short_tag(long_tag) or long_tag
+        # Zuordnung: Kurzform (CH + 8 Ziffern) oder Langform (CH113 + 8 Ziffern + Prüfziffer)
+        candidate, core = reader_tag_candidates(long_tag)
         async with pool.connection() as conn:
             animal = await (await conn.execute(
-                "select id, ear_tag from animals where ear_tag in (%s, %s) and deleted_at is null order by ear_tag = %s desc limit 1",
-                (candidate, long_tag, candidate),
+                "select id, ear_tag from animals where deleted_at is null and "
+                "(ear_tag in (%s, %s) or (%s is not null and ear_tag ~ ('^CH113' || %s || '[0-9]$'))) "
+                "order by status = 'aktiv' desc limit 1",
+                (candidate, long_tag, core, core),
             )).fetchone()
         if sess.bank_id is None or sess.slots_in_bank >= sess.capacity:
             await _open_bank(sess)
@@ -180,8 +204,10 @@ def build_reader_router(key: str) -> APIRouter:
 
     async def _run(sess: _Session) -> None:
         host, port = await get_reader_settings(key)
+        sess.host, sess.port = host, port
         try:
             async with acquire_reader(host, port, keepalive=True) as conn:
+                sess.conn = conn
                 # Handshake: erst wenn der Leser auf einen Befehl antwortet,
                 # ist er wirklich "im Protokoll" (ein angenommener TCP-Socket
                 # allein sagt nichts — WLAN-Modul vs. Lesegerät).
@@ -206,6 +232,8 @@ def build_reader_router(key: str) -> APIRouter:
         except Exception as exc:  # noqa: BLE001 — Sitzung darf nicht stumm sterben
             sess.last_error = f"Unerwarteter Fehler: {exc}"
             sess.bump()
+        finally:
+            sess.conn = None
 
     @router.get("/reader/session", response_model=SessionState)
     async def session_state(user: CurrentUser = Depends(require_auth)) -> SessionState:
@@ -294,7 +322,9 @@ def build_reader_router(key: str) -> APIRouter:
                 try:
                     await asyncio.wait_for(sess.changed.wait(), timeout=25)
                 except asyncio.TimeoutError:
-                    yield ": ping\n\n"
+                    # Kein Datenereignis — trotzdem den Zustand schicken, damit
+                    # Verbindungsqualität (Pong-Alter, RTT) im Client aktuell bleibt.
+                    last_version = -1
 
         return StreamingResponse(stream(), media_type="text/event-stream")
 
