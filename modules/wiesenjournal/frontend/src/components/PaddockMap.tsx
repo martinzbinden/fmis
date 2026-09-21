@@ -8,6 +8,7 @@ import 'leaflet-draw/dist/leaflet.draw.css'
 import LocateControl from '@fmis/core/LocateControl'
 import { loadFieldsBackground, type FieldsBackgroundFeature } from '../lib/fieldsBackground'
 import { WEED_TYPE_COLOR, WEED_TYPE_LABEL } from '../lib/format'
+import { fetchFertilizationMap, type FertilizationMapProps } from '../lib/report'
 import type { TrackPoint } from '../lib/tracking'
 import type { Paddock, Parcel, Track, WeedObservation } from '../types'
 
@@ -297,10 +298,81 @@ function FertilizationLayer({ features }: { features: FertilizationFeature[] }) 
   return null
 }
 
+// Farbrampe kg N/ha für die Düngungskarte (Verschnitt) — 6 Stufen.
+const N_RAMP: [number, string][] = [
+  [0, '#fef3c7'],
+  [30, '#fde68a'],
+  [60, '#fbbf24'],
+  [90, '#f59e0b'],
+  [120, '#d97706'],
+  [150, '#92400e'],
+]
+function nColor(v: number): string {
+  let c = N_RAMP[0][1]
+  for (const [t, col] of N_RAMP) if (v >= t) c = col
+  return c
+}
+
+/** Düngungskarte: Verschnitt aller Massnahmen des Jahres (Server, PostGIS) — Fläche × Summe kg N/ha. */
+function FertilizationHeatLayer({ seasonYear, onError }: { seasonYear: number; onError: (msg: string | null) => void }) {
+  const map = useMap()
+  useEffect(() => {
+    let layer: L.GeoJSON | null = null
+    let legend: L.Control | null = null
+    let cancelled = false
+    onError(null)
+    fetchFertilizationMap(seasonYear)
+      .then((fc) => {
+        if (cancelled) return
+        layer = L.geoJSON(fc as never, {
+          style: (f) => ({
+            color: '#78350f',
+            weight: 0.5,
+            fillColor: nColor((f?.properties as FertilizationMapProps).n_kg_per_ha),
+            fillOpacity: 0.6,
+          }),
+          onEachFeature: (f, l) => {
+            const p = f.properties as FertilizationMapProps
+            l.bindTooltip(`${p.n_kg_per_ha} kg N/ha (${p.n_avail_kg_per_ha} verfügbar) · ${p.count} Massnahme${p.count === 1 ? '' : 'n'} · ${p.area_a} a`, {
+              sticky: true,
+            })
+          },
+        })
+        layer.addTo(map)
+        const Legend = L.Control.extend({
+          onAdd: () => {
+            const div = L.DomUtil.create('div', 'rounded bg-white/90 p-2 text-[10px] leading-tight shadow')
+            div.innerHTML =
+              '<div class="mb-1 font-semibold">kg N/ha</div>' +
+              N_RAMP.map(([t, c], i) => {
+                const next = N_RAMP[i + 1]?.[0]
+                return `<div class="flex items-center gap-1"><span style="background:${c};width:14px;height:10px;display:inline-block;border:1px solid #78350f"></span>${next ? `${t}–${next}` : `≥ ${t}`}</div>`
+              }).join('')
+            return div
+          },
+        })
+        legend = new Legend({ position: 'bottomleft' })
+        legend.addTo(map)
+        if (fc.features.length === 0) onError('Keine Massnahmen mit Fläche und Nährstoffen in diesem Jahr.')
+      })
+      .catch((err) => {
+        if (!cancelled) onError(err instanceof Error ? err.message : 'Düngungskarte nicht verfügbar (offline?)')
+      })
+    return () => {
+      cancelled = true
+      if (layer) map.removeLayer(layer)
+      if (legend) map.removeControl(legend)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, seasonYear])
+  return null
+}
+
 export default function PaddockMap({
   paddocks,
   parcels,
   fertilization = [],
+  seasonYear,
   tracks,
   livePoints,
   weedObservations,
@@ -318,6 +390,8 @@ export default function PaddockMap({
   parcels: Parcel[]
   /** Düngungsmassnahmen für den Layer „Düngung" (optional). */
   fertilization?: FertilizationFeature[]
+  /** Saison für die Düngungskarte (Verschnitt, server-berechnet). */
+  seasonYear: number
   tracks: Track[]
   livePoints: TrackPoint[] | null
   weedObservations: WeedObservation[]
@@ -335,6 +409,8 @@ export default function PaddockMap({
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const [showTemplate, setShowTemplate] = useState(false)
   const [showFertilization, setShowFertilization] = useState(false)
+  const [showHeat, setShowHeat] = useState(false)
+  const [heatError, setHeatError] = useState<string | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const mapRef = useRef<L.Map | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -405,6 +481,14 @@ export default function PaddockMap({
         )}
         <button
           type="button"
+          onClick={() => setShowHeat((v) => !v)}
+          title="Düngungskarte: Verschnitt aller Massnahmen des Jahres, Summe kg N/ha je Teilfläche — unabhängig von Parzellengrenzen (Internet nötig)"
+          className={`rounded px-2 py-1 font-medium ${showHeat ? 'bg-amber-800 text-white' : 'bg-gray-100 text-gray-600'}`}
+        >
+          Düngungskarte
+        </button>
+        <button
+          type="button"
           onClick={() => mapRef.current?.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true })}
           title="Auf meinen Standort zoomen"
           className="rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
@@ -434,6 +518,7 @@ export default function PaddockMap({
         />
         <BaseGeometryLayer parcels={parcels} />
         {showFertilization && <FertilizationLayer features={fertilization} />}
+        {showHeat && <FertilizationHeatLayer seasonYear={seasonYear} onError={setHeatError} />}
         {showTemplate && <FieldsTemplateLayer onAdopt={onAdoptFieldsGeometry} />}
         <DrawLayer paddocks={paddocks} onCreated={onCreated} onEdited={onEdited} onDeleted={onDeleted} onSelect={onSelect} />
         <TracksLayer tracks={tracks} livePoints={livePoints} />
@@ -441,6 +526,9 @@ export default function PaddockMap({
         <LocateControl onLocationFound={onLocationFound} />
         {onPickLocation && <MapClickCatcher active={pickingLocation} onPick={onPickLocation} />}
       </MapContainer>
+      {showHeat && heatError && (
+        <div className="border-t bg-amber-50 p-2 text-center text-xs text-amber-800">{heatError}</div>
+      )}
       {pickingLocation && (
         <div className="border-t bg-amber-50 p-2 text-center text-xs font-medium text-amber-800">
           Tippe auf die Karte, um den Standort zu wählen…

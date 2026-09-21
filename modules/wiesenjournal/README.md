@@ -19,9 +19,65 @@ Berechtigungen `wiesenjournal:parcels:*`, `wiesenjournal:weide:*`,
 `wiesenjournal:history:read`, eigenes Postgres-Schema `wiesenjournal`,
 eigene IndexedDB `idb://wiesenjournal`.
 
-**Status: erster Wurf (2026-09-20)**, mit Beispieldaten für die Saison 2026
-befüllt (siehe `schema/0003_seed_demo.sql`) — noch nicht mit dem Betrieb
-besprochen/final.
+**Stand 2026-09-21:** Journal-Parzellen sind die GELAN-Parzellen des
+Kulturen-Moduls, das Nutzungsmodell entspricht der Legende des Papier-/
+Excel-Journals, Düngung mit Nährstoffrechnung und Flächenbezug (ganze
+Parzelle, Teilfläche, GPS-Track), Jahresauswertung und Düngungskarte. Die
+Demo-Daten des ersten Wurfs (`0003_seed_demo.sql`) sind per
+`0009_remove_demo.sql` wieder entfernt. Excel-Import: `tools/
+import_wiesenjournal_xlsx.py`.
+
+## Parzellen = GELAN-Parzellen
+
+`parcels` wird pro Saison aus `fields.field_declarations` befüllt
+(`POST /wiesenjournal/parcels/import-from-fields?year=`, Button „Aus GELAN
+übernehmen" auf der Parzellen-Seite; `backend/app/parcels_import.py`) —
+serverseitig, weil beide Modul-Schemas in derselben Datenbank liegen und nur
+der Server die massgebliche PostGIS-Geometrie hat. Schlüssel ist
+`(season_year, fields_lineage_id)` (GELAN „ID Kultur", stabil über die
+Jahre); Name/Fläche/Kultur/Betrieb/Geometrie werden nachgeführt, manuell
+gepflegte Felder (Wiesentyp, Intensität, Bemerkung) bleiben. `category`
+(futter 6xx / acker 5xx) steuert den Umschalter „Ackerkulturen anzeigen"
+(`hooks/useShowAcker.ts`, pro Gerät in localStorage). Manuell oder aus
+Excel angelegte Parzellen (`source` manual/excel, ohne Geometrie) lassen
+sich per „GELAN zuordnen" in eine GELAN-Parzelle überführen
+(`lib/parcels.ts: mergeParcel`).
+
+## Nutzung (Legende)
+
+`usage_entries.usage_type` deckt die Papierlegende ab: Weide je Tierkategorie
+(`animal_category` X Kühe / Y Rinder / Z Kälber / G Galtkühe / W Schafe /
+V Legehennen, `day_only` = Kleinbuchstabe = nur Tagweide), Eingrasen,
+Silage/Dürrfutter (mit Ertrag Rb/Fu/St), Weide putzen, Blacken (stechen/
+Einzelstock/Fläche), Übersaat/Saat (Mischung, kg/ha), Aufwuchshöhe (cm),
+Pflug/Striegeln/Säuberungsschnitt, Sonstiges. Mehrere Einträge pro Parzelle
+und Tag sind normal; das Raster zeigt die Buchstaben (`lib/format.ts:
+usageLegend`). `daily_farm_log` führt Laufhof je Kategorie und Tierzahlen.
+
+## Düngung, Nährstoffe, Flächenbezug
+
+- **`fertilizer_types`** — Düngerarten mit Gehalten je m³/t/kg (Startwerte
+  ca. GRUD 2017, als Richtwerte gekennzeichnet, Seite „Düngerarten"),
+  Verdünnungsbasis (Gülleanteil) und Gefäss (Fass 6.5 m³ / Fuder).
+- **`fertilization_entries`** — Massnahme mit Düngerart, Menge (oder Anzahl
+  Fass/Fuder), Verdünnung, `extent_type`: `parcel` (ganze Parzelle),
+  `parcels` (mehrere), `polygon` (frei gezeichnet — Zaunstreifen, Rand,
+  oben/unten, oder Weidegang übernommen; `components/ExtentPicker.tsx`),
+  `track` (GPS-Fahrt mit Arbeitsbreite gepuffert). Nährstoff-Totale
+  (`lib/nutrients.ts` ↔ `backend/app/nutrients.py`, keep in sync).
+- **`fertilization_shares`** — Verteilung jeder Massnahme auf die GELAN-
+  Parzellen. Ganze Parzelle(n) rechnet der Client offline; Polygon/Track
+  gehen über `POST /wiesenjournal/fertilization/resolve-extent` (PostGIS-
+  Verschneidung in LV95, Internet nötig), der Client schreibt Massnahme +
+  Anteile dann wie gewohnt per Sync. `POST …/recompute-shares?year=`
+  rechnet alles neu (nach GELAN-Übernahme, geänderten Düngerarten, Excel-
+  Import); der Verlaufseintrag trägt dann den System-Akteur
+  `recompute-shares (…)`.
+- **Auswertung** — `GET /wiesenjournal/reports/nutrients?year=` (Σ je
+  Parzelle, kg N/ha, Totale je Betrieb/Kategorie, CSV) und
+  `GET …/reports/fertilization-map?year=` (Düngungskarte: planarer
+  Verschnitt aller Massnahmen via `ST_Node`/`ST_Polygonize`, je Teilfläche
+  Summe kg N/ha — grenzunabhängig; Karte → „Düngungskarte").
 
 ## Datenmodell
 

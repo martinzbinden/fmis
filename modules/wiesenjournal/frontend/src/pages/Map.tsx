@@ -322,6 +322,7 @@ export default function Map() {
         paddocks={paddocks}
         parcels={parcels}
         fertilization={data?.fertilization ?? []}
+        seasonYear={seasonYear}
         tracks={tracks}
         livePoints={recording ? livePoints : null}
         weedObservations={weedObservations}
