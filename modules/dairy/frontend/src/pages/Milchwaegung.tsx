@@ -89,6 +89,13 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   const [error, setError] = useState<string | null>(null)
   const [capacity, setCapacity] = useState(12)
   const [manualInput, setManualInput] = useState('')
+  const [suggestIdx, setSuggestIdx] = useState(0)
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  // Alle aktiven Tiere für die Vorschlagsliste (Laufnummer / Ohrmarke / Name)
+  const { data: animalsData } = useQuery(
+    (db) => db.query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' order by lauf_nr nulls last, ear_tag").then((r) => r.rows),
+    [],
+  )
   const [openArchived, setOpenArchived] = useState<Record<string, boolean>>({})
   const esRef = useRef<AbortController | null>(null)
 
@@ -172,16 +179,41 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       }
     })
 
+  // Vorschläge: Laufnummer beginnt mit / Ohrmarke enthält / Name beginnt mit
+  const suggestions = useMemo(() => {
+    const q = manualInput.trim().toLowerCase()
+    if (!q) return []
+    const inBank = new Set((openBank?.slots ?? []).map((s) => s.animal_id))
+    const all = animalsData ?? []
+    const score = (a: Animal): number => {
+      const ln = (a.lauf_nr ?? '').toLowerCase()
+      const et = a.ear_tag.toLowerCase()
+      const nm = (a.name ?? '').toLowerCase()
+      if (ln === q || et === q) return 0
+      if (ln.startsWith(q)) return 1
+      if (et.endsWith(q) || et.includes(q)) return 2
+      if (nm.startsWith(q)) return 3
+      if (nm.includes(q)) return 4
+      return -1
+    }
+    return all
+      .map((a) => ({ a, s: score(a), inBank: inBank.has(a.id) }))
+      .filter((x) => x.s >= 0)
+      .sort((x, y) => x.s - y.s || (x.a.lauf_nr ?? '').localeCompare(y.a.lauf_nr ?? ''))
+      .slice(0, 8)
+  }, [manualInput, animalsData, openBank])
+
   /** Manuelle Aufnahme (ohne Leser): Laufnummer oder Ohrmarke — offline möglich. */
-  async function addManual() {
+  async function addManual(chosen?: Animal) {
     const q = manualInput.trim()
-    if (!q) return
+    if (!chosen && !q) return
     await run(async () => {
-      const { rows } = await pg.query<Animal>(
-        `select * from animals where deleted_at is null and (lauf_nr = $1 or ear_tag = $1 or ear_tag like $2) order by status limit 1`,
-        [q, `%${q}`],
-      )
-      const animal = rows[0] ?? null
+      let animal: Animal | null = chosen ?? null
+      if (!animal) {
+        // Enter ohne Auswahl: eindeutiger Treffer (oder exakte Laufnummer/Ohrmarke)
+        const exact = suggestions.find((x) => x.s === 0)
+        animal = exact?.a ?? (suggestions.length === 1 ? suggestions[0].a : null)
+      }
       let bank = openBank?.bank ?? null
       let count = openBank?.slots.length ?? 0
       if (!bank || count >= bank.capacity) {
@@ -211,6 +243,8 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         read_at: new Date().toISOString(),
       })
       setManualInput('')
+      setSuggestOpen(false)
+      setSuggestIdx(0)
       refresh()
     })
   }
@@ -312,22 +346,73 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
 
       {canWrite && (
         <form
-          className="flex gap-2"
+          className="relative"
           onSubmit={(e) => {
             e.preventDefault()
-            void addManual()
+            const pick = suggestOpen ? suggestions[suggestIdx]?.a : undefined
+            void addManual(pick)
           }}
         >
-          <input
-            type="text"
-            placeholder="Manuell: Laufnummer oder Ohrmarke"
-            value={manualInput}
-            onChange={(e) => setManualInput(e.target.value)}
-            className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
-          />
-          <button type="submit" disabled={busy || !manualInput.trim()} className="rounded-lg border border-brand-600 px-3 py-1.5 text-sm font-medium text-brand-700 disabled:opacity-50">
-            Aufnehmen
-          </button>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Manuell: Laufnummer, Ohrmarke oder Name"
+              value={manualInput}
+              autoComplete="off"
+              onChange={(e) => {
+                setManualInput(e.target.value)
+                setSuggestOpen(true)
+                setSuggestIdx(0)
+              }}
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+              onKeyDown={(e) => {
+                if (!suggestOpen || suggestions.length === 0) return
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  setSuggestIdx((i) => Math.min(i + 1, suggestions.length - 1))
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setSuggestIdx((i) => Math.max(i - 1, 0))
+                } else if (e.key === 'Escape') {
+                  setSuggestOpen(false)
+                }
+              }}
+              className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={busy || !manualInput.trim()}
+              className="rounded-lg border border-brand-600 px-3 py-1.5 text-sm font-medium text-brand-700 disabled:opacity-50"
+            >
+              Aufnehmen
+            </button>
+          </div>
+          {suggestOpen && suggestions.length > 0 && (
+            <ul className="absolute left-0 right-0 z-20 mt-1 max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+              {suggestions.map(({ a, inBank }, i) => (
+                <li
+                  key={a.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    void addManual(a)
+                  }}
+                  onMouseEnter={() => setSuggestIdx(i)}
+                  className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${i === suggestIdx ? 'bg-brand-50' : ''}`}
+                >
+                  <span className="w-14 text-xl font-bold text-gray-800">{a.lauf_nr ?? '–'}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-gray-800">{a.name ?? ''}</span>
+                    <span className="block text-xs text-gray-500">{a.ear_tag}</span>
+                  </span>
+                  {inBank && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">schon in Bank</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          {suggestOpen && manualInput.trim() && suggestions.length === 0 && (
+            <p className="mt-1 text-xs text-gray-400">Kein Tier gefunden — „Aufnehmen" nimmt die Eingabe als unbekannte Ohrmarke auf.</p>
+          )}
         </form>
       )}
 
@@ -416,6 +501,15 @@ function BankTable({
   async function removeSlot(s: SlotRow) {
     if (!confirm(`${label(s)} aus der Bank entfernen?`)) return
     await softDeleteRow(pg, 'milking_slots', s.id)
+    // Positionen der verbleibenden Zeilen lückenlos nachziehen
+    const remaining = slots.filter((x) => x.id !== s.id).sort((a, b) => a.position - b.position)
+    for (let i = 0; i < remaining.length; i++) {
+      if (remaining[i].position !== i + 1) {
+        const { animal: _a, ...row } = remaining[i]
+        await upsertRow(pg, 'milking_slots', { ...row, position: i + 1 })
+      }
+    }
+    if (editing) setOrder((o) => o.filter((x) => x.id !== s.id))
     onChanged()
   }
 
@@ -486,7 +580,7 @@ function BankTable({
               <th className="px-2 py-2">Nr.</th>
               <th className="px-2 py-2">{terms.singular}</th>
               <th className="px-2 py-2">Notiz</th>
-              {editing && <th className="px-2 py-2" />}
+              <th className="px-2 py-2" />
             </tr>
           </thead>
           <tbody>
@@ -552,24 +646,28 @@ function BankTable({
                     </button>
                   )}
                 </td>
-                {editing && (
-                  <td className="whitespace-nowrap px-2 py-1 align-middle text-xs">
-                    <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0} className="rounded px-1.5 py-0.5 text-gray-600 disabled:opacity-30">
-                      ▲
-                    </button>
-                    <button type="button" onClick={() => move(idx, 1)} disabled={idx === rows.length - 1} className="rounded px-1.5 py-0.5 text-gray-600 disabled:opacity-30">
-                      ▼
-                    </button>
-                    <button type="button" onClick={() => removeSlot(s)} className="rounded px-1.5 py-0.5 text-red-500" title="Entfernen">
+                <td className="whitespace-nowrap px-2 py-1 align-middle text-xs">
+                  {editing && (
+                    <>
+                      <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0} className="rounded px-1.5 py-0.5 text-gray-600 disabled:opacity-30">
+                        ▲
+                      </button>
+                      <button type="button" onClick={() => move(idx, 1)} disabled={idx === rows.length - 1} className="rounded px-1.5 py-0.5 text-gray-600 disabled:opacity-30">
+                        ▼
+                      </button>
+                    </>
+                  )}
+                  {canWrite && (
+                    <button type="button" onClick={() => removeSlot(s)} className="rounded px-1.5 py-0.5 text-lg leading-none text-red-400 hover:text-red-600" title="Zeile löschen (falsch eingegeben)">
                       ×
                     </button>
-                  </td>
-                )}
+                  )}
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={editing ? 6 : 4} className="px-3 py-4 text-center text-gray-400">
+                <td colSpan={editing ? 6 : 5} className="px-3 py-4 text-center text-gray-400">
                   Noch keine Lesung.
                 </td>
               </tr>
