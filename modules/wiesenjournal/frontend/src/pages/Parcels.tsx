@@ -417,7 +417,7 @@ export default function Parcels() {
               disabled={saving || !mergeTargetId}
               className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
-              Zuordnen
+              {saving ? 'Ordne zu… (bei vielen Einträgen bis zu einer Minute)' : 'Zuordnen'}
             </button>
           </div>
         </Modal>
