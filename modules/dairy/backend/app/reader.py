@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 from datetime import date, datetime, timezone
 
@@ -36,6 +37,9 @@ from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.modules_admin import get_reader_settings, is_reader_enabled, require_reader_enabled
 
 
+DUPLICATE_WINDOW_S = 60.0
+
+
 class SessionState(BaseModel):
     active: bool
     session_date: str | None = None
@@ -47,6 +51,7 @@ class SessionState(BaseModel):
     last_error: str | None = None
     started_by: str | None = None
     handshake: str | None = None
+    last_ignored: str | None = None
     # Verbindungsdetails (siehe agrident.ReaderConnection)
     host: str | None = None
     port: int | None = None
@@ -78,7 +83,13 @@ class _Session:
         self.bank_number = 0
         self.slots_in_bank = 0
         self.reads = 0
-        self.seen: set[str] = set()
+        # Duplikate: derselbe Transponder in der aktuell offenen Bank oder
+        # innerhalb von DUPLICATE_WINDOW_S wird nicht nochmals aufgenommen
+        # (Tier steht noch an der Antenne). Über Bänke hinweg — z.B. Morgen-
+        # und Abendmelken am selben Tag — sind Wiederholungen erwünscht.
+        self.bank_tags: set[str] = set()
+        self.recent: dict[str, float] = {}
+        self.last_ignored: str | None = None
         self.last_read_at: datetime | None = None
         self.last_error: str | None = None
         # Handshake-Ergebnis: Antwort des Lesers auf [XGMEMINFO] (z.B. "448|1000000|…")
@@ -104,7 +115,7 @@ class _Session:
             current_bank_id=str(self.bank_id) if self.bank_id else None, bank_number=self.bank_number,
             reads=self.reads, last_read_at=self.last_read_at.isoformat() if self.last_read_at else None,
             last_error=self.last_error, started_by=self.started_by, handshake=self.handshake,
-            host=self.host, port=self.port,
+            last_ignored=self.last_ignored, host=self.host, port=self.port,
             connected_since=datetime.fromtimestamp(self.conn.connected_at, timezone.utc).isoformat() if self.conn else None,
             pings=self.conn.pings if self.conn else 0,
             pongs=self.conn.pongs if self.conn else 0,
@@ -159,6 +170,7 @@ def build_reader_router(key: str) -> APIRouter:
             sess.bank_number = int(row[0]) + 1
             sess.bank_id = uuid.uuid4()
             sess.slots_in_bank = 0
+            sess.bank_tags = set()
             await conn.execute(
                 "insert into milking_banks (id, session_date, bank_number, capacity, opened_at, closed_at, notes, updated_at, deleted_at) "
                 "values (%s, %s, %s, %s, %s, null, null, %s, null)",
@@ -209,6 +221,7 @@ def build_reader_router(key: str) -> APIRouter:
         if sess.bank_id is None or sess.slots_in_bank >= sess.capacity:
             await _open_bank(sess)
         now = datetime.now(timezone.utc)
+        sess.bank_tags.add(long_tag)
         sess.slots_in_bank += 1
         sess.reads += 1
         sess.last_read_at = now
@@ -248,9 +261,13 @@ def build_reader_router(key: str) -> APIRouter:
                 sess.last_error = None
                 sess.bump()
                 async for long_tag in conn.live_reads():
-                    if long_tag in sess.seen:
+                    t = time.monotonic()
+                    last = sess.recent.get(long_tag)
+                    sess.recent[long_tag] = t
+                    if long_tag in sess.bank_tags or (last is not None and t - last < DUPLICATE_WINDOW_S):
+                        sess.last_ignored = f"{reader_tag_candidates(long_tag)[0]} ({'schon in dieser Bank' if long_tag in sess.bank_tags else 'Wiederholung'})"
+                        sess.bump()
                         continue
-                    sess.seen.add(long_tag)
                     await _record_read(sess, long_tag)
         except asyncio.CancelledError:
             raise
@@ -292,13 +309,12 @@ def build_reader_router(key: str) -> APIRouter:
             )).fetchone()
             if row:
                 sess.bank_id, sess.bank_number, sess.slots_in_bank = row[0], int(row[1]), int(row[2])
-            # Bereits heute gelesene Transponder nicht nochmals aufnehmen
-            rows = await (await conn.execute(
-                "select s.transponder from milking_slots s join milking_banks b on b.id = s.bank_id "
-                "where b.session_date = %s and s.deleted_at is null and s.transponder is not null",
-                (session_date,),
-            )).fetchall()
-            sess.seen = {r[0] for r in rows}
+                # Transponder der weitergeführten offenen Bank (Duplikatschutz)
+                rows = await (await conn.execute(
+                    "select transponder from milking_slots where bank_id = %s and deleted_at is null and transponder is not null",
+                    (sess.bank_id,),
+                )).fetchall()
+                sess.bank_tags = {r[0] for r in rows}
         sess.task = asyncio.create_task(_run(sess))
         _sessions[key] = sess
         await asyncio.sleep(0.3)  # kurze Chance, einen sofortigen Verbindungsfehler mitzugeben

@@ -7,7 +7,7 @@ import { useDb } from '@fmis/core/DbContext'
 import { upsertRow, softDeleteRow, notifyDataChanged } from '../db/write'
 import { SYNC_TABLES } from '../db/tables'
 import { getDairySyncClient } from '../db/sync'
-import { fmtDate, fmtDateTime, todayIso } from '../lib/format'
+import { fmtDate, fmtDateTime } from '../lib/format'
 import { speciesTerms } from '../lib/species'
 import type { Animal, MilkingBank, MilkingSlot } from '../types'
 
@@ -22,6 +22,7 @@ interface SessionState {
   last_error: string | null
   started_by: string | null
   handshake: string | null
+  last_ignored: string | null
   host: string | null
   port: number | null
   connected_since: string | null
@@ -124,7 +125,11 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   const pg = useDb()
   const syncClient = getDairySyncClient(moduleKey)
   const canWrite = useHasPermission(`${moduleKey}:milk:write`)
-  const [date, setDate] = useState(todayIso())
+  // Lokales Datum (nicht UTC wie todayIso) — beim Abendmelken sonst falscher Tag.
+  const [date, setDate] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })
   const { data, refresh } = useQuery((db) => loadBanks(db, date), [date])
   const [readerEnabled, setReaderEnabled] = useState<boolean | null>(null)
   const [session, setSession] = useState<SessionState | null>(null)
@@ -366,6 +371,9 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           <p className="text-sm text-gray-500">Ohrmarkenleser für diese Instanz nicht aktiviert (Verwaltung → Module) — manuelle Aufnahme unten.</p>
         )}
         {session?.last_error && <p className="mt-2 text-sm text-red-600">{session.last_error}</p>}
+        {session?.active && session.last_ignored && (
+          <p className="mt-2 text-xs text-amber-700">Letzte Lesung übersprungen: {session.last_ignored}</p>
+        )}
         {readerEnabled && (
           <div className="mt-2 text-xs">
             <button type="button" onClick={() => setShowDetails((v) => !v)} className="text-brand-700">
