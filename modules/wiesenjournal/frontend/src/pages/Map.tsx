@@ -20,14 +20,19 @@ import {
 import { detectDwell } from '../lib/geo'
 import { downloadGpx } from '../lib/gpx'
 import { fmtDateTime, todayIso } from '../lib/format'
+import AckerToggle from '../components/AckerToggle'
+import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
 import type { Paddock, Parcel, Track, WeedObservation } from '../types'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
-async function loadMapData(pg: PGlite, seasonYear: number) {
+async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean) {
   const [paddocks, { rows: parcels }, { rows: tracks }, { rows: weedObservations }] = await Promise.all([
     loadCurrentPaddocks(seasonYear),
-    pg.query<Parcel>('select * from parcels where season_year = $1 and deleted_at is null order by sort_order, name', [seasonYear]),
+    pg.query<Parcel>(
+      `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)} order by sort_order, name`,
+      [seasonYear],
+    ),
     pg.query<Track>('select * from tracks where season_year = $1 and deleted_at is null order by started_at desc', [seasonYear]),
     pg.query<WeedObservation>('select * from weed_observations where season_year = $1 and deleted_at is null order by observed_at desc', [
       seasonYear,
@@ -40,7 +45,8 @@ export default function Map() {
   const [searchParams] = useSearchParams()
   const focusParcelId = searchParams.get('parcel')
   const [seasonYear] = useState(CURRENT_YEAR)
-  const { data, refresh } = useQuery((pg) => loadMapData(pg, seasonYear), [seasonYear])
+  const [showAcker] = useShowAcker()
+  const { data, refresh } = useQuery((pg) => loadMapData(pg, seasonYear, showAcker), [seasonYear, showAcker])
   const canTrack = useHasPermission('wiesenjournal:tracking:write')
 
   const [detailTarget, setDetailTarget] = useState<Paddock | null>(null)
@@ -242,7 +248,10 @@ export default function Map() {
 
   return (
     <div className="space-y-4 p-4 pb-24">
-      <h1 className="text-xl font-bold text-gray-800">Karte · Weidegänge {seasonYear}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-bold text-gray-800">Karte · Weidegänge {seasonYear}</h1>
+        <AckerToggle />
+      </div>
       <p className="text-xs text-gray-500">
         Zeichne einen Weidegang direkt auf die Karte (Toolbar oben rechts). Jede Verschiebung des Zauns wird als neue
         Version gespeichert — die Karte zeigt immer den aktuellen Ist-Zustand, die Historie bleibt erhalten.

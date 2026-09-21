@@ -65,6 +65,7 @@ services:
         PathPrefix(`/dairy_schafe/sync`) || PathPrefix(`/dairy_schafe/reader`) ||
         PathPrefix(`/fields/sync`) ||
         PathPrefix(`/wiesenjournal/sync`) || PathPrefix(`/wiesenjournal/reports`) ||
+        PathPrefix(`/wiesenjournal/parcels`) || PathPrefix(`/wiesenjournal/fertilization`) ||
         PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
       - traefik.http.routers.fmis-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.fmis-api.tls=${TRAEFIK_TLS:-false}

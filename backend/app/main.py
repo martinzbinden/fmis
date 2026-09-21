@@ -14,6 +14,7 @@ from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
+from modules.wiesenjournal.backend.app import parcels_import as wiesenjournal_parcels_import
 from modules.wiesenjournal.backend.app import reports as wiesenjournal_reports
 from modules.wiesenjournal.backend.app import sync as wiesenjournal_sync
 
@@ -82,6 +83,11 @@ for _spec in MODULE_SPECS:
 # livestock's APR600-Datenpool-Import (Gruppen-Ohrmarken vom Leser).
 app.include_router(
     wiesenjournal_reports.router,
+    prefix="/wiesenjournal",
+    dependencies=[Depends(require_module_enabled("wiesenjournal"))],
+)
+app.include_router(
+    wiesenjournal_parcels_import.router,
     prefix="/wiesenjournal",
     dependencies=[Depends(require_module_enabled("wiesenjournal"))],
 )

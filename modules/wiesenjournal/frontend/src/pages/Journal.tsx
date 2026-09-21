@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { loadJournalRows } from '../lib/journal'
+import AckerToggle from '../components/AckerToggle'
+import { useShowAcker } from '../hooks/useShowAcker'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate } from '../lib/format'
 import DayEntryEditor from '../components/DayEntryEditor'
@@ -15,7 +17,8 @@ const KIND_COLOR: Record<JournalRow['kind'], string> = {
 
 export default function Journal() {
   const [seasonYear, setSeasonYear] = useState(CURRENT_YEAR)
-  const { data, loading, refresh } = useQuery((pg) => loadJournalRows(pg, seasonYear), [seasonYear])
+  const [showAcker] = useShowAcker()
+  const { data, loading, refresh } = useQuery((pg) => loadJournalRows(pg, seasonYear, showAcker), [seasonYear, showAcker])
   const [kindFilter, setKindFilter] = useState<'' | JournalRow['kind']>('')
   const [search, setSearch] = useState('')
   const [editorTarget, setEditorTarget] = useState<{ parcelId: string; parcelName: string; date: string } | null>(null)
@@ -31,6 +34,8 @@ export default function Journal() {
     <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-800">Journal {seasonYear}</h1>
+        <div className="flex items-center gap-3">
+        <AckerToggle />
         <select
           value={seasonYear}
           onChange={(e) => setSeasonYear(Number(e.target.value))}
@@ -42,6 +47,7 @@ export default function Journal() {
             </option>
           ))}
         </select>
+        </div>
       </div>
 
       <div className="flex gap-2">

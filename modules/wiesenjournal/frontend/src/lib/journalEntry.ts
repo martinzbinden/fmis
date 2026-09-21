@@ -1,5 +1,10 @@
 import type { PGlite } from '@electric-sql/pglite'
 import type { FertilizationEntry, UsageEntry } from '../types'
+import { isoDate } from './format'
+
+function normalize<T extends { entry_date: string }>(rows: T[]): T[] {
+  return rows.map((r) => ({ ...r, entry_date: isoDate(r.entry_date) }))
+}
 
 export interface DayEntries {
   usage: UsageEntry[]
@@ -18,7 +23,7 @@ export async function loadDayEntries(pg: PGlite, parcelId: string, date: string)
       [parcelId, date],
     ),
   ])
-  return { usage: usage.rows, fertilizations: fert.rows }
+  return { usage: normalize(usage.rows), fertilizations: normalize(fert.rows) }
 }
 
 /** Lädt Nutzungs-/Düngungs-Einträge für ALLE Parzellen in einem Datumsbereich (für das Journal-Raster). */
@@ -37,5 +42,5 @@ export async function loadEntriesInRange(
       [from, to],
     ),
   ])
-  return { usage: usage.rows, fertilizations: fert.rows }
+  return { usage: normalize(usage.rows), fertilizations: normalize(fert.rows) }
 }

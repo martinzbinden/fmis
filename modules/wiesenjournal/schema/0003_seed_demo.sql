@@ -1,3 +1,5 @@
+-- OBSOLET: Demo-Daten werden durch 0009_remove_demo.sql wieder soft-gelöscht.
+-- Datei bleibt, damit neue Clients dieselbe Migrationsfolge abspielen.
 -- Demo-Daten für den ersten Wurf (Review vor echter Nutzung) — feste UUIDs,
 -- damit diese Migration idempotent bleibt (gleiches Muster wie
 -- core/backend/fmis_core/schema/0001_core.sql). Bei Bedarf einfach löschen.

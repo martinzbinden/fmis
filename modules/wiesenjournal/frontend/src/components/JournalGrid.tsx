@@ -1,20 +1,25 @@
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
+import { PARCEL_CATEGORY_COLOR, usageDescription, usageLegend } from '../lib/format'
 
 const CELL_WIDTH = 34
-const LABEL_COL_WIDTH = 200
-const ROW_HEIGHT = 44
+const LABEL_COL_WIDTH = 220
+const ROW_HEIGHT = 46
 const FARM_ROW_HEIGHT = 26
 
 export interface DayIndex<T> {
   [parcelId: string]: { [date: string]: T[] }
 }
 
+// Obere Zeile der Zelle: Legenden-Buchstaben aller Nutzungen des Tages
+// (wie im Papierjournal, z.B. "XW" = Kühe und Schafe, "x" = Tagweide Kühe).
 function usageBadge(entries: UsageEntry[]): string | null {
-  const e = entries[0]
-  if (!e) return null
-  if (e.usage_type === 'eingrasen') return '/'
-  if (e.usage_type === 'weide_anzahl') return `×${e.animal_count ?? ''}`
-  return 'X'
+  if (entries.length === 0) return null
+  return entries.map(usageLegend).join('')
+}
+
+// Kürzel des Betriebs vor dem Parzellennamen (zwei Betriebe, eine Liste).
+function farmPrefix(p: Parcel): string {
+  return p.farm_name ? p.farm_name.slice(0, 1).toUpperCase() + ' · ' : ''
 }
 
 function shortDay(iso: string): { dow: string; dom: string; isFirstOfMonth: boolean } {
@@ -84,12 +89,20 @@ export default function JournalGrid({
 
         {/* Parzellen-Zeilen */}
         {parcels.map((p) => (
-          <div key={p.id} className="flex border-b">
+          <div key={p.id} className={`flex border-b ${p.category === 'acker' ? 'bg-amber-50/40' : ''}`}>
             <div
-              className="sticky left-0 z-10 flex shrink-0 items-center gap-1 bg-white p-2 text-xs font-medium text-gray-800"
+              className={`sticky left-0 z-10 flex shrink-0 items-center gap-1 p-2 text-xs font-medium text-gray-800 ${
+                p.category === 'acker' ? 'bg-amber-50' : 'bg-white'
+              }`}
               style={{ width: LABEL_COL_WIDTH, height: ROW_HEIGHT }}
             >
-              <span className="min-w-0 flex-1 truncate" title={p.name}>
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ background: PARCEL_CATEGORY_COLOR[p.category] ?? '#6b7280' }}
+                title={p.kultur_name_de ?? p.category}
+              />
+              <span className="min-w-0 flex-1 truncate" title={`${p.name}${p.kultur_name_de ? ' · ' + p.kultur_name_de : ''}`}>
+                <span className="text-gray-400">{farmPrefix(p)}</span>
                 {p.name}
               </span>
               <button
@@ -116,20 +129,27 @@ export default function JournalGrid({
                 const usage = usageByDay[p.id]?.[d] ?? []
                 const fert = fertByDay[p.id]?.[d] ?? []
                 const badge = usageBadge(usage)
+                const title = [
+                  ...usage.map(usageDescription),
+                  ...fert.map((f) => `${f.duengung_code}${f.amount != null ? ` ${f.amount} ${f.unit}` : ''}`),
+                ].join('\n')
                 return (
                   <button
                     key={d}
                     type="button"
                     onClick={() => onCellClick(p, d)}
-                    className="flex shrink-0 flex-col items-center justify-center border-l border-gray-100 hover:bg-brand-50"
+                    title={title || undefined}
+                    className="flex shrink-0 flex-col items-center justify-center overflow-hidden border-l border-gray-100 hover:bg-brand-50"
                     style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
                   >
-                    {badge && <span className="text-[11px] font-bold text-brand-700">{badge}</span>}
+                    {badge && (
+                      <span className={`font-bold leading-tight text-brand-700 ${badge.length > 2 ? 'text-[9px]' : 'text-[11px]'}`}>
+                        {badge}
+                      </span>
+                    )}
                     {fert.length > 0 && (
-                      <span className="mt-0.5 flex gap-0.5">
-                        {fert.slice(0, 3).map((f) => (
-                          <span key={f.id} className="h-1.5 w-1.5 rounded-full bg-amber-600" title={f.duengung_code} />
-                        ))}
+                      <span className="mt-0.5 max-w-full truncate text-[8px] font-semibold leading-tight text-amber-700">
+                        {fert.map((f) => f.duengung_code).join(' ')}
                       </span>
                     )}
                   </button>
@@ -144,6 +164,10 @@ export default function JournalGrid({
           [
             { key: 'laufhof_kuehe', label: 'Laufhof Kühe' },
             { key: 'laufhof_rinder', label: 'Laufhof Rinder' },
+            { key: 'laufhof_kaelber', label: 'Laufhof Kälber' },
+            { key: 'laufhof_galtkuehe', label: 'Laufhof Galtkühe' },
+            { key: 'laufhof_schafe', label: 'Laufhof Schafe' },
+            { key: 'laufhof_legehennen', label: 'Laufhof Legehennen' },
             { key: 'wetter_code', label: 'Wetter' },
             { key: 'niederschlag_mm', label: 'Niederschlag' },
             { key: 'mond_phase', label: 'Mond' },
@@ -162,7 +186,7 @@ export default function JournalGrid({
                 let content: string | null = null
                 if (log) {
                   const v = log[row.key as keyof DailyFarmLog]
-                  if (row.key === 'laufhof_kuehe' || row.key === 'laufhof_rinder') content = v ? '✓' : null
+                  if (row.key.startsWith('laufhof_')) content = v ? '✓' : null
                   else if (v != null) content = String(v)
                 }
                 return (

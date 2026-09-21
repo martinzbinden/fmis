@@ -1,6 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite'
 import type { FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { USAGE_TYPE_LABEL } from './format'
+import { isoDate, usageDescription } from './format'
 
 export interface JournalRow {
   id: string
@@ -13,9 +13,9 @@ export interface JournalRow {
   source: UsageEntry | FertilizationEntry
 }
 
-export async function loadJournalRows(pg: PGlite, seasonYear: number): Promise<JournalRow[]> {
+export async function loadJournalRows(pg: PGlite, seasonYear: number, showAcker = true): Promise<JournalRow[]> {
   const { rows: parcels } = await pg.query<Parcel>(
-    'select * from parcels where season_year = $1 and deleted_at is null',
+    `select * from parcels where season_year = $1 and deleted_at is null${showAcker ? '' : " and category <> 'acker'"}`,
     [seasonYear],
   )
   const parcelName = new Map(parcels.map((p) => [p.id, p.name]))
@@ -37,19 +37,17 @@ export async function loadJournalRows(pg: PGlite, seasonYear: number): Promise<J
     ...usage.map((u): JournalRow => ({
       id: u.id,
       kind: 'nutzung',
-      date: u.entry_date,
+      date: isoDate(u.entry_date),
       parcelId: u.parcel_id,
       parcelName: parcelName.get(u.parcel_id) ?? '?',
-      summary: USAGE_TYPE_LABEL[u.usage_type] ?? u.usage_type,
-      detail: [u.usage_type === 'weide_anzahl' && u.animal_count ? `${u.animal_count} Tiere` : null, u.animal_group]
-        .filter(Boolean)
-        .join(' · ') || null,
+      summary: usageDescription(u),
+      detail: [u.animal_group, u.notes].filter(Boolean).join(' · ') || null,
       source: u,
     })),
     ...fert.map((f): JournalRow => ({
       id: f.id,
       kind: 'duengung',
-      date: f.entry_date,
+      date: isoDate(f.entry_date),
       parcelId: f.parcel_id,
       parcelName: parcelName.get(f.parcel_id) ?? '?',
       summary: f.duengung_code,

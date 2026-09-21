@@ -1,6 +1,12 @@
 // Domain-Typen — spiegeln schema/0001_init.sql 1:1.
 
 export type Intensitaet = 'i' | 'wi' | 'e' | 'mi'
+// Herkunft einer Journal-Parzelle: 'fields' = aus dem Kulturen-Modul (GELAN)
+// übernommen (Name/Fläche/Geometrie werden vom Server nachgeführt), 'excel' =
+// aus dem Excel-Import ohne GELAN-Treffer, 'manual' = in der App angelegt.
+export type ParcelSource = 'manual' | 'fields' | 'excel'
+// futter = 6xx Grünland, acker = 5xx offene Ackerfläche (siehe schema/0006).
+export type ParcelCategory = 'futter' | 'acker' | 'andere'
 
 export interface Parcel {
   id: string
@@ -14,6 +20,15 @@ export interface Parcel {
   notes: string | null
   updated_at: string
   deleted_at: string | null
+  source: ParcelSource
+  category: ParcelCategory
+  farm_id: string | null
+  farm_name: string | null
+  fields_lineage_id: string | null
+  fields_declaration_id: string | null
+  external_kultur_id: string | null
+  kultur_code: string | null
+  kultur_name_de: string | null
 }
 
 // Versionierte Weidegang-/Zaun-Geometrie — jede Bearbeitung ist eine neue
@@ -36,7 +51,27 @@ export interface Paddock {
   deleted_at: string | null
 }
 
-export type UsageType = 'weide' | 'weide_anzahl' | 'eingrasen'
+// Legende des Wiesenjournals (siehe schema/0007_usage_model.sql, lib/format.ts
+// USAGE_TYPE_LETTER / ANIMAL_CATEGORY_LETTER).
+export type UsageType =
+  | 'weide'
+  | 'eingrasen'
+  | 'silage'
+  | 'duerrfutter_bel'
+  | 'duerrfutter_unbel'
+  | 'weide_putzen'
+  | 'blacken_stechen'
+  | 'blacken_einzelstock'
+  | 'blacken_flaeche'
+  | 'uebersaat'
+  | 'aufwuchshoehe'
+  | 'pflug'
+  | 'saat'
+  | 'striegeln'
+  | 'saeuberungsschnitt'
+  | 'sonstig'
+export type AnimalCategory = 'kuehe' | 'rinder' | 'kaelber' | 'galtkuehe' | 'schafe' | 'legehennen'
+export type YieldUnit = 'rb' | 'fu' | 'st' | 'kg' | 'dt_ts'
 
 export interface UsageEntry {
   id: string
@@ -49,6 +84,13 @@ export interface UsageEntry {
   notes: string | null
   updated_at: string
   deleted_at: string | null
+  animal_category: AnimalCategory | null
+  day_only: boolean
+  label: string | null
+  value_num: number | null
+  yield_amount: number | null
+  yield_unit: YieldUnit | null
+  import_key: string | null
 }
 
 export type DuengungCode = 'RGv' | 'RGk' | 'RMI' | 'RMs' | 'SG' | 'SM' | 'A' | 'H' | 'V'
@@ -91,6 +133,11 @@ export interface DailyFarmLog {
   notes: string | null
   updated_at: string
   deleted_at: string | null
+  laufhof_kaelber: boolean | null
+  laufhof_galtkuehe: boolean | null
+  laufhof_schafe: boolean | null
+  laufhof_legehennen: boolean | null
+  animal_counts: string | null   // JSON {"kuehe": 20, ...}
 }
 
 export interface Track {

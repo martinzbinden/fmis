@@ -6,6 +6,8 @@ export const SYNC_TABLES = {
   parcels: [
     'id', 'season_year', 'name', 'area_a', 'wiesentyp', 'intensitaet',
     'base_geometry', 'sort_order', 'notes', 'updated_at', 'deleted_at',
+    'source', 'category', 'farm_id', 'farm_name', 'fields_lineage_id',
+    'fields_declaration_id', 'external_kultur_id', 'kultur_code', 'kultur_name_de',
   ],
   paddocks: [
     'id', 'paddock_id', 'version_number', 'is_current', 'parcel_id',
@@ -15,6 +17,8 @@ export const SYNC_TABLES = {
   usage_entries: [
     'id', 'parcel_id', 'entry_date', 'usage_type', 'animal_count',
     'animal_group', 'paddock_version_id', 'notes', 'updated_at', 'deleted_at',
+    'animal_category', 'day_only', 'label', 'value_num', 'yield_amount',
+    'yield_unit', 'import_key',
   ],
   fertilization_entries: [
     'id', 'parcel_id', 'entry_date', 'duengung_code', 'amount', 'unit',
@@ -27,6 +31,8 @@ export const SYNC_TABLES = {
   daily_farm_log: [
     'id', 'entry_date', 'laufhof_kuehe', 'laufhof_rinder', 'wetter_code',
     'niederschlag_mm', 'mond_phase', 'notes', 'updated_at', 'deleted_at',
+    'laufhof_kaelber', 'laufhof_galtkuehe', 'laufhof_schafe', 'laufhof_legehennen',
+    'animal_counts',
   ],
   tracks: [
     'id', 'season_year', 'label', 'started_at', 'ended_at', 'width_m',

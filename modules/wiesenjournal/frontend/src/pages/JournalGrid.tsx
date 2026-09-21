@@ -7,7 +7,10 @@ import JournalGridComponent, { type DayIndex } from '../components/JournalGrid'
 import DayEntryEditor from '../components/DayEntryEditor'
 import GabenPanel from '../components/GabenPanel'
 import DailyLogEditor from '../components/DailyLogEditor'
+import AckerToggle from '../components/AckerToggle'
+import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
+import { isoDate } from '../lib/format'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -31,9 +34,13 @@ function indexByParcelAndDay<T extends { parcel_id: string; entry_date: string }
   return idx
 }
 
-async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: string) {
+async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: string, showAcker: boolean) {
   const [{ rows: parcels }, { usage, fertilizations }, { rows: dailyLogs }] = await Promise.all([
-    pg.query<Parcel>('select * from parcels where season_year = $1 and deleted_at is null order by sort_order, name', [seasonYear]),
+    pg.query<Parcel>(
+      `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)}
+       order by farm_name nulls first, category, sort_order, name`,
+      [seasonYear],
+    ),
     loadEntriesInRange(pg, from, to),
     pg.query<DailyFarmLog>('select * from daily_farm_log where entry_date between $1 and $2 and deleted_at is null', [from, to]),
   ])
@@ -47,7 +54,11 @@ export default function JournalGridPage() {
   const from = days[0]
   const to = days[days.length - 1]
 
-  const { data, loading, refresh } = useQuery((pg) => loadGridData(pg, seasonYear, from, to), [seasonYear, from, to])
+  const [showAcker] = useShowAcker()
+  const { data, loading, refresh } = useQuery(
+    (pg) => loadGridData(pg, seasonYear, from, to, showAcker),
+    [seasonYear, from, to, showAcker],
+  )
 
   const [editorTarget, setEditorTarget] = useState<{ parcel: Parcel; date: string } | null>(null)
   const [gabenTarget, setGabenTarget] = useState<Parcel | null>(null)
@@ -58,7 +69,7 @@ export default function JournalGridPage() {
   const fertByDay = useMemo(() => indexByParcelAndDay<FertilizationEntry>(data?.fertilizations ?? []), [data])
   const dailyLogByDate = useMemo(() => {
     const idx: Record<string, DailyFarmLog> = {}
-    for (const log of data?.dailyLogs ?? []) idx[log.entry_date] = log
+    for (const log of data?.dailyLogs ?? []) idx[isoDate(log.entry_date)] = log
     return idx
   }, [data])
 
@@ -66,6 +77,8 @@ export default function JournalGridPage() {
     <div className="space-y-4 p-4 pb-24">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-800">Journal-Raster {seasonYear}</h1>
+        <div className="flex items-center gap-3">
+        <AckerToggle />
         <select
           value={seasonYear}
           onChange={(e) => setSeasonYear(Number(e.target.value))}
@@ -77,12 +90,13 @@ export default function JournalGridPage() {
             </option>
           ))}
         </select>
+        </div>
       </div>
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && parcels.length === 0 && (
         <p className="text-center text-gray-500">
-          Noch keine Parzellen für {seasonYear} — unter „Parzellen" anlegen.
+          Noch keine Parzellen für {seasonYear} — unter „Parzellen" aus GELAN übernehmen oder anlegen.
         </p>
       )}
 

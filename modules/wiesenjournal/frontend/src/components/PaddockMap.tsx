@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
+import { colorForKultur } from '@fmis/fields/lib/kulturColor'
 import 'leaflet-draw/dist/leaflet.draw.css'
 import LocateControl from '@fmis/core/LocateControl'
 import { loadFieldsBackground, type FieldsBackgroundFeature } from '../lib/fieldsBackground'
@@ -112,7 +113,10 @@ function DrawLayer({
   return null
 }
 
-/** Rein lesende, blasse Referenz-Umrisse (parcels.base_geometry) — nicht massgeblich, nur Orientierung. */
+/** Rein lesende Referenz-Umrisse (parcels.base_geometry = GELAN-Parzellen):
+ * Futterflächen grau gestrichelt (nicht massgeblich für den Zaun, nur
+ * Orientierung), Ackerkulturen — nur mit Umschalter sichtbar — in der
+ * Kulturfarbe des Kulturen-Moduls, damit sie sich vom Grünland abheben. */
 function BaseGeometryLayer({ parcels }: { parcels: Parcel[] }) {
   const map = useMap()
   useEffect(() => {
@@ -121,9 +125,23 @@ function BaseGeometryLayer({ parcels }: { parcels: Parcel[] }) {
         type: 'FeatureCollection',
         features: parcels
           .filter((p) => p.base_geometry)
-          .map((p) => ({ type: 'Feature', properties: { name: p.name }, geometry: JSON.parse(p.base_geometry!) })),
+          .map((p) => ({
+            type: 'Feature',
+            properties: { name: p.name, category: p.category, kultur: p.kultur_name_de, code: p.kultur_code },
+            geometry: JSON.parse(p.base_geometry!),
+          })),
       } as never,
-      { style: { color: '#6b7280', weight: 1, dashArray: '4 3', fillOpacity: 0.05 }, interactive: false },
+      {
+        style: (feature) =>
+          feature?.properties?.category === 'acker'
+            ? { color: colorForKultur(feature.properties.code ?? ''), weight: 1.5, fillOpacity: 0.18 }
+            : { color: '#6b7280', weight: 1, dashArray: '4 3', fillOpacity: 0.05 },
+        interactive: false,
+        onEachFeature: (feature, l) => {
+          const props = feature.properties as { name: string; kultur: string | null }
+          l.bindTooltip([props.name, props.kultur].filter(Boolean).join(' · '), { sticky: true, direction: 'top' })
+        },
+      },
     )
     layer.addTo(map)
     return () => {
