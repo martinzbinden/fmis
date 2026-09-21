@@ -20,9 +20,24 @@ export const SYNC_TABLES = {
     'animal_category', 'day_only', 'label', 'value_num', 'yield_amount',
     'yield_unit', 'import_key',
   ],
+  // fertilizer_types VOR fertilization_entries, fertilization_shares DANACH
+  // (Pull wendet Tabellen in dieser Reihenfolge an; shares haben echte FKs).
+  fertilizer_types: [
+    'id', 'code', 'name', 'unit', 'n_kg_per_unit', 'n_avail_pct',
+    'p2o5_kg_per_unit', 'k2o_kg_per_unit', 'mg_kg_per_unit', 'dilution_default',
+    'container_label', 'container_size', 'legacy_code', 'sort_order', 'active',
+    'notes', 'updated_at', 'deleted_at',
+  ],
   fertilization_entries: [
     'id', 'parcel_id', 'entry_date', 'duengung_code', 'amount', 'unit',
     'gabe_number', 'notes', 'updated_at', 'deleted_at',
+    'fertilizer_type_id', 'dilution', 'dilution_factor', 'container_count',
+    'extent_type', 'track_id', 'track_width_m', 'geometry', 'area_a',
+    'n_kg', 'n_avail_kg', 'p2o5_kg', 'k2o_kg', 'import_key',
+  ],
+  fertilization_shares: [
+    'id', 'entry_id', 'parcel_id', 'area_a', 'n_kg', 'n_avail_kg',
+    'p2o5_kg', 'k2o_kg', 'updated_at', 'deleted_at',
   ],
   n_dose_summary: [
     'id', 'parcel_id', 'season_year', 'gabe_number', 'guelle_verduennung',
@@ -59,7 +74,9 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   parcels: new Set(),
   paddocks: new Set(['valid_from', 'valid_to']),
   usage_entries: new Set(['entry_date']),
+  fertilizer_types: new Set(),
   fertilization_entries: new Set(['entry_date']),
+  fertilization_shares: new Set(),
   n_dose_summary: new Set(),
   daily_farm_log: new Set(['entry_date']),
   tracks: new Set(),

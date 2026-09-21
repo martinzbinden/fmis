@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
-import PaddockMap from '../components/PaddockMap'
+import PaddockMap, { type FertilizationFeature } from '../components/PaddockMap'
 import Modal from '../components/Modal'
 import WeedForm, { type WeedFormValues } from '../components/WeedForm'
 import { createPaddock, saveNewVersion, deletePaddock, loadCurrentPaddocks } from '../lib/paddock'
@@ -19,7 +19,7 @@ import {
 } from '../lib/tracking'
 import { detectDwell } from '../lib/geo'
 import { downloadGpx } from '../lib/gpx'
-import { fmtDateTime, todayIso } from '../lib/format'
+import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
 import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
 import type { Paddock, Parcel, Track, WeedObservation } from '../types'
@@ -27,7 +27,7 @@ import type { Paddock, Parcel, Track, WeedObservation } from '../types'
 const CURRENT_YEAR = new Date().getFullYear()
 
 async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean) {
-  const [paddocks, { rows: parcels }, { rows: tracks }, { rows: weedObservations }] = await Promise.all([
+  const [paddocks, { rows: parcels }, { rows: tracks }, { rows: weedObservations }, { rows: fertRows }] = await Promise.all([
     loadCurrentPaddocks(seasonYear),
     pg.query<Parcel>(
       `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)} order by sort_order, name`,
@@ -37,8 +37,26 @@ async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean) {
     pg.query<WeedObservation>('select * from weed_observations where season_year = $1 and deleted_at is null order by observed_at desc', [
       seasonYear,
     ]),
+    // Massnahmen der Saison mit Fläche: eigene Geometrie (Polygon/Track), sonst
+    // die gedüngten Parzellen über die Anteile.
+    pg.query<{ id: string; entry_date: string; duengung_code: string; amount: unknown; unit: string; n_kg: unknown; geometry: string | null; parcel_geoms: string[] | null }>(
+      `select e.id, e.entry_date, e.duengung_code, e.amount, e.unit, e.n_kg, e.geometry,
+              (select array_agg(p.base_geometry) from fertilization_shares s join parcels p on p.id = s.parcel_id
+                where s.entry_id = e.id and s.deleted_at is null and p.base_geometry is not null) as parcel_geoms
+       from fertilization_entries e
+       where e.deleted_at is null and extract(year from e.entry_date) = $1`,
+      [seasonYear],
+    ),
   ])
-  return { paddocks, parcels, tracks, weedObservations }
+  const fertilization: FertilizationFeature[] = []
+  for (const r of fertRows) {
+    const label = `${fmtDate(isoDate(r.entry_date))} · ${r.duengung_code}${r.amount != null ? ` ${r.amount} ${r.unit === 'm3' ? 'm³' : r.unit}` : ''}${
+      r.n_kg != null ? ` · ${r.n_kg} kg N` : ''
+    }`
+    if (r.geometry) fertilization.push({ id: r.id, label, geometry: r.geometry })
+    else for (const g of r.parcel_geoms ?? []) fertilization.push({ id: r.id, label, geometry: g })
+  }
+  return { paddocks, parcels, tracks, weedObservations, fertilization }
 }
 
 export default function Map() {
@@ -303,6 +321,7 @@ export default function Map() {
       <PaddockMap
         paddocks={paddocks}
         parcels={parcels}
+        fertilization={data?.fertilization ?? []}
         tracks={tracks}
         livePoints={recording ? livePoints : null}
         weedObservations={weedObservations}

@@ -18,8 +18,13 @@ export async function loadDayEntries(pg: PGlite, parcelId: string, date: string)
       'select * from usage_entries where parcel_id = $1 and entry_date = $2 and deleted_at is null order by updated_at',
       [parcelId, date],
     ),
+    // Düngung: Anker-Parzelle ODER Anteil (Polygon/Track/mehrere Parzellen
+    // erscheinen auf jeder betroffenen Parzelle).
     pg.query<FertilizationEntry>(
-      'select * from fertilization_entries where parcel_id = $1 and entry_date = $2 and deleted_at is null order by updated_at',
+      `select distinct e.* from fertilization_entries e
+       left join fertilization_shares s on s.entry_id = e.id and s.deleted_at is null
+       where e.entry_date = $2 and e.deleted_at is null and (e.parcel_id = $1 or s.parcel_id = $1)
+       order by e.updated_at`,
       [parcelId, date],
     ),
   ])

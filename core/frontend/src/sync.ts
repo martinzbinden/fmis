@@ -130,27 +130,33 @@ export function createSyncClient(
       tables: Record<string, Record<string, unknown>[]>
     }
 
-    for (const [table, columns] of Object.entries(syncTables)) {
-      const rows = data.tables[table]
-      if (!rows || rows.length === 0) continue
-      const colList = columns.map((c) => `"${c}"`).join(', ')
-      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
-      const setClause = columns
-        .filter((c) => c !== 'id')
-        .map((c) => `"${c}" = excluded."${c}"`)
-        .join(', ')
-      for (const row of rows) {
-        const values = columns.map((c) => row[c] ?? null)
-        // Last-write-wins, identisch zum Backend-Push-Handler: nur übernehmen
-        // wenn die Zeile lokal fehlt oder remote.updated_at neuer ist.
-        await pg.query(
-          `insert into "${table}" (${colList}) values (${placeholders})
-           on conflict (id) do update set ${setClause}
-           where "${table}".updated_at < excluded.updated_at`,
-          values,
-        )
+    // Alles in EINER Transaktion: ausserhalb einer Transaktion committet
+    // pglite jede Query einzeln nach IndexedDB — bei einem Erst-Pull mit
+    // tausenden Zeilen (z.B. data_history nach einem Import) dauert das
+    // Minuten und wird von jedem Seiten-Reload wieder abgebrochen.
+    await pg.transaction(async (tx) => {
+      for (const [table, columns] of Object.entries(syncTables)) {
+        const rows = data.tables[table]
+        if (!rows || rows.length === 0) continue
+        const colList = columns.map((c) => `"${c}"`).join(', ')
+        const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
+        const setClause = columns
+          .filter((c) => c !== 'id')
+          .map((c) => `"${c}" = excluded."${c}"`)
+          .join(', ')
+        for (const row of rows) {
+          const values = columns.map((c) => row[c] ?? null)
+          // Last-write-wins, identisch zum Backend-Push-Handler: nur übernehmen
+          // wenn die Zeile lokal fehlt oder remote.updated_at neuer ist.
+          await tx.query(
+            `insert into "${table}" (${colList}) values (${placeholders})
+             on conflict (id) do update set ${setClause}
+             where "${table}".updated_at < excluded.updated_at`,
+            values,
+          )
+        }
       }
-    }
+    })
 
     localStorage.setItem(sinceKey, data.server_time)
     notifyDataChanged()

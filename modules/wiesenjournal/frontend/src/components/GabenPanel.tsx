@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { getDb } from '../db/pglite'
 import { upsertRow, softDeleteRow } from '../db/write'
 import Modal from './Modal'
+import { loadParcelNutrientTotals } from '../lib/fertilization'
+import { kgPerHa } from '../lib/nutrients'
 import type { NDoseSummary } from '../types'
 
 interface Row {
@@ -25,15 +27,18 @@ function rowFromEntry(e: NDoseSummary): Row {
 export default function GabenPanel({
   parcelId,
   parcelName,
+  parcelAreaA,
   seasonYear,
   onClose,
 }: {
   parcelId: string
   parcelName: string
+  parcelAreaA: number | null
   seasonYear: number
   onClose: () => void
 }) {
   const [rows, setRows] = useState<Row[]>([])
+  const [totals, setTotals] = useState<{ n_kg: number; n_avail_kg: number; p2o5_kg: number; k2o_kg: number; applications: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -44,6 +49,7 @@ export default function GabenPanel({
       [parcelId, seasonYear],
     )
     setRows(entries.map(rowFromEntry))
+    setTotals(await loadParcelNutrientTotals(pg, parcelId, seasonYear))
     setLoading(false)
   }
 
@@ -95,6 +101,21 @@ export default function GabenPanel({
         <p className="py-4 text-center text-gray-400">Lädt…</p>
       ) : (
         <div className="space-y-3">
+          {totals && (
+            <div className="rounded-lg bg-brand-50 p-3 text-sm text-brand-900">
+              <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">Nährstoffe aus den Massnahmen {seasonYear}</div>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-4">
+                <div>N gesamt <b>{totals.n_kg.toFixed(1)} kg</b></div>
+                <div>N verfügbar <b>{totals.n_avail_kg.toFixed(1)} kg</b></div>
+                <div>P₂O₅ <b>{totals.p2o5_kg.toFixed(1)} kg</b></div>
+                <div>K₂O <b>{totals.k2o_kg.toFixed(1)} kg</b></div>
+              </div>
+              <div className="mt-1 text-xs text-brand-800">
+                {totals.applications} Massnahme{totals.applications === 1 ? '' : 'n'}
+                {parcelAreaA ? ` · ${kgPerHa(totals.n_kg, parcelAreaA)} kg N/ha (${kgPerHa(totals.n_avail_kg, parcelAreaA)} verfügbar) auf ${parcelAreaA} a` : ''}
+              </div>
+            </div>
+          )}
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-gray-500">

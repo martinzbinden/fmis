@@ -268,9 +268,39 @@ function MapClickCatcher({ active, onPick }: { active: boolean; onPick: (lat: nu
   return null
 }
 
+export interface FertilizationFeature {
+  id: string
+  label: string
+  geometry: string
+}
+
+/** Düngungsmassnahmen der Saison (Polygon/Track-Puffer bzw. gedüngte Parzellen) — amber, rein informativ. */
+function FertilizationLayer({ features }: { features: FertilizationFeature[] }) {
+  const map = useMap()
+  useEffect(() => {
+    const layer = L.geoJSON(
+      {
+        type: 'FeatureCollection',
+        features: features.map((f) => ({ type: 'Feature', properties: { label: f.label }, geometry: JSON.parse(f.geometry) })),
+      } as never,
+      {
+        style: { color: '#b45309', weight: 1.5, fillColor: '#f59e0b', fillOpacity: 0.25 },
+        interactive: true,
+        onEachFeature: (feature, l) => l.bindTooltip(feature.properties.label, { sticky: true }),
+      },
+    )
+    layer.addTo(map)
+    return () => {
+      map.removeLayer(layer)
+    }
+  }, [map, features])
+  return null
+}
+
 export default function PaddockMap({
   paddocks,
   parcels,
+  fertilization = [],
   tracks,
   livePoints,
   weedObservations,
@@ -286,6 +316,8 @@ export default function PaddockMap({
 }: {
   paddocks: Paddock[]
   parcels: Parcel[]
+  /** Düngungsmassnahmen für den Layer „Düngung" (optional). */
+  fertilization?: FertilizationFeature[]
   tracks: Track[]
   livePoints: TrackPoint[] | null
   weedObservations: WeedObservation[]
@@ -302,6 +334,7 @@ export default function PaddockMap({
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const [showTemplate, setShowTemplate] = useState(false)
+  const [showFertilization, setShowFertilization] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const mapRef = useRef<L.Map | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -360,6 +393,16 @@ export default function PaddockMap({
         >
           Kulturen-Vorlage
         </button>
+        {fertilization.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowFertilization((v) => !v)}
+            title="Gedüngte Flächen dieser Saison einblenden"
+            className={`rounded px-2 py-1 font-medium ${showFertilization ? 'bg-amber-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+          >
+            Düngung ({fertilization.length})
+          </button>
+        )}
         <button
           type="button"
           onClick={() => mapRef.current?.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true })}
@@ -390,6 +433,7 @@ export default function PaddockMap({
           attribution="&copy; swisstopo"
         />
         <BaseGeometryLayer parcels={parcels} />
+        {showFertilization && <FertilizationLayer features={fertilization} />}
         {showTemplate && <FieldsTemplateLayer onAdopt={onAdoptFieldsGeometry} />}
         <DrawLayer paddocks={paddocks} onCreated={onCreated} onEdited={onEdited} onDeleted={onDeleted} onSelect={onSelect} />
         <TracksLayer tracks={tracks} livePoints={livePoints} />

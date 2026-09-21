@@ -14,6 +14,7 @@ from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
+from modules.wiesenjournal.backend.app import fertilization as wiesenjournal_fertilization
 from modules.wiesenjournal.backend.app import parcels_import as wiesenjournal_parcels_import
 from modules.wiesenjournal.backend.app import reports as wiesenjournal_reports
 from modules.wiesenjournal.backend.app import sync as wiesenjournal_sync
@@ -88,6 +89,11 @@ app.include_router(
 )
 app.include_router(
     wiesenjournal_parcels_import.router,
+    prefix="/wiesenjournal",
+    dependencies=[Depends(require_module_enabled("wiesenjournal"))],
+)
+app.include_router(
+    wiesenjournal_fertilization.router,
     prefix="/wiesenjournal",
     dependencies=[Depends(require_module_enabled("wiesenjournal"))],
 )

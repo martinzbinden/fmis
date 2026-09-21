@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { loadJournalRows } from '../lib/journal'
+import type { Parcel } from '../types'
 import AckerToggle from '../components/AckerToggle'
 import { useShowAcker } from '../hooks/useShowAcker'
 import { useQuery } from '../hooks/useQuery'
@@ -21,9 +22,10 @@ export default function Journal() {
   const { data, loading, refresh } = useQuery((pg) => loadJournalRows(pg, seasonYear, showAcker), [seasonYear, showAcker])
   const [kindFilter, setKindFilter] = useState<'' | JournalRow['kind']>('')
   const [search, setSearch] = useState('')
-  const [editorTarget, setEditorTarget] = useState<{ parcelId: string; parcelName: string; date: string } | null>(null)
+  const [editorTarget, setEditorTarget] = useState<{ parcel: Parcel; date: string } | null>(null)
 
-  const rows = data ?? []
+  const rows = data?.rows ?? []
+  const parcels = data?.parcels ?? []
   const filtered = rows.filter((r) => {
     if (kindFilter && r.kind !== kindFilter) return false
     if (search && !r.parcelName.toLowerCase().includes(search.toLowerCase())) return false
@@ -77,7 +79,7 @@ export default function Journal() {
           <li
             key={`${row.kind}-${row.id}`}
             className="cursor-pointer rounded-lg bg-white p-3 shadow-sm"
-            onClick={() => setEditorTarget({ parcelId: row.parcelId, parcelName: row.parcelName, date: row.date })}
+            onClick={() => setEditorTarget({ parcel: row.parcel, date: row.date })}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-gray-500">{fmtDate(row.date)}</span>
@@ -95,8 +97,9 @@ export default function Journal() {
 
       {editorTarget && (
         <DayEntryEditor
-          parcelId={editorTarget.parcelId}
-          parcelName={editorTarget.parcelName}
+          parcel={editorTarget.parcel}
+          parcels={parcels}
+          seasonYear={seasonYear}
           date={editorTarget.date}
           onClose={() => setEditorTarget(null)}
           onSaved={refresh}

@@ -10,6 +10,7 @@ import Map from './pages/Map'
 import Parcels from './pages/Parcels'
 import Report from './pages/Report'
 import History from './pages/History'
+import FertilizerTypes from './pages/FertilizerTypes'
 import './theme.css'
 
 function WiesenjournalDbProvider({ children }: { children: ReactNode }) {
@@ -35,6 +36,8 @@ const wiesenjournalModule: ModuleDescriptor = {
     { path: 'parzellen', element: <Parcels /> },
     { path: 'auswertung', element: <Report /> },
     { path: 'verlauf', element: <History /> },
+    // Kein Nav-Eintrag (Bottom-Bar ist voll) — verlinkt von Parzellen/Auswertung.
+    { path: 'duengerarten', element: <FertilizerTypes /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],
   DbProvider: WiesenjournalDbProvider,

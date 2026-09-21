@@ -19,9 +19,24 @@ SYNC_TABLES: dict[str, list[str]] = {
         "animal_category", "day_only", "label", "value_num", "yield_amount",
         "yield_unit", "import_key",
     ],
+    # fertilizer_types VOR fertilization_entries, fertilization_shares DANACH
+    # (Pull wendet Tabellen in dieser Reihenfolge an; shares haben echte FKs).
+    "fertilizer_types": [
+        "id", "code", "name", "unit", "n_kg_per_unit", "n_avail_pct",
+        "p2o5_kg_per_unit", "k2o_kg_per_unit", "mg_kg_per_unit", "dilution_default",
+        "container_label", "container_size", "legacy_code", "sort_order", "active",
+        "notes", "updated_at", "deleted_at",
+    ],
     "fertilization_entries": [
         "id", "parcel_id", "entry_date", "duengung_code", "amount", "unit",
         "gabe_number", "notes", "updated_at", "deleted_at",
+        "fertilizer_type_id", "dilution", "dilution_factor", "container_count",
+        "extent_type", "track_id", "track_width_m", "geometry", "area_a",
+        "n_kg", "n_avail_kg", "p2o5_kg", "k2o_kg", "import_key",
+    ],
+    "fertilization_shares": [
+        "id", "entry_id", "parcel_id", "area_a", "n_kg", "n_avail_kg",
+        "p2o5_kg", "k2o_kg", "updated_at", "deleted_at",
     ],
     "n_dose_summary": [
         "id", "parcel_id", "season_year", "gabe_number", "guelle_verduennung",
@@ -59,7 +74,9 @@ TABLE_AREA: dict[str, str] = {
     "parcels": "wiesenjournal:parcels",
     "paddocks": "wiesenjournal:weide",
     "usage_entries": "wiesenjournal:nutzung",
+    "fertilizer_types": "wiesenjournal:duengung",
     "fertilization_entries": "wiesenjournal:duengung",
+    "fertilization_shares": "wiesenjournal:duengung",
     "n_dose_summary": "wiesenjournal:duengung",
     "daily_farm_log": "wiesenjournal:tagesmeldung",
     "tracks": "wiesenjournal:tracking",
@@ -75,6 +92,7 @@ TABLE_AREA: dict[str, str] = {
 GEOMETRY_COLUMNS: dict[str, set[str]] = {
     "parcels": {"base_geometry"},
     "paddocks": {"geometry"},
+    "fertilization_entries": {"geometry"},
     "tracks": {"geometry"},
     "weed_observations": {"geometry"},
 }

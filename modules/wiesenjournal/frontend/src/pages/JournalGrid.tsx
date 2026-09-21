@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { loadEntriesInRange } from '../lib/journalEntry'
+import { loadSharesInRange } from '../lib/fertilization'
 import JournalGridComponent, { type DayIndex } from '../components/JournalGrid'
 import DayEntryEditor from '../components/DayEntryEditor'
 import GabenPanel from '../components/GabenPanel'
@@ -10,7 +11,7 @@ import DailyLogEditor from '../components/DailyLogEditor'
 import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { isoDate } from '../lib/format'
+import { isoDate, num } from '../lib/format'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -35,7 +36,7 @@ function indexByParcelAndDay<T extends { parcel_id: string; entry_date: string }
 }
 
 async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: string, showAcker: boolean) {
-  const [{ rows: parcels }, { usage, fertilizations }, { rows: dailyLogs }] = await Promise.all([
+  const [{ rows: parcels }, { usage, fertilizations }, { rows: dailyLogs }, shares] = await Promise.all([
     pg.query<Parcel>(
       `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)}
        order by farm_name nulls last, category, sort_order, name`,
@@ -43,8 +44,9 @@ async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: st
     ),
     loadEntriesInRange(pg, from, to),
     pg.query<DailyFarmLog>('select * from daily_farm_log where entry_date between $1 and $2 and deleted_at is null', [from, to]),
+    loadSharesInRange(pg, from, to),
   ])
-  return { parcels, usage, fertilizations, dailyLogs }
+  return { parcels, usage, fertilizations, dailyLogs, shares }
 }
 
 export default function JournalGridPage() {
@@ -66,7 +68,31 @@ export default function JournalGridPage() {
 
   const parcels = data?.parcels ?? []
   const usageByDay = useMemo(() => indexByParcelAndDay<UsageEntry>(data?.usage ?? []), [data])
-  const fertByDay = useMemo(() => indexByParcelAndDay<FertilizationEntry>(data?.fertilizations ?? []), [data])
+  // Düngung je Parzelle über die Anteile (Polygon/Track/mehrere Parzellen
+  // erscheinen auf jeder betroffenen Zeile); Massnahmen ohne Anteile über
+  // die Anker-Parzelle.
+  const fertByDay = useMemo(() => {
+    const entries = data?.fertilizations ?? []
+    const byId = new Map(entries.map((e) => [e.id, e]))
+    const withShare = new Set<string>()
+    const rows: { parcel_id: string; entry_date: string; entry: FertilizationEntry }[] = []
+    for (const { share, entry_date } of data?.shares ?? []) {
+      const entry = byId.get(share.entry_id)
+      if (!entry) continue
+      withShare.add(entry.id)
+      rows.push({ parcel_id: share.parcel_id, entry_date, entry })
+    }
+    for (const e of entries) {
+      if (!withShare.has(e.id) && e.parcel_id) rows.push({ parcel_id: e.parcel_id, entry_date: e.entry_date, entry: e })
+    }
+    const idx: DayIndex<FertilizationEntry> = {}
+    for (const r of rows) {
+      idx[r.parcel_id] ??= {}
+      idx[r.parcel_id][r.entry_date] ??= []
+      if (!idx[r.parcel_id][r.entry_date].some((x) => x.id === r.entry.id)) idx[r.parcel_id][r.entry_date].push(r.entry)
+    }
+    return idx
+  }, [data])
   const dailyLogByDate = useMemo(() => {
     const idx: Record<string, DailyFarmLog> = {}
     for (const log of data?.dailyLogs ?? []) idx[isoDate(log.entry_date)] = log
@@ -116,15 +142,22 @@ export default function JournalGridPage() {
 
       {editorTarget && (
         <DayEntryEditor
-          parcelId={editorTarget.parcel.id}
-          parcelName={editorTarget.parcel.name}
+          parcel={editorTarget.parcel}
+          parcels={parcels}
+          seasonYear={seasonYear}
           date={editorTarget.date}
           onClose={() => setEditorTarget(null)}
           onSaved={refresh}
         />
       )}
       {gabenTarget && (
-        <GabenPanel parcelId={gabenTarget.id} parcelName={gabenTarget.name} seasonYear={seasonYear} onClose={() => setGabenTarget(null)} />
+        <GabenPanel
+          parcelId={gabenTarget.id}
+          parcelName={gabenTarget.name}
+          parcelAreaA={num(gabenTarget.area_a)}
+          seasonYear={seasonYear}
+          onClose={() => setGabenTarget(null)}
+        />
       )}
       {farmLogDate && <DailyLogEditor date={farmLogDate} onClose={() => setFarmLogDate(null)} onSaved={refresh} />}
     </div>

@@ -220,7 +220,14 @@ def interpret_day(tokens_a: list[str], detail: str, fass_m3: float, ha: float | 
     def add_fert(code: str, **kw):
         res.ferts.append({"duengung_code": code, "amount": None, "unit": "m3", "gabe_number": None, "notes": None, **kw})
 
+    # "1 Fass" / "6 Rb" kommen als zwei Tokens — Zahl + Einheit wieder zusammenziehen
+    merged: list[str] = []
     for tok in tokens_a:
+        if merged and re.fullmatch(r"\d+(?:[.,]\d+)?", merged[-1]) and re.fullmatch(r"(?i)fass|rb|fu|st", tok):
+            merged[-1] = merged[-1] + tok
+        else:
+            merged.append(tok)
+    for tok in merged:
         u = tok.upper().rstrip("?")
         uncertain = tok.endswith("?")
         if u in ANIMAL_LETTER and not (u == "G" and has_fert_detail) and not (u == "V" and "kg" in detail_l):
@@ -432,6 +439,8 @@ def main() -> None:
     ap.add_argument("--report", help="CSV mit Parzellen-Zuordnung und Heuristik-Entscheiden")
     ap.add_argument("--import-gelan", action="store_true", help="vorher POST /wiesenjournal/parcels/import-from-fields")
     ap.add_argument("--force", action="store_true", help="auch in der App bearbeitete Zeilen überschreiben")
+    ap.add_argument("--recompute", action="store_true",
+                    help="danach POST /wiesenjournal/fertilization/recompute-shares (Nährstoffe/Anteile berechnen)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--insecure", action="store_true")
     args = ap.parse_args()
@@ -514,7 +523,11 @@ def main() -> None:
         last_editor[h["row_id"]] = h.get("changed_by")
 
     def protected(row_id: str) -> bool:
-        return not args.force and row_id in last_editor and last_editor[row_id] != args.changed_by
+        editor = last_editor.get(row_id)
+        if args.force or editor is None or editor == args.changed_by:
+            return False
+        # Server-Neuberechnung (recompute-shares) ist keine manuelle Bearbeitung.
+        return not editor.startswith("recompute-shares")
 
     ts = now_iso()
     tables: dict[str, list[dict]] = {"parcels": [], "usage_entries": [], "fertilization_entries": [],
@@ -522,12 +535,41 @@ def main() -> None:
     existing_ids = {t: {r["id"] for r in existing.get(t, [])} for t in tables}
     skipped = Counter()
 
+    existing_by_id = {t: {r["id"]: r for r in existing.get(t, [])} for t in tables}
+    kept_ids: dict[str, set[str]] = {t: set() for t in tables}   # unverändert, aber weiterhin gültig
+
+    def unchanged(table: str, row: dict) -> bool:
+        prev = existing_by_id[table].get(row["id"])
+        if prev is None:
+            return False
+        for k, v in row.items():
+            if k in ("updated_at", "deleted_at"):
+                continue
+            pv = prev.get(k)
+            # Zahlen kommen vom Server als String ("30.00"), Datum als 'YYYY-MM-DD'
+            if isinstance(v, (int, float)) and pv is not None:
+                try:
+                    if abs(float(pv) - float(v)) > 1e-6:
+                        return False
+                    continue
+                except (TypeError, ValueError):
+                    return False
+            if (pv if pv not in ("", None) else None) != (v if v not in ("", None) else None):
+                return False
+        return prev.get("deleted_at") is None
+
     def emit(table: str, row: dict, check: bool = True) -> None:
         if check and protected(row["id"]):
             skipped[table] += 1
             return
         row.setdefault("updated_at", ts)
         row.setdefault("deleted_at", None)
+        # Unveränderte Zeilen nicht erneut senden — sonst wächst data_history
+        # bei jedem Lauf um tausend Zeilen, und jeder Client muss sie pullen.
+        if unchanged(table, row):
+            skipped[f"{table}_unchanged"] += 1
+            kept_ids[table].add(row["id"])
+            return
         tables[table].append(row)
         tables["data_history"].append(history_row(table, row, "update" if row["id"] in existing_ids[table] else "insert",
                                                   args.changed_by, ts))
@@ -561,6 +603,33 @@ def main() -> None:
                 "kultur_code": None, "kultur_name_de": None, "updated_at": ts, "deleted_at": None,
             })
 
+    # Düngerarten: Code → Typ (für fertilizer_type_id); Kalk-Notiz → Typ K
+    types = [t for t in existing.get("fertilizer_types", []) if not t.get("deleted_at")]
+    type_by_code = {t["code"]: t for t in types}
+    type_by_legacy = {t["legacy_code"]: t for t in types if t.get("legacy_code")}
+
+    def enrich_fert(f: dict) -> dict:
+        t = type_by_code.get("K") if (f.get("notes") or "").startswith("Kalk") else None
+        t = t or type_by_legacy.get(f["duengung_code"]) or type_by_code.get(f["duengung_code"])
+        notes = f.get("notes") or ""
+        m = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:x\s*(\d+(?:[.,]\d+)?)\s*)?(Fass|Fuder)", notes, re.I)
+        count = None
+        if m:
+            count = float(m.group(1).replace(",", "."))
+            if m.group(2):
+                count *= float(m.group(2).replace(",", "."))
+        dil = re.search(r"Verdünnung (\d+):(\d+)", notes)
+        return {
+            **f,
+            "fertilizer_type_id": t["id"] if t else None,
+            "dilution": f"{dil.group(1)}:{dil.group(2)}" if dil else None,
+            "dilution_factor": None,
+            "container_count": count,
+            "extent_type": "parcel",
+            "track_id": None, "track_width_m": None, "geometry": None,
+            "area_a": None, "n_kg": None, "n_avail_kg": None, "p2o5_kg": None, "k2o_kg": None,
+        }
+
     # Einträge
     for p in excel:
         pid = parcel_id_for[p.key]
@@ -576,7 +645,15 @@ def main() -> None:
                 k = f"fert|{f['duengung_code']}"
                 counters[k] += 1
                 key = f"{pid}|{d}|{k}|{counters[k]}"
-                emit("fertilization_entries", {"id": str(uuid.uuid5(NS, key)), "parcel_id": pid, "entry_date": d, **f})
+                prev = next((x for x in existing.get("fertilization_entries", []) if x["id"] == str(uuid.uuid5(NS, key))), None)
+                row = enrich_fert({"id": str(uuid.uuid5(NS, key)), "parcel_id": pid, "entry_date": d, "import_key": key, **f})
+                if prev:
+                    # berechnete Felder/Flächenbezug aus der App nicht verlieren
+                    for col in ("extent_type", "track_id", "track_width_m", "geometry", "area_a", "n_kg", "n_avail_kg", "p2o5_kg", "k2o_kg"):
+                        row[col] = prev.get(col)
+                    if prev.get("extent_type") not in (None, "parcel"):
+                        row["parcel_id"] = prev.get("parcel_id")
+                emit("fertilization_entries", row)
 
     # Betriebstage
     existing_log_by_date = {r["entry_date"][:10]: r for r in existing.get("daily_farm_log", []) if not r.get("deleted_at")}
@@ -596,7 +673,7 @@ def main() -> None:
     # Aufräumen: Zeilen, die ein früherer Lauf dieses Tools angelegt hat
     # (letzter Verlaufseintrag vom Tool) und die jetzt nicht mehr erzeugt
     # werden (z.B. nach Parser-Änderungen), soft-löschen.
-    emitted = {t: {r["id"] for r in rows} for t, rows in tables.items()}
+    emitted = {t: {r["id"] for r in rows} | kept_ids[t] for t, rows in tables.items()}
     for t in ("usage_entries", "fertilization_entries"):
         for r in existing.get(t, []):
             if r.get("deleted_at") or r["id"] in emitted[t] or last_editor.get(r["id"]) != args.changed_by:
@@ -605,9 +682,12 @@ def main() -> None:
             tables[t].append(row)
             tables["data_history"].append(history_row(t, row, "delete", args.changed_by, ts))
             skipped[f"{t}_deleted"] += 1
-    if skipped:
+    if any(k.endswith("_deleted") for k in skipped):
         print("  aufgeräumt: " + ", ".join(f"{k}: {n}" for k, n in skipped.items() if k.endswith("_deleted")))
 
+    unchanged_total = sum(n for k, n in skipped.items() if k.endswith("_unchanged"))
+    if unchanged_total:
+        print(f"  unverändert (nicht gesendet): {unchanged_total}")
     for t, rows in tables.items():
         print(f"  sende {t}: {len(rows)}" + (f" (übersprungen, in der App bearbeitet: {skipped[t]})" if skipped[t] else ""))
     accepted: Counter = Counter()
@@ -617,6 +697,9 @@ def main() -> None:
             for t, n in resp["accepted"].items():
                 accepted[t] += n
     print("Übernommen: " + ", ".join(f"{t}: {n}" for t, n in accepted.items()))
+    if args.recompute:
+        r = api.request("POST", f"/wiesenjournal/fertilization/recompute-shares?year={year}")
+        print(f"Nährstoffe/Anteile neu berechnet: {r}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
@@ -159,6 +160,9 @@ export default function Parcels() {
         <h1 className="text-xl font-bold text-gray-800">Parzellen {seasonYear}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <AckerToggle />
+          <Link to="../duengerarten" className="text-xs font-medium text-brand-700 underline">
+            Düngerarten
+          </Link>
           <select
             value={seasonYear}
             onChange={(e) => setSeasonYear(Number(e.target.value))}

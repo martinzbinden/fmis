@@ -95,16 +95,68 @@ export interface UsageEntry {
 
 export type DuengungCode = 'RGv' | 'RGk' | 'RMI' | 'RMs' | 'SG' | 'SM' | 'A' | 'H' | 'V'
 export type DuengungUnit = 'm3' | 't' | 'kg'
+// Flächenbezug einer Massnahme, siehe schema/0011_fertilization_extent.sql.
+export type ExtentType = 'parcel' | 'parcels' | 'polygon' | 'track'
+
+// Düngerart mit Nährstoffgehalten je Einheit (schema/0010_fertilizer_types.sql).
+export interface FertilizerType {
+  id: string
+  code: string
+  name: string
+  unit: DuengungUnit
+  n_kg_per_unit: number
+  n_avail_pct: number
+  p2o5_kg_per_unit: number
+  k2o_kg_per_unit: number
+  mg_kg_per_unit: number | null
+  dilution_default: number
+  container_label: string | null
+  container_size: number | null
+  legacy_code: string | null
+  sort_order: number
+  active: boolean
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+}
 
 export interface FertilizationEntry {
   id: string
-  parcel_id: string
+  parcel_id: string | null   // Anker-Parzelle; null bei Polygon/Track ohne Parzellentreffer
   entry_date: string
   duengung_code: DuengungCode
   amount: number | null
   unit: DuengungUnit
   gabe_number: number | null
   notes: string | null
+  updated_at: string
+  deleted_at: string | null
+  fertilizer_type_id: string | null
+  dilution: string | null
+  dilution_factor: number | null
+  container_count: number | null
+  extent_type: ExtentType
+  track_id: string | null
+  track_width_m: number | null
+  geometry: string | null
+  area_a: number | null
+  n_kg: number | null
+  n_avail_kg: number | null
+  p2o5_kg: number | null
+  k2o_kg: number | null
+  import_key: string | null
+}
+
+// Anteil einer Massnahme an einer Journal-(GELAN-)Parzelle.
+export interface FertilizationShare {
+  id: string
+  entry_id: string
+  parcel_id: string
+  area_a: number
+  n_kg: number | null
+  n_avail_kg: number | null
+  p2o5_kg: number | null
+  k2o_kg: number | null
   updated_at: string
   deleted_at: string | null
 }
