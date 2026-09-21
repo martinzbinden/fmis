@@ -9,14 +9,16 @@ import AnimalTable, { matchesFilter, type AnimalRow } from '../components/Animal
 
 async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
   const { rows } = await pg.query<AnimalRow>(`
-    select a.*, count(mt.id) as milk_test_count
+    select a.*,
+      (select count(*) from milk_tests mt where mt.animal_id = a.id and mt.deleted_at is null) as milk_test_count,
+      (select count(*) from animal_journal j where j.animal_id = a.id and j.deleted_at is null) as journal_count,
+      (select j.text from animal_journal j where j.animal_id = a.id and j.deleted_at is null
+        order by j.entry_date desc, j.updated_at desc limit 1) as last_journal
     from animals a
-    left join milk_tests mt on mt.animal_id = a.id and mt.deleted_at is null
     where a.deleted_at is null
-    group by a.id
-    order by a.status, a.ear_tag
+    order by a.status, a.lauf_nr nulls last, a.ear_tag
   `)
-  return rows
+  return rows.map((r) => ({ ...r, milk_test_count: Number(r.milk_test_count), journal_count: Number(r.journal_count) }))
 }
 
 type ViewMode = 'cards' | 'list'
@@ -104,7 +106,10 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
         {animals.map((a) => (
           <li key={a.id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-gray-800">{a.name ?? a.ear_tag}</span>
+              <span className="font-semibold text-gray-800">
+                {a.lauf_nr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{a.lauf_nr}</span>}
+                {a.name ?? a.ear_tag}
+              </span>
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                   a.status === 'aktiv' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'
@@ -116,7 +121,11 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
             <div className="mt-1 text-xs text-gray-500">
               {a.ear_tag} {a.breed_code ? `· ${a.breed_code}` : ''} · geb. {fmtDate(a.birth_date)}
             </div>
-            <div className="mt-1 text-xs text-gray-500">{a.milk_test_count} Milchtests erfasst</div>
+            <div className="mt-1 text-xs text-gray-500">
+              {a.milk_test_count} Milchtests erfasst
+              {a.journal_count > 0 ? ` · ${a.journal_count} Journaleinträge` : ''}
+            </div>
+            {a.last_journal && <div className="mt-1 text-xs text-gray-600">📝 {a.last_journal}</div>}
           </li>
         ))}
       </ul>

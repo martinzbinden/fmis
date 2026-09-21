@@ -7,7 +7,7 @@ import { createDairySyncClient } from './db/sync'
 import Milk from './pages/Milk'
 import Animals from './pages/Animals'
 import History from './pages/History'
-import Melken from './pages/Melken'
+import Milchwaegung from './pages/Milchwaegung'
 import './theme.css'
 
 /**
@@ -30,14 +30,15 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     navItems: [
       { to: '', label: 'Leistung', icon: '🥛' },
       { to: 'kuehe', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
-      { to: 'melken', label: 'Melken', icon: '📡' },
+      { to: 'milchwaegung', label: 'Milchwägung', icon: '⚖️' },
     ],
     historyPermission: `${key}:history:read`,
     routes: [
       { path: '', element: <Milk moduleKey={key} /> },
       { path: 'kuehe', element: <Animals moduleKey={key} /> },
       { path: 'verlauf', element: <History moduleKey={key} /> },
-      { path: 'melken', element: <Melken moduleKey={key} /> },
+      { path: 'milchwaegung', element: <Milchwaegung moduleKey={key} /> },
+      { path: 'melken', element: <Navigate to="../milchwaegung" replace /> },
       { path: '*', element: <Navigate to="." replace /> },
     ],
     DbProvider: DairyDbProvider,

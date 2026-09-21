@@ -4,11 +4,14 @@ import type { Animal } from '../types'
 
 export interface AnimalRow extends Animal {
   milk_test_count: number
+  journal_count: number
+  last_journal: string | null
 }
 
 // Alle wählbaren Spalten; die Auswahl wird pro Instanz in localStorage
 // gemerkt (reine Anzeige-Einstellung, kein Sync).
 const COLUMNS: { key: keyof AnimalRow; label: string; format?: (v: unknown) => string }[] = [
+  { key: 'lauf_nr', label: 'Nr.' },
   { key: 'name', label: 'Name' },
   { key: 'ear_tag', label: 'Ohrmarke' },
   { key: 'breed_code', label: 'Rasse' },
@@ -18,9 +21,11 @@ const COLUMNS: { key: keyof AnimalRow; label: string; format?: (v: unknown) => s
   { key: 'entry_date', label: 'Zugang', format: (v) => fmtDate(v as string | null) },
   { key: 'exit_date', label: 'Abgang', format: (v) => fmtDate(v as string | null) },
   { key: 'milk_test_count', label: 'Milchtests' },
+  { key: 'journal_count', label: 'Journal' },
+  { key: 'last_journal', label: 'Letzter Journaleintrag' },
   { key: 'notes', label: 'Bemerkung' },
 ]
-const DEFAULT_COLUMNS: (keyof AnimalRow)[] = ['name', 'ear_tag', 'breed_code', 'birth_date', 'status', 'milk_test_count']
+const DEFAULT_COLUMNS: (keyof AnimalRow)[] = ['lauf_nr', 'name', 'ear_tag', 'breed_code', 'birth_date', 'status', 'milk_test_count']
 
 function cellText(col: (typeof COLUMNS)[number], row: AnimalRow): string {
   const v = row[col.key]
@@ -137,7 +142,7 @@ export default function AnimalTable({ animals, storageKey }: { animals: AnimalRo
                 {visible.map((c) => (
                   <td
                     key={c.key}
-                    className={`whitespace-nowrap px-3 py-1.5 ${c.key === 'name' || c.key === 'ear_tag' ? 'font-medium text-gray-800' : ''}`}
+                    className={`whitespace-nowrap px-3 py-1.5 ${c.key === 'name' || c.key === 'ear_tag' ? 'font-medium text-gray-800' : c.key === 'lauf_nr' ? 'text-base font-bold text-gray-800' : ''}`}
                   >
                     {c.key === 'status' ? (
                       <span

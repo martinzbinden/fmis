@@ -101,6 +101,7 @@ class Animal:
     status: str
     entry_date: str | None
     exit_date: str | None
+    lauf_nr: str | None  # "Laufnummer in Herde" (K01 283-286)
 
 
 @dataclass
@@ -147,6 +148,7 @@ def parse_k01(line: str) -> Animal | None:
         status="abgegangen" if exit_date else "aktiv",
         entry_date=adis_date(field(line, 130, 137)),
         exit_date=exit_date,
+        lauf_nr=trimmed(field(line, 283, 286)),
     )
 
 
@@ -324,10 +326,12 @@ def build_rows(parsed: ParseResult, existing: dict[str, list[dict]], changed_by:
         is_new = a.ear_tag not in ear_tag_to_id
         row_id = ear_tag_to_id.setdefault(a.ear_tag, str(uuid.uuid4()))
         row = {"id": row_id, **asdict(a), "notes": None, "updated_at": ts, "deleted_at": None}
-        # notes gehört nicht zum Export — bestehende Notizen nicht überschreiben.
+        # notes gehört nicht zum Export — bestehende Notizen (und eine in der
+        # App gesetzte Laufnummer) nicht überschreiben.
         if not is_new:
             prev = next(r for r in existing["animals"] if r["id"] == row_id)
             row["notes"] = prev.get("notes")
+            row["lauf_nr"] = a.lauf_nr or prev.get("lauf_nr")
         tables["animals"].append(row)
         tables["data_history"].append(history_row("animals", row, "insert" if is_new else "update", changed_by, ts))
 

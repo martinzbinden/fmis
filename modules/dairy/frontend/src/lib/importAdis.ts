@@ -20,6 +20,7 @@ export interface ParsedAnimal {
   status: AnimalStatus
   entry_date: string | null
   exit_date: string | null
+  lauf_nr: string | null   // "Laufnummer in Herde" (K01 283-286)
 }
 
 export interface ParsedMilkTest {
@@ -104,6 +105,7 @@ function parseK01Line(line: string): ParsedAnimal | null {
     status: exit_date ? 'abgegangen' : 'aktiv',
     entry_date: parseAdisDate(field(line, 130, 137)),
     exit_date,
+    lauf_nr: trimmed(field(line, 283, 286)),
   }
 }
 
@@ -206,15 +208,19 @@ export interface ImportSummary {
  * unterschiedlicher Abschlussart sind gewollt (siehe schema/0003_lactations.sql).
  */
 export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<ImportSummary> {
-  const { rows: existingAnimals } = await pg.query<{ id: string; ear_tag: string }>(
-    'select id, ear_tag from animals',
+  const { rows: existingAnimals } = await pg.query<{ id: string; ear_tag: string; notes: string | null; lauf_nr: string | null }>(
+    'select id, ear_tag, notes, lauf_nr from animals',
   )
   const earTagToId = new Map(existingAnimals.map((a) => [a.ear_tag, a.id]))
+  // In der App gepflegte Felder (Bemerkung, Laufnummer) beim Re-Import nicht
+  // überschreiben, wenn der Export nichts dazu liefert.
+  const existingByTag = new Map(existingAnimals.map((a) => [a.ear_tag, a]))
 
   for (const animal of parsed.animals) {
     const id = earTagToId.get(animal.ear_tag) ?? crypto.randomUUID()
     earTagToId.set(animal.ear_tag, id)
-    await upsertRow(pg, 'animals', { id, ...animal })
+    const prev = existingByTag.get(animal.ear_tag)
+    await upsertRow(pg, 'animals', { id, ...animal, lauf_nr: animal.lauf_nr ?? prev?.lauf_nr ?? null, notes: prev?.notes ?? null })
   }
 
   const { rows: existingTests } = await pg.query<{ id: string; animal_id: string; test_date: string }>(

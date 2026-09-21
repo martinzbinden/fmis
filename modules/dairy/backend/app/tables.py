@@ -4,7 +4,7 @@
 SYNC_TABLES: dict[str, list[str]] = {
     "animals": [
         "id", "ear_tag", "name", "breed_code", "birth_date", "sex", "status",
-        "entry_date", "exit_date", "notes", "updated_at", "deleted_at",
+        "entry_date", "exit_date", "notes", "updated_at", "deleted_at", "lauf_nr",
     ],
     "milk_tests": [
         "id", "animal_id", "test_date", "calving_date", "lactation_number",
@@ -15,6 +15,17 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "animal_id", "lactation_number", "calving_date", "closure_type",
         "days_in_milk", "milk_kg", "fat_kg", "fat_pct", "protein_kg",
         "protein_pct", "updated_at", "deleted_at",
+    ],
+    "milking_banks": [
+        "id", "session_date", "bank_number", "capacity", "opened_at", "closed_at",
+        "notes", "updated_at", "deleted_at",
+    ],
+    "milking_slots": [
+        "id", "bank_id", "position", "original_position", "transponder", "ear_tag",
+        "animal_id", "weighed", "notes", "read_at", "updated_at", "deleted_at",
+    ],
+    "animal_journal": [
+        "id", "animal_id", "entry_date", "source", "text", "ref_id", "updated_at", "deleted_at",
     ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
@@ -39,5 +50,8 @@ def table_area(key: str) -> dict[str, str]:
         "animals": f"{key}:animals",
         "milk_tests": f"{key}:milk",
         "lactations": f"{key}:milk",
+        "milking_banks": f"{key}:milk",
+        "milking_slots": f"{key}:milk",
+        "animal_journal": f"{key}:animals",
         "data_history": f"{key}:history",
     }
