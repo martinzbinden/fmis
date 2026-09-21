@@ -391,7 +391,8 @@ export default function Parcels() {
           <p className="mb-3 text-sm text-gray-600">
             Alle Einträge (Nutzung, Düngung, Gaben, Weidegänge, Unkraut) wandern zur gewählten GELAN-Parzelle;
             „{mergeSource.name}" wird danach gelöscht. Wiesentyp/Intensität/Bemerkung werden übernommen, falls
-            dort leer.
+            dort leer. Danach unter Auswertung „Neu berechnen" ausführen, damit die Nährstoffe auf die neue
+            Fläche bezogen werden.
           </p>
           <select
             value={mergeTargetId}

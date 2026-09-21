@@ -4,14 +4,12 @@ import type { Parcel } from '../types'
 
 // Tabellen, die per parcel_id auf parcels zeigen — beim Zusammenführen
 // zweier Parzellen werden diese Zeilen umgehängt (über upsertRow, damit
-// Outbox/Verlauf stimmen). fertilization_shares kommt in Phase 2 dazu.
-const REFERENCING: Array<'usage_entries' | 'fertilization_entries' | 'n_dose_summary' | 'paddocks' | 'weed_observations'> = [
-  'usage_entries',
-  'fertilization_entries',
-  'n_dose_summary',
-  'paddocks',
-  'weed_observations',
-]
+// Outbox/Verlauf stimmen). Die Nährstoff-Anteile (fertilization_shares)
+// tragen danach noch die Fläche der alten Parzelle — unter Auswertung
+// „Neu berechnen" ausführen.
+const REFERENCING: Array<
+  'usage_entries' | 'fertilization_entries' | 'fertilization_shares' | 'n_dose_summary' | 'paddocks' | 'weed_observations'
+> = ['usage_entries', 'fertilization_entries', 'fertilization_shares', 'n_dose_summary', 'paddocks', 'weed_observations']
 
 /**
  * Führt eine manuell/aus Excel angelegte Parzelle (source) in eine GELAN-

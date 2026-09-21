@@ -9,6 +9,8 @@ const TABLE_LABEL: Record<string, string> = {
   paddocks: 'Weidegang',
   usage_entries: 'Nutzung',
   fertilization_entries: 'Düngung',
+  fertilization_shares: 'Düngung (Anteil)',
+  fertilizer_types: 'Düngerart',
   n_dose_summary: 'Gabe (N)',
   daily_farm_log: 'Tagesmeldung',
   tracks: 'Track',
