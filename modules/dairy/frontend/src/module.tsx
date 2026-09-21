@@ -28,7 +28,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     title,
     icon: '🥛',
     navItems: [
-      { to: '', label: 'Milch', icon: '🥛' },
+      { to: '', label: 'Leistung', icon: '🥛' },
       { to: 'kuehe', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
       { to: 'melken', label: 'Melken', icon: '📡' },
     ],

@@ -5,11 +5,7 @@ import { useDb } from '@fmis/core/DbContext'
 import { parseAdisFiles, importAdisData, type ImportSummary } from '../lib/importAdis'
 import { parseTierbestand, parseSmgFiles, importSmgData, type SmgImportSummary } from '../lib/importSmg'
 import { fmtDate } from '../lib/format'
-import type { Animal } from '../types'
-
-interface AnimalRow extends Animal {
-  milk_test_count: number
-}
+import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
 
 async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
   const { rows } = await pg.query<AnimalRow>(`
@@ -23,12 +19,36 @@ async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
   return rows
 }
 
+type ViewMode = 'cards' | 'list'
+
+function loadView(key: string): ViewMode {
+  try {
+    return localStorage.getItem(key) === 'list' ? 'list' : 'cards'
+  } catch {
+    return 'cards'
+  }
+}
+
 export default function Animals({ moduleKey }: { moduleKey: string }) {
   const { data, loading, refresh } = useQuery(loadAnimals)
-  const animals = data ?? []
+  const viewKey = `${moduleKey}_animals_view`
+  const [view, setView] = useState<ViewMode>(() => loadView(viewKey))
+  const [filter, setFilter] = useState('')
+  const allAnimals = data ?? []
+  // Ein Filterfeld über alle Spalten — gilt für Karten und Liste.
+  const animals = filter ? allAnimals.filter((a) => matchesFilter(a, filter)) : allAnimals
+
+  function changeView(v: ViewMode) {
+    setView(v)
+    try {
+      localStorage.setItem(viewKey, v)
+    } catch {
+      // nur bis zum Reload
+    }
+  }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-4 pb-24">
+    <div className={`mx-auto space-y-6 p-4 pb-24 ${view === 'list' ? 'max-w-5xl' : 'max-w-2xl'}`}>
       <h1 className="text-xl font-bold text-gray-800">Tiere</h1>
 
       {moduleKey === 'dairy' ? (
@@ -38,11 +58,49 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
       )}
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
-      {data && animals.length === 0 && (
+      {data && allAnimals.length === 0 && (
         <p className="text-center text-gray-500">Noch keine Tiere importiert.</p>
       )}
 
-      <ul className="space-y-2">
+      {allAnimals.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            placeholder="Filter (Name, Ohrmarke, Rasse, Status, …)"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
+          />
+          <span className="text-xs text-gray-500">
+            {animals.length}
+            {filter ? ` von ${allAnimals.length}` : ''}
+          </span>
+          <div className="flex rounded border border-gray-300 text-xs">
+            {(
+              [
+                ['cards', 'Karten'],
+                ['list', 'Liste'],
+              ] as [ViewMode, string][]
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => changeView(v)}
+                className={`px-2.5 py-1 ${view === v ? 'bg-brand-700 text-white' : 'text-gray-600'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {view === 'list' && allAnimals.length > 0 && <AnimalTable animals={animals} storageKey={`${moduleKey}_animals_columns`} />}
+
+      {view === 'cards' && animals.length === 0 && allAnimals.length > 0 && (
+        <p className="text-center text-gray-400">Keine Treffer.</p>
+      )}
+      <ul className={`space-y-2 ${view === 'list' ? 'hidden' : ''}`}>
         {animals.map((a) => (
           <li key={a.id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between gap-2">

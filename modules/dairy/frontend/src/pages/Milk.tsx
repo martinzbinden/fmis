@@ -80,6 +80,11 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
   const cows = data ?? []
   const lactations = lactationData ?? []
   const [sortKey, setSortKey] = useState<SortKey>('protein_pct')
+  // Zwei Tabs: Laktationsleistung (Abschlüsse) und letzte Milchwägung.
+  const [tab, setTab] = useState<'laktation' | 'waegung'>('laktation')
+  // Joghurt-Auswahl nur für Milchkühe — Nebengeleise, deshalb eingeklappt
+  // unter "Benutzerdefinierte Filter und Aktionen".
+  const showYogurt = moduleKey === 'dairy'
   const [sortDesc, setSortDesc] = useState(true)
   const [selection, setSelection] = useState<YogurtSelectionResult | null>(null)
 
@@ -114,17 +119,42 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
-      <h1 className="text-xl font-bold text-gray-800">Milch</h1>
+      <h1 className="text-xl font-bold text-gray-800">Leistung</h1>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
-      {data && cows.length === 0 && !analysedOnly && (
+      <div className="flex gap-1 border-b">
+        {(
+          [
+            ['laktation', 'Laktationsleistung'],
+            ['waegung', 'Letzte Milchwägung'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+              tab === key ? 'border-brand-600 text-brand-800' : 'border-transparent text-gray-500'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'waegung' && loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {tab === 'waegung' && data && cows.length === 0 && !analysedOnly && (
         <p className="text-center text-gray-500">
           Keine aktuellen Milchtests. {terms.importHint}
         </p>
       )}
 
-      {(cows.length > 0 || analysedOnly) && (
+      {tab === 'waegung' && (cows.length > 0 || analysedOnly) && (
         <>
+          <details className="rounded-lg bg-white shadow-sm">
+          <summary className="cursor-pointer select-none px-4 py-2 text-sm font-semibold text-gray-700">
+            Benutzerdefinierte Filter und Aktionen
+          </summary>
+          <div className="space-y-3 border-t px-4 py-3">
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -139,11 +169,8 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
               </span>
             )}
           </label>
-          {analysedOnly && cows.length === 0 && (
-            <p className="text-center text-gray-500">Keine Wägungen mit Laboranalyse vorhanden.</p>
-          )}
-          {cows.length > 0 && (
-          <div className="rounded-lg bg-white p-4 shadow-sm">
+          {showYogurt && cows.length > 0 && (
+          <div className="rounded-lg bg-gray-50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-gray-700">Joghurt-Auswahl ({terms.plural})</h2>
@@ -178,6 +205,11 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
               </div>
             )}
           </div>
+          )}
+          </div>
+          </details>
+          {analysedOnly && cows.length === 0 && (
+            <p className="text-center text-gray-500">Keine Wägungen mit Laboranalyse vorhanden.</p>
           )}
 
           <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
@@ -256,14 +288,13 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
         </>
       )}
 
-      <h2 className="pt-2 text-lg font-bold text-gray-800">Laktationsleistung</h2>
-      {lactationLoading && !lactationData && <p className="text-center text-gray-400">Lädt…</p>}
-      {lactationData && lactations.length === 0 && (
+      {tab === 'laktation' && lactationLoading && !lactationData && <p className="text-center text-gray-400">Lädt…</p>}
+      {tab === 'laktation' && lactationData && lactations.length === 0 && (
         <p className="text-center text-gray-500">
           Keine Laktationsdaten. {terms.importHint}
         </p>
       )}
-      {lactations.length > 0 && (
+      {tab === 'laktation' && lactations.length > 0 && (
         <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
