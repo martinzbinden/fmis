@@ -110,8 +110,9 @@ class MilkTest:
     calving_date: str | None
     lactation_number: int | None
     milk_kg: float
-    fat_pct: float
-    protein_pct: float
+    # None = Wägung ohne Laboranalyse (nur kg Milch), siehe schema/0004.
+    fat_pct: float | None
+    protein_pct: float | None
     lactose_pct: float | None
     cell_count: int | None
     urea_mg_dl: int | None
@@ -155,7 +156,8 @@ def parse_k33(line: str) -> MilkTest | None:
     milk_kg = adis_number(field(line, 90, 93))
     fat_pct = adis_number(field(line, 94, 97))
     protein_pct = adis_number(field(line, 98, 101))
-    if not ear_tag or not test_date or milk_kg is None or fat_pct is None or protein_pct is None:
+    # Fett/Eiweiss dürfen fehlen (Wägung ohne Laboranalyse).
+    if not ear_tag or not test_date or milk_kg is None:
         return None
     return MilkTest(
         ear_tag=ear_tag,
@@ -397,10 +399,11 @@ def main() -> None:
     for name, text in files:
         parse_text(name, text, parsed)
 
-    print(f"Geparst: {len(parsed.animals)} Tiere, {len(parsed.milk_tests)} Milchtests, "
+    without_analysis = sum(1 for m in parsed.milk_tests if m.fat_pct is None or m.protein_pct is None)
+    print(f"Geparst: {len(parsed.animals)} Tiere, {len(parsed.milk_tests)} Milchtests "
+          f"(davon {without_analysis} ohne Laboranalyse), "
           f"{len(parsed.lactations)} Laktationen ({parsed.ignored_lines} andere Zeilen ignoriert)")
-    # Gleiche Warnungen zusammenfassen (z.B. Wägungen ohne Laboranalyse —
-    # nur kg Milch, kein Fett/Eiweiss — kommen dutzendfach vor).
+    # Gleiche Warnungen zusammenfassen.
     from collections import Counter
     for w, n in Counter(parsed.warnings).items():
         print(f"  Warnung: {w}" + (f" ({n}x)" if n > 1 else ""))

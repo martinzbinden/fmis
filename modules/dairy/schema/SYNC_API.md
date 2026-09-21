@@ -17,7 +17,10 @@ Diese Reihenfolge ist verbindlich für Push-Payloads (Backend validiert per Name
   nie direkt von einem Formular. Kein `deleted_at` (unveränderlich). `snapshot` ist die komplette Zeile NACH
   der Änderung als JSON-Text.
 
-Views (`v_animal_milk_current`, `v_lactation_summary`) werden NICHT gesynct — sie werden lokal in
+`milk_tests.fat_pct`/`protein_pct` dürfen seit `0004_optional_analysis.sql` null sein
+(Wägung ohne Laboranalyse, nur kg Milch) — Clients müssen damit rechnen.
+
+Views (`v_animal_milk_current`, `v_animal_milk_current_analysed`, `v_lactation_summary`) werden NICHT gesynct — sie werden lokal in
 pglite genau wie auf dem Server aus den Basistabellen berechnet, da beide
 dasselbe Schema inkl. Views laden.
 

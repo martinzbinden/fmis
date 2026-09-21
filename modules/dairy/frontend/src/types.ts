@@ -25,8 +25,9 @@ export interface MilkTest {
   calving_date: string | null
   lactation_number: number | null
   milk_kg: number
-  fat_pct: number
-  protein_pct: number
+  // null = Wägung ohne Laboranalyse (nur kg Milch), siehe schema/0004.
+  fat_pct: number | null
+  protein_pct: number | null
   lactose_pct: number | null
   cell_count: number | null
   urea_mg_dl: number | null
@@ -43,12 +44,15 @@ export interface AnimalMilkCurrent {
   status: AnimalStatus
   test_date: string
   milk_kg: number
-  fat_pct: number
-  protein_pct: number
-  fat_kg: number
-  protein_kg: number
-  fat_protein_kg: number
-  ecm_kg: number
+  // Alle Fett-/Eiweiss-Werte null, wenn die neueste Wägung keine
+  // Laboranalyse hatte (has_analysis = false), siehe schema/0004.
+  fat_pct: number | null
+  protein_pct: number | null
+  fat_kg: number | null
+  protein_kg: number | null
+  fat_protein_kg: number | null
+  ecm_kg: number | null
+  has_analysis: boolean
 }
 
 // ADIS Satzart K04 — Abschlussart-Code, siehe schema/0003_lactations.sql.

@@ -6,6 +6,9 @@ export interface YogurtSelectionResult {
   selected: AnimalMilkCurrent[]
   totalMilkKg: number
   weightedProteinPct: number
+  /** Tiere, deren neueste Wägung keine Laboranalyse hat — ohne %Eiweiss
+   * nicht bewertbar, werden übersprungen und in der UI ausgewiesen. */
+  skippedWithoutAnalysis: number
 }
 
 /**
@@ -20,7 +23,8 @@ export function selectYogurtCows(
   cows: AnimalMilkCurrent[],
   targetPct: number = TARGET_PROTEIN_PCT,
 ): YogurtSelectionResult {
-  const sorted = [...cows].sort((a, b) => b.protein_pct - a.protein_pct)
+  const analysed = cows.filter((c) => c.has_analysis && c.protein_pct != null && c.protein_kg != null)
+  const sorted = [...analysed].sort((a, b) => b.protein_pct! - a.protein_pct!)
 
   let totalMilkKg = 0
   let totalProteinKg = 0
@@ -28,7 +32,7 @@ export function selectYogurtCows(
 
   for (const cow of sorted) {
     const nextMilkKg = totalMilkKg + cow.milk_kg
-    const nextProteinKg = totalProteinKg + cow.protein_kg
+    const nextProteinKg = totalProteinKg + cow.protein_kg!
     const nextAvgPct = (nextProteinKg / nextMilkKg) * 100
     if (nextAvgPct < targetPct) break
     selected.push(cow)
@@ -40,5 +44,6 @@ export function selectYogurtCows(
     selected,
     totalMilkKg,
     weightedProteinPct: totalMilkKg > 0 ? (totalProteinKg / totalMilkKg) * 100 : 0,
+    skippedWithoutAnalysis: cows.length - analysed.length,
   }
 }

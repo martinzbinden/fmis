@@ -28,8 +28,9 @@ export interface ParsedMilkTest {
   calving_date: string | null
   lactation_number: number | null
   milk_kg: number
-  fat_pct: number
-  protein_pct: number
+  // null = Wägung ohne Laboranalyse (nur kg Milch), siehe schema/0004.
+  fat_pct: number | null
+  protein_pct: number | null
   lactose_pct: number | null
   cell_count: number | null
   urea_mg_dl: number | null
@@ -112,7 +113,9 @@ function parseK33Line(line: string): ParsedMilkTest | null {
   const milk_kg = parseAdisNumber(field(line, 90, 93))
   const fat_pct = parseAdisNumber(field(line, 94, 97))
   const protein_pct = parseAdisNumber(field(line, 98, 101))
-  if (!ear_tag || !test_date || milk_kg == null || fat_pct == null || protein_pct == null) {
+  // Fett/Eiweiss dürfen fehlen (Wägung ohne Laboranalyse) — nur Ohrmarke,
+  // Datum und Milchmenge sind Pflicht.
+  if (!ear_tag || !test_date || milk_kg == null) {
     return null
   }
   return {
