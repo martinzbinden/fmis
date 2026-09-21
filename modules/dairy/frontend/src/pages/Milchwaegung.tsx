@@ -20,6 +20,7 @@ interface SessionState {
   last_read_at: string | null
   last_error: string | null
   started_by: string | null
+  handshake: string | null
 }
 
 interface SlotRow extends MilkingSlot {
@@ -235,11 +236,13 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         {readerEnabled ? (
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`h-2.5 w-2.5 rounded-full ${session?.active ? (session.last_error ? 'bg-red-500' : 'bg-green-500') : 'bg-gray-300'}`}
+              className={`h-2.5 w-2.5 rounded-full ${
+                session?.active ? (session.last_error ? 'bg-red-500' : session.handshake ? 'bg-green-500' : 'bg-amber-400') : 'bg-gray-300'
+              }`}
             />
             <span className="text-sm text-gray-700">
               {session?.active
-                ? `Leser läuft · ${session.reads} gelesen · Bank ${session.bank_number || '–'}${
+                ? `${session.handshake ? 'Leser antwortet' : 'Verbinde…'} · ${session.reads} gelesen · Bank ${session.bank_number || '–'}${
                     session.last_read_at ? ` · letzte Lesung ${fmtDateTime(session.last_read_at)}` : ''
                   }`
                 : 'Leser nicht verbunden'}

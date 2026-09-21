@@ -70,6 +70,8 @@ class _Session:
         self.seen: set[str] = set()
         self.last_read_at: datetime | None = None
         self.last_error: str | None = None
+        # Handshake-Ergebnis: Antwort des Lesers auf [XGMEMINFO] (z.B. "448|1000000|…")
+        self.handshake: str | None = None
         # Version zählt hoch bei jeder DB-Änderung; SSE-Clients warten darauf.
         self.version = 0
         self.changed = asyncio.Event()
@@ -79,7 +81,7 @@ class _Session:
             active=active, session_date=self.session_date.isoformat(), capacity=self.capacity,
             current_bank_id=str(self.bank_id) if self.bank_id else None, bank_number=self.bank_number,
             reads=self.reads, last_read_at=self.last_read_at.isoformat() if self.last_read_at else None,
-            last_error=self.last_error, started_by=self.started_by,
+            last_error=self.last_error, started_by=self.started_by, handshake=self.handshake,
         )
 
     def bump(self) -> None:
@@ -179,6 +181,15 @@ def build_reader_router(key: str) -> APIRouter:
         host, port = await get_reader_settings(key)
         try:
             async with acquire_reader(host, port, keepalive=True) as conn:
+                # Handshake: erst wenn der Leser auf einen Befehl antwortet,
+                # ist er wirklich "im Protokoll" (ein angenommener TCP-Socket
+                # allein sagt nichts — WLAN-Modul vs. Lesegerät).
+                try:
+                    sess.handshake = await conn.send_command("XGMEMINFO", timeout=5.0)
+                except ReaderError as exc:
+                    sess.last_error = f"TCP verbunden, aber der Leser antwortet nicht auf Befehle ({exc}) — AgriLink-/WLAN-Modus am Gerät prüfen"
+                    sess.bump()
+                    return
                 sess.last_error = None
                 sess.bump()
                 async for long_tag in conn.live_reads():
