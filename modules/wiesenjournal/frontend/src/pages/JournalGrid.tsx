@@ -38,7 +38,7 @@ async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: st
   const [{ rows: parcels }, { usage, fertilizations }, { rows: dailyLogs }] = await Promise.all([
     pg.query<Parcel>(
       `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)}
-       order by farm_name nulls first, category, sort_order, name`,
+       order by farm_name nulls last, category, sort_order, name`,
       [seasonYear],
     ),
     loadEntriesInRange(pg, from, to),

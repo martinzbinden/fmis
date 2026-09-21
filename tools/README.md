@@ -38,3 +38,14 @@ Eigenständige Hilfsskripte, kein Teil der laufenden App.
   Projektionsdefinition, ebenfalls über die Sync-API. Braucht GDAL-Python
   und pyproj (`apt install python3-gdal python3-pyproj`). Idempotent;
   bewahrt bei Re-Import manuell gepflegte Felder (Notizen, Sorte, Daten).
+
+- **`import_wiesenjournal_xlsx.py`** — Excel-Wiesenjournal (Hauptsheet
+  „Wiesenjournal", Tagesraster mit Legenden-Codes) ins Modul Wiesenjournal
+  einspeisen: Nutzung je Tierkategorie/Tagweide, Schnitte, Pflege, Düngung
+  (inkl. Fass → m³, Verdünnung, Teilflächen-Hinweise als Notiz), Laufhof/
+  Niederschlag/Notizen/Tierzahlen. Excel-Zeilen werden per Name den GELAN-
+  Parzellen zugeordnet (vorher „Aus GELAN übernehmen" oder `--import-gelan`),
+  der Rest wird als Excel-Parzelle angelegt und kann in der App per „GELAN
+  zuordnen" zusammengeführt werden. `--dry-run`, `--report CSV` (Zuordnung +
+  Heuristik-Entscheide), `--mapping JSON`, idempotent, schützt in der App
+  bearbeitete Zeilen (`--force`). Braucht openpyxl.

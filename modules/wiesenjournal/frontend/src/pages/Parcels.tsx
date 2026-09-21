@@ -17,7 +17,7 @@ const CURRENT_YEAR = new Date().getFullYear()
 async function loadParcels(pg: PGlite, seasonYear: number, showAcker: boolean): Promise<Parcel[]> {
   const { rows } = await pg.query<Parcel>(
     `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)}
-     order by farm_name nulls first, category, sort_order, name`,
+     order by farm_name nulls last, category, sort_order, name`,
     [seasonYear],
   )
   return rows
