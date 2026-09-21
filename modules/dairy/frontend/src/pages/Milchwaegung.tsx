@@ -4,7 +4,8 @@ import { API_URL, getToken } from '@fmis/core/auth'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import { useDb } from '@fmis/core/DbContext'
-import { upsertRow, softDeleteRow } from '../db/write'
+import { upsertRow, softDeleteRow, notifyDataChanged } from '../db/write'
+import { SYNC_TABLES } from '../db/tables'
 import { getDairySyncClient } from '../db/sync'
 import { fmtDate, fmtDateTime, todayIso } from '../lib/format'
 import { speciesTerms } from '../lib/species'
@@ -42,6 +43,27 @@ function quality(s: SessionState, now: number): { label: string; color: string }
   if ((s.rtt_ms ?? 0) > 1500) return { label: `träge (${Math.round(s.rtt_ms!)} ms)`, color: 'text-amber-600' }
   if ((s.rtt_ms ?? 0) > 300) return { label: `mässig (${Math.round(s.rtt_ms!)} ms)`, color: 'text-amber-600' }
   return { label: `gut (${s.rtt_ms != null ? Math.round(s.rtt_ms) + ' ms' : 'ok'})`, color: 'text-green-600' }
+}
+
+interface ReaderEvent {
+  seq: number
+  kind: 'milking_banks' | 'milking_slots'
+  row: Record<string, unknown>
+}
+
+/** Zeile aus einem SSE-Event direkt in pglite eintragen — dieselbe
+ * Last-write-wins-Regel wie der Sync-Pull, der dieselbe Zeile später
+ * nochmals bringt (dann ein No-op). */
+async function applyReaderEvent(pg: PGlite, ev: ReaderEvent): Promise<void> {
+  const columns = SYNC_TABLES[ev.kind] as readonly string[]
+  const colList = columns.map((c) => `"${c}"`).join(', ')
+  const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
+  const setClause = columns.filter((c) => c !== 'id').map((c) => `"${c}" = excluded."${c}"`).join(', ')
+  await pg.query(
+    `insert into "${ev.kind}" (${colList}) values (${placeholders})
+     on conflict (id) do update set ${setClause} where "${ev.kind}".updated_at < excluded.updated_at`,
+    columns.map((c) => ev.row[c] ?? null),
+  )
 }
 
 interface SlotRow extends MilkingSlot {
@@ -160,9 +182,15 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           for (const part of parts) {
             const line = part.split('\n').find((l) => l.startsWith('data: '))
             if (!line) continue
-            const state = JSON.parse(line.slice(6)) as SessionState
+            const state = JSON.parse(line.slice(6)) as SessionState & { events?: ReaderEvent[] }
             setSession(state)
-            void syncClient.syncNow()
+            const events = state.events ?? []
+            if (events.length > 0) {
+              // Lesungen sofort lokal eintragen (Bänke vor Slots — FK), dann Anzeige auffrischen
+              for (const ev of events.filter((e) => e.kind === 'milking_banks')) await applyReaderEvent(pg, ev)
+              for (const ev of events.filter((e) => e.kind === 'milking_slots')) await applyReaderEvent(pg, ev)
+              notifyDataChanged()
+            }
           }
         }
       } catch {
@@ -170,6 +198,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       }
     })()
     return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleKey])
 
   async function run(fn: () => Promise<void>) {

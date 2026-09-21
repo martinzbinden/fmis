@@ -89,6 +89,14 @@ class _Session:
         # Version zählt hoch bei jeder DB-Änderung; SSE-Clients warten darauf.
         self.version = 0
         self.changed = asyncio.Event()
+        # Zuletzt geschriebene Zeilen (Bank/Slot) — gehen mit dem SSE-Event
+        # direkt an den Client, der sie sofort lokal einträgt statt auf den
+        # nächsten Pull zu warten. Ringpuffer der letzten 50 Ereignisse.
+        self.events: list[dict] = []
+
+    def push_event(self, kind: str, row: dict) -> None:
+        self.events.append({"seq": self.version + 1, "kind": kind, "row": row})
+        del self.events[:-50]
 
     def state(self, active: bool) -> SessionState:
         return SessionState(
@@ -158,6 +166,11 @@ def build_reader_router(key: str) -> APIRouter:
             )
             await _history(conn, "milking_banks", sess.bank_id, "insert", _actor(sess))
             await conn.commit()
+        sess.push_event("milking_banks", {
+            "id": str(sess.bank_id), "session_date": sess.session_date.isoformat(), "bank_number": sess.bank_number,
+            "capacity": sess.capacity, "opened_at": now.isoformat(), "closed_at": None, "notes": None,
+            "updated_at": now.isoformat(), "deleted_at": None,
+        })
         sess.bump()
 
     async def _close_bank(sess: _Session) -> None:
@@ -170,7 +183,16 @@ def build_reader_router(key: str) -> APIRouter:
                 (now, now, sess.bank_id),
             )
             await _history(conn, "milking_banks", sess.bank_id, "update", _actor(sess))
+            row = await (await conn.execute(
+                "select id, session_date, bank_number, capacity, opened_at, closed_at, notes, updated_at, deleted_at "
+                "from milking_banks where id = %s", (sess.bank_id,))).fetchone()
             await conn.commit()
+        if row:
+            sess.push_event("milking_banks", {
+                "id": str(row[0]), "session_date": row[1].isoformat(), "bank_number": row[2], "capacity": row[3],
+                "opened_at": row[4].isoformat(), "closed_at": row[5].isoformat() if row[5] else None, "notes": row[6],
+                "updated_at": row[7].isoformat(), "deleted_at": row[8].isoformat() if row[8] else None,
+            })
         sess.bank_id = None
         sess.bump()
 
@@ -180,7 +202,7 @@ def build_reader_router(key: str) -> APIRouter:
         async with pool.connection() as conn:
             animal = await (await conn.execute(
                 "select id, ear_tag from animals where deleted_at is null and "
-                "(ear_tag in (%s, %s) or (%s is not null and ear_tag ~ ('^CH113' || %s || '[0-9]$'))) "
+                "(ear_tag in (%s, %s) or (%s::text is not null and ear_tag ~ ('^CH113' || %s::text || '[0-9]$'))) "
                 "order by status = 'aktiv' desc limit 1",
                 (candidate, long_tag, core, core),
             )).fetchone()
@@ -200,6 +222,12 @@ def build_reader_router(key: str) -> APIRouter:
             )
             await _history(conn, "milking_slots", slot_id, "insert", _actor(sess))
             await conn.commit()
+        sess.push_event("milking_slots", {
+            "id": str(slot_id), "bank_id": str(sess.bank_id), "position": sess.slots_in_bank,
+            "original_position": sess.slots_in_bank, "transponder": long_tag,
+            "ear_tag": animal[1] if animal else candidate, "animal_id": str(animal[0]) if animal else None,
+            "weighed": False, "notes": None, "read_at": now.isoformat(), "updated_at": now.isoformat(), "deleted_at": None,
+        })
         sess.bump()
 
     async def _run(sess: _Session) -> None:
@@ -317,8 +345,11 @@ def build_reader_router(key: str) -> APIRouter:
                     await asyncio.sleep(3)
                     continue
                 if sess.version != last_version:
+                    pending = [e for e in sess.events if e["seq"] > last_version]
                     last_version = sess.version
-                    yield f"data: {json.dumps(sess.state(active=bool(sess.task and not sess.task.done())).model_dump())}\n\n"
+                    payload = sess.state(active=bool(sess.task and not sess.task.done())).model_dump()
+                    payload["events"] = pending
+                    yield f"data: {json.dumps(payload)}\n\n"
                 try:
                     await asyncio.wait_for(sess.changed.wait(), timeout=25)
                 except asyncio.TimeoutError:
