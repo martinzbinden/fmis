@@ -30,3 +30,11 @@ Eigenständige Hilfsskripte, kein Teil der laufenden App.
   `--password` (TEST_LOGIN_PASSWORD, nur Testumgebung), `--magic-token`
   (Token aus dem eigenen Login-Link) oder `--token`. Details/Nutzung siehe
   Docstring im Skript.
+
+- **`import_raumdaten.py`** — Kantonaler "Raumdatenexport Bewirtschafter"
+  (ZIP mit Shapefiles, ein ZIP pro Betrieb und Jahr, beliebig viele auf
+  einmal) von der Kommandozeile ins Modul Kulturen einspeisen — Gegenstück
+  zu "Karte → Raumdaten importieren", gleiche Abgleichschlüssel und
+  Projektionsdefinition, ebenfalls über die Sync-API. Braucht GDAL-Python
+  und pyproj (`apt install python3-gdal python3-pyproj`). Idempotent;
+  bewahrt bei Re-Import manuell gepflegte Felder (Notizen, Sorte, Daten).
