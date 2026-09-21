@@ -48,6 +48,14 @@ class SessionState(BaseModel):
     started_by: str | None = None
 
 
+# Modul-Ebene (nicht in build_reader_router): mit `from __future__ import
+# annotations` löst FastAPI die Annotation über die Modul-Globals auf — eine
+# lokal definierte Klasse würde als Query-Parameter fehlinterpretiert.
+class StartBody(BaseModel):
+    session_date: str | None = None
+    capacity: int = 12
+
+
 class _Session:
     def __init__(self, key: str, session_date: date, capacity: int, started_by: str) -> None:
         self.key = key
@@ -186,10 +194,6 @@ def build_reader_router(key: str) -> APIRouter:
         except Exception as exc:  # noqa: BLE001 — Sitzung darf nicht stumm sterben
             sess.last_error = f"Unerwarteter Fehler: {exc}"
             sess.bump()
-
-    class StartBody(BaseModel):
-        session_date: str | None = None
-        capacity: int = 12
 
     @router.get("/reader/session", response_model=SessionState)
     async def session_state(user: CurrentUser = Depends(require_auth)) -> SessionState:

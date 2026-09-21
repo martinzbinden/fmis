@@ -36,3 +36,21 @@ Es gibt kein eigenständiges Deployment/Dev-Setup für dieses Modul mehr —
 Backend und Frontend werden zusammen mit den anderen Modulen als **eine**
 App gebaut und deployt. Siehe [Root-README](../../README.md) für
 `docker compose up` (Produktion) und den lokalen Dev-Server.
+
+## Milchwägung (Ohrmarkenleser APR600)
+
+Seite „Milchwägung": die Tiere laufen der Reihe nach am Lesegerät vorbei,
+der Melkstand hat n Plätze (Standard 12 = eine „Bank"). Die Wägungssitzung
+läuft **auf dem Server** (`backend/app/reader.py`: `POST /<instanz>/reader/
+session/start|stop|next-bank`, `GET …/session`, SSE `…/session/events`) —
+Leser-Verbindung und Keep-alive sind damit unabhängig vom Browser; das Handy
+darf die Seite verlassen. Jede Lesung wird sofort als `milking_slots`-Zeile
+in die offene `milking_banks`-Zeile geschrieben (Bank voll → nächste Bank
+automatisch, „Nächste Bank" schliesst sie auch vorzeitig), der Client zieht
+sie per Sync nach (SSE-Tick → sofortiger Pull). Auf dem Melkstand: Häkchen
+„gewogen", grosse **Laufnummer** (`animals.lauf_nr`, ADIS K01 283-286),
+Ohrmarke/Transponder klein, Notiz je Zeile (wird ins `animal_journal` des
+Tiers kopiert), Umsortieren mit sichtbarer Lese-Reihenfolge bis zum
+Speichern, Archiv der abgeschlossenen Bänke, manuelle Aufnahme per
+Laufnummer/Ohrmarke als Offline-Fallback. Der Server schreibt Slots nur beim
+Lesen; alle Änderungen danach macht der Client per Sync (keine Konflikte).

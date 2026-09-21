@@ -26,6 +26,7 @@ from contextlib import asynccontextmanager
 
 STX = 0x02
 LIVE_READ_LEN = 34  # Payload-Länge bei EID-Format ISO24631
+CONNECT_TIMEOUT = 8.0  # TCP-Verbindungsaufbau; ohne Timeout hängt ein nicht erreichbarer Leser minutenlang
 KEEPALIVE_INTERVAL = 20.0  # empirisch bestätigt: hält die Verbindung offen
 
 
@@ -158,7 +159,10 @@ async def acquire_reader(host: str, port: int, *, keepalive: bool = False):
     if _lock.locked():
         raise ReaderBusyError("Lesegerät wird bereits von einer anderen Sitzung verwendet")
     async with _lock:
-        reader, writer = await asyncio.open_connection(host, port)
+        try:
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=CONNECT_TIMEOUT)
+        except (asyncio.TimeoutError, OSError) as exc:
+            raise ReaderError(f"Leser {host}:{port} nicht erreichbar ({exc or 'Zeitüberschreitung'})") from exc
         sock = writer.get_extra_info("socket")
         if sock is not None:
             sock.setsockopt(socket_module.SOL_SOCKET, socket_module.SO_KEEPALIVE, 1)
