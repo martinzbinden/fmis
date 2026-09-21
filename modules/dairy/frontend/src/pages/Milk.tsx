@@ -3,6 +3,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate, fmtKg, fmtPct, num } from '../lib/format'
 import { selectYogurtCows, TARGET_PROTEIN_PCT, type YogurtSelectionResult } from '../lib/yogurtSelection'
+import { speciesTerms } from '../lib/species'
 import type { AnimalMilkCurrent, LactationSummary } from '../types'
 
 type SortKey =
@@ -62,7 +63,8 @@ async function loadLactationSummary(pg: PGlite): Promise<LactationSummary[]> {
   }))
 }
 
-export default function Milk() {
+export default function Milk({ moduleKey }: { moduleKey: string }) {
+  const terms = speciesTerms(moduleKey)
   const { data, loading } = useQuery(loadCurrentMilk)
   const { data: lactationData, loading: lactationLoading } = useQuery(loadLactationSummary)
   const cows = data ?? []
@@ -102,7 +104,7 @@ export default function Milk() {
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && cows.length === 0 && (
         <p className="text-center text-gray-500">
-          Keine aktuellen Milchtests. Zuerst unter "Kühe" den Herdebuch-Export importieren.
+          Keine aktuellen Milchtests. {terms.importHint}
         </p>
       )}
 
@@ -111,7 +113,7 @@ export default function Milk() {
           <div className="rounded-lg bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-sm font-semibold text-gray-700">Joghurt-Kuhauswahl</h2>
+                <h2 className="text-sm font-semibold text-gray-700">Joghurt-Auswahl ({terms.plural})</h2>
                 <p className="text-xs text-gray-500">
                   Grösstmögliche Milchmenge mit gewichtetem Ø-Eiweiss ≥ {TARGET_PROTEIN_PCT}%.
                 </p>
@@ -121,16 +123,16 @@ export default function Milk() {
                 onClick={() => setSelection(selectYogurtCows(cows))}
                 className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white active:bg-brand-800"
               >
-                Joghurt-Kühe vorschlagen
+                Joghurt-{terms.plural} vorschlagen
               </button>
             </div>
             {selection && (
               <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
                 {selection.selected.length === 0 ? (
-                  <p>Keine Kuh erreicht allein {TARGET_PROTEIN_PCT}% Eiweiss — keine Auswahl möglich.</p>
+                  <p>Keine {terms.singular} erreicht allein {TARGET_PROTEIN_PCT}% Eiweiss — keine Auswahl möglich.</p>
                 ) : (
                   <p>
-                    {selection.selected.length} Kühe ausgewählt · {fmtKg(selection.totalMilkKg)} Milch ·
+                    {selection.selected.length} {terms.plural} ausgewählt · {fmtKg(selection.totalMilkKg)} Milch ·
                     gewichteter Ø-Eiweiss {fmtPct(selection.weightedProteinPct)}
                   </p>
                 )}
@@ -142,7 +144,7 @@ export default function Milk() {
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-gray-500">
-                  <Th label="Kuh" active={sortKey === 'name'} onClick={() => handleSort('name')} />
+                  <Th label={terms.singular} active={sortKey === 'name'} onClick={() => handleSort('name')} />
                   <Th
                     label="Testdatum"
                     active={sortKey === 'test_date'}
@@ -208,7 +210,7 @@ export default function Milk() {
       {lactationLoading && !lactationData && <p className="text-center text-gray-400">Lädt…</p>}
       {lactationData && lactations.length === 0 && (
         <p className="text-center text-gray-500">
-          Keine Laktationsdaten. Zuerst unter "Kühe" den Herdebuch-Export importieren.
+          Keine Laktationsdaten. {terms.importHint}
         </p>
       )}
       {lactations.length > 0 && (
@@ -216,7 +218,7 @@ export default function Milk() {
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-gray-500">
-                <th className="px-3 py-2 font-medium">Kuh</th>
+                <th className="px-3 py-2 font-medium">{terms.singular}</th>
                 <th className="px-3 py-2 font-medium">Lakt.-Nr.</th>
                 <th className="px-3 py-2 font-medium">Kalbedatum</th>
                 <th className="px-3 py-2 font-medium">Status</th>

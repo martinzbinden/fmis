@@ -34,9 +34,9 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     ],
     historyPermission: `${key}:history:read`,
     routes: [
-      { path: '', element: <Milk /> },
+      { path: '', element: <Milk moduleKey={key} /> },
       { path: 'kuehe', element: <Animals moduleKey={key} /> },
-      { path: 'verlauf', element: <History /> },
+      { path: 'verlauf', element: <History moduleKey={key} /> },
       { path: 'melken', element: <Melken moduleKey={key} /> },
       { path: '*', element: <Navigate to="." replace /> },
     ],

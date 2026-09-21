@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDateTime } from '../lib/format'
+import { speciesTerms } from '../lib/species'
 import type { DataHistory, HistoryAction } from '../types'
 
 const TABLE_LABEL: Record<string, string> = {
-  animals: 'Kuh',
   milk_tests: 'Milchtest',
 }
 
@@ -53,8 +53,9 @@ function describeEntry(entry: DataHistory): { label: string; link: string | null
   }
 }
 
-export default function History() {
+export default function History({ moduleKey }: { moduleKey: string }) {
   const { data, loading } = useQuery(loadHistory)
+  const tableLabel: Record<string, string> = { animals: speciesTerms(moduleKey).singular, ...TABLE_LABEL }
   const [tableFilter, setTableFilter] = useState('')
   const [search, setSearch] = useState('')
 
@@ -86,7 +87,7 @@ export default function History() {
           <option value="">Alle Bereiche</option>
           {availableTables.map((t) => (
             <option key={t} value={t}>
-              {TABLE_LABEL[t] ?? t}
+              {tableLabel[t] ?? t}
             </option>
           ))}
         </select>
@@ -109,7 +110,7 @@ export default function History() {
           <li key={entry.id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-gray-500">
-                {TABLE_LABEL[entry.table_name] ?? entry.table_name}
+                {tableLabel[entry.table_name] ?? entry.table_name}
               </span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ACTION_COLOR[entry.action]}`}>
                 {ACTION_LABEL[entry.action]}
