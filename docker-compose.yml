@@ -52,10 +52,18 @@ services:
       # geteilten Core-Routen. Höhere Priorität als der Frontend-Router unten,
       # sonst würde z.B. /livestock/sync/push vom SPA-Catch-all verschluckt,
       # obwohl /livestock selbst (ohne /sync) eine Frontend-Route ist.
+      # Jede Modul-INSTANZ (core/backend/fmis_core/module_registry.py —
+      # dairy_schafe ist eine zweite Instanz von dairy!) und jeder Backend-
+      # Unterpfad (sync/, reader/, reports/) muss hier explizit stehen. Nur
+      # PathPrefix, kein Regex: der Server läuft Traefik v2, lokal v3, und
+      # die Regex-Syntax ist zwischen beiden inkompatibel.
       - >-
         traefik.http.routers.fmis-api.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
         (PathPrefix(`/auth`) || PathPrefix(`/core`) || PathPrefix(`/admin`) ||
-        PathPrefix(`/livestock/sync`) || PathPrefix(`/dairy/sync`) || PathPrefix(`/fields/sync`) ||
+        PathPrefix(`/livestock/sync`) || PathPrefix(`/livestock/reader`) ||
+        PathPrefix(`/dairy/sync`) || PathPrefix(`/dairy/reader`) ||
+        PathPrefix(`/dairy_schafe/sync`) || PathPrefix(`/dairy_schafe/reader`) ||
+        PathPrefix(`/fields/sync`) ||
         PathPrefix(`/wiesenjournal/sync`) || PathPrefix(`/wiesenjournal/reports`) ||
         PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
       - traefik.http.routers.fmis-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
