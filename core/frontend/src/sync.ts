@@ -43,6 +43,20 @@ export function createSyncClient(
   notifyDataChanged: () => void,
 ): SyncClient {
   const sinceKey = `${moduleKey}_sync_since`
+  // Signatur der Spaltenlisten: kommt mit einem App-Update eine neue Spalte
+  // dazu (z.B. animals.lauf_nr), wären bereits gepullte Zeilen lokal ohne
+  // diesen Wert und würden wegen `since` nie nachgeholt — deshalb bei
+  // geänderter Signatur einmal komplett neu pullen.
+  const schemaKey = `${moduleKey}_sync_schema`
+  const schemaSignature = JSON.stringify(Object.entries(syncTables).map(([t, cols]) => [t, [...cols]]))
+  try {
+    if (localStorage.getItem(schemaKey) !== schemaSignature) {
+      localStorage.removeItem(sinceKey)
+      localStorage.setItem(schemaKey, schemaSignature)
+    }
+  } catch {
+    // ohne localStorage: jeder Start ist ohnehin ein Voll-Pull
+  }
   const base = `${API_URL}/${moduleKey}/sync`
 
   let status: SyncStatus = navigator.onLine ? 'synced' : 'offline'

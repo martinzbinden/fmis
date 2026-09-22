@@ -247,15 +247,19 @@ export async function importSmgData(
   tierbestand: TvdAnimal[],
   smg: SmgParseResult,
 ): Promise<SmgImportSummary> {
-  const { rows: existingAnimals } = await pg.query<{ id: string; ear_tag: string }>(
-    'select id, ear_tag from animals',
+  const { rows: existingAnimals } = await pg.query<{ id: string; ear_tag: string; notes: string | null; lauf_nr: string | null }>(
+    'select id, ear_tag, notes, lauf_nr from animals',
   )
   const earTagToId = new Map(existingAnimals.map((a) => [a.ear_tag, a.id]))
+  // In der App gepflegte Felder (Bemerkung, Laufnummer) beim Re-Import nicht
+  // überschreiben, wenn der Export nichts dazu liefert.
+  const existingByTag = new Map(existingAnimals.map((a) => [a.ear_tag, a]))
 
   for (const animal of tierbestand) {
     const id = earTagToId.get(animal.ear_tag) ?? crypto.randomUUID()
     earTagToId.set(animal.ear_tag, id)
-    await upsertRow(pg, 'animals', { id, ...animal })
+    const prev = existingByTag.get(animal.ear_tag)
+    await upsertRow(pg, 'animals', { id, ...animal, lauf_nr: prev?.lauf_nr ?? null, notes: prev?.notes ?? null })
   }
 
   const { rows: existingLactations } = await pg.query<{

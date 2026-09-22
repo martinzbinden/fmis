@@ -16,6 +16,47 @@ export interface Animal {
   notes: string | null
   updated_at: string
   deleted_at: string | null
+  lauf_nr: string | null
+}
+
+// Milchwägung (schema/0005_milking.sql): Bank = Melkstand-Durchgang mit
+// `capacity` Plätzen, Slots = gelesene Tiere in Lese-Reihenfolge.
+export interface MilkingBank {
+  id: string
+  session_date: string
+  bank_number: number
+  capacity: number
+  opened_at: string
+  closed_at: string | null
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface MilkingSlot {
+  id: string
+  bank_id: string
+  position: number
+  original_position: number
+  transponder: string | null
+  ear_tag: string | null
+  animal_id: string | null
+  weighed: boolean
+  notes: string | null
+  read_at: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface AnimalJournalEntry {
+  id: string
+  animal_id: string
+  entry_date: string
+  source: 'manual' | 'milchwaegung'
+  text: string
+  ref_id: string | null
+  updated_at: string
+  deleted_at: string | null
 }
 
 export interface MilkTest {

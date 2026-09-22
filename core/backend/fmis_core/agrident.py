@@ -20,12 +20,14 @@ verbinden (z.B. eine laufende Melkliste UND ein Datenpool-Abruf).
 
 import asyncio
 import re
+import time
 import socket as socket_module
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 STX = 0x02
 LIVE_READ_LEN = 34  # Payload-Länge bei EID-Format ISO24631
+CONNECT_TIMEOUT = 8.0  # TCP-Verbindungsaufbau; ohne Timeout hängt ein nicht erreichbarer Leser minutenlang
 KEEPALIVE_INTERVAL = 20.0  # empirisch bestätigt: hält die Verbindung offen
 
 
@@ -47,6 +49,23 @@ def parse_live_read(payload: str) -> str | None:
 
 
 _SHEEP_LONG_TAG_RE = re.compile(r"^CH113(\d{8})\d$")
+_READER_PADDED_RE = re.compile(r"^CH0000(\d{8})$")
+
+
+def reader_tag_candidates(long_tag: str) -> tuple[str, str | None]:
+    """Der APR600 liefert die 12-stellige nationale ID der ISO-Ohrmarke —
+    bei Schweizer Schafen mit vier führenden Nullen ("CH000021728063"). Die
+    TVD-Kurzform ist "CH" + die letzten 8 Ziffern ("CH21728063"), die in der
+    App gespeicherte Langform "CH113" + dieselben 8 Ziffern + Prüfziffer
+    (siehe sheep_short_tag). Gibt (anzeigbare Kurzform, 8-Ziffern-Kern)
+    zurück; ohne führende Nullen bleibt es bei der Langform."""
+    m = _READER_PADDED_RE.match(long_tag)
+    if m:
+        return "CH" + m.group(1), m.group(1)
+    short = sheep_short_tag(long_tag)
+    if short:
+        return short, short[2:]
+    return long_tag, None
 
 
 def sheep_short_tag(long_tag: str) -> str | None:
@@ -72,6 +91,17 @@ class ReaderConnection:
         self._reader = reader
         self._writer = writer
         self._live_buf = bytearray()
+        # Verbindungsqualität: Keep-alive-Ping ([XGMEMINFO]) und die im
+        # Live-Strom als "Rauschen" auftauchende Antwort ([XGMEMINFOOK]) —
+        # daraus Umlaufzeit und Alter der letzten Antwort.
+        self.connected_at = time.time()
+        self.last_ping_at: float | None = None
+        self.last_pong_at: float | None = None
+        self.last_rtt_ms: float | None = None
+        self.pings = 0
+        self.pongs = 0
+        self.noise_bytes = 0
+        self.frames = 0
 
     async def send_command(self, command: str, *args: str, timeout: float = 5.0) -> str:
         """Sendet [BEFEHL|arg1|...], wartet auf [BEFEHLOK]/[BEFEHLERROR] und
@@ -122,18 +152,27 @@ class ReaderConnection:
             if not data:
                 return
             self._live_buf.extend(data)
+            # Keep-alive-Antwort erkennen, bevor sie als Rauschen verworfen wird
+            if b"[XGMEMINFOOK]" in data:
+                now = time.time()
+                self.last_pong_at = now
+                self.pongs += 1
+                if self.last_ping_at is not None:
+                    self.last_rtt_ms = round((now - self.last_ping_at) * 1000, 1)
             while self._live_buf:
                 if self._live_buf[0] != STX:
                     # Kein gültiger Frame-Start (z.B. Reste einer
                     # Keepalive-Befehlsantwort) — ein Byte verwerfen statt
                     # die Verbindung abzubrechen.
                     del self._live_buf[0]
+                    self.noise_bytes += 1
                     continue
                 if len(self._live_buf) < frame_len:
                     break
                 frame = bytes(self._live_buf[:frame_len])
                 del self._live_buf[:frame_len]
                 payload = frame[1 : 1 + LIVE_READ_LEN].decode("ascii", errors="replace")
+                self.frames += 1
                 tag = parse_live_read(payload)
                 if tag:
                     yield tag
@@ -158,12 +197,15 @@ async def acquire_reader(host: str, port: int, *, keepalive: bool = False):
     if _lock.locked():
         raise ReaderBusyError("Lesegerät wird bereits von einer anderen Sitzung verwendet")
     async with _lock:
-        reader, writer = await asyncio.open_connection(host, port)
+        try:
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=CONNECT_TIMEOUT)
+        except (asyncio.TimeoutError, OSError) as exc:
+            raise ReaderError(f"Leser {host}:{port} nicht erreichbar ({exc or 'Zeitüberschreitung'})") from exc
         sock = writer.get_extra_info("socket")
         if sock is not None:
             sock.setsockopt(socket_module.SOL_SOCKET, socket_module.SO_KEEPALIVE, 1)
         conn = ReaderConnection(reader, writer)
-        keepalive_task = asyncio.create_task(_keepalive_loop(writer)) if keepalive else None
+        keepalive_task = asyncio.create_task(_keepalive_loop(conn)) if keepalive else None
         try:
             yield conn
         finally:
@@ -172,11 +214,13 @@ async def acquire_reader(host: str, port: int, *, keepalive: bool = False):
             conn.close()
 
 
-async def _keepalive_loop(writer: asyncio.StreamWriter) -> None:
+async def _keepalive_loop(conn: "ReaderConnection") -> None:
     while True:
         await asyncio.sleep(KEEPALIVE_INTERVAL)
         try:
-            writer.write(b"[XGMEMINFO]")
-            await writer.drain()
+            conn.last_ping_at = time.time()
+            conn.pings += 1
+            conn._writer.write(b"[XGMEMINFO]")
+            await conn._writer.drain()
         except OSError:
             return
