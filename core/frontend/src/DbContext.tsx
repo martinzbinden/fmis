@@ -3,11 +3,13 @@ import type { PGlite } from '@electric-sql/pglite'
 
 /**
  * Generischer pglite-Context — nimmt eine beliebige getDb()-Funktion entgegen
- * (jedes Modul liefert seine eigene, siehe modules/<name>/frontend/src/db/pglite.ts:
- * eigene IndexedDB, eigenes Schema). Ein <DbProvider> wird pro aktiver
- * Modul-Route gemountet (siehe module.tsx je Modul), nicht global — die drei
- * pglite-Instanzen laufen dadurch unabhängig nebeneinander, nur die jeweils
- * gerade besuchte wird tatsächlich initialisiert.
+ * (jedes Modul liefert seine eigene, siehe modules/<name>/frontend/src/db/pglite.ts).
+ * Alle Module teilen sich EINE pglite-Datenbank mit je einem eigenen
+ * Postgres-Schema (siehe core/frontend/src/db.ts) — für Konsumenten dieses
+ * Contexts unsichtbar, jedes Modul sieht weiterhin nur seine eigenen
+ * Tabellen. Ein <DbProvider> wird pro aktiver Modul-Route gemountet (siehe
+ * module.tsx je Modul), nicht global — initialisiert (Migrationen, Übernahme
+ * alter Lokaldaten) wird dadurch nur das Schema, das gerade besucht wird.
  */
 const DbContext = createContext<PGlite | null>(null)
 

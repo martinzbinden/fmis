@@ -1,4 +1,6 @@
-import { PGlite } from '@electric-sql/pglite'
+import type { PGlite } from '@electric-sql/pglite'
+import { getModuleDb, type Migration } from '@fmis/core/db'
+import { SYNC_TABLES } from './tables'
 
 // Alle schema/*.sql-Dateien werden zur Build-Zeit als Rohtext eingebettet und
 // in Dateinamen-Reihenfolge als Migrationen angewendet — spiegelbildlich zum
@@ -10,53 +12,31 @@ const migrationModules = import.meta.glob('../../../schema/*.sql', {
   eager: true,
 }) as Record<string, string>
 
-interface Migration {
-  version: string
-  sql: string
-}
-
 const migrations: Migration[] = Object.entries(migrationModules)
   .map(([path, sql]) => ({ version: path.split('/').pop()!, sql }))
   .sort((a, b) => a.version.localeCompare(b.version))
 
-async function runMigrations(pg: PGlite): Promise<void> {
-  await pg.exec(`
-    create table if not exists schema_migrations (
-      version text primary key,
-      applied_at timestamptz not null default now()
-    )
-  `)
-
-  const { rows } = await pg.query<{ version: string }>(
-    'select version from schema_migrations',
-  )
-  const applied = new Set(rows.map((r) => r.version))
-
-  for (const migration of migrations) {
-    if (applied.has(migration.version)) continue
-    await pg.transaction(async (tx) => {
-      await tx.exec(migration.sql)
-      await tx.query('insert into schema_migrations (version) values ($1)', [
-        migration.version,
-      ])
-    })
-  }
-}
-
 let dbPromise: Promise<PGlite> | null = null
 
 /**
- * Singleton-Zugriff auf die lokale pglite-Instanz. pglite ist die einzige
- * Datenquelle für die UI — das Backend wird nur für /auth, /sync/push und
- * /sync/pull kontaktiert (siehe schema/SYNC_API.md).
+ * Zugriff auf das "livestock"-Schema in der gemeinsamen pglite-Datenbank
+ * (siehe core/frontend/src/db.ts) — für den Rest der App unverändert eine
+ * eigenständige PGlite-Instanz. pglite ist die einzige Datenquelle für die
+ * UI — das Backend wird nur für /auth, /sync/push und /sync/pull kontaktiert.
+ *
+ * legacyIdbName bleibt "mastplaner": so hiess die alte, separate IndexedDB
+ * dieses Moduls (aus der Zeit vor dem gemeinsamen Server-Schema "livestock"),
+ * und genau dort liegen bei bestehenden Geräten noch nicht hochgeladene
+ * Altdaten, die übernommen werden müssen (siehe getModuleDb).
  */
 export function getDb(): Promise<PGlite> {
   if (!dbPromise) {
-    dbPromise = (async () => {
-      const pg = new PGlite('idb://mastplaner')
-      await runMigrations(pg)
-      return pg
-    })()
+    dbPromise = getModuleDb({
+      schema: 'livestock',
+      legacyIdbName: 'mastplaner',
+      migrations,
+      syncTables: SYNC_TABLES,
+    })
   }
   return dbPromise
 }

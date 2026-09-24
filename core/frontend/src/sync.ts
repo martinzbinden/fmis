@@ -48,7 +48,15 @@ export function createSyncClient(
   // diesen Wert und würden wegen `since` nie nachgeholt — deshalb bei
   // geänderter Signatur einmal komplett neu pullen.
   const schemaKey = `${moduleKey}_sync_schema`
-  const schemaSignature = JSON.stringify(Object.entries(syncTables).map(([t, cols]) => [t, [...cols]]))
+  // "shared-db-v1": Modul-Instanzen teilen sich seither EINE pglite-Datenbank
+  // (ein Postgres-Schema je Instanz statt vorher je einer eigenen IndexedDB,
+  // siehe core/frontend/src/db.ts) — jedes Gerät startet dadurch mit leeren
+  // neuen Schemas. Der Präfix zwingt genau EINMAL einen Voll-Pull, damit
+  // schon synchronisierte Daten sofort wieder da sind (nicht erst nach der
+  // nächsten inhaltlichen Schema-Änderung). Noch nicht hochgeladene lokale
+  // Änderungen holt getModuleDb() separat aus der alten Datenbank.
+  const schemaSignature =
+    'shared-db-v1:' + JSON.stringify(Object.entries(syncTables).map(([t, cols]) => [t, [...cols]]))
   try {
     if (localStorage.getItem(schemaKey) !== schemaSignature) {
       localStorage.removeItem(sinceKey)
