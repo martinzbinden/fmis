@@ -51,6 +51,10 @@ class VerifyResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class AuthConfigResponse(BaseModel):
+    password_login: bool
+
+
 class MeResponse(BaseModel):
     email: str
     role: str | None
@@ -157,6 +161,15 @@ async def verify(body: VerifyBody) -> VerifyResponse:
         )
 
     return VerifyResponse(access_token=_issue_session_jwt(user_id))
+
+
+@router.get("/auth/config", response_model=AuthConfigResponse)
+async def auth_config() -> AuthConfigResponse:
+    """Was das Login-Formular anbieten darf. Der Passwort-Login existiert nur
+    in Test-/Entwicklungsumgebungen (TEST_LOGIN_PASSWORD gesetzt); in
+    Produktion soll die Oberfläche ihn gar nicht erst anzeigen. Verrät nichts
+    Vertrauliches — nur, ob dieser Weg überhaupt offen ist."""
+    return AuthConfigResponse(password_login=bool(TEST_LOGIN_PASSWORD))
 
 
 @router.post("/auth/password-login", response_model=VerifyResponse)

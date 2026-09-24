@@ -35,6 +35,20 @@ export function getCurrentUserEmail(): string | null {
   return localStorage.getItem(EMAIL_KEY)
 }
 
+/**
+ * Sagt, ob das Login-Formular den Testpasswort-Weg anbieten darf. Der hängt
+ * an TEST_LOGIN_PASSWORD im Backend und ist in Produktion aus — der Umschalter
+ * soll dort gar nicht erst erscheinen.
+ */
+export async function fetchPasswordLoginEnabled(): Promise<boolean> {
+  const res = await fetch(`${API_URL}/auth/config`)
+  if (!res.ok) {
+    throw new Error(`Konfiguration nicht abrufbar (${res.status})`)
+  }
+  const data = (await res.json()) as { password_login?: boolean }
+  return data.password_login === true
+}
+
 export async function requestMagicLink(email: string): Promise<void> {
   const res = await fetch(`${API_URL}/auth/request-link`, {
     method: 'POST',

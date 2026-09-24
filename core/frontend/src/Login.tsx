@@ -1,8 +1,26 @@
-import { useState } from 'react'
-import { passwordLogin, requestMagicLink } from './auth'
+import { useEffect, useState } from 'react'
+import { fetchPasswordLoginEnabled, passwordLogin, requestMagicLink } from './auth'
 
 export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [mode, setMode] = useState<'email' | 'password'>('email')
+  // Der Testpasswort-Weg existiert nur, wo TEST_LOGIN_PASSWORD gesetzt ist.
+  // Bis das Backend geantwortet hat (und wenn es nicht erreichbar ist) bleibt
+  // der Umschalter aus: in Produktion soll er nie aufblitzen.
+  const [passwordLoginEnabled, setPasswordLoginEnabled] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    fetchPasswordLoginEnabled()
+      .then((enabled) => {
+        if (active) setPasswordLoginEnabled(enabled)
+      })
+      .catch(() => {
+        if (active) setPasswordLoginEnabled(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
@@ -13,13 +31,15 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
           <p className="mt-1 text-sm text-gray-500">Farm-Management-Informationssystem</p>
         </div>
         {mode === 'email' ? <EmailLogin /> : <PasswordLogin onLoggedIn={onLoggedIn} />}
-        <button
-          type="button"
-          onClick={() => setMode((m) => (m === 'email' ? 'password' : 'email'))}
-          className="mt-4 w-full text-center text-xs text-gray-400 underline"
-        >
-          {mode === 'email' ? 'Testpasswort verwenden' : 'Mit E-Mail-Link anmelden'}
-        </button>
+        {passwordLoginEnabled && (
+          <button
+            type="button"
+            onClick={() => setMode((m) => (m === 'email' ? 'password' : 'email'))}
+            className="mt-4 w-full text-center text-xs text-gray-400 underline"
+          >
+            {mode === 'email' ? 'Testpasswort verwenden' : 'Mit E-Mail-Link anmelden'}
+          </button>
+        )}
       </div>
     </div>
   )
