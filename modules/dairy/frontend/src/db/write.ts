@@ -37,6 +37,23 @@ export async function ensureOutbox(pg: PGlite): Promise<void> {
   `)
 }
 
+/**
+ * Wirft lokale Verlaufszeilen weg, die bereits beim Server sind.
+ *
+ * Der Verlauf wird nicht mehr heruntergezogen (siehe historyApi.ts), aber
+ * Geräte, die vorher liefen, tragen ihn noch mit sich herum — auf diesem
+ * Betrieb waren das 13 von 15 MB. Was noch in der Outbox steht, ist NICHT
+ * hochgeschoben und bleibt deshalb liegen; alles andere lässt sich gefahrlos
+ * löschen, weil es auf dem Server vollständig vorliegt und die Seite
+ * "Verlauf" es von dort liest.
+ */
+async function pruneSyncedHistory(pg: PGlite): Promise<void> {
+  await pg.query(
+    `delete from data_history
+     where id not in (select row_id from sync_outbox where table_name = 'data_history')`,
+  )
+}
+
 // Pro pglite-Instanz (nicht global) gecacht — dieses Modul kann mehrfach
 // instanziert werden (siehe module_registry.py, ModuleSpec.source), jede
 // Instanz hat ihre eigene PGlite-Instanz und damit ihre eigene Outbox.
@@ -44,7 +61,7 @@ const outboxReadyByDb = new WeakMap<PGlite, Promise<void>>()
 async function ready(pg: PGlite): Promise<PGlite> {
   let outboxReady = outboxReadyByDb.get(pg)
   if (!outboxReady) {
-    outboxReady = ensureOutbox(pg)
+    outboxReady = ensureOutbox(pg).then(() => pruneSyncedHistory(pg))
     outboxReadyByDb.set(pg, outboxReady)
   }
   await outboxReady

@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { PGlite } from '@electric-sql/pglite'
-import { useQuery } from '../hooks/useQuery'
+import { useServerHistory } from '@fmis/core/historyApi'
 import { fmtDateTime } from '../lib/format'
 import type { DataHistory, HistoryAction } from '../types'
 
@@ -21,13 +20,6 @@ const ACTION_COLOR: Record<HistoryAction, string> = {
   insert: 'bg-green-100 text-green-800',
   update: 'bg-blue-100 text-blue-800',
   delete: 'bg-red-100 text-red-800',
-}
-
-async function loadHistory(pg: PGlite): Promise<DataHistory[]> {
-  const { rows } = await pg.query<DataHistory>(
-    'select * from data_history order by changed_at desc limit 300',
-  )
-  return rows
 }
 
 /** Extrahiert eine sprechende Kurzbeschreibung + optionalen Detail-Link aus dem Snapshot. */
@@ -57,7 +49,7 @@ function describeEntry(entry: DataHistory): { label: string; link: string | null
 }
 
 export default function History() {
-  const { data, loading } = useQuery(loadHistory)
+  const { entries: data, loading, error, reload } = useServerHistory('fields')
   const [tableFilter, setTableFilter] = useState('')
   const [search, setSearch] = useState('')
 
@@ -102,6 +94,17 @@ export default function History() {
         />
       </div>
 
+      {error && (
+        <div className="rounded-lg bg-amber-50 p-3 text-center text-sm text-amber-800">
+          <p>{error}</p>
+          <p className="mt-1 text-xs text-amber-700">
+            Der Verlauf wird vom Server gelesen und ist deshalb offline nicht verfügbar.
+          </p>
+          <button type="button" onClick={reload} className="mt-2 rounded bg-amber-700 px-3 py-1 text-xs font-semibold text-white">
+            Nochmals versuchen
+          </button>
+        </div>
+      )}
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && filtered.length === 0 && (
         <p className="text-center text-gray-500">Keine Einträge.</p>

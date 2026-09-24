@@ -26,6 +26,8 @@ class PushResponse(BaseModel):
 class PullResponse(BaseModel):
     server_time: str
     tables: dict[str, list[dict[str, Any]]]
+class HistoryResponse(BaseModel):
+    entries: list[dict[str, Any]]
 
 
 @router.post("/sync/push", response_model=PushResponse)
@@ -81,6 +83,13 @@ async def pull(since: str | None = None, user: CurrentUser = Depends(require_aut
         server_time_row = await (await conn.execute("select now()")).fetchone()
         server_time = server_time_row[0].isoformat()
         for table, columns in SYNC_TABLES.items():
+            if table == "data_history":
+                # Nur-Schreiben-Tabelle: der Verlauf wird zwar vom Client
+                # hochgeschoben, aber nie heruntergezogen. Er ist die mit Abstand
+                # grösste Tabelle (auf diesem Betrieb 13 von 15 MB) und wächst mit
+                # jeder Änderung weiter — im Browser eines Telefons hat er nichts
+                # verloren. Die Seite "Verlauf" liest ihn über /sync/history.
+                continue
             area = TABLE_AREA.get(table)
             if area is None or f"{area}:read" not in user.permissions:
                 continue
@@ -101,6 +110,39 @@ async def pull(since: str | None = None, user: CurrentUser = Depends(require_aut
                 {col: _jsonable(val) for col, val in zip(columns, row)} for row in rows
             ]
     return PullResponse(server_time=server_time, tables=tables)
+
+
+@router.get("/sync/history", response_model=HistoryResponse)
+async def history(
+    limit: int = 300,
+    before: str | None = None,
+    user: CurrentUser = Depends(require_auth),
+) -> HistoryResponse:
+    """Der Änderungsverlauf, gelesen statt synchronisiert — siehe den Hinweis
+    bei data_history in pull(). Liegt bewusst unter /sync/, damit die
+    bestehende Traefik-Regel (`/<modul>/sync`) ihn ohne Änderung abdeckt."""
+    area_name = TABLE_AREA.get("data_history")
+    if area_name is None or f"{area_name}:read" not in user.permissions:
+        raise HTTPException(status_code=403, detail="Kein Leserecht für den Verlauf")
+
+    columns = SYNC_TABLES["data_history"]
+    col_list = ", ".join(f'"{c}"' for c in columns)
+    capped = max(1, min(limit, 1000))
+    sql = f'select {col_list} from "data_history"'
+    params: tuple = ()
+    if before:
+        # Weiterblättern über den Zeitstempel statt über OFFSET: der Verlauf
+        # wächst vorne, ein OFFSET würde beim Nachladen Zeilen doppelt zeigen
+        # oder überspringen.
+        sql += " where changed_at < %s"
+        params = (before,)
+    sql += f" order by changed_at desc limit {capped}"
+
+    async with pool.connection() as conn:
+        rows = await (await conn.execute(sql, params)).fetchall()
+    return HistoryResponse(
+        entries=[{col: _jsonable(val) for col, val in zip(columns, row)} for row in rows]
+    )
 
 
 def _jsonable(value: Any) -> Any:
