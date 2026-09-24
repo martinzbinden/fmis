@@ -314,8 +314,24 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
 
   if (readerEnabled === null) return <div className="p-4 text-center text-gray-400">Lädt…</div>
 
+  // Einrasten nur auf dieser Seite: die Bank-Tabelle soll beim Scrollen bündig
+  // unter dem Kopf stehenbleiben, statt irgendwo angeschnitten. Das Scrollen
+  // macht das Fenster (siehe Layout.tsx), also hängt die Eigenschaft am
+  // Wurzelelement — und muss beim Verlassen wieder weg, sonst rasten auch
+  // Seiten ein, die gar keine Abschnitte dafür haben. "proximity" statt
+  // "mandatory": wer zur manuellen Aufnahme oder ins Archiv scrollt, soll
+  // nicht zurückgezogen werden.
+  useEffect(() => {
+    const root = document.documentElement
+    const previous = root.style.scrollSnapType
+    root.style.scrollSnapType = 'y proximity'
+    return () => {
+      root.style.scrollSnapType = previous
+    }
+  }, [])
+
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
+    <div className="mx-auto max-w-2xl space-y-3 p-3 pb-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Milchwägung</h1>
         <input
@@ -417,8 +433,9 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
             )}
             {showDetails && (
               <p className="mt-1 text-gray-400">
-                Eine Funksignalstärke (WLAN) liefert der Leser nicht; die Qualität wird aus den Keep-alive-Antworten
-                (alle 20 s) abgeleitet.
+                Die Sitzung läuft auf dem Server — die Seite darf verlassen werden, der Leser liest weiter. Ist eine
+                Bank voll, beginnt automatisch die nächste. Eine Funksignalstärke (WLAN) liefert der Leser nicht; die
+                Qualität wird aus den Keep-alive-Antworten (alle 20 s) abgeleitet.
               </p>
             )}
           </div>
@@ -426,14 +443,12 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         {session?.active && session.session_date && session.session_date !== date && (
           <p className="mt-2 text-xs text-amber-700">Die laufende Sitzung gehört zum {fmtDate(session.session_date)}.</p>
         )}
-        <p className="mt-2 text-xs text-gray-400">
-          Die Sitzung läuft auf dem Server — die Seite darf verlassen werden, der Leser liest weiter. Ist eine Bank voll,
-          beginnt automatisch die nächste.
-        </p>
       </div>
       {error && <p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
-      {/* Aktuelle Bank */}
+      {/* Aktuelle Bank — eigener Abschnitt, damit er beim Scrollen bündig
+          unter dem klebenden Kopf einrastet (scroll-mt = dessen Höhe). */}
+      <section className="scroll-mt-14 snap-start space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold text-gray-800">
           {openBank ? `Bank ${openBank.bank.bank_number}` : 'Keine offene Bank'}
@@ -456,6 +471,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           {session?.active ? 'Warte auf die erste Lesung…' : 'Leser verbinden oder unten manuell aufnehmen.'}
         </p>
       )}
+      </section>
 
       {canWrite && (
         <form
@@ -574,6 +590,8 @@ function BankTable({
   const pg = useDb()
   const [editing, setEditing] = useState(false)
   const [order, setOrder] = useState<SlotRow[]>([])
+  const [dragId, setDragId] = useState<string | null>(null)
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([])
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const [noteText, setNoteText] = useState('')
 
@@ -593,6 +611,55 @@ function BankTable({
       return copy
     })
   }
+
+  // Ziehen an der Grifffläche. Von Hand statt mit einer Bibliothek: es sind
+  // zwölf Zeilen, und die Zeiger-Ereignisse decken Maus und Finger gleich ab.
+  // touch-none an der Fläche ist Pflicht, sonst scrollt das Handy statt zu
+  // ziehen. Die Pfeiltasten bleiben daneben — mit nassen Händen im Melkstand
+  // trifft man eine Schaltfläche zuverlässiger als eine Ziehgeste.
+  function startDrag(e: React.PointerEvent<HTMLElement>, id: string) {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDragId(id)
+  }
+
+  function dragOver(e: React.PointerEvent<HTMLElement>) {
+    if (dragId === null) return
+    const from = order.findIndex((s) => s.id === dragId)
+    if (from < 0) return
+
+    const y = e.clientY
+    let to = from
+    for (let i = 0; i < order.length; i++) {
+      const box = rowRefs.current[i]?.getBoundingClientRect()
+      if (!box) continue
+      // Über der ersten bzw. unter der letzten Zeile ans jeweilige Ende.
+      if (i === 0 && y < box.top) break
+      if (i === order.length - 1 && y > box.bottom) {
+        to = i
+        break
+      }
+      if (y >= box.top && y <= box.bottom) {
+        to = i
+        break
+      }
+    }
+    if (to === from) return
+    setOrder((o) => {
+      const copy = [...o]
+      const [moved] = copy.splice(from, 1)
+      copy.splice(to, 0, moved)
+      return copy
+    })
+  }
+
+  function endDrag(e: React.PointerEvent<HTMLElement>) {
+    if (dragId === null) return
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+    setDragId(null)
+  }
   async function saveOrder() {
     for (let i = 0; i < order.length; i++) {
       const s = order[i]
@@ -602,6 +669,7 @@ function BankTable({
       }
     }
     setEditing(false)
+    setDragId(null)
     onChanged()
   }
 
@@ -688,23 +756,49 @@ function BankTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-gray-500">
-              {editing && <th className="px-2 py-2">Gelesen</th>}
-              <th className="w-8 px-2 py-2" />
-              <th className="px-2 py-2">Nr.</th>
-              <th className="px-2 py-2">{terms.singular}</th>
-              <th className="px-2 py-2">Notiz</th>
+              {editing && <th className="w-6 px-1 py-1" />}
+              {editing && <th className="px-2 py-1">Gelesen</th>}
+              <th className="w-8 px-2 py-1" />
+              <th className="px-2 py-1">Nr.</th>
+              <th className="px-2 py-1">{terms.singular}</th>
+              <th className="px-2 py-1">Notiz</th>
               <th className="px-2 py-2" />
             </tr>
           </thead>
           <tbody>
             {rows.map((s, idx) => (
-              <tr key={s.id} className={`border-b last:border-0 ${s.weighed ? 'bg-green-50' : ''}`}>
+              <tr
+                key={s.id}
+                ref={(el) => {
+                  rowRefs.current[idx] = el
+                }}
+                onPointerMove={dragOver}
+                className={`border-b last:border-0 ${s.weighed ? 'bg-green-50' : ''} ${
+                  dragId === s.id ? 'bg-brand-50 shadow-inner' : ''
+                }`}
+              >
                 {editing && (
-                  <td className="px-2 py-1 align-top text-xs text-gray-400">
+                  <td className="px-1 py-0.5 align-middle">
+                    <span
+                      onPointerDown={(e) => startDrag(e, s.id)}
+                      onPointerMove={dragOver}
+                      onPointerUp={endDrag}
+                      onPointerCancel={endDrag}
+                      role="button"
+                      aria-label={`${label(s)} verschieben`}
+                      title="Zum Verschieben ziehen"
+                      className="flex h-9 w-6 cursor-grab touch-none select-none items-center justify-center text-lg leading-none text-gray-400 active:cursor-grabbing active:text-brand-700"
+                    >
+                      ⣿
+                    </span>
+                  </td>
+                )}
+                {editing && (
+                  <td className="px-2 py-0.5 align-top text-xs text-gray-400">
                     {byOriginal[idx] ? `${byOriginal[idx].original_position}. ${label(byOriginal[idx])}` : ''}
                   </td>
                 )}
-                <td className="px-2 py-1 align-middle">
+                <td className="px-2 py-0.5 align-middle">
                   <input
                     type="checkbox"
                     checked={s.weighed}
@@ -714,20 +808,23 @@ function BankTable({
                     title="gewogen"
                   />
                 </td>
-                <td className="px-2 py-1 align-middle">
+                <td className="px-2 py-0.5 align-middle">
                   <span className="text-2xl font-bold leading-none text-gray-800">{s.animal?.lauf_nr ?? '–'}</span>
                   <span className="ml-1 text-[10px] text-gray-400">{editing ? idx + 1 : s.position}.</span>
                 </td>
-                <td className="px-2 py-1 align-middle">
-                  <div className="text-sm font-medium text-gray-800">
+                <td className="px-2 py-0.5 align-middle">
+                  <div className="truncate text-sm font-medium text-gray-800">
                     {s.animal?.name ?? (s.animal ? '' : <span className="text-amber-700">unbekannt</span>)}
                   </div>
-                  <div className="text-[11px] text-gray-400">
+                  {/* Zweite Zeile kostet ~14 px mal zwölf. Auf kurzen Schirmen
+                      weicht sie, damit Häkchen und Laufnummer ohne Scrollen
+                      sichtbar bleiben — auf hohen Geräten ist sie da. */}
+                  <div className="hidden text-[11px] text-gray-400 [@media(min-height:760px)]:block">
                     {s.ear_tag ?? ''}
                     {s.transponder && s.transponder !== s.ear_tag ? ` · ${s.transponder}` : ''}
                   </div>
                 </td>
-                <td className="px-2 py-1 align-middle">
+                <td className="px-2 py-0.5 align-middle">
                   {noteFor === s.id ? (
                     <form
                       className="flex gap-1"
@@ -759,7 +856,7 @@ function BankTable({
                     </button>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 align-middle text-xs">
+                <td className="whitespace-nowrap px-2 py-0.5 align-middle text-xs">
                   {editing && (
                     <>
                       <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0} className="rounded px-1.5 py-0.5 text-gray-600 disabled:opacity-30">
