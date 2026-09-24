@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 
@@ -215,6 +216,26 @@ async def auth_config() -> AuthConfigResponse:
     nicht erst anzeigen. Verrät nichts Vertrauliches — nur, welche Wege offen
     sind."""
     return AuthConfigResponse(password_login=bool(TEST_LOGIN_PASSWORD), sso=SSO_ENABLED)
+
+
+@router.get("/auth/portal")
+async def portal_entry() -> RedirectResponse:
+    """Weg zurück ins Portal für eine App, die schon im Browser-Cache liegt.
+
+    Die installierte PWA holt ihre Hülle aus dem Service-Worker-Cache — die
+    Navigation geht gar nicht erst ins Netz, und Authelia bekommt sie nie zu
+    sehen. Ohne Portal-Sitzung hat /auth/sso dann nichts zu übernehmen, und der
+    Anwender landet auf dem E-Mail-Formular, statt einfach angemeldet zu sein.
+
+    Dieser Pfad liegt hinter derselben ForwardAuth und steht in der
+    navigateFallbackDenylist des Service-Workers (siehe vite.config.ts), wird
+    also wirklich aus dem Netz geholt: Authelia leitet auf die Anmeldeseite,
+    danach kommt man hier heraus und wird in die App zurückgeschickt — jetzt
+    mit gültiger Sitzung.
+    """
+    if not SSO_ENABLED:
+        raise HTTPException(status_code=404, detail="SSO ist hier nicht eingerichtet")
+    return RedirectResponse(url=f"{PUBLIC_URL}/", status_code=302)
 
 
 @router.post("/auth/sso", response_model=VerifyResponse)

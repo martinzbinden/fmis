@@ -1,5 +1,42 @@
 import { useEffect, useRef, useState } from 'react'
-import { fetchAuthConfig, passwordLogin, requestMagicLink, ssoLogin } from './auth'
+import {
+  PORTAL_ENTRY_PATH,
+  fetchAuthConfig,
+  passwordLogin,
+  requestMagicLink,
+  ssoLogin,
+} from './auth'
+
+// Der Sprung ins Portal darf sich nicht wiederholen: käme man von dort ohne
+// brauchbare Anmeldung zurück, liefe die Seite sonst im Kreis. Einmal pro
+// Browser-Sitzung genügt, danach steht das E-Mail-Formular bereit.
+const PORTAL_TRIED_KEY = 'fmis_portal_tried'
+
+function portalAlreadyTried(): boolean {
+  try {
+    return sessionStorage.getItem(PORTAL_TRIED_KEY) === '1'
+  } catch {
+    // Ohne sessionStorage (privates Fenster, gesperrte Website-Daten) lieber
+    // gar nicht springen als in einer Schleife landen.
+    return true
+  }
+}
+
+function rememberPortalAttempt(): void {
+  try {
+    sessionStorage.setItem(PORTAL_TRIED_KEY, '1')
+  } catch {
+    /* siehe oben */
+  }
+}
+
+function forgetPortalAttempt(): void {
+  try {
+    sessionStorage.removeItem(PORTAL_TRIED_KEY)
+  } catch {
+    /* siehe oben */
+  }
+}
 
 export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [mode, setMode] = useState<'email' | 'password'>('email')
@@ -35,8 +72,17 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
       if (config.sso) {
         try {
           if (await ssoLogin()) {
+            forgetPortalAttempt()
             onLoggedInRef.current()
             return
+          }
+          // Keine Portal-Sitzung. Die installierte PWA kommt gar nicht erst
+          // dorthin — ihre Hülle liegt im Service-Worker-Cache, die Navigation
+          // geht nie ins Netz. Also einmal aktiv hinschicken.
+          if (!portalAlreadyTried()) {
+            rememberPortalAttempt()
+            window.location.assign(PORTAL_ENTRY_PATH)
+            return // Seite navigiert weg, Formular bleibt verborgen
           }
         } catch (err) {
           // Portal-Anmeldung vorhanden, aber abgelehnt — etwa weil das Konto

@@ -81,14 +81,15 @@ services:
       - traefik.http.routers.fmis-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.fmis-api.tls=${TRAEFIK_TLS:-false}
       - traefik.http.routers.fmis-api.priority=10
-      # Einziger Backend-Pfad MIT ForwardAuth: /auth/sso lebt davon, dass der
-      # Kopf Remote-Email vom Portal stammt und nicht vom Anrufer. Eigener
-      # Router, weil der API-Router oben bewusst ohne Middleware läuft — und
-      # mit höherer Priorität als dessen 10, sonst gewinnt der und der Schutz
-      # fiele lautlos weg. Path (exakt), nicht PathPrefix.
+      # Die einzigen Backend-Pfade MIT ForwardAuth: /auth/sso lebt davon, dass
+      # der Kopf Remote-Email vom Portal stammt und nicht vom Anrufer,
+      # /auth/portal davon, dass die Anmeldeseite des Portals davor kommt.
+      # Eigener Router, weil der API-Router oben bewusst ohne Middleware läuft
+      # — und mit höherer Priorität als dessen 10, sonst gewinnt der und der
+      # Schutz fiele lautlos weg. Path (exakt), nicht PathPrefix.
       - >-
         traefik.http.routers.fmis-sso.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
-        Path(`/auth/sso`)
+        (Path(`/auth/sso`) || Path(`/auth/portal`))
       - traefik.http.routers.fmis-sso.middlewares=${TRAEFIK_MIDDLEWARES:-authelia-chain@file}
       - traefik.http.routers.fmis-sso.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.fmis-sso.tls=${TRAEFIK_TLS:-false}

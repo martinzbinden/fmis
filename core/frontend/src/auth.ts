@@ -35,6 +35,19 @@ export function getCurrentUserEmail(): string | null {
   return localStorage.getItem(EMAIL_KEY)
 }
 
+/**
+ * Abbruchsignal für die Anmelde-Abfragen. Ohne Frist bliebe der Login-Schirm
+ * bei einer hängenden Verbindung endlos auf "Anmeldung wird geprüft…" stehen,
+ * statt das E-Mail-Formular zu zeigen. In alten Browsern ohne
+ * AbortSignal.timeout gibt es eben keine Frist — dann verhält es sich wie
+ * vorher.
+ */
+function withTimeout(ms: number): AbortSignal | undefined {
+  return typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+    ? AbortSignal.timeout(ms)
+    : undefined
+}
+
 export type AuthConfig = {
   /** Testpasswort-Login (TEST_LOGIN_PASSWORD im Backend) — in Produktion aus. */
   passwordLogin: boolean
@@ -48,7 +61,7 @@ export type AuthConfig = {
  * soll es auch nicht anbieten.
  */
 export async function fetchAuthConfig(): Promise<AuthConfig> {
-  const res = await fetch(`${API_URL}/auth/config`)
+  const res = await fetch(`${API_URL}/auth/config`, { signal: withTimeout(8000) })
   if (!res.ok) {
     throw new Error(`Konfiguration nicht abrufbar (${res.status})`)
   }
@@ -61,10 +74,14 @@ export async function fetchAuthConfig(): Promise<AuthConfig> {
  * fmis-Token. `redirect: 'manual'` ist wichtig: ohne gültige Portal-Sitzung
  * antwortet die ForwardAuth mit einer Umleitung auf eine fremde Origin, der
  * zu folgen nur eine CORS-Fehlermeldung einbrächte. Gibt false zurück, wenn
- * dieser Weg gerade nicht trägt — dann bleibt das E-Mail-Formular.
+ * dieser Weg gerade nicht trägt — dann führt der Weg über PORTAL_ENTRY_PATH.
  */
 export async function ssoLogin(): Promise<boolean> {
-  const res = await fetch(`${API_URL}/auth/sso`, { method: 'POST', redirect: 'manual' })
+  const res = await fetch(`${API_URL}/auth/sso`, {
+    method: 'POST',
+    redirect: 'manual',
+    signal: withTimeout(8000),
+  })
   if (!res.ok) {
     if (res.status === 403) {
       const body = (await res.json().catch(() => null)) as { detail?: string } | null
@@ -136,3 +153,11 @@ export async function fetchMe(): Promise<CurrentUser> {
   }
   return (await res.json()) as CurrentUser
 }
+
+/**
+ * Vollständige Navigation hierhin holt eine Portal-Anmeldung nach. Muss eine
+ * echte Navigation sein, kein fetch: nur so greift die Umleitung des Portals.
+ * Der Pfad liegt in der navigateFallbackDenylist des Service-Workers, wird
+ * also nicht aus dem Cache beantwortet.
+ */
+export const PORTAL_ENTRY_PATH = '/auth/portal'
