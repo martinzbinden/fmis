@@ -90,13 +90,15 @@ services:
       - traefik.enable=true
       - traefik.docker.network=${TRAEFIK_NETWORK:-web-netzwerk}
       - traefik.http.routers.fmis-app.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`)
-      # Authelia-ForwardAuth. Lokal gibt es diese Middleware nicht — dort
-      # TRAEFIK_MIDDLEWARES in .env auf eine lokal definierte setzen, sonst
-      # deaktiviert Traefik den Router ("middleware does not exist").
-      - traefik.http.routers.fmis-app.middlewares=${TRAEFIK_MIDDLEWARES:-authelia-chain@file}
-      # No-op-Middleware, damit TRAEFIK_MIDDLEWARES auch dort auf etwas
-      # Existierendes zeigen kann, wo es kein Authelia gibt (lokal:
-      # TRAEFIK_MIDDLEWARES=fmis-noop@docker in .env). Ein leerer Wert
+      # fmis bringt seine eigene Anmeldung mit (Magic-Link, Jahres-Token,
+      # danach offline nutzbar) — davor KEIN zweiter Login. Authelia schuetzte
+      # ohnehin nur die ausgelieferte Oberflaeche: die Daten haengen am
+      # API-Router, der fuer Sync/Leser/Offline bewusst ohne ForwardAuth laeuft.
+      # Wieder einschalten: TRAEFIK_MIDDLEWARES=authelia-chain@file in .env —
+      # dann aber /auth/sso ergaenzen, sonst meldet man sich zweimal an.
+      - traefik.http.routers.fmis-app.middlewares=${TRAEFIK_MIDDLEWARES:-fmis-noop@docker}
+      # Der Router braucht eine Middleware, die es wirklich gibt, sonst
+      # deaktiviert Traefik ihn ("middleware does not exist"). Ein leerer Wert
       # hilft nicht — ${VAR:-default} greift auch bei leerer Variable.
       - traefik.http.middlewares.fmis-noop.headers.customResponseHeaders.X-Fmis-Auth=none
       - traefik.http.routers.fmis-app.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
