@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 
@@ -36,6 +36,15 @@ LOGIN_DOMAINS = {
     for d in os.environ.get("LOGIN_DOMAINS", "").split(",")
     if d.strip()
 }
+# Anmeldung über das vorgelagerte Portal (Authelia ForwardAuth): Traefik setzt
+# dann den Kopf Remote-Email, und /auth/sso tauscht ihn gegen ein fmis-Token.
+#
+# NUR einschalten, wo genau dieser Pfad auch hinter der ForwardAuth-Middleware
+# liegt — siehe Router "fmis-sso" in docker-compose.yml. Der API-Router läuft
+# bewusst ohne ForwardAuth; käme /auth/sso dort an, könnte jeder den Kopf
+# selbst mitschicken und sich ein Token für eine fremde Adresse ausstellen.
+SSO_ENABLED = os.environ.get("SSO_ENABLED", "").strip().lower() == "true"
+SSO_EMAIL_HEADER = os.environ.get("SSO_EMAIL_HEADER", "Remote-Email").strip()
 
 router = APIRouter()
 bearer_scheme = HTTPBearer()
@@ -62,6 +71,7 @@ class VerifyResponse(BaseModel):
 
 class AuthConfigResponse(BaseModel):
     password_login: bool
+    sso: bool
 
 
 class MeResponse(BaseModel):
@@ -95,33 +105,46 @@ LINK_REQUESTED_MESSAGE = {
 }
 
 
+async def _find_or_create_user(conn, email: str) -> str | None:
+    """Nutzer-ID zu einer Adresse. Ist sie unbekannt, wird sie nur dann
+    angelegt, wenn ihre Domain in LOGIN_DOMAINS steht (oder es die
+    Bootstrap-Admin-Adresse ist) — sonst None, ohne jede Spur in der
+    Benutzerliste. Freigeschaltet wird eine neue Zeile so oder so erst durch
+    einen Admin (status 'pending')."""
+    row = await (
+        await conn.execute("select id from users where email = %s", (email,))
+    ).fetchone()
+    if row:
+        return row[0]
+
+    domain = email.rpartition("@")[2]
+    if domain not in LOGIN_DOMAINS and email != INITIAL_ADMIN_EMAIL:
+        return None
+
+    user_id = str(uuidlib.uuid4())
+    is_bootstrap_admin = bool(INITIAL_ADMIN_EMAIL) and email == INITIAL_ADMIN_EMAIL
+    await conn.execute(
+        "insert into users (id, email, role_id, status) values (%s, %s, %s, %s)",
+        (
+            user_id,
+            email,
+            ADMIN_ROLE_ID if is_bootstrap_admin else None,
+            "active" if is_bootstrap_admin else "pending",
+        ),
+    )
+    return user_id
+
+
 @router.post("/auth/request-link")
 async def request_link(body: RequestLinkBody) -> dict[str, str]:
     email = body.email.lower().strip()
-    domain = email.rpartition("@")[2]
     async with pool.connection() as conn:
-        row = await (
-            await conn.execute("select id from users where email = %s", (email,))
-        ).fetchone()
-        if row:
-            user_id = row[0]
-        elif domain not in LOGIN_DOMAINS and email != INITIAL_ADMIN_EMAIL:
-            # Unbekannte Adresse ausserhalb der eigenen Domain: kein Link, und
-            # auch kein Nutzereintrag — sonst koennte sich jeder im Internet in
-            # die Benutzerliste schreiben. Die Antwort unten bleibt dieselbe.
+        user_id = await _find_or_create_user(conn, email)
+        if user_id is None:
+            # Unbekannte Adresse ausserhalb der eigenen Domain: kein Link und
+            # kein Eintrag — sonst könnte sich jeder im Internet in die
+            # Benutzerliste schreiben. Die Antwort bleibt trotzdem dieselbe.
             return LINK_REQUESTED_MESSAGE
-        else:
-            user_id = str(uuidlib.uuid4())
-            is_bootstrap_admin = bool(INITIAL_ADMIN_EMAIL) and email == INITIAL_ADMIN_EMAIL
-            await conn.execute(
-                "insert into users (id, email, role_id, status) values (%s, %s, %s, %s)",
-                (
-                    user_id,
-                    email,
-                    ADMIN_ROLE_ID if is_bootstrap_admin else None,
-                    "active" if is_bootstrap_admin else "pending",
-                ),
-            )
 
         # Ältere Links für diesen Nutzer invalidieren ("used_at" = durch einen
         # neueren Link ersetzt, nicht "angeklickt") — es soll immer nur der
@@ -187,10 +210,51 @@ async def verify(body: VerifyBody) -> VerifyResponse:
 @router.get("/auth/config", response_model=AuthConfigResponse)
 async def auth_config() -> AuthConfigResponse:
     """Was das Login-Formular anbieten darf. Der Passwort-Login existiert nur
-    in Test-/Entwicklungsumgebungen (TEST_LOGIN_PASSWORD gesetzt); in
-    Produktion soll die Oberfläche ihn gar nicht erst anzeigen. Verrät nichts
-    Vertrauliches — nur, ob dieser Weg überhaupt offen ist."""
-    return AuthConfigResponse(password_login=bool(TEST_LOGIN_PASSWORD))
+    in Test-/Entwicklungsumgebungen (TEST_LOGIN_PASSWORD gesetzt), SSO nur
+    hinter einem Portal; wo es den Weg nicht gibt, soll die Oberfläche ihn gar
+    nicht erst anzeigen. Verrät nichts Vertrauliches — nur, welche Wege offen
+    sind."""
+    return AuthConfigResponse(password_login=bool(TEST_LOGIN_PASSWORD), sso=SSO_ENABLED)
+
+
+@router.post("/auth/sso", response_model=VerifyResponse)
+async def sso_login(request: Request) -> VerifyResponse:
+    """Tauscht die Anmeldung am vorgelagerten Portal gegen ein fmis-Token, damit
+    man sich nicht zweimal anmeldet. Der Kopf Remote-Email stammt aus Authelias
+    ForwardAuth-Antwort; die Middleware-Kette entfernt vorher eine vom Client
+    mitgeschickte Fassung.
+
+    Sicherheitsvoraussetzung: Dieser Pfad MUSS über einen eigenen Traefik-Router
+    mit der ForwardAuth-Middleware laufen (Router "fmis-sso" in
+    docker-compose.yml, Priorität über dem API-Router). Sonst landet die
+    Anfrage beim ungeschützten API-Router, und der Kopf wäre frei erfindbar.
+    Deshalb ist SSO_ENABLED standardmässig aus und gehört nur dort gesetzt, wo
+    dieser Router existiert.
+    """
+    if not SSO_ENABLED:
+        raise HTTPException(status_code=404, detail="SSO ist hier nicht eingerichtet")
+
+    email = (request.headers.get(SSO_EMAIL_HEADER) or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=401, detail="Keine Portal-Anmeldung erkannt")
+
+    async with pool.connection() as conn:
+        user_id = await _find_or_create_user(conn, email)
+        if user_id is None:
+            raise HTTPException(status_code=403, detail="Adresse ist für FMIS nicht zugelassen")
+
+        status_row = await (
+            await conn.execute("select status from users where id = %s", (user_id,))
+        ).fetchone()
+        await conn.execute("update users set last_login_at = now() where id = %s", (user_id,))
+        await conn.commit()
+
+    if status_row is None or status_row[0] != "active":
+        raise HTTPException(
+            status_code=403, detail="Konto wartet auf Freischaltung durch einen Admin"
+        )
+
+    return VerifyResponse(access_token=_issue_session_jwt(user_id))
 
 
 @router.post("/auth/password-login", response_model=VerifyResponse)

@@ -41,6 +41,11 @@ services:
       # kommagetrennt). Alle anderen Adressen brauchen einen bestehenden
       # Eintrag in users — siehe core/backend/fmis_core/auth.py.
       LOGIN_DOMAINS: ${LOGIN_DOMAINS:-}
+      # Anmeldung am vorgelagerten Portal gegen ein fmis-Token tauschen
+      # (/auth/sso). NUR dort auf true setzen, wo der Router fmis-sso unten
+      # tatsächlich hinter der ForwardAuth-Middleware hängt — sonst wäre der
+      # Kopf Remote-Email frei erfindbar. Siehe fmis_core/auth.py.
+      SSO_ENABLED: ${SSO_ENABLED:-}
       # NUR für Test-/Entwicklungsumgebungen setzen — leer lassen in Produktion!
       # Aktiviert POST /auth/password-login (Admin-Login ohne Magic-Link).
       TEST_LOGIN_PASSWORD: ${TEST_LOGIN_PASSWORD:-}
@@ -76,6 +81,19 @@ services:
       - traefik.http.routers.fmis-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.fmis-api.tls=${TRAEFIK_TLS:-false}
       - traefik.http.routers.fmis-api.priority=10
+      # Einziger Backend-Pfad MIT ForwardAuth: /auth/sso lebt davon, dass der
+      # Kopf Remote-Email vom Portal stammt und nicht vom Anrufer. Eigener
+      # Router, weil der API-Router oben bewusst ohne Middleware läuft — und
+      # mit höherer Priorität als dessen 10, sonst gewinnt der und der Schutz
+      # fiele lautlos weg. Path (exakt), nicht PathPrefix.
+      - >-
+        traefik.http.routers.fmis-sso.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
+        Path(`/auth/sso`)
+      - traefik.http.routers.fmis-sso.middlewares=${TRAEFIK_MIDDLEWARES:-authelia-chain@file}
+      - traefik.http.routers.fmis-sso.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
+      - traefik.http.routers.fmis-sso.tls=${TRAEFIK_TLS:-false}
+      - traefik.http.routers.fmis-sso.priority=20
+      - traefik.http.routers.fmis-sso.service=fmis-api
       - traefik.http.services.fmis-api.loadbalancer.server.port=8000
 
   frontend:

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { fetchPasswordLoginEnabled, passwordLogin, requestMagicLink } from './auth'
+import { useEffect, useRef, useState } from 'react'
+import { fetchAuthConfig, passwordLogin, requestMagicLink, ssoLogin } from './auth'
 
 export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [mode, setMode] = useState<'email' | 'password'>('email')
@@ -7,16 +7,45 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   // Bis das Backend geantwortet hat (und wenn es nicht erreichbar ist) bleibt
   // der Umschalter aus: in Produktion soll er nie aufblitzen.
   const [passwordLoginEnabled, setPasswordLoginEnabled] = useState(false)
+  // Solange offen ist, ob eine Portal-Anmeldung übernommen werden kann, zeigen
+  // wir das Formular noch nicht — sonst blitzt es auf und verschwindet wieder.
+  const [ssoPending, setSsoPending] = useState(true)
+  const [ssoError, setSsoError] = useState<string | null>(null)
+
+  // Über eine Ref, damit der Effekt einmal läuft: App reicht onLoggedIn als
+  // frische Arrow-Funktion herein, als Abhängigkeit gäbe das bei jedem
+  // Rendern einen neuen Anmeldeversuch.
+  const onLoggedInRef = useRef(onLoggedIn)
+  onLoggedInRef.current = onLoggedIn
 
   useEffect(() => {
     let active = true
-    fetchPasswordLoginEnabled()
-      .then((enabled) => {
-        if (active) setPasswordLoginEnabled(enabled)
-      })
-      .catch(() => {
-        if (active) setPasswordLoginEnabled(false)
-      })
+    void (async () => {
+      let config
+      try {
+        config = await fetchAuthConfig()
+      } catch {
+        // Backend nicht erreichbar: normales Formular zeigen, keine Meldung.
+        if (active) setSsoPending(false)
+        return
+      }
+      if (!active) return
+      setPasswordLoginEnabled(config.passwordLogin)
+
+      if (config.sso) {
+        try {
+          if (await ssoLogin()) {
+            onLoggedInRef.current()
+            return
+          }
+        } catch (err) {
+          // Portal-Anmeldung vorhanden, aber abgelehnt — etwa weil das Konto
+          // noch auf die Freischaltung wartet. Das gehört auf den Schirm.
+          if (active) setSsoError(err instanceof Error ? err.message : 'Anmeldung abgelehnt')
+        }
+      }
+      if (active) setSsoPending(false)
+    })()
     return () => {
       active = false
     }
@@ -30,8 +59,21 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
           <h1 className="text-2xl font-bold text-brand-800">FMIS</h1>
           <p className="mt-1 text-sm text-gray-500">Farm-Management-Informationssystem</p>
         </div>
-        {mode === 'email' ? <EmailLogin /> : <PasswordLogin onLoggedIn={onLoggedIn} />}
-        {passwordLoginEnabled && (
+        {ssoError && (
+          <p className="mb-4 rounded-lg bg-amber-50 p-3 text-center text-sm text-amber-800">
+            {ssoError}
+          </p>
+        )}
+        {ssoPending ? (
+          <p className="rounded-xl bg-white p-6 text-center text-sm text-gray-500 shadow-sm">
+            Anmeldung wird geprüft…
+          </p>
+        ) : mode === 'email' ? (
+          <EmailLogin />
+        ) : (
+          <PasswordLogin onLoggedIn={onLoggedIn} />
+        )}
+        {!ssoPending && passwordLoginEnabled && (
           <button
             type="button"
             onClick={() => setMode((m) => (m === 'email' ? 'password' : 'email'))}

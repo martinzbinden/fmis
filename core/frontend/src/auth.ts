@@ -35,18 +35,46 @@ export function getCurrentUserEmail(): string | null {
   return localStorage.getItem(EMAIL_KEY)
 }
 
+export type AuthConfig = {
+  /** Testpasswort-Login (TEST_LOGIN_PASSWORD im Backend) — in Produktion aus. */
+  passwordLogin: boolean
+  /** Anmeldung am vorgelagerten Portal gegen ein fmis-Token tauschen. */
+  sso: boolean
+}
+
 /**
- * Sagt, ob das Login-Formular den Testpasswort-Weg anbieten darf. Der hängt
- * an TEST_LOGIN_PASSWORD im Backend und ist in Produktion aus — der Umschalter
- * soll dort gar nicht erst erscheinen.
+ * Welche Anmeldewege es hier überhaupt gibt. Das Frontend ist ein statischer
+ * Build und kann die Backend-Konfiguration nicht kennen — was es nicht gibt,
+ * soll es auch nicht anbieten.
  */
-export async function fetchPasswordLoginEnabled(): Promise<boolean> {
+export async function fetchAuthConfig(): Promise<AuthConfig> {
   const res = await fetch(`${API_URL}/auth/config`)
   if (!res.ok) {
     throw new Error(`Konfiguration nicht abrufbar (${res.status})`)
   }
-  const data = (await res.json()) as { password_login?: boolean }
-  return data.password_login === true
+  const data = (await res.json()) as { password_login?: boolean; sso?: boolean }
+  return { passwordLogin: data.password_login === true, sso: data.sso === true }
+}
+
+/**
+ * Tauscht eine bestehende Portal-Anmeldung (Authelia-Cookie) gegen ein
+ * fmis-Token. `redirect: 'manual'` ist wichtig: ohne gültige Portal-Sitzung
+ * antwortet die ForwardAuth mit einer Umleitung auf eine fremde Origin, der
+ * zu folgen nur eine CORS-Fehlermeldung einbrächte. Gibt false zurück, wenn
+ * dieser Weg gerade nicht trägt — dann bleibt das E-Mail-Formular.
+ */
+export async function ssoLogin(): Promise<boolean> {
+  const res = await fetch(`${API_URL}/auth/sso`, { method: 'POST', redirect: 'manual' })
+  if (!res.ok) {
+    if (res.status === 403) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null
+      throw new Error(body?.detail ?? 'Anmeldung abgelehnt')
+    }
+    return false
+  }
+  const data = (await res.json()) as { access_token: string }
+  localStorage.setItem(TOKEN_KEY, data.access_token)
+  return true
 }
 
 export async function requestMagicLink(email: string): Promise<void> {
