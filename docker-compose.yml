@@ -94,6 +94,11 @@ services:
       # TRAEFIK_MIDDLEWARES in .env auf eine lokal definierte setzen, sonst
       # deaktiviert Traefik den Router ("middleware does not exist").
       - traefik.http.routers.fmis-app.middlewares=${TRAEFIK_MIDDLEWARES:-authelia-chain@file}
+      # No-op-Middleware, damit TRAEFIK_MIDDLEWARES auch dort auf etwas
+      # Existierendes zeigen kann, wo es kein Authelia gibt (lokal:
+      # TRAEFIK_MIDDLEWARES=fmis-noop@docker in .env). Ein leerer Wert
+      # hilft nicht — ${VAR:-default} greift auch bei leerer Variable.
+      - traefik.http.middlewares.fmis-noop.headers.customResponseHeaders.X-Fmis-Auth=none
       - traefik.http.routers.fmis-app.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.fmis-app.tls=${TRAEFIK_TLS:-false}
       - traefik.http.routers.fmis-app.priority=1
