@@ -312,8 +312,6 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
 
   const onChanged = useCallback(() => refresh(), [refresh])
 
-  if (readerEnabled === null) return <div className="p-4 text-center text-gray-400">Lädt…</div>
-
   // Einrasten nur auf dieser Seite: die Bank-Tabelle soll beim Scrollen bündig
   // unter dem Kopf stehenbleiben, statt irgendwo angeschnitten. Das Scrollen
   // macht das Fenster (siehe Layout.tsx), also hängt die Eigenschaft am
@@ -321,6 +319,11 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   // Seiten ein, die gar keine Abschnitte dafür haben. "proximity" statt
   // "mandatory": wer zur manuellen Aufnahme oder ins Archiv scrollt, soll
   // nicht zurückgezogen werden.
+  //
+  // MUSS vor jedem bedingten return stehen (siehe unten "Lädt…") — Hooks
+  // dürfen sich zwischen zwei Renderings eines Bauteils nie in ihrer Zahl
+  // oder Reihenfolge unterscheiden, sonst wirft React "Rendered fewer hooks
+  // than expected" und die Seite bleibt weiss (so am 2026-09-24 gefunden).
   useEffect(() => {
     const root = document.documentElement
     const previous = root.style.scrollSnapType
@@ -329,6 +332,8 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       root.style.scrollSnapType = previous
     }
   }, [])
+
+  if (readerEnabled === null) return <div className="p-4 text-center text-gray-400">Lädt…</div>
 
   return (
     <div className="mx-auto max-w-2xl space-y-3 p-3 pb-6">
