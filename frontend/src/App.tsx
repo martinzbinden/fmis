@@ -7,7 +7,7 @@ import Login from '@fmis/core/Login'
 import VerifyToken from '@fmis/core/VerifyToken'
 import CoreAdmin from '@fmis/core/Admin'
 import Layout from '@fmis/core/Layout'
-import { fetchModules, type ModuleInfo } from '@fmis/core/modulesApi'
+import { ModuleListError, cachedModules, fetchModules, type ModuleInfo } from '@fmis/core/modulesApi'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import livestockModule from '@fmis/livestock/module'
 import { createDairyModule } from '@fmis/dairy/module'
@@ -52,12 +52,64 @@ export default function App() {
 
 function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [moduleInfo, setModuleInfo] = useState<ModuleInfo[] | null>(null)
+  const [moduleError, setModuleError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    let active = true
     fetchModules()
-      .then(setModuleInfo)
-      .catch((err) => console.error('Modulliste konnte nicht geladen werden', err))
-  }, [])
+      .then((modules) => {
+        if (!active) return
+        setModuleInfo(modules)
+        setModuleError(null)
+      })
+      .catch((err: unknown) => {
+        if (!active) return
+        console.error('Modulliste konnte nicht geladen werden', err)
+        // Abgelaufene oder ungültige Anmeldung: zurück zum Login, statt mit
+        // einem Token weiterzulaufen, das der Server nicht mehr akzeptiert.
+        if (err instanceof ModuleListError && err.status === 401) {
+          logout()
+          onLoggedOut()
+          return
+        }
+        // Sonst (kein Netz, Server weg): mit der zuletzt bekannten Liste
+        // weiterarbeiten — die Module selbst liegen ohnehin lokal vor.
+        const cached = cachedModules()
+        if (cached) {
+          setModuleInfo(cached)
+          setModuleError(null)
+          return
+        }
+        setModuleError(err instanceof Error ? err.message : String(err))
+      })
+    return () => {
+      active = false
+    }
+  }, [attempt, onLoggedOut])
+
+  // Ohne diesen Zweig blieb der Ladekringel bei jedem Fehler für immer stehen —
+  // von aussen ein weisser Schirm ohne jeden Hinweis.
+  if (moduleError) {
+    return (
+      <div className="flex h-screen items-center justify-center p-6 text-center">
+        <div>
+          <p className="text-lg font-semibold text-red-700">App konnte nicht starten</p>
+          <p className="mt-2 text-sm text-gray-600">{moduleError}</p>
+          <p className="mt-1 text-xs text-gray-400">
+            Beim ersten Start braucht die App einmal Verbindung; danach läuft sie offline weiter.
+          </p>
+          <button
+            type="button"
+            onClick={() => setAttempt((n) => n + 1)}
+            className="mt-4 rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white"
+          >
+            Nochmals versuchen
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!moduleInfo) {
     return (
