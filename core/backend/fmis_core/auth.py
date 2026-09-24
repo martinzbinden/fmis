@@ -27,6 +27,15 @@ ADMIN_ROLE_ID = "00000000-0000-0000-0000-000000000001"
 # Passwort direkt als INITIAL_ADMIN_EMAIL einloggen, ohne Magic-Link/E-Mail.
 # In Produktion NIE setzen — leer/unset deaktiviert diesen Weg komplett.
 TEST_LOGIN_PASSWORD = os.environ.get("TEST_LOGIN_PASSWORD", "").strip()
+# Domains, deren Adressen sich selbst einen Login-Link schicken lassen duerfen,
+# ohne vorher in "users" zu stehen (z.B. "riedackerhof.ch"). Alle uebrigen
+# Adressen bekommen nur dann einen Link, wenn sie bereits erfasst sind —
+# freigeschaltet werden sie so oder so erst durch einen Admin.
+LOGIN_DOMAINS = {
+    d.strip().lower().lstrip("@")
+    for d in os.environ.get("LOGIN_DOMAINS", "").split(",")
+    if d.strip()
+}
 
 router = APIRouter()
 bearer_scheme = HTTPBearer()
@@ -78,15 +87,29 @@ def _issue_session_jwt(user_id: str) -> str:
     return jwt.encode({"sub": str(user_id), "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+# Immer dieselbe Antwort, unabhängig davon ob die Adresse neu/bekannt/gesperrt
+# oder gar nicht zugelassen ist — verhindert, dass sich per Login-Formular
+# Nutzerkonten aufzählen lassen.
+LINK_REQUESTED_MESSAGE = {
+    "message": "Falls die Adresse bekannt ist, wurde ein Login-Link verschickt."
+}
+
+
 @router.post("/auth/request-link")
 async def request_link(body: RequestLinkBody) -> dict[str, str]:
     email = body.email.lower().strip()
+    domain = email.rpartition("@")[2]
     async with pool.connection() as conn:
         row = await (
             await conn.execute("select id from users where email = %s", (email,))
         ).fetchone()
         if row:
             user_id = row[0]
+        elif domain not in LOGIN_DOMAINS and email != INITIAL_ADMIN_EMAIL:
+            # Unbekannte Adresse ausserhalb der eigenen Domain: kein Link, und
+            # auch kein Nutzereintrag — sonst koennte sich jeder im Internet in
+            # die Benutzerliste schreiben. Die Antwort unten bleibt dieselbe.
+            return LINK_REQUESTED_MESSAGE
         else:
             user_id = str(uuidlib.uuid4())
             is_bootstrap_admin = bool(INITIAL_ADMIN_EMAIL) and email == INITIAL_ADMIN_EMAIL
@@ -118,9 +141,7 @@ async def request_link(body: RequestLinkBody) -> dict[str, str]:
 
     link = f"{PUBLIC_URL}/verify?token={token}"
     await send_magic_link(email, link)
-    # Immer dieselbe Antwort, unabhängig davon ob die Adresse neu/bekannt/gesperrt
-    # ist — verhindert, dass sich per Login-Formular Nutzerkonten aufzählen lassen.
-    return {"message": "Falls die Adresse bekannt ist, wurde ein Login-Link verschickt."}
+    return LINK_REQUESTED_MESSAGE
 
 
 @router.post("/auth/verify", response_model=VerifyResponse)

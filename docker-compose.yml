@@ -37,6 +37,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM:-fmis@localhost}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      # Wer ohne vorherige Erfassung einen Login-Link anfordern darf (Domains,
+      # kommagetrennt). Alle anderen Adressen brauchen einen bestehenden
+      # Eintrag in users — siehe core/backend/fmis_core/auth.py.
+      LOGIN_DOMAINS: ${LOGIN_DOMAINS:-}
       # NUR für Test-/Entwicklungsumgebungen setzen — leer lassen in Produktion!
       # Aktiviert POST /auth/password-login (Admin-Login ohne Magic-Link).
       TEST_LOGIN_PASSWORD: ${TEST_LOGIN_PASSWORD:-}
@@ -90,16 +94,14 @@ services:
       - traefik.enable=true
       - traefik.docker.network=${TRAEFIK_NETWORK:-web-netzwerk}
       - traefik.http.routers.fmis-app.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`)
-      # fmis bringt seine eigene Anmeldung mit (Magic-Link, Jahres-Token,
-      # danach offline nutzbar) — davor KEIN zweiter Login. Authelia schuetzte
-      # ohnehin nur die ausgelieferte Oberflaeche: die Daten haengen am
-      # API-Router, der fuer Sync/Leser/Offline bewusst ohne ForwardAuth laeuft.
-      # Wieder einschalten: TRAEFIK_MIDDLEWARES=authelia-chain@file in .env —
-      # dann aber /auth/sso ergaenzen, sonst meldet man sich zweimal an.
-      - traefik.http.routers.fmis-app.middlewares=${TRAEFIK_MIDDLEWARES:-fmis-noop@docker}
-      # Der Router braucht eine Middleware, die es wirklich gibt, sonst
-      # deaktiviert Traefik ihn ("middleware does not exist"). Ein leerer Wert
-      # hilft nicht — ${VAR:-default} greift auch bei leerer Variable.
+      # Authelia-ForwardAuth vor der Oberflaeche, wo es das gibt (Server).
+      # Wo nicht (lokal): TRAEFIK_MIDDLEWARES=fmis-noop@docker in .env — der
+      # Router braucht eine Middleware, die wirklich existiert, sonst
+      # deaktiviert Traefik ihn ("middleware does not exist"), und ein leerer
+      # Wert hilft nicht: ${VAR:-default} greift auch bei leerer Variable.
+      # Der API-Router bleibt bewusst ohne ForwardAuth — Sync, Lesegeraet und
+      # der Offline-Betrieb haengen am Bearer-Token, nicht an einem Cookie.
+      - traefik.http.routers.fmis-app.middlewares=${TRAEFIK_MIDDLEWARES:-authelia-chain@file}
       - traefik.http.middlewares.fmis-noop.headers.customResponseHeaders.X-Fmis-Auth=none
       - traefik.http.routers.fmis-app.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.fmis-app.tls=${TRAEFIK_TLS:-false}
