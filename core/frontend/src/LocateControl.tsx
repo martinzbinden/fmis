@@ -16,7 +16,7 @@ import L from 'leaflet'
 export default function LocateControl({
   onLocationFound,
 }: {
-  onLocationFound?: (lat: number, lng: number) => void
+  onLocationFound?: (lat: number, lng: number, accuracyM: number) => void
 }) {
   const map = useMap()
   const markerRef = useRef<L.CircleMarker | null>(null)
@@ -35,7 +35,7 @@ export default function LocateControl({
       } else {
         markerRef.current.setLatLng(e.latlng)
       }
-      callbackRef.current?.(e.latlng.lat, e.latlng.lng)
+      callbackRef.current?.(e.latlng.lat, e.latlng.lng, e.accuracy)
     }
     map.on('locationfound', handleFound)
     return () => {

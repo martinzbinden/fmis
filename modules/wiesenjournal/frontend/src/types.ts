@@ -206,6 +206,9 @@ export interface Track {
   created_by: string | null
   updated_at: string
   deleted_at: string | null
+  work_type: string | null
+  machine: string | null
+  operator: string | null
 }
 
 export type WeedType = 'blacken' | 'disteln' | 'andere'
@@ -224,6 +227,7 @@ export interface WeedObservation {
   treated_at: string | null
   source: WeedSource
   geometry: string
+  accuracy_m: number | null
   notes: string | null
   created_by: string | null
   updated_at: string

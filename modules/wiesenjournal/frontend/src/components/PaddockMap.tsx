@@ -402,7 +402,7 @@ export default function PaddockMap({
   onDeleted: (paddockId: string) => void
   onSelect: (paddockId: string) => void
   onAdoptFieldsGeometry: (geometry: string, label: string) => void
-  onLocationFound?: (lat: number, lng: number) => void
+  onLocationFound?: (lat: number, lng: number, accuracyM: number) => void
   onWeedSelect: (observation: WeedObservation) => void
   onPickLocation?: (lat: number, lng: number) => void
 }) {

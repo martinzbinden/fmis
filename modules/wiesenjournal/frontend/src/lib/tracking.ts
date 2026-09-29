@@ -23,20 +23,31 @@ export function pointsToTrackFields(points: TrackPoint[]): { geometry: string | 
   return { geometry, point_times }
 }
 
-export async function startTrack(seasonYear: number, label: string | null, widthM: number | null): Promise<string> {
+export interface StartTrackDetails {
+  label: string | null
+  widthM: number | null
+  workType: string | null
+  machine: string | null
+  operator: string | null
+}
+
+export async function startTrack(seasonYear: number, details: StartTrackDetails): Promise<string> {
   const id = crypto.randomUUID()
   await upsertRow('tracks', {
     id,
     season_year: seasonYear,
-    label,
+    label: details.label,
     started_at: new Date().toISOString(),
     ended_at: null,
-    width_m: widthM,
+    width_m: details.widthM,
     geometry: null,
     point_times: '[]',
     point_count: 0,
     notes: null,
     created_by: getCurrentUserEmail(),
+    work_type: details.workType,
+    machine: details.machine,
+    operator: details.operator,
   } as never)
   return id
 }
@@ -72,6 +83,7 @@ export interface WeedObservationInput {
   seasonYear: number
   lat: number
   lng: number
+  accuracyM: number | null
   weedType: WeedType
   severity: WeedSeverity | null
   treatment: string | null
@@ -96,6 +108,7 @@ export async function createWeedObservation(input: WeedObservationInput): Promis
     treated_at: input.treatedAt,
     source: input.source,
     geometry: JSON.stringify({ type: 'Point', coordinates: [input.lng, input.lat] }),
+    accuracy_m: input.accuracyM,
     notes: input.notes,
     created_by: getCurrentUserEmail(),
   } as never)
@@ -104,9 +117,21 @@ export async function createWeedObservation(input: WeedObservationInput): Promis
 
 export async function updateWeedObservation(
   observation: WeedObservation,
-  changes: Partial<Pick<WeedObservation, 'weed_type' | 'severity' | 'treatment' | 'treated_at' | 'notes' | 'parcel_id'>>,
+  changes: Partial<
+    Pick<
+      WeedObservation,
+      'weed_type' | 'severity' | 'treatment' | 'treated_at' | 'notes' | 'parcel_id' | 'geometry' | 'accuracy_m'
+    >
+  >,
 ): Promise<void> {
   await upsertRow('weed_observations', { ...observation, ...changes } as never)
+}
+
+/** Für "Position neu bestimmen" im Unkraut-Dialog — ein frischer GPS-Fix statt des beim Öffnen erfassten. */
+export function getCurrentPositionOnce(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 })
+  })
 }
 
 export async function deleteWeedObservation(observation: WeedObservation): Promise<void> {

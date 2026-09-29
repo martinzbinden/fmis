@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Modal from './Modal'
-import { todayIso } from '../lib/format'
+import MiniLocationMap, { type NearbyObservation } from './MiniLocationMap'
+import { todayIso, fmtDateTime, WEED_TYPE_LABEL } from '../lib/format'
 import type { WeedSeverity, WeedType } from '../types'
 
 const WEED_TYPE_OPTIONS: { value: WeedType; label: string }[] = [
@@ -28,21 +29,68 @@ const DEFAULTS: WeedFormValues = { weedType: 'blacken', severity: null, treatmen
 export default function WeedForm({
   title,
   initial,
+  lat,
+  lng,
+  accuracyM,
+  relocating,
+  onRelocate,
+  nearby,
   onClose,
   onSave,
   onDelete,
+  onAdjustPosition,
 }: {
   title: string
   initial?: Partial<WeedFormValues>
+  lat: number
+  lng: number
+  accuracyM: number | null
+  relocating: boolean
+  onRelocate: () => void
+  nearby: NearbyObservation[]
   onClose: () => void
   onSave: (values: WeedFormValues) => void
   onDelete?: () => void
+  onAdjustPosition: (lat: number, lng: number) => void
 }) {
   const [values, setValues] = useState<WeedFormValues>({ ...DEFAULTS, ...initial })
 
   return (
     <Modal title={title} onClose={onClose}>
       <div className="space-y-3">
+        <div className="space-y-1.5">
+          <MiniLocationMap lat={lat} lng={lng} accuracyM={accuracyM} nearby={nearby} onAdjust={onAdjustPosition} />
+          <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+            <span>
+              {lat.toFixed(6)}, {lng.toFixed(6)}
+              {accuracyM != null && <span className="ml-1">· ±{Math.round(accuracyM)} m</span>}
+            </span>
+            <button
+              type="button"
+              onClick={onRelocate}
+              disabled={relocating}
+              className="rounded px-2 py-1 font-medium text-brand-700 disabled:opacity-50"
+            >
+              {relocating ? 'Bestimme…' : '📍 Position neu bestimmen'}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-400">Roter Punkt auf der Karte ziehen, um ihn genau zu setzen.</p>
+        </div>
+
+        {nearby.length > 0 && (
+          <div className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+            <p className="mb-1 font-medium">Bisherige Meldungen in der Nähe</p>
+            <ul className="space-y-0.5">
+              {nearby.slice(0, 4).map((o) => (
+                <li key={o.id}>
+                  {WEED_TYPE_LABEL[o.weedType]}
+                  {o.severity ? ` · ${o.severity}` : ''} · {fmtDateTime(o.observedAt)} · {Math.round(o.distanceM)} m entfernt
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div>
           <span className="mb-1 block text-sm font-medium text-gray-700">Art</span>
           <div className="flex gap-2">

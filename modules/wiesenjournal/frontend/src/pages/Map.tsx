@@ -6,6 +6,7 @@ import { useQuery } from '../hooks/useQuery'
 import PaddockMap, { type FertilizationFeature } from '../components/PaddockMap'
 import Modal from '../components/Modal'
 import WeedForm, { type WeedFormValues } from '../components/WeedForm'
+import StartTrackDialog from '../components/StartTrackDialog'
 import { createPaddock, saveNewVersion, deletePaddock, loadCurrentPaddocks } from '../lib/paddock'
 import {
   startTrack,
@@ -15,9 +16,12 @@ import {
   createWeedObservation,
   updateWeedObservation,
   deleteWeedObservation,
+  getCurrentPositionOnce,
   type TrackPoint,
+  type StartTrackDetails,
 } from '../lib/tracking'
-import { detectDwell } from '../lib/geo'
+import { detectDwell, haversineMeters } from '../lib/geo'
+import type { NearbyObservation } from '../components/MiniLocationMap'
 import { downloadGpx } from '../lib/gpx'
 import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
 import AckerToggle from '../components/AckerToggle'
@@ -79,7 +83,10 @@ export default function Map() {
   const [recording, setRecording] = useState(false)
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
   const [livePoints, setLivePoints] = useState<TrackPoint[]>([])
-  const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null)
+  const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number; accuracyM: number | null } | null>(
+    null,
+  )
+  const [startingTrack, setStartingTrack] = useState(false)
   const [dwellCandidate, setDwellCandidate] = useState<{ lat: number; lng: number } | null>(null)
   const currentTrackRef = useRef(currentTrack)
   currentTrackRef.current = currentTrack
@@ -94,7 +101,7 @@ export default function Map() {
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         const point: TrackPoint = { lat: pos.coords.latitude, lng: pos.coords.longitude, timestamp: pos.timestamp }
-        setCurrentPosition({ lat: point.lat, lng: point.lng })
+        setCurrentPosition({ lat: point.lat, lng: point.lng, accuracyM: pos.coords.accuracy })
         setLivePoints((prev) => {
           const next = [...prev, point]
           if (next.length % 10 === 0 && currentTrackRef.current) {
@@ -111,16 +118,17 @@ export default function Map() {
     return () => navigator.geolocation.clearWatch(id)
   }, [recording, currentTrack])
 
-  async function startRecording() {
-    const trackId = await startTrack(seasonYear, null, null)
+  async function startRecording(details: StartTrackDetails) {
+    setStartingTrack(false)
+    const trackId = await startTrack(seasonYear, details)
     refresh()
     setCurrentTrack({
       id: trackId,
       season_year: seasonYear,
-      label: null,
+      label: details.label,
       started_at: new Date().toISOString(),
       ended_at: null,
-      width_m: null,
+      width_m: details.widthM,
       geometry: null,
       point_times: '[]',
       point_count: 0,
@@ -128,6 +136,9 @@ export default function Map() {
       created_by: null,
       updated_at: new Date().toISOString(),
       deleted_at: null,
+      work_type: details.workType,
+      machine: details.machine,
+      operator: details.operator,
     })
     setLivePoints([])
     setDwellCandidate(null)
@@ -153,16 +164,18 @@ export default function Map() {
 
   // --- Unkraut-Knopf ---
   const [pickingLocation, setPickingLocation] = useState(false)
+  const [relocating, setRelocating] = useState(false)
   const [weedTarget, setWeedTarget] = useState<{
     lat: number
     lng: number
+    accuracyM: number | null
     source: 'manual' | 'gps_dwell'
     existing?: WeedObservation
   } | null>(null)
 
   function openWeedButton() {
     if (currentPosition) {
-      setWeedTarget({ lat: currentPosition.lat, lng: currentPosition.lng, source: 'manual' })
+      setWeedTarget({ lat: currentPosition.lat, lng: currentPosition.lng, accuracyM: currentPosition.accuracyM, source: 'manual' })
     } else {
       setPickingLocation(true)
     }
@@ -170,19 +183,68 @@ export default function Map() {
 
   function handlePickLocation(lat: number, lng: number) {
     setPickingLocation(false)
-    setWeedTarget({ lat, lng, source: 'manual' })
+    setWeedTarget({ lat, lng, accuracyM: null, source: 'manual' })
   }
 
   function confirmDwell() {
     if (!dwellCandidate) return
-    setWeedTarget({ lat: dwellCandidate.lat, lng: dwellCandidate.lng, source: 'gps_dwell' })
+    setWeedTarget({ lat: dwellCandidate.lat, lng: dwellCandidate.lng, accuracyM: null, source: 'gps_dwell' })
     setDwellCandidate(null)
   }
 
   function handleWeedSelect(observation: WeedObservation) {
     const geo = JSON.parse(observation.geometry) as { coordinates: [number, number] }
-    setWeedTarget({ lat: geo.coordinates[1], lng: geo.coordinates[0], source: 'manual', existing: observation })
+    setWeedTarget({
+      lat: geo.coordinates[1],
+      lng: geo.coordinates[0],
+      accuracyM: observation.accuracy_m,
+      source: 'manual',
+      existing: observation,
+    })
   }
+
+  function adjustWeedPosition(lat: number, lng: number) {
+    setWeedTarget((t) => (t ? { ...t, lat, lng } : t))
+  }
+
+  async function relocateWeed() {
+    setRelocating(true)
+    try {
+      const pos = await getCurrentPositionOnce()
+      setWeedTarget((t) =>
+        t ? { ...t, lat: pos.coords.latitude, lng: pos.coords.longitude, accuracyM: pos.coords.accuracy } : t,
+      )
+    } catch (err) {
+      console.error('GPS-Fehler', err)
+      alert('Position konnte nicht neu bestimmt werden.')
+    } finally {
+      setRelocating(false)
+    }
+  }
+
+  // Bisherige Meldungen dieser Saison in der Nähe des aktuellen Punkts (Kartenvorschau + Liste im Dialog).
+  const nearbyWeeds: NearbyObservation[] = (() => {
+    if (!weedTarget) return []
+    const here = { lat: weedTarget.lat, lng: weedTarget.lng }
+    return weedObservations
+      .filter((o) => o.id !== weedTarget.existing?.id)
+      .map((o) => {
+        const geo = JSON.parse(o.geometry) as { coordinates: [number, number] }
+        const lat = geo.coordinates[1]
+        const lng = geo.coordinates[0]
+        return {
+          id: o.id,
+          lat,
+          lng,
+          weedType: o.weed_type,
+          severity: o.severity,
+          observedAt: o.observed_at,
+          distanceM: haversineMeters(here, { lat, lng }),
+        }
+      })
+      .filter((o) => o.distanceM <= 150)
+      .sort((a, b) => a.distanceM - b.distanceM)
+  })()
 
   async function saveWeed(values: WeedFormValues) {
     if (!weedTarget) return
@@ -193,12 +255,15 @@ export default function Map() {
         treatment: values.treatment.trim() || null,
         treated_at: values.treatedAt || null,
         notes: values.notes.trim() || null,
+        geometry: JSON.stringify({ type: 'Point', coordinates: [weedTarget.lng, weedTarget.lat] }),
+        accuracy_m: weedTarget.accuracyM,
       })
     } else {
       await createWeedObservation({
         seasonYear,
         lat: weedTarget.lat,
         lng: weedTarget.lng,
+        accuracyM: weedTarget.accuracyM,
         weedType: values.weedType,
         severity: values.severity,
         treatment: values.treatment.trim() || null,
@@ -280,7 +345,7 @@ export default function Map() {
           {!recording ? (
             <button
               type="button"
-              onClick={startRecording}
+              onClick={() => setStartingTrack(true)}
               className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white"
             >
               🚜 Tracking starten
@@ -332,7 +397,7 @@ export default function Map() {
         onDeleted={handleDeleted}
         onSelect={handleSelect}
         onAdoptFieldsGeometry={handleAdopted}
-        onLocationFound={(lat, lng) => setCurrentPosition({ lat, lng })}
+        onLocationFound={(lat, lng, accuracyM) => setCurrentPosition({ lat, lng, accuracyM })}
         onWeedSelect={handleWeedSelect}
         onPickLocation={handlePickLocation}
       />
@@ -344,7 +409,11 @@ export default function Map() {
             {tracks.map((t) => (
               <li key={t.id} className="flex items-center justify-between rounded-lg bg-white p-2 text-xs shadow-sm">
                 <span>
-                  {t.label ?? fmtDateTime(t.started_at)} · {t.point_count} Punkte
+                  {t.label ?? fmtDateTime(t.started_at)}
+                  {t.work_type && <span className="text-gray-500"> · {t.work_type}</span>}
+                  {t.machine && <span className="text-gray-500"> · {t.machine}</span>}
+                  {' · '}
+                  {t.point_count} Punkte
                   {!t.ended_at && <span className="ml-1 font-medium text-red-600">(läuft)</span>}
                 </span>
                 <div className="flex gap-2">
@@ -392,10 +461,20 @@ export default function Map() {
                 }
               : undefined
           }
+          lat={weedTarget.lat}
+          lng={weedTarget.lng}
+          accuracyM={weedTarget.accuracyM}
+          relocating={relocating}
+          onRelocate={relocateWeed}
+          nearby={nearbyWeeds}
+          onAdjustPosition={adjustWeedPosition}
           onClose={() => setWeedTarget(null)}
           onSave={saveWeed}
           onDelete={weedTarget.existing ? deleteWeed : undefined}
         />
+      )}
+      {startingTrack && (
+        <StartTrackDialog onClose={() => setStartingTrack(false)} onStart={startRecording} />
       )}
     </div>
   )

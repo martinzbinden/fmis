@@ -52,12 +52,13 @@ export const SYNC_TABLES = {
   tracks: [
     'id', 'season_year', 'label', 'started_at', 'ended_at', 'width_m',
     'geometry', 'point_times', 'point_count', 'notes', 'created_by',
-    'updated_at', 'deleted_at',
+    'updated_at', 'deleted_at', 'work_type', 'machine', 'operator',
   ],
   weed_observations: [
     'id', 'season_year', 'parcel_id', 'track_id', 'observed_at',
     'weed_type', 'severity', 'treatment', 'treated_at', 'source',
     'geometry', 'notes', 'created_by', 'updated_at', 'deleted_at',
+    'accuracy_m',
   ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
