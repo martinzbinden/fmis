@@ -31,6 +31,19 @@ export async function loadDayEntries(pg: PGlite, parcelId: string, date: string)
   return { usage: normalize(usage.rows), fertilizations: normalize(fert.rows) }
 }
 
+/** Nutzungseinträge EINER Parzelle in einem Datumsbereich — für die Serien-
+ * Erkennung im Klassisch-Editor (components/DayEntryEditorClassic.tsx):
+ * beim Öffnen eines Tages mit Eintrag die ganze zusammenhängende Reihe
+ * gleicher Einträge finden (siehe lib/journalRun.ts), damit ein Bearbeiten
+ * den ganzen erkennbaren Balken erfasst statt nur den einen Tag. */
+export async function loadParcelUsageInRange(pg: PGlite, parcelId: string, from: string, to: string): Promise<UsageEntry[]> {
+  const { rows } = await pg.query<UsageEntry>(
+    'select * from usage_entries where parcel_id = $1 and entry_date between $2 and $3 and deleted_at is null order by entry_date',
+    [parcelId, from, to],
+  )
+  return normalize(rows)
+}
+
 /** Lädt Nutzungs-/Düngungs-Einträge für ALLE Parzellen in einem Datumsbereich (für das Journal-Raster). */
 export async function loadEntriesInRange(
   pg: PGlite,

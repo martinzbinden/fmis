@@ -37,6 +37,33 @@ export function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+// Rechnet bewusst in UTC (T00:00:00Z), nicht in der lokalen Zeitzone: mit
+// lokaler Zeit (new Date(iso+'T00:00:00'), setDate/getDate) kippt
+// toISOString() in Zeitzonen östlich von UTC (z.B. Europe/Zurich, UTC+1/+2)
+// die lokale Mitternacht auf den Vortag zurück — addDaysIso('2026-03-01', 1)
+// lieferte dann wieder '2026-03-01' statt '2026-03-02' und blieb bei
+// wiederholtem Aufruf (siehe isoDateRange) für immer auf demselben Datum
+// stehen (am 2026-09-29 so gefunden: DayEntryEditorClassic hing endlos beim
+// Laden). UTC-Arithmetik durchgehend vermeidet das.
+export function addDaysIso(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Alle Tage von `from` bis `to` (inklusive), aufsteigend. Hartes Limit statt
+ * einer Endlosschleife bei vertauschten Daten — lieber ein lauter Fehler als
+ * eine hängende Seite. */
+export function isoDateRange(from: string, to: string): string[] {
+  const out: string[] = []
+  let guard = 0
+  for (let d = from; d <= to; d = addDaysIso(d, 1)) {
+    out.push(d)
+    if (++guard > 2000) throw new Error(`isoDateRange: zu viele Tage (from=${from}, to=${to}) — vertauscht?`)
+  }
+  return out
+}
+
 export const USAGE_TYPE_LABEL: Record<string, string> = {
   weide: 'Weide',
   eingrasen: 'Eingrasen',
@@ -143,6 +170,48 @@ export function usageDescription(e: {
     if (e.yield_amount != null) parts.push(`${e.yield_amount} ${YIELD_UNIT_LABEL[e.yield_unit ?? ''] ?? ''}`.trim())
   }
   return parts.join(' · ')
+}
+
+// Farbfamilie je Nutzungsart fürs Klassisch-Raster (components/
+// JournalGridClassic.tsx) — Farbe statt (nur) Buchstabe, damit gleiche
+// Vorgänge über die Parzellen hinweg sofort auffallen.
+export type UsageColorFamily = 'weide' | 'eingrasen' | 'silage' | 'duerr' | 'pflege' | 'sonstig'
+
+export const USAGE_COLOR_FAMILY: Record<string, UsageColorFamily> = {
+  weide: 'weide',
+  eingrasen: 'eingrasen',
+  silage: 'silage',
+  duerrfutter_bel: 'duerr',
+  duerrfutter_unbel: 'duerr',
+  weide_putzen: 'pflege',
+  blacken_stechen: 'pflege',
+  blacken_einzelstock: 'pflege',
+  blacken_flaeche: 'pflege',
+  uebersaat: 'pflege',
+  aufwuchshoehe: 'pflege',
+  pflug: 'pflege',
+  saat: 'pflege',
+  striegeln: 'pflege',
+  saeuberungsschnitt: 'pflege',
+  sonstig: 'sonstig',
+}
+
+export const USAGE_COLOR: Record<UsageColorFamily, string> = {
+  weide: '#16a34a',
+  eingrasen: '#0d9488',
+  silage: '#d97706',
+  duerr: '#ca8a04',
+  pflege: '#7c3aed',
+  sonstig: '#6b7280',
+}
+
+export const USAGE_COLOR_LABEL: Record<UsageColorFamily, string> = {
+  weide: 'Weide',
+  eingrasen: 'Eingrasen',
+  silage: 'Silage',
+  duerr: 'Dürrfutter',
+  pflege: 'Pflege',
+  sonstig: 'Sonstiges',
 }
 
 export const PARCEL_CATEGORY_LABEL: Record<string, string> = {

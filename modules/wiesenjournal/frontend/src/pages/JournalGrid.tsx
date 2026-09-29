@@ -5,11 +5,18 @@ import { useQuery } from '../hooks/useQuery'
 import { loadEntriesInRange } from '../lib/journalEntry'
 import { loadSharesInRange } from '../lib/fertilization'
 import JournalGridComponent, { type DayIndex } from '../components/JournalGrid'
+import JournalGridClassic from '../components/JournalGridClassic'
 import DayEntryEditor from '../components/DayEntryEditor'
+import DayEntryEditorClassic from '../components/DayEntryEditorClassic'
 import GabenPanel from '../components/GabenPanel'
 import DailyLogEditor from '../components/DailyLogEditor'
 import AckerToggle from '../components/AckerToggle'
+import GridViewToggle from '../components/GridViewToggle'
+import GridZoomControl from '../components/GridZoomControl'
 import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
+import { useGridView } from '../hooks/useGridView'
+import { useGridZoom } from '../hooks/useGridZoom'
+import { useRestoreScroll } from '../hooks/useRestoreScroll'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { isoDate, num } from '../lib/format'
 
@@ -57,6 +64,10 @@ export default function JournalGridPage() {
   const to = days[days.length - 1]
 
   const [showAcker] = useShowAcker()
+  const [view] = useGridView()
+  const { cellWidth } = useGridZoom()
+  const scrollRef = useRestoreScroll(`wiesenjournal-grid-${view}-${seasonYear}`)
+
   const { data, loading, refresh } = useQuery(
     (pg) => loadGridData(pg, seasonYear, from, to, showAcker),
     [seasonYear, from, to, showAcker],
@@ -101,21 +112,23 @@ export default function JournalGridPage() {
 
   return (
     <div className="space-y-4 p-4 pb-24">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Journal-Raster {seasonYear}</h1>
-        <div className="flex items-center gap-3">
-        <AckerToggle />
-        <select
-          value={seasonYear}
-          onChange={(e) => setSeasonYear(Number(e.target.value))}
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
-        >
-          {[CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1].map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <AckerToggle />
+          <GridViewToggle />
+          <GridZoomControl />
+          <select
+            value={seasonYear}
+            onChange={(e) => setSeasonYear(Number(e.target.value))}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            {[CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1].map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -126,13 +139,15 @@ export default function JournalGridPage() {
         </p>
       )}
 
-      {parcels.length > 0 && (
+      {parcels.length > 0 && view === 'neu' && (
         <JournalGridComponent
           parcels={parcels}
           days={days}
           usageByDay={usageByDay}
           fertByDay={fertByDay}
           dailyLogByDate={dailyLogByDate}
+          cellWidth={cellWidth}
+          scrollRef={scrollRef}
           onCellClick={(parcel, date) => setEditorTarget({ parcel, date })}
           onFarmCellClick={(date) => setFarmLogDate(date)}
           onGabenClick={(parcel) => setGabenTarget(parcel)}
@@ -140,10 +155,34 @@ export default function JournalGridPage() {
         />
       )}
 
-      {editorTarget && (
+      {parcels.length > 0 && view === 'klassisch' && (
+        <JournalGridClassic
+          parcels={parcels}
+          days={days}
+          usageByDay={usageByDay}
+          fertByDay={fertByDay}
+          dailyLogByDate={dailyLogByDate}
+          cellWidth={cellWidth}
+          scrollRef={scrollRef}
+          onDayOpen={(parcel, date) => setEditorTarget({ parcel, date })}
+          onFarmCellClick={(date) => setFarmLogDate(date)}
+          onFocusMap={(parcel) => navigate(`../karte?parcel=${parcel.id}`)}
+        />
+      )}
+
+      {editorTarget && view === 'neu' && (
         <DayEntryEditor
           parcel={editorTarget.parcel}
           parcels={parcels}
+          seasonYear={seasonYear}
+          date={editorTarget.date}
+          onClose={() => setEditorTarget(null)}
+          onSaved={refresh}
+        />
+      )}
+      {editorTarget && view === 'klassisch' && (
+        <DayEntryEditorClassic
+          parcel={editorTarget.parcel}
           seasonYear={seasonYear}
           date={editorTarget.date}
           onClose={() => setEditorTarget(null)}

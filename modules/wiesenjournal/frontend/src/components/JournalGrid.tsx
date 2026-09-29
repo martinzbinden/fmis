@@ -1,7 +1,6 @@
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { PARCEL_CATEGORY_COLOR, usageDescription, usageLegend } from '../lib/format'
 
-const CELL_WIDTH = 34
 const LABEL_COL_WIDTH = 220
 const ROW_HEIGHT = 46
 const FARM_ROW_HEIGHT = 26
@@ -36,6 +35,11 @@ function monthLabel(iso: string): string {
   return d.toLocaleDateString('de-CH', { month: 'short' })
 }
 
+function isWeekend(iso: string): boolean {
+  const dow = new Date(iso + 'T00:00:00').getDay()
+  return dow === 0 || dow === 6
+}
+
 interface Props {
   parcels: Parcel[]
   days: string[]
@@ -46,6 +50,8 @@ interface Props {
   onFarmCellClick: (date: string) => void
   onGabenClick: (parcel: Parcel) => void
   onFocusMap: (parcel: Parcel) => void
+  cellWidth?: number
+  scrollRef?: (node: HTMLDivElement | null) => void
 }
 
 export default function JournalGrid({
@@ -58,11 +64,14 @@ export default function JournalGrid({
   onFarmCellClick,
   onGabenClick,
   onFocusMap,
+  cellWidth = 34,
+  scrollRef,
 }: Props) {
+  const CELL_WIDTH = cellWidth
   const trackWidth = days.length * CELL_WIDTH
 
   return (
-    <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
+    <div ref={scrollRef} className="overflow-x-auto rounded-lg bg-white shadow-sm">
       <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth }}>
         {/* Monats-/Tages-Header */}
         <div className="flex border-b">
@@ -75,7 +84,9 @@ export default function JournalGrid({
               return (
                 <div
                   key={d}
-                  className="shrink-0 border-l border-gray-100 pt-1 text-center text-[9px] leading-tight text-gray-400"
+                  className={`shrink-0 pt-1 text-center text-[9px] leading-tight text-gray-400 ${
+                    isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
+                  } ${isWeekend(d) ? 'bg-gray-100' : ''}`}
                   style={{ width: CELL_WIDTH }}
                 >
                   {isFirstOfMonth && <div className="font-semibold text-gray-600">{monthLabel(d)}</div>}
@@ -133,13 +144,16 @@ export default function JournalGrid({
                   ...usage.map(usageDescription),
                   ...fert.map((f) => `${f.duengung_code}${f.amount != null ? ` ${f.amount} ${f.unit}` : ''}`),
                 ].join('\n')
+                const { isFirstOfMonth } = shortDay(d)
                 return (
                   <button
                     key={d}
                     type="button"
                     onClick={() => onCellClick(p, d)}
                     title={title || undefined}
-                    className="flex shrink-0 flex-col items-center justify-center overflow-hidden border-l border-gray-100 hover:bg-brand-50"
+                    className={`flex shrink-0 flex-col items-center justify-center overflow-hidden hover:bg-brand-50 ${
+                      isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
+                    } ${isWeekend(d) ? 'bg-gray-50' : ''}`}
                     style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
                   >
                     {badge && (
