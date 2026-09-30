@@ -1,5 +1,7 @@
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { PARCEL_CATEGORY_COLOR, todayIso, usageDescription, usageLegend } from '../lib/format'
+import type { SortField, SortState } from '../lib/parcelSort'
+import ParcelHeaderSort from './ParcelHeaderSort'
 
 export const LABEL_COL_WIDTH = 220
 const ROW_HEIGHT = 46
@@ -52,6 +54,9 @@ interface Props {
   onFocusMap: (parcel: Parcel) => void
   cellWidth?: number
   scrollRef?: (node: HTMLDivElement | null) => void
+  stickyTop?: number
+  sort: SortState
+  onSort: (field: SortField) => void
 }
 
 export default function JournalGrid({
@@ -66,18 +71,30 @@ export default function JournalGrid({
   onFocusMap,
   cellWidth = 34,
   scrollRef,
+  stickyTop = 0,
+  sort,
+  onSort,
 }: Props) {
   const CELL_WIDTH = cellWidth
   const trackWidth = days.length * CELL_WIDTH
   const today = todayIso()
 
   return (
-    <div ref={scrollRef} className="overflow-x-auto rounded-lg bg-white shadow-sm">
+    <div
+      ref={scrollRef}
+      className="overflow-auto rounded-lg bg-white shadow-sm"
+      style={{ maxHeight: `calc(100vh - ${stickyTop + 170}px)` }}
+    >
       <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth }}>
-        {/* Monats-/Tages-Header */}
-        <div className="flex border-b">
-          <div className="sticky left-0 z-20 shrink-0 bg-white p-2 text-xs font-medium text-gray-500" style={{ width: LABEL_COL_WIDTH }}>
-            Parzelle
+        {/* Monats-/Tages-Header — sticky innerhalb DIESES Containers: der
+            Container scrollt selbst in beide Richtungen (fixe Höhe), ein
+            sticky relativ zur Seite ginge nicht, weil overflow-x:auto den
+            Container unweigerlich zum nächsten Sticky-Bezugspunkt macht,
+            auch für "top" (am 2026-09-30 so herausgefunden: top blieb als
+            reiner Versatz hängen statt beim Scrollen zu greifen). */}
+        <div className="sticky top-0 z-30 flex border-b bg-white">
+          <div className="sticky left-0 z-20 flex shrink-0 items-center bg-white px-1.5 py-2" style={{ width: LABEL_COL_WIDTH }}>
+            <ParcelHeaderSort sort={sort} onSort={onSort} />
           </div>
           <div className="flex">
             {days.map((d) => {
@@ -164,7 +181,7 @@ export default function JournalGrid({
                     )}
                     {fert.length > 0 && (
                       <span className="mt-0.5 max-w-full truncate text-[8px] font-semibold leading-tight text-amber-700">
-                        {fert.map((f) => f.duengung_code).join(' ')}
+                        {fert.map((f) => (f.amount != null ? `${f.duengung_code} ${f.amount}` : f.duengung_code)).join(' ')}
                       </span>
                     )}
                   </button>

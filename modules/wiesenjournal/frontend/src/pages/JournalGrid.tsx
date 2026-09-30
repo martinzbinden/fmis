@@ -13,10 +13,14 @@ import DailyLogEditor from '../components/DailyLogEditor'
 import AckerToggle from '../components/AckerToggle'
 import GridViewToggle from '../components/GridViewToggle'
 import GridZoomControl from '../components/GridZoomControl'
+import ParcelFilterBar from '../components/ParcelFilterBar'
+import ParcelSummarySidebar from '../components/ParcelSummarySidebar'
 import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
 import { useGridView } from '../hooks/useGridView'
 import { useGridZoom, READABLE_CELL_WIDTH } from '../hooks/useGridZoom'
 import { useRestoreScroll } from '../hooks/useRestoreScroll'
+import { useStickyTopOffset } from '../hooks/useStickyTopOffset'
+import { sortParcels, nextSortState, type SortState } from '../lib/parcelSort'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { isoDate, num, todayIso } from '../lib/format'
 
@@ -66,6 +70,7 @@ export default function JournalGridPage() {
   const [showAcker] = useShowAcker()
   const [view] = useGridView()
   const { cellWidth, setCellWidth } = useGridZoom()
+  const stickyTop = useStickyTopOffset()
   const todayIdx = days.indexOf(todayIso())
   const scroll = useRestoreScroll(
     `wiesenjournal-grid-${view}-${seasonYear}`,
@@ -92,7 +97,26 @@ export default function JournalGridPage() {
   const [gabenTarget, setGabenTarget] = useState<Parcel | null>(null)
   const [farmLogDate, setFarmLogDate] = useState<string | null>(null)
 
-  const parcels = data?.parcels ?? []
+  // Filter (Freitext + Vorschlags-Knöpfe) und Sortierung — siehe
+  // components/ParcelFilterBar.tsx / ParcelHeaderSort.tsx / lib/parcelSort.ts.
+  const [search, setSearch] = useState('')
+  const [filterChips, setFilterChips] = useState<string[]>([])
+  const [sort, setSort] = useState<SortState>({ field: null, dir: 'asc' })
+  const [summaryOpen, setSummaryOpen] = useState(false)
+
+  const allParcels = data?.parcels ?? []
+  const parcels = useMemo(() => {
+    let list = allParcels
+    if (filterChips.length > 0) {
+      list = list.filter((p) => filterChips.some((c) => p.name === c || p.kultur_name_de === c))
+    }
+    const q = search.trim().toLowerCase()
+    if (q) {
+      list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.kultur_name_de ?? '').toLowerCase().includes(q))
+    }
+    return sortParcels(list, sort)
+  }, [allParcels, filterChips, search, sort])
+
   const usageByDay = useMemo(() => indexByParcelAndDay<UsageEntry>(data?.usage ?? []), [data])
   // Düngung je Parzelle über die Anteile (Polygon/Track/mehrere Parzellen
   // erscheinen auf jeder betroffenen Zeile); Massnahmen ohne Anteile über
@@ -128,7 +152,10 @@ export default function JournalGridPage() {
   return (
     <div className="space-y-4 p-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-bold text-gray-800">Journal-Raster {seasonYear}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-bold text-gray-800">Journal-Raster {seasonYear}</h1>
+          <ParcelFilterBar parcels={allParcels} search={search} onSearchChange={setSearch} chips={filterChips} onChipsChange={setFilterChips} />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <AckerToggle />
           <GridViewToggle />
@@ -164,42 +191,63 @@ export default function JournalGridPage() {
       </div>
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
-      {data && parcels.length === 0 && (
+      {data && allParcels.length === 0 && (
         <p className="text-center text-gray-500">
           Noch keine Parzellen für {seasonYear} — unter „Parzellen" aus GELAN übernehmen oder anlegen.
         </p>
       )}
-
-      {parcels.length > 0 && view === 'neu' && (
-        <JournalGridComponent
-          parcels={parcels}
-          days={days}
-          usageByDay={usageByDay}
-          fertByDay={fertByDay}
-          dailyLogByDate={dailyLogByDate}
-          cellWidth={cellWidth}
-          scrollRef={scroll.ref}
-          onCellClick={(parcel, date) => setEditorTarget({ parcel, date })}
-          onFarmCellClick={(date) => setFarmLogDate(date)}
-          onGabenClick={(parcel) => setGabenTarget(parcel)}
-          onFocusMap={(parcel) => navigate(`../karte?parcel=${parcel.id}`)}
-        />
+      {data && allParcels.length > 0 && parcels.length === 0 && (
+        <p className="text-center text-gray-500">Keine Parzelle passt auf den aktuellen Filter.</p>
       )}
 
-      {parcels.length > 0 && view === 'klassisch' && (
-        <JournalGridClassic
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          {parcels.length > 0 && view === 'neu' && (
+            <JournalGridComponent
+              parcels={parcels}
+              days={days}
+              usageByDay={usageByDay}
+              fertByDay={fertByDay}
+              dailyLogByDate={dailyLogByDate}
+              cellWidth={cellWidth}
+              scrollRef={scroll.ref}
+              stickyTop={stickyTop}
+              sort={sort}
+              onSort={(field) => setSort((s) => nextSortState(s, field))}
+              onCellClick={(parcel, date) => setEditorTarget({ parcel, date })}
+              onFarmCellClick={(date) => setFarmLogDate(date)}
+              onGabenClick={(parcel) => setGabenTarget(parcel)}
+              onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
+            />
+          )}
+
+          {parcels.length > 0 && view === 'klassisch' && (
+            <JournalGridClassic
+              parcels={parcels}
+              days={days}
+              usageByDay={usageByDay}
+              fertByDay={fertByDay}
+              dailyLogByDate={dailyLogByDate}
+              cellWidth={cellWidth}
+              scrollRef={scroll.ref}
+              stickyTop={stickyTop}
+              sort={sort}
+              onSort={(field) => setSort((s) => nextSortState(s, field))}
+              onDayOpen={(parcel, date) => setEditorTarget({ parcel, date })}
+              onFarmCellClick={(date) => setFarmLogDate(date)}
+              onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
+            />
+          )}
+        </div>
+
+        <ParcelSummarySidebar
+          open={summaryOpen}
+          onToggle={() => setSummaryOpen((v) => !v)}
           parcels={parcels}
-          days={days}
           usageByDay={usageByDay}
           fertByDay={fertByDay}
-          dailyLogByDate={dailyLogByDate}
-          cellWidth={cellWidth}
-          scrollRef={scroll.ref}
-          onDayOpen={(parcel, date) => setEditorTarget({ parcel, date })}
-          onFarmCellClick={(date) => setFarmLogDate(date)}
-          onFocusMap={(parcel) => navigate(`../karte?parcel=${parcel.id}`)}
         />
-      )}
+      </div>
 
       {editorTarget && view === 'neu' && (
         <DayEntryEditor

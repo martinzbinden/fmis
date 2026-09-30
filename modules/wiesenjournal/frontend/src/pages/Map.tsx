@@ -400,6 +400,7 @@ export default function Map() {
         onLocationFound={(lat, lng, accuracyM) => setCurrentPosition({ lat, lng, accuracyM })}
         onWeedSelect={handleWeedSelect}
         onPickLocation={handlePickLocation}
+        focusParcelId={focusParcelId}
       />
 
       {tracks.length > 0 && (

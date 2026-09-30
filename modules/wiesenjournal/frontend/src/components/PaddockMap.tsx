@@ -385,6 +385,7 @@ export default function PaddockMap({
   onLocationFound,
   onWeedSelect,
   onPickLocation,
+  focusParcelId,
 }: {
   paddocks: Paddock[]
   parcels: Parcel[]
@@ -405,6 +406,7 @@ export default function PaddockMap({
   onLocationFound?: (lat: number, lng: number, accuracyM: number) => void
   onWeedSelect: (observation: WeedObservation) => void
   onPickLocation?: (lat: number, lng: number) => void
+  focusParcelId?: string | null
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const [showTemplate, setShowTemplate] = useState(false)
@@ -429,6 +431,16 @@ export default function PaddockMap({
   useEffect(() => {
     if (bounds) mapRef.current?.fitBounds(bounds, { padding: [24, 24] })
   }, [bounds])
+
+  // Vom Globus-Knopf im Journal-Raster (?parcel=…) — näher heranzoomen als
+  // die allgemeine Gesamtansicht oben, läuft deshalb danach (überschreibt sie).
+  useEffect(() => {
+    if (!focusParcelId) return
+    const p = parcels.find((x) => x.id === focusParcelId)
+    if (!p?.base_geometry) return
+    const b = L.geoJSON(JSON.parse(p.base_geometry) as never).getBounds()
+    if (b.isValid()) mapRef.current?.fitBounds(b, { padding: [40, 40], maxZoom: 18 })
+  }, [focusParcelId, parcels])
 
   useEffect(() => {
     function handleFullscreenChange() {

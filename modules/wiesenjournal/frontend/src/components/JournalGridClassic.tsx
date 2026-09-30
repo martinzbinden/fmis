@@ -3,11 +3,27 @@ import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../ty
 import { USAGE_COLOR, USAGE_COLOR_FAMILY, addDaysIso, fmtArea, todayIso, usageDescription, usageLegend } from '../lib/format'
 import { groupUsageRuns, type UsageBar } from '../lib/journalRun'
 import { upsertRow } from '../db/write'
+import type { SortField, SortState } from '../lib/parcelSort'
+import ParcelHeaderSort from './ParcelHeaderSort'
 import type { DayIndex } from './JournalGrid'
 
-export const LABEL_COL_WIDTH = 168
-const ROW_HEIGHT = 40
+export const LABEL_COL_WIDTH = 190
+const ROW_HEIGHT = 48
 const FARM_ROW_HEIGHT = 24
+
+// Zweite, kleine Zeile im Balken: bei Weide Tierart-Kürzel + Gruppe/Anzahl,
+// sonst (falls vorhanden) die Tiergruppe/Bemerkung — reine Andeutung, Details
+// bleiben im Tooltip/Editor.
+function barDetail(e: UsageEntry): string | null {
+  if (e.usage_type === 'weide') {
+    if (e.animal_group) return e.animal_group
+    if (e.animal_count) return `${e.animal_count} Tiere`
+    return null
+  }
+  if (e.yield_amount != null) return `${e.yield_amount}${e.yield_unit ? ` ${e.yield_unit}` : ''}`
+  if (e.value_num != null) return String(e.value_num)
+  return null
+}
 
 // Stabile leere Objekte statt `?? {}` an der Aufrufstelle — ein frisches `{}`
 // bei jedem Rendern würde die memo()-Prüfung von ClassicRow für Parzellen
@@ -80,7 +96,7 @@ const ClassicRow = memo(function ClassicRow({
   return (
     <div className={`flex border-b ${parcel.category === 'acker' ? 'bg-amber-50/40' : ''}`}>
       <div
-        className={`sticky left-0 z-10 flex shrink-0 flex-col justify-center gap-0.5 p-2 ${
+        className={`sticky left-0 z-10 flex shrink-0 flex-col justify-center gap-0.5 py-1 pl-1.5 pr-1 ${
           parcel.category === 'acker' ? 'bg-amber-50' : 'bg-white'
         }`}
         style={{ width: LABEL_COL_WIDTH, height: ROW_HEIGHT }}
@@ -99,7 +115,7 @@ const ClassicRow = memo(function ClassicRow({
             🌐
           </button>
         </div>
-        <div className="truncate text-[10px] text-gray-400">
+        <div className="truncate text-[10px] text-gray-400" title={`${fmtArea(parcel.area_a)}${parcel.kultur_name_de ? ' · ' + parcel.kultur_name_de : ''}`}>
           {fmtArea(parcel.area_a)}
           {parcel.kultur_name_de ? ` · ${parcel.kultur_name_de}` : ''}
         </div>
@@ -137,12 +153,13 @@ const ClassicRow = memo(function ClassicRow({
           const color = USAGE_COLOR[family]
           const dayOnly = bar.entry.usage_type === 'weide' && bar.entry.day_only
           const letter = usageLegend(bar.entry)
+          const detail = bar.span * cellWidth >= 24 ? barDetail(bar.entry) : null
           const left = bar.startIdx * cellWidth + 2
           const width = bar.span * cellWidth - 4
           return (
             <div
               key={`${bar.entry.id}-${bar.startIdx}`}
-              className="pointer-events-none absolute flex items-center justify-center overflow-hidden whitespace-nowrap rounded text-[10px] font-bold"
+              className="pointer-events-none absolute flex flex-col items-center justify-center overflow-hidden whitespace-nowrap rounded leading-none"
               style={{
                 left,
                 width: Math.max(width, 8),
@@ -153,7 +170,8 @@ const ClassicRow = memo(function ClassicRow({
                 color: dayOnly ? color : '#ffffff',
               }}
             >
-              {letter}
+              <span className="text-[10px] font-bold">{letter}</span>
+              {detail && <span className="mt-0.5 max-w-full truncate text-[8px] font-normal opacity-90">{detail}</span>}
             </div>
           )
         })}
@@ -187,16 +205,22 @@ const ClassicRow = memo(function ClassicRow({
           )
         })}
 
-        {/* Düngung: eigener Streifen unten, unabhängig von der Nutzungsfarbe */}
+        {/* Düngung: eigener Streifen unten, unabhängig von der Nutzungsfarbe —
+            ab genug Platz zusätzlich die Menge klein angedeutet. */}
         {days.map((d, idx) => {
           const fert = fertByDate[d] ?? []
           if (fert.length === 0) return null
+          const amount = fert[0].amount
+          const showAmount = cellWidth >= 24 && amount != null
           return (
-            <div
-              key={`fert-${d}`}
-              className="pointer-events-none absolute rounded-sm"
-              style={{ left: idx * cellWidth + 2, width: cellWidth - 4, bottom: 3, height: 4, background: '#92400e' }}
-            />
+            <div key={`fert-${d}`} className="pointer-events-none absolute" style={{ left: idx * cellWidth + 2, width: cellWidth - 4, bottom: 3 }}>
+              {showAmount && (
+                <div className="mb-0.5 truncate text-center text-[7px] font-semibold leading-none text-amber-800">
+                  {amount}
+                </div>
+              )}
+              <div className="rounded-sm" style={{ height: 4, background: '#92400e' }} />
+            </div>
           )
         })}
       </div>
@@ -215,6 +239,9 @@ interface Props {
   onFocusMap: (parcel: Parcel) => void
   cellWidth?: number
   scrollRef?: (node: HTMLDivElement | null) => void
+  stickyTop?: number
+  sort: SortState
+  onSort: (field: SortField) => void
 }
 
 export default function JournalGridClassic({
@@ -228,6 +255,9 @@ export default function JournalGridClassic({
   onFocusMap,
   cellWidth = 28,
   scrollRef,
+  stickyTop = 0,
+  sort,
+  onSort,
 }: Props) {
   const trackWidth = days.length * cellWidth
 
@@ -293,12 +323,17 @@ export default function JournalGridClassic({
   }, [])
 
   return (
-    <div ref={scrollRef} className="overflow-x-auto rounded-lg bg-white shadow-sm">
+    <div
+      ref={scrollRef}
+      className="overflow-auto rounded-lg bg-white shadow-sm"
+      style={{ maxHeight: `calc(100vh - ${stickyTop + 170}px)` }}
+    >
       <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth }}>
-        {/* Monats-/Tages-Header */}
-        <div className="flex border-b">
-          <div className="sticky left-0 z-20 shrink-0 bg-white p-2 text-xs font-medium text-gray-500" style={{ width: LABEL_COL_WIDTH }}>
-            Parzelle
+        {/* Monats-/Tages-Header — sticky innerhalb DIESES Containers, siehe
+            Kommentar in JournalGrid.tsx (gleicher Grund). */}
+        <div className="sticky top-0 z-30 flex border-b bg-white">
+          <div className="sticky left-0 z-20 flex shrink-0 items-center bg-white px-1.5 py-2" style={{ width: LABEL_COL_WIDTH }}>
+            <ParcelHeaderSort sort={sort} onSort={onSort} />
           </div>
           <div className="flex">
             {days.map((d) => {
