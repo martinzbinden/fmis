@@ -22,6 +22,7 @@ export default function DailyLogEditor({
   const [wetterCode, setWetterCode] = useState('')
   const [niederschlag, setNiederschlag] = useState('')
   const [mondPhase, setMondPhase] = useState('')
+  const [wetterQuelle, setWetterQuelle] = useState<'geodaten' | 'manuell'>('manuell')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -50,6 +51,7 @@ export default function DailyLogEditor({
       setWetterCode(e?.wetter_code ?? '')
       setNiederschlag(e?.niederschlag_mm == null ? '' : String(e.niederschlag_mm))
       setMondPhase(e?.mond_phase ?? '')
+      setWetterQuelle(e?.wetter_quelle ?? 'manuell')
       setLoading(false)
     })()
     return () => {
@@ -67,6 +69,10 @@ export default function DailyLogEditor({
         wetter_code: wetterCode.trim() || null,
         niederschlag_mm: niederschlag ? Number(niederschlag) : null,
         mond_phase: mondPhase.trim() || null,
+        // Eine Eingabe hier ist per Definition lokal — überschreibt einen
+        // automatisch vom (künftigen) Geodatenserver gesetzten Wert und hat
+        // danach Vorrang.
+        wetter_quelle: 'manuell',
         notes: notes.trim() || null,
         animal_counts: Object.values(animalCounts).some((v) => v.trim() !== '')
           ? JSON.stringify(
@@ -106,6 +112,11 @@ export default function DailyLogEditor({
               ))}
             </div>
           </div>
+          {wetterQuelle === 'geodaten' && (wetterCode || niederschlag) && (
+            <p className="rounded bg-sky-50 px-2 py-1 text-xs text-sky-700">
+              🛰 Automatisch vom Geodatenserver übernommen — eine Änderung hier ersetzt das dauerhaft durch deine Eingabe.
+            </p>
+          )}
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-gray-700">Wetter</span>
             <input

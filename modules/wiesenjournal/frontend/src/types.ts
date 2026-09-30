@@ -192,6 +192,9 @@ export interface DailyFarmLog {
   laufhof_schafe: boolean | null
   laufhof_legehennen: boolean | null
   animal_counts: string | null   // JSON {"kuehe": 20, ...}
+  // 'geodaten': künftig automatisch vom Geodatenserver befüllt (noch nicht
+  // angebunden); 'manuell': lokal erfasst/überschrieben, hat Vorrang.
+  wetter_quelle: 'geodaten' | 'manuell'
 }
 
 export interface Track {

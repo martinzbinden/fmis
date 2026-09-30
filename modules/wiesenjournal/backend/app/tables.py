@@ -46,7 +46,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "entry_date", "laufhof_kuehe", "laufhof_rinder", "wetter_code",
         "niederschlag_mm", "mond_phase", "notes", "updated_at", "deleted_at",
         "laufhof_kaelber", "laufhof_galtkuehe", "laufhof_schafe", "laufhof_legehennen",
-        "animal_counts",
+        "animal_counts", "wetter_quelle",
     ],
     "tracks": [
         "id", "season_year", "label", "started_at", "ended_at", "width_m",

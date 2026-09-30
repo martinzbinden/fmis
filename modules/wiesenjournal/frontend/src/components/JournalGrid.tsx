@@ -229,12 +229,17 @@ export default function JournalGrid({
                   if (row.key.startsWith('laufhof_')) content = v ? '✓' : null
                   else if (v != null) content = String(v)
                 }
+                // Automatisch vom (künftigen) Geodatenserver übernommene
+                // Werte kursiv andeuten — lokale Eingabe (Standard) bleibt
+                // normal; siehe DailyLogEditor.tsx.
+                const fromGeodata = (row.key === 'wetter_code' || row.key === 'niederschlag_mm') && log?.wetter_quelle === 'geodaten'
                 return (
                   <button
                     key={d}
                     type="button"
                     onClick={() => onFarmCellClick(d)}
-                    className="shrink-0 border-l border-gray-100 text-center text-[9px] text-gray-600 hover:bg-brand-50"
+                    title={fromGeodata ? 'Automatisch vom Geodatenserver' : undefined}
+                    className={`shrink-0 border-l border-gray-100 text-center text-[9px] text-gray-600 hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
                     style={{ width: CELL_WIDTH, height: FARM_ROW_HEIGHT }}
                   >
                     {content}
