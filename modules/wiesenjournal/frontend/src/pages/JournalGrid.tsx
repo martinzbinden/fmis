@@ -4,8 +4,8 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { loadEntriesInRange } from '../lib/journalEntry'
 import { loadSharesInRange } from '../lib/fertilization'
-import JournalGridComponent, { type DayIndex } from '../components/JournalGrid'
-import JournalGridClassic from '../components/JournalGridClassic'
+import JournalGridComponent, { type DayIndex, LABEL_COL_WIDTH as LABEL_COL_WIDTH_NEU } from '../components/JournalGrid'
+import JournalGridClassic, { LABEL_COL_WIDTH as LABEL_COL_WIDTH_KLASSISCH } from '../components/JournalGridClassic'
 import DayEntryEditor from '../components/DayEntryEditor'
 import DayEntryEditorClassic from '../components/DayEntryEditorClassic'
 import GabenPanel from '../components/GabenPanel'
@@ -15,10 +15,10 @@ import GridViewToggle from '../components/GridViewToggle'
 import GridZoomControl from '../components/GridZoomControl'
 import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
 import { useGridView } from '../hooks/useGridView'
-import { useGridZoom } from '../hooks/useGridZoom'
+import { useGridZoom, READABLE_CELL_WIDTH } from '../hooks/useGridZoom'
 import { useRestoreScroll } from '../hooks/useRestoreScroll'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { isoDate, num } from '../lib/format'
+import { isoDate, num, todayIso } from '../lib/format'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -65,8 +65,23 @@ export default function JournalGridPage() {
 
   const [showAcker] = useShowAcker()
   const [view] = useGridView()
-  const { cellWidth } = useGridZoom()
-  const scrollRef = useRestoreScroll(`wiesenjournal-grid-${view}-${seasonYear}`)
+  const { cellWidth, setCellWidth } = useGridZoom()
+  const todayIdx = days.indexOf(todayIso())
+  const scroll = useRestoreScroll(
+    `wiesenjournal-grid-${view}-${seasonYear}`,
+    todayIdx >= 0 ? todayIdx : undefined,
+    cellWidth,
+  )
+  const labelColWidth = view === 'neu' ? LABEL_COL_WIDTH_NEU : LABEL_COL_WIDTH_KLASSISCH
+
+  function goToToday() {
+    setCellWidth(READABLE_CELL_WIDTH)
+    if (todayIdx >= 0) requestAnimationFrame(() => scroll.scrollToIndex(todayIdx, READABLE_CELL_WIDTH))
+  }
+  function fitToYear() {
+    const fit = scroll.fitCellWidth(days.length, labelColWidth)
+    if (fit > 0) setCellWidth(fit)
+  }
 
   const { data, loading, refresh } = useQuery(
     (pg) => loadGridData(pg, seasonYear, from, to, showAcker),
@@ -118,6 +133,22 @@ export default function JournalGridPage() {
           <AckerToggle />
           <GridViewToggle />
           <GridZoomControl />
+          <button
+            type="button"
+            onClick={goToToday}
+            title="Zum heutigen Datum springen und lesbar zoomen"
+            className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600"
+          >
+            📍 Heute
+          </button>
+          <button
+            type="button"
+            onClick={fitToYear}
+            title="Auf ganzes Jahr zoomen"
+            className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-600"
+          >
+            🗓️⇔ Jahr
+          </button>
           <select
             value={seasonYear}
             onChange={(e) => setSeasonYear(Number(e.target.value))}
@@ -147,7 +178,7 @@ export default function JournalGridPage() {
           fertByDay={fertByDay}
           dailyLogByDate={dailyLogByDate}
           cellWidth={cellWidth}
-          scrollRef={scrollRef}
+          scrollRef={scroll.ref}
           onCellClick={(parcel, date) => setEditorTarget({ parcel, date })}
           onFarmCellClick={(date) => setFarmLogDate(date)}
           onGabenClick={(parcel) => setGabenTarget(parcel)}
@@ -163,7 +194,7 @@ export default function JournalGridPage() {
           fertByDay={fertByDay}
           dailyLogByDate={dailyLogByDate}
           cellWidth={cellWidth}
-          scrollRef={scrollRef}
+          scrollRef={scroll.ref}
           onDayOpen={(parcel, date) => setEditorTarget({ parcel, date })}
           onFarmCellClick={(date) => setFarmLogDate(date)}
           onFocusMap={(parcel) => navigate(`../karte?parcel=${parcel.id}`)}

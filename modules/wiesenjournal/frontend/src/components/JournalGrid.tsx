@@ -1,7 +1,7 @@
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { PARCEL_CATEGORY_COLOR, usageDescription, usageLegend } from '../lib/format'
+import { PARCEL_CATEGORY_COLOR, todayIso, usageDescription, usageLegend } from '../lib/format'
 
-const LABEL_COL_WIDTH = 220
+export const LABEL_COL_WIDTH = 220
 const ROW_HEIGHT = 46
 const FARM_ROW_HEIGHT = 26
 
@@ -69,6 +69,7 @@ export default function JournalGrid({
 }: Props) {
   const CELL_WIDTH = cellWidth
   const trackWidth = days.length * CELL_WIDTH
+  const today = todayIso()
 
   return (
     <div ref={scrollRef} className="overflow-x-auto rounded-lg bg-white shadow-sm">
@@ -86,7 +87,7 @@ export default function JournalGrid({
                   key={d}
                   className={`shrink-0 pt-1 text-center text-[9px] leading-tight text-gray-400 ${
                     isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
-                  } ${isWeekend(d) ? 'bg-gray-100' : ''}`}
+                  } ${d === today ? 'bg-yellow-300/70 font-bold text-gray-700' : isWeekend(d) ? 'bg-gray-100' : ''}`}
                   style={{ width: CELL_WIDTH }}
                 >
                   {isFirstOfMonth && <div className="font-semibold text-gray-600">{monthLabel(d)}</div>}
@@ -153,7 +154,7 @@ export default function JournalGrid({
                     title={title || undefined}
                     className={`flex shrink-0 flex-col items-center justify-center overflow-hidden hover:bg-brand-50 ${
                       isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
-                    } ${isWeekend(d) ? 'bg-gray-50' : ''}`}
+                    } ${d === today ? 'bg-yellow-200/60' : isWeekend(d) ? 'bg-gray-50' : ''}`}
                     style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
                   >
                     {badge && (

@@ -1,10 +1,11 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { USAGE_COLOR, USAGE_COLOR_FAMILY, fmtArea, usageDescription, usageLegend } from '../lib/format'
+import { USAGE_COLOR, USAGE_COLOR_FAMILY, addDaysIso, fmtArea, todayIso, usageDescription, usageLegend } from '../lib/format'
 import { groupUsageRuns, type UsageBar } from '../lib/journalRun'
+import { upsertRow } from '../db/write'
 import type { DayIndex } from './JournalGrid'
 
-const LABEL_COL_WIDTH = 168
+export const LABEL_COL_WIDTH = 168
 const ROW_HEIGHT = 40
 const FARM_ROW_HEIGHT = 24
 
@@ -50,8 +51,11 @@ const ClassicRow = memo(function ClassicRow({
   cellWidth,
   trackWidth,
   armedDate,
+  today,
+  extendWindowStart,
   onDayClick,
   onFocusMap,
+  onExtend,
 }: {
   parcel: Parcel
   days: string[]
@@ -61,8 +65,11 @@ const ClassicRow = memo(function ClassicRow({
   cellWidth: number
   trackWidth: number
   armedDate: string | null
+  today: string
+  extendWindowStart: string
   onDayClick: (parcel: Parcel, date: string, hasContent: boolean) => void
   onFocusMap: (parcel: Parcel) => void
+  onExtend: (parcel: Parcel, bar: UsageBar, nextDate: string) => void
 }) {
   // Welcher Tag-Index gehört zu einem laufenden Balken (nicht sein erster
   // Tag) — dort keinen eigenen Klick-Button zeichnen, der Balken selbst
@@ -116,7 +123,7 @@ const ClassicRow = memo(function ClassicRow({
               title={title || undefined}
               className={`absolute top-0 flex items-center justify-center hover:bg-brand-50 ${
                 isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
-              } ${isWeekend(d) ? 'bg-gray-50' : ''}`}
+              } ${d === today ? 'bg-yellow-200/60' : isWeekend(d) ? 'bg-gray-50' : ''}`}
               style={{ left: idx * cellWidth, width: cellWidth, height: ROW_HEIGHT }}
             >
               {isArmed && <span className="text-sm font-bold text-brand-600">+</span>}
@@ -148,6 +155,35 @@ const ClassicRow = memo(function ClassicRow({
             >
               {letter}
             </div>
+          )
+        })}
+
+        {/* "Verlängern"-Knopf: bei Balken, deren letzter Tag innerhalb der
+            letzten 7 Tage (bis heute) liegt, einen Tag anhängen statt den
+            ganzen Editor zu öffnen — für laufende Massnahmen wie Weide, die
+            man Tag für Tag nachträgt. Nur wenn der Folgetag noch frei ist
+            und innerhalb der Saison liegt. */}
+        {bars.map((bar) => {
+          const endIdx = bar.startIdx + bar.span - 1
+          const endDate = days[endIdx]
+          if (endDate < extendWindowStart || endDate > today) return null
+          const nextIdx = endIdx + 1
+          if (nextIdx >= days.length) return null
+          const nextDate = days[nextIdx]
+          const nextHasContent = (usageByDate[nextDate]?.length ?? 0) > 0 || (fertByDate[nextDate]?.length ?? 0) > 0
+          if (nextHasContent) return null
+          return (
+            <button
+              key={`extend-${bar.entry.id}`}
+              type="button"
+              onClick={() => onExtend(parcel, bar, nextDate)}
+              title={`Verlängern auf ${nextDate}`}
+              aria-label="Um einen Tag verlängern"
+              className="absolute flex items-center justify-center rounded-full border border-brand-600 bg-white text-[10px] font-bold leading-none text-brand-600 shadow hover:bg-brand-50"
+              style={{ left: nextIdx * cellWidth + 2, top: ROW_HEIGHT / 2 - 8, width: 16, height: 16 }}
+            >
+              +
+            </button>
           )
         })}
 
@@ -229,6 +265,33 @@ export default function JournalGridClassic({
     return out
   }, [parcels, days, usageByDay])
 
+  const today = todayIso()
+  const extendWindowStart = addDaysIso(today, -7)
+
+  // "Verlängern"-Knopf: identischen Eintrag einen Tag weiter anlegen, ohne
+  // den Editor zu öffnen. Erntewert (yield_amount) bewusst NICHT übernommen
+  // — der würde sich sonst Tag für Tag verdoppeln statt einmalig zu gelten.
+  const handleExtend = useCallback((parcel: Parcel, bar: UsageBar, nextDate: string) => {
+    const e = bar.entry
+    void upsertRow('usage_entries', {
+      id: crypto.randomUUID(),
+      parcel_id: parcel.id,
+      entry_date: nextDate,
+      usage_type: e.usage_type,
+      animal_category: e.animal_category,
+      day_only: e.day_only,
+      animal_count: e.animal_count,
+      animal_group: e.animal_group,
+      label: e.label,
+      value_num: null,
+      yield_amount: null,
+      yield_unit: null,
+      paddock_version_id: e.paddock_version_id,
+      notes: e.notes,
+      import_key: null,
+    } as never)
+  }, [])
+
   return (
     <div ref={scrollRef} className="overflow-x-auto rounded-lg bg-white shadow-sm">
       <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth }}>
@@ -245,7 +308,7 @@ export default function JournalGridClassic({
                   key={d}
                   className={`shrink-0 pt-1 text-center text-[8px] leading-tight text-gray-400 ${
                     isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
-                  } ${isWeekend(d) ? 'bg-gray-100' : ''}`}
+                  } ${d === today ? 'bg-yellow-300/70 font-bold text-gray-700' : isWeekend(d) ? 'bg-gray-100' : ''}`}
                   style={{ width: cellWidth }}
                 >
                   {isFirstOfMonth && <div className="font-semibold text-gray-600">{monthLabel(d)}</div>}
@@ -269,8 +332,11 @@ export default function JournalGridClassic({
             cellWidth={cellWidth}
             trackWidth={trackWidth}
             armedDate={armed?.parcelId === p.id ? armed.date : null}
+            today={today}
+            extendWindowStart={extendWindowStart}
             onDayClick={handleDayClick}
             onFocusMap={onFocusMap}
+            onExtend={handleExtend}
           />
         ))}
 
