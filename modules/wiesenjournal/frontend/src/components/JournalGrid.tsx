@@ -1,7 +1,9 @@
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { PARCEL_CATEGORY_COLOR, todayIso, usageDescription, usageLegend } from '../lib/format'
 import type { SortField, SortState } from '../lib/parcelSort'
+import type { ParcelSummary } from '../lib/parcelSummary'
 import ParcelHeaderSort from './ParcelHeaderSort'
+import { SUMMARY_TOTAL_WIDTH, SummaryHeaderCells, SummaryRowCells } from './ParcelSummaryColumns'
 
 export const LABEL_COL_WIDTH = 220
 const ROW_HEIGHT = 46
@@ -57,6 +59,8 @@ interface Props {
   stickyTop?: number
   sort: SortState
   onSort: (field: SortField) => void
+  showSummary?: boolean
+  summary?: Record<string, ParcelSummary>
 }
 
 export default function JournalGrid({
@@ -74,6 +78,8 @@ export default function JournalGrid({
   stickyTop = 0,
   sort,
   onSort,
+  showSummary = false,
+  summary,
 }: Props) {
   const CELL_WIDTH = cellWidth
   const trackWidth = days.length * CELL_WIDTH
@@ -85,7 +91,7 @@ export default function JournalGrid({
       className="overflow-auto rounded-lg bg-white shadow-sm"
       style={{ maxHeight: `calc(100vh - ${stickyTop + 170}px)` }}
     >
-      <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth }}>
+      <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth + (showSummary ? SUMMARY_TOTAL_WIDTH : 0) }}>
         {/* Monats-/Tages-Header — sticky innerhalb DIESES Containers: der
             Container scrollt selbst in beide Richtungen (fixe Höhe), ein
             sticky relativ zur Seite ginge nicht, weil overflow-x:auto den
@@ -114,6 +120,7 @@ export default function JournalGrid({
               )
             })}
           </div>
+          {showSummary && <SummaryHeaderCells />}
         </div>
 
         {/* Parzellen-Zeilen */}
@@ -188,6 +195,7 @@ export default function JournalGrid({
                 )
               })}
             </div>
+            {showSummary && <SummaryRowCells summary={summary?.[p.id]} height={ROW_HEIGHT} tinted={p.category === 'acker'} />}
           </div>
         ))}
 

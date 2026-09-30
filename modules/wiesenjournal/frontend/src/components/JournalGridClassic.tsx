@@ -4,7 +4,9 @@ import { USAGE_COLOR, USAGE_COLOR_FAMILY, addDaysIso, fmtArea, todayIso, usageDe
 import { groupUsageRuns, type UsageBar } from '../lib/journalRun'
 import { upsertRow } from '../db/write'
 import type { SortField, SortState } from '../lib/parcelSort'
+import type { ParcelSummary } from '../lib/parcelSummary'
 import ParcelHeaderSort from './ParcelHeaderSort'
+import { SUMMARY_TOTAL_WIDTH, SummaryHeaderCells, SummaryRowCells } from './ParcelSummaryColumns'
 import type { DayIndex } from './JournalGrid'
 
 export const LABEL_COL_WIDTH = 190
@@ -72,6 +74,8 @@ const ClassicRow = memo(function ClassicRow({
   onDayClick,
   onFocusMap,
   onExtend,
+  showSummary,
+  summary,
 }: {
   parcel: Parcel
   days: string[]
@@ -86,6 +90,8 @@ const ClassicRow = memo(function ClassicRow({
   onDayClick: (parcel: Parcel, date: string, hasContent: boolean) => void
   onFocusMap: (parcel: Parcel) => void
   onExtend: (parcel: Parcel, bar: UsageBar, nextDate: string) => void
+  showSummary: boolean
+  summary: ParcelSummary | undefined
 }) {
   // Welcher Tag-Index gehört zu einem laufenden Balken (nicht sein erster
   // Tag) — dort keinen eigenen Klick-Button zeichnen, der Balken selbst
@@ -224,6 +230,7 @@ const ClassicRow = memo(function ClassicRow({
           )
         })}
       </div>
+      {showSummary && <SummaryRowCells summary={summary} height={ROW_HEIGHT} tinted={parcel.category === 'acker'} />}
     </div>
   )
 })
@@ -242,6 +249,8 @@ interface Props {
   stickyTop?: number
   sort: SortState
   onSort: (field: SortField) => void
+  showSummary?: boolean
+  summary?: Record<string, ParcelSummary>
 }
 
 export default function JournalGridClassic({
@@ -258,6 +267,8 @@ export default function JournalGridClassic({
   stickyTop = 0,
   sort,
   onSort,
+  showSummary = false,
+  summary,
 }: Props) {
   const trackWidth = days.length * cellWidth
 
@@ -328,7 +339,7 @@ export default function JournalGridClassic({
       className="overflow-auto rounded-lg bg-white shadow-sm"
       style={{ maxHeight: `calc(100vh - ${stickyTop + 170}px)` }}
     >
-      <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth }}>
+      <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth + (showSummary ? SUMMARY_TOTAL_WIDTH : 0) }}>
         {/* Monats-/Tages-Header — sticky innerhalb DIESES Containers, siehe
             Kommentar in JournalGrid.tsx (gleicher Grund). */}
         <div className="sticky top-0 z-30 flex border-b bg-white">
@@ -353,6 +364,7 @@ export default function JournalGridClassic({
               )
             })}
           </div>
+          {showSummary && <SummaryHeaderCells />}
         </div>
 
         {/* Parzellen-Zeilen */}
@@ -372,6 +384,8 @@ export default function JournalGridClassic({
             onDayClick={handleDayClick}
             onFocusMap={onFocusMap}
             onExtend={handleExtend}
+            showSummary={showSummary}
+            summary={summary?.[p.id]}
           />
         ))}
 

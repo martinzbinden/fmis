@@ -14,13 +14,14 @@ import AckerToggle from '../components/AckerToggle'
 import GridViewToggle from '../components/GridViewToggle'
 import GridZoomControl from '../components/GridZoomControl'
 import ParcelFilterBar from '../components/ParcelFilterBar'
-import ParcelSummarySidebar from '../components/ParcelSummarySidebar'
 import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
 import { useGridView } from '../hooks/useGridView'
 import { useGridZoom, READABLE_CELL_WIDTH } from '../hooks/useGridZoom'
 import { useRestoreScroll } from '../hooks/useRestoreScroll'
 import { useStickyTopOffset } from '../hooks/useStickyTopOffset'
 import { sortParcels, nextSortState, type SortState } from '../lib/parcelSort'
+import { parcelMatchesChip, type FilterChip } from '../lib/parcelFilter'
+import { summarizeParcels } from '../lib/parcelSummary'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { isoDate, num, todayIso } from '../lib/format'
 
@@ -100,7 +101,7 @@ export default function JournalGridPage() {
   // Filter (Freitext + Vorschlags-Knöpfe) und Sortierung — siehe
   // components/ParcelFilterBar.tsx / ParcelHeaderSort.tsx / lib/parcelSort.ts.
   const [search, setSearch] = useState('')
-  const [filterChips, setFilterChips] = useState<string[]>([])
+  const [filterChips, setFilterChips] = useState<FilterChip[]>([])
   const [sort, setSort] = useState<SortState>({ field: null, dir: 'asc' })
   const [summaryOpen, setSummaryOpen] = useState(false)
 
@@ -108,7 +109,7 @@ export default function JournalGridPage() {
   const parcels = useMemo(() => {
     let list = allParcels
     if (filterChips.length > 0) {
-      list = list.filter((p) => filterChips.some((c) => p.name === c || p.kultur_name_de === c))
+      list = list.filter((p) => filterChips.some((c) => parcelMatchesChip(p, c)))
     }
     const q = search.trim().toLowerCase()
     if (q) {
@@ -148,6 +149,10 @@ export default function JournalGridPage() {
     for (const log of data?.dailyLogs ?? []) idx[isoDate(log.entry_date)] = log
     return idx
   }, [data])
+  const summaryByParcel = useMemo(
+    () => (summaryOpen ? summarizeParcels(parcels, usageByDay, fertByDay) : undefined),
+    [summaryOpen, parcels, usageByDay, fertByDay],
+  )
 
   return (
     <div className="space-y-4 p-4 pb-24">
@@ -176,6 +181,16 @@ export default function JournalGridPage() {
           >
             🗓️⇔ Jahr
           </button>
+          <button
+            type="button"
+            onClick={() => setSummaryOpen((v) => !v)}
+            title="Zusammenfassung je Parzelle ein-/ausblenden (Weidetage, Ertrag, Stickstoff)"
+            className={`rounded border px-2 py-1 text-xs font-medium ${
+              summaryOpen ? 'border-teal-600 bg-teal-600 text-white' : 'border-gray-300 text-gray-600'
+            }`}
+          >
+            Σ Zusammenfassung
+          </button>
           <select
             value={seasonYear}
             onChange={(e) => setSeasonYear(Number(e.target.value))}
@@ -200,54 +215,46 @@ export default function JournalGridPage() {
         <p className="text-center text-gray-500">Keine Parzelle passt auf den aktuellen Filter.</p>
       )}
 
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          {parcels.length > 0 && view === 'neu' && (
-            <JournalGridComponent
-              parcels={parcels}
-              days={days}
-              usageByDay={usageByDay}
-              fertByDay={fertByDay}
-              dailyLogByDate={dailyLogByDate}
-              cellWidth={cellWidth}
-              scrollRef={scroll.ref}
-              stickyTop={stickyTop}
-              sort={sort}
-              onSort={(field) => setSort((s) => nextSortState(s, field))}
-              onCellClick={(parcel, date) => setEditorTarget({ parcel, date })}
-              onFarmCellClick={(date) => setFarmLogDate(date)}
-              onGabenClick={(parcel) => setGabenTarget(parcel)}
-              onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
-            />
-          )}
-
-          {parcels.length > 0 && view === 'klassisch' && (
-            <JournalGridClassic
-              parcels={parcels}
-              days={days}
-              usageByDay={usageByDay}
-              fertByDay={fertByDay}
-              dailyLogByDate={dailyLogByDate}
-              cellWidth={cellWidth}
-              scrollRef={scroll.ref}
-              stickyTop={stickyTop}
-              sort={sort}
-              onSort={(field) => setSort((s) => nextSortState(s, field))}
-              onDayOpen={(parcel, date) => setEditorTarget({ parcel, date })}
-              onFarmCellClick={(date) => setFarmLogDate(date)}
-              onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
-            />
-          )}
-        </div>
-
-        <ParcelSummarySidebar
-          open={summaryOpen}
-          onToggle={() => setSummaryOpen((v) => !v)}
+      {parcels.length > 0 && view === 'neu' && (
+        <JournalGridComponent
           parcels={parcels}
+          days={days}
           usageByDay={usageByDay}
           fertByDay={fertByDay}
+          dailyLogByDate={dailyLogByDate}
+          cellWidth={cellWidth}
+          scrollRef={scroll.ref}
+          stickyTop={stickyTop}
+          sort={sort}
+          onSort={(field) => setSort((s) => nextSortState(s, field))}
+          showSummary={summaryOpen}
+          summary={summaryByParcel}
+          onCellClick={(parcel, date) => setEditorTarget({ parcel, date })}
+          onFarmCellClick={(date) => setFarmLogDate(date)}
+          onGabenClick={(parcel) => setGabenTarget(parcel)}
+          onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
         />
-      </div>
+      )}
+
+      {parcels.length > 0 && view === 'klassisch' && (
+        <JournalGridClassic
+          parcels={parcels}
+          days={days}
+          usageByDay={usageByDay}
+          fertByDay={fertByDay}
+          dailyLogByDate={dailyLogByDate}
+          cellWidth={cellWidth}
+          scrollRef={scroll.ref}
+          stickyTop={stickyTop}
+          sort={sort}
+          onSort={(field) => setSort((s) => nextSortState(s, field))}
+          showSummary={summaryOpen}
+          summary={summaryByParcel}
+          onDayOpen={(parcel, date) => setEditorTarget({ parcel, date })}
+          onFarmCellClick={(date) => setFarmLogDate(date)}
+          onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
+        />
+      )}
 
       {editorTarget && view === 'neu' && (
         <DayEntryEditor
