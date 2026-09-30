@@ -14,11 +14,13 @@ import AckerToggle from '../components/AckerToggle'
 import GridViewToggle from '../components/GridViewToggle'
 import GridZoomControl from '../components/GridZoomControl'
 import ParcelFilterBar from '../components/ParcelFilterBar'
+import ToggleSwitch from '../components/ToggleSwitch'
 import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
 import { useGridView } from '../hooks/useGridView'
 import { useGridZoom, READABLE_CELL_WIDTH } from '../hooks/useGridZoom'
 import { useRestoreScroll } from '../hooks/useRestoreScroll'
 import { useStickyTopOffset } from '../hooks/useStickyTopOffset'
+import { useViewportWidth, MOBILE_BREAKPOINT } from '../hooks/useViewportWidth'
 import { sortParcels, nextSortState, type SortState } from '../lib/parcelSort'
 import { parcelMatchesChip, type FilterChip } from '../lib/parcelFilter'
 import { summarizeParcels } from '../lib/parcelSummary'
@@ -78,7 +80,12 @@ export default function JournalGridPage() {
     todayIdx >= 0 ? todayIdx : undefined,
     cellWidth,
   )
-  const labelColWidth = view === 'neu' ? LABEL_COL_WIDTH_NEU : LABEL_COL_WIDTH_KLASSISCH
+  // Muss dieselbe Logik wie JournalGridClassic.tsx verwenden, sonst würde
+  // "Ganzes Jahr zoomen" auf dem Handy eine zu breite/schmale Spalte annehmen.
+  const viewportWidth = useViewportWidth()
+  const isMobile = viewportWidth < MOBILE_BREAKPOINT
+  const labelColWidth =
+    view === 'neu' ? LABEL_COL_WIDTH_NEU : isMobile ? Math.round(viewportWidth * 0.25) : LABEL_COL_WIDTH_KLASSISCH
 
   function goToToday() {
     setCellWidth(READABLE_CELL_WIDTH)
@@ -104,6 +111,10 @@ export default function JournalGridPage() {
   const [filterChips, setFilterChips] = useState<FilterChip[]>([])
   const [sort, setSort] = useState<SortState>({ field: null, dir: 'asc' })
   const [summaryOpen, setSummaryOpen] = useState(false)
+  // "Aktive zuerst": Parzellen mit Eintrag im sichtbaren Datumsbereich nach
+  // oben — reine Anzeige-Umschichtung NACH der Sortierung, verändert deren
+  // Ergebnis innerhalb der zwei Gruppen nicht (Array.sort ist stabil).
+  const [activeFirst, setActiveFirst] = useState(false)
 
   const allParcels = data?.parcels ?? []
   const parcels = useMemo(() => {
@@ -153,6 +164,12 @@ export default function JournalGridPage() {
     () => (summaryOpen ? summarizeParcels(parcels, usageByDay, fertByDay) : undefined),
     [summaryOpen, parcels, usageByDay, fertByDay],
   )
+  const displayParcels = useMemo(() => {
+    if (!activeFirst) return parcels
+    const hasEntry = (id: string) =>
+      !!(usageByDay[id] && Object.keys(usageByDay[id]).length) || !!(fertByDay[id] && Object.keys(fertByDay[id]).length)
+    return [...parcels].sort((a, b) => Number(hasEntry(b.id)) - Number(hasEntry(a.id)))
+  }, [parcels, activeFirst, usageByDay, fertByDay])
 
   return (
     <div className="space-y-4 p-4 pb-24">
@@ -163,6 +180,12 @@ export default function JournalGridPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <AckerToggle />
+          <ToggleSwitch
+            checked={activeFirst}
+            onChange={setActiveFirst}
+            label="Aktive zuerst"
+            title="Parzellen mit Eintrag im angezeigten Zeitraum nach oben"
+          />
           <GridViewToggle />
           <GridZoomControl />
           <button
@@ -217,7 +240,7 @@ export default function JournalGridPage() {
 
       {parcels.length > 0 && view === 'neu' && (
         <JournalGridComponent
-          parcels={parcels}
+          parcels={displayParcels}
           days={days}
           usageByDay={usageByDay}
           fertByDay={fertByDay}
@@ -238,7 +261,7 @@ export default function JournalGridPage() {
 
       {parcels.length > 0 && view === 'klassisch' && (
         <JournalGridClassic
-          parcels={parcels}
+          parcels={displayParcels}
           days={days}
           usageByDay={usageByDay}
           fertByDay={fertByDay}

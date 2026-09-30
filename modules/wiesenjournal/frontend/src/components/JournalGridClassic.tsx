@@ -1,12 +1,23 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { USAGE_COLOR, USAGE_COLOR_FAMILY, addDaysIso, fmtArea, todayIso, usageDescription, usageLegend } from '../lib/format'
+import {
+  INTENSITAET_LABEL,
+  USAGE_COLOR,
+  USAGE_COLOR_FAMILY,
+  abbreviateKultur,
+  addDaysIso,
+  fmtArea,
+  todayIso,
+  usageDescription,
+  usageLegend,
+} from '../lib/format'
 import { groupUsageRuns, type UsageBar } from '../lib/journalRun'
 import { upsertRow } from '../db/write'
 import type { SortField, SortState } from '../lib/parcelSort'
 import type { ParcelSummary } from '../lib/parcelSummary'
 import ParcelHeaderSort from './ParcelHeaderSort'
 import { SUMMARY_TOTAL_WIDTH, SummaryHeaderCells, SummaryRowCells } from './ParcelSummaryColumns'
+import { useViewportWidth, MOBILE_BREAKPOINT } from '../hooks/useViewportWidth'
 import type { DayIndex } from './JournalGrid'
 
 export const LABEL_COL_WIDTH = 190
@@ -76,6 +87,8 @@ const ClassicRow = memo(function ClassicRow({
   onExtend,
   showSummary,
   summary,
+  labelColWidth,
+  isMobile,
 }: {
   parcel: Parcel
   days: string[]
@@ -92,6 +105,8 @@ const ClassicRow = memo(function ClassicRow({
   onExtend: (parcel: Parcel, bar: UsageBar, nextDate: string) => void
   showSummary: boolean
   summary: ParcelSummary | undefined
+  labelColWidth: number
+  isMobile: boolean
 }) {
   // Welcher Tag-Index gehört zu einem laufenden Balken (nicht sein erster
   // Tag) — dort keinen eigenen Klick-Button zeichnen, der Balken selbst
@@ -99,35 +114,54 @@ const ClassicRow = memo(function ClassicRow({
   const coveredIdx = new Set<number>()
   for (const b of bars) for (let k = 1; k < b.span; k++) coveredIdx.add(b.startIdx + k)
 
-  return (
-    <div className={`flex border-b ${parcel.category === 'acker' ? 'bg-amber-50/40' : ''}`}>
-      <div
-        className={`sticky left-0 z-10 flex shrink-0 flex-col justify-center gap-0.5 py-1 pl-1.5 pr-1 ${
-          parcel.category === 'acker' ? 'bg-amber-50' : 'bg-white'
-        }`}
-        style={{ width: LABEL_COL_WIDTH, height: ROW_HEIGHT }}
-      >
-        <div className="flex items-center gap-1">
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-800" title={parcel.name}>
-            {parcel.name}
-          </span>
-          <button
-            type="button"
-            onClick={() => onFocusMap(parcel)}
-            title="Auf Karte zeigen"
-            aria-label="Auf Karte zeigen"
-            className="shrink-0 rounded text-xs leading-none active:bg-gray-100"
-          >
-            🌐
-          </button>
-        </div>
-        <div className="truncate text-[10px] text-gray-400" title={`${fmtArea(parcel.area_a)}${parcel.kultur_name_de ? ' · ' + parcel.kultur_name_de : ''}`}>
-          {fmtArea(parcel.area_a)}
-          {parcel.kultur_name_de ? ` · ${parcel.kultur_name_de}` : ''}
-        </div>
-      </div>
+  // Auf Smartphones (schmale erste Spalte, siehe useViewportWidth) öffnet
+  // ein Tipp auf den Namen Details darunter — auf Desktop reicht der Platz
+  // ohnehin, dort bleibt der Name reiner Text (siehe expanded-Nutzung unten).
+  const [expanded, setExpanded] = useState(false)
+  const kulturText = isMobile && parcel.kultur_name_de ? abbreviateKultur(parcel.kultur_name_de) : parcel.kultur_name_de
 
-      <div className="relative" style={{ width: trackWidth, height: ROW_HEIGHT }}>
+  const acker = parcel.category === 'acker'
+  const bgClass = acker ? 'bg-amber-50' : 'bg-white'
+
+  return (
+    <>
+      <div className={`flex border-b ${acker ? 'bg-amber-50/40' : ''}`}>
+        <div
+          className={`sticky left-0 z-10 flex shrink-0 flex-col justify-center gap-0.5 py-1 pl-1.5 pr-1 ${bgClass}`}
+          style={{ width: labelColWidth, height: ROW_HEIGHT }}
+        >
+          <div className="flex items-center gap-1">
+            {isMobile ? (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="min-w-0 flex-1 truncate text-left text-xs font-medium text-gray-800"
+                title={parcel.name}
+              >
+                {parcel.name}
+              </button>
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-800" title={parcel.name}>
+                {parcel.name}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => onFocusMap(parcel)}
+              title="Auf Karte zeigen"
+              aria-label="Auf Karte zeigen"
+              className="shrink-0 rounded text-xs leading-none active:bg-gray-100"
+            >
+              🌐
+            </button>
+          </div>
+          <div className="truncate text-[10px] text-gray-400" title={`${fmtArea(parcel.area_a)}${parcel.kultur_name_de ? ' · ' + parcel.kultur_name_de : ''}`}>
+            {fmtArea(parcel.area_a)}
+            {kulturText ? ` · ${kulturText}` : ''}
+          </div>
+        </div>
+
+        <div className="relative" style={{ width: trackWidth, height: ROW_HEIGHT }}>
         {/* Hintergrund: Wochenenden/Monatsgrenzen + Klick-Buttons */}
         {days.map((d, idx) => {
           if (coveredIdx.has(idx)) return null
@@ -250,7 +284,42 @@ const ClassicRow = memo(function ClassicRow({
         })}
       </div>
       {showSummary && <SummaryRowCells summary={summary} height={ROW_HEIGHT} tinted={parcel.category === 'acker'} />}
-    </div>
+      </div>
+      {/* Details aufgeklappt (nur mobil erreichbar, siehe Namens-Knopf oben)
+          — eigene Zeile NUR in der Beschriftungsspalte, der Tagesbereich
+          bleibt unverändert, damit dessen absolute Positionierung nicht
+          durcheinanderkommt. */}
+      {expanded && (
+        <div className={`flex border-b text-[10px] text-gray-600 ${bgClass}`}>
+          <div className={`sticky left-0 z-10 space-y-0.5 px-2 py-1.5 ${bgClass}`} style={{ width: labelColWidth }}>
+            <div>
+              <span className="font-medium">Kultur:</span> {parcel.kultur_name_de ?? '–'}
+              {parcel.kultur_code ? ` (Code ${parcel.kultur_code})` : ''}
+            </div>
+            {parcel.wiesentyp && (
+              <div>
+                <span className="font-medium">Typ:</span> {parcel.wiesentyp}
+              </div>
+            )}
+            {parcel.intensitaet && (
+              <div>
+                <span className="font-medium">Intensität:</span> {INTENSITAET_LABEL[parcel.intensitaet] ?? parcel.intensitaet}
+              </div>
+            )}
+            {parcel.farm_name && (
+              <div>
+                <span className="font-medium">Betrieb:</span> {parcel.farm_name}
+              </div>
+            )}
+            {parcel.notes && (
+              <div>
+                <span className="font-medium">Notiz:</span> {parcel.notes}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   )
 })
 
@@ -290,6 +359,13 @@ export default function JournalGridClassic({
   summary,
 }: Props) {
   const trackWidth = days.length * cellWidth
+
+  // Erste Spalte auf Smartphones schmaler (max. 25% der Bildschirmbreite)
+  // und mit Kultur-Abkürzung statt vollem Namen — auf Desktop bleibt es beim
+  // festen LABEL_COL_WIDTH.
+  const viewportWidth = useViewportWidth()
+  const isMobile = viewportWidth < MOBILE_BREAKPOINT
+  const labelColWidth = isMobile ? Math.round(viewportWidth * 0.25) : LABEL_COL_WIDTH
 
   // Für neue Einträge zweimal tippen: erster Tipp "bewaffnet" die leere
   // Zelle (zeigt "+"), zweiter Tipp auf dieselbe Zelle öffnet den Editor —
@@ -357,13 +433,17 @@ export default function JournalGridClassic({
     <div
       ref={scrollRef}
       className="overflow-auto rounded-lg bg-white shadow-sm"
-      style={{ maxHeight: `calc(100vh - ${stickyTop + 170}px)` }}
+      // "Magnetische" Monatsgrenzen: proximity statt mandatory, damit nur
+      // schnelle/weite Scrolls in der Nähe eines Monatsanfangs einrasten —
+      // feines Scrollen Tag für Tag bleibt frei (siehe scrollSnapAlign an
+      // den Monats-Erster-Tag-Zellen unten).
+      style={{ maxHeight: `calc(100vh - ${stickyTop + 170}px)`, scrollSnapType: 'x proximity' }}
     >
-      <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth + (showSummary ? SUMMARY_TOTAL_WIDTH : 0) }}>
+      <div style={{ minWidth: labelColWidth + trackWidth + (showSummary ? SUMMARY_TOTAL_WIDTH : 0) }}>
         {/* Monats-/Tages-Header — sticky innerhalb DIESES Containers, siehe
             Kommentar in JournalGrid.tsx (gleicher Grund). */}
         <div className="sticky top-0 z-30 flex border-b bg-white">
-          <div className="sticky left-0 z-20 flex shrink-0 items-center bg-white px-1.5 py-2" style={{ width: LABEL_COL_WIDTH }}>
+          <div className="sticky left-0 z-20 flex shrink-0 items-center bg-white px-1.5 py-2" style={{ width: labelColWidth }}>
             <ParcelHeaderSort sort={sort} onSort={onSort} />
           </div>
           <div className="flex">
@@ -375,7 +455,7 @@ export default function JournalGridClassic({
                   className={`shrink-0 pt-1 text-center text-[8px] leading-tight text-gray-400 ${
                     isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
                   } ${d === today ? 'bg-yellow-300/70 font-bold text-gray-700' : isWeekend(d) ? 'bg-gray-100' : ''}`}
-                  style={{ width: cellWidth }}
+                  style={{ width: cellWidth, scrollSnapAlign: isFirstOfMonth ? 'start' : undefined }}
                 >
                   {isFirstOfMonth && <div className="font-semibold text-gray-600">{monthLabel(d)}</div>}
                   <div>{dow}</div>
@@ -398,6 +478,8 @@ export default function JournalGridClassic({
             bars={barsByParcel[p.id] ?? []}
             cellWidth={cellWidth}
             trackWidth={trackWidth}
+            labelColWidth={labelColWidth}
+            isMobile={isMobile}
             armedDate={armed?.parcelId === p.id ? armed.date : null}
             today={today}
             extendWindowStart={extendWindowStart}
@@ -421,8 +503,8 @@ export default function JournalGridClassic({
         ).map((row) => (
           <div key={row.key} className="flex border-b bg-gray-50/50">
             <div
-              className="sticky left-0 z-10 flex shrink-0 items-center bg-gray-50 p-2 text-[10px] font-medium text-gray-600"
-              style={{ width: LABEL_COL_WIDTH, height: FARM_ROW_HEIGHT }}
+              className="sticky left-0 z-10 flex shrink-0 items-center truncate bg-gray-50 p-2 text-[10px] font-medium text-gray-600"
+              style={{ width: labelColWidth, height: FARM_ROW_HEIGHT }}
             >
               {row.label}
             </div>

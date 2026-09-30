@@ -89,7 +89,7 @@ export default function JournalGrid({
     <div
       ref={scrollRef}
       className="overflow-auto rounded-lg bg-white shadow-sm"
-      style={{ maxHeight: `calc(100vh - ${stickyTop + 170}px)` }}
+      style={{ maxHeight: `calc(100vh - ${stickyTop + 170}px)`, scrollSnapType: 'x proximity' }}
     >
       <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth + (showSummary ? SUMMARY_TOTAL_WIDTH : 0) }}>
         {/* Monats-/Tages-Header — sticky innerhalb DIESES Containers: der
@@ -111,7 +111,7 @@ export default function JournalGrid({
                   className={`shrink-0 pt-1 text-center text-[9px] leading-tight text-gray-400 ${
                     isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
                   } ${d === today ? 'bg-yellow-300/70 font-bold text-gray-700' : isWeekend(d) ? 'bg-gray-100' : ''}`}
-                  style={{ width: CELL_WIDTH }}
+                  style={{ width: CELL_WIDTH, scrollSnapAlign: isFirstOfMonth ? 'start' : undefined }}
                 >
                   {isFirstOfMonth && <div className="font-semibold text-gray-600">{monthLabel(d)}</div>}
                   <div>{dow}</div>

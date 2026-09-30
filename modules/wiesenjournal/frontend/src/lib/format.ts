@@ -232,6 +232,32 @@ export const PARCEL_SOURCE_LABEL: Record<string, string> = {
 
 export const DUENGUNG_CODES = ['RGv', 'RGk', 'RMI', 'RMs', 'SG', 'SM', 'A', 'H', 'V'] as const
 
+// Wortweise Abkürzung statt reinem Mitten-Abschneiden (CSS truncate) — für
+// die schmale Kultur-Zeile auf Smartphones (siehe JournalGridClassic.tsx).
+// Wortliste statt vollständigem Namens-Katalog: deckt die im GELAN-
+// Kulturartenkatalog üblichen Bausteine ab und bleibt auch bei bisher
+// unbekannten Kulturnamen lesbar (statt eine unvollständige Tabelle zu
+// pflegen, die bei neuen Namen einfach nichts abkürzt).
+const KULTUR_WORD_ABBR: [RegExp, string][] = [
+  [/\bwenig intensiv\b/gi, 'wenig int.'],
+  [/\bextensiv\b/gi, 'ext.'],
+  [/\bintensiv\b/gi, 'int.'],
+  [/\bgenutzte[n]?\b/gi, ''],
+  [/\bübrige[n]?\b/gi, 'üb.'],
+  [/\bdauerwiesen\b/gi, 'Dauerw.'],
+  [/\bdauergrünfläche\b/gi, 'DauerGrünfl.'],
+  [/\bkunstwiesen\b/gi, 'Kunstw.'],
+  [/\bmit beitrag\b/gi, '(mB)'],
+  [/\bohne beitrag\b/gi, '(oB)'],
+  [/\bohne weiden\b/gi, '(o.Wd)'],
+]
+
+export function abbreviateKultur(name: string): string {
+  let s = name
+  for (const [re, repl] of KULTUR_WORD_ABBR) s = s.replace(re, repl)
+  return s.replace(/\s+/g, ' ').trim()
+}
+
 export const INTENSITAET_LABEL: Record<string, string> = {
   i: 'intensiv',
   wi: 'wenig intensiv',
