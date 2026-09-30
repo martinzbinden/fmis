@@ -338,9 +338,20 @@ export default function DayEntryEditorClassic({
         <div
           className="space-y-4"
           onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && hasExisting && !saving) {
+            if (e.key !== 'Enter' || saving) return
+            // Ctrl/Cmd+Enter: bei bewaffneter Löschbestätigung diese
+            // bestätigen (siehe Löschen-Knopf), sonst direkt definitiv
+            // speichern — ohne Rückfrage, das IST hier die Bestätigung.
+            // Enter allein: wie "Arbeit planen", wenn verfügbar, sonst wie
+            // "Eintrag speichern" (showPlanButton ist bereits genau dieser
+            // Fall-Test).
+            if (e.ctrlKey || e.metaKey) {
               e.preventDefault()
-              void handleDelete()
+              if (confirmDelete) void handleDelete()
+              else void save(false)
+            } else if (!e.shiftKey && !e.altKey) {
+              e.preventDefault()
+              void save(showPlanButton)
             }
           }}
         >
@@ -606,7 +617,7 @@ export default function DayEntryEditorClassic({
                   type="button"
                   onClick={() => save(true)}
                   disabled={saving}
-                  title="Als Plan speichern — auffällig umrahmt, noch kein definitiver Eintrag"
+                  title="Als Plan speichern — auffällig umrahmt, noch kein definitiver Eintrag (Kürzel: Enter)"
                   className="rounded-lg border-2 border-dashed border-gray-500 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50"
                 >
                   Arbeit planen
@@ -616,6 +627,7 @@ export default function DayEntryEditorClassic({
                 type="button"
                 onClick={() => save(false)}
                 disabled={saving}
+                title={showPlanButton ? 'Kürzel: Ctrl+Enter' : 'Kürzel: Enter oder Ctrl+Enter'}
                 className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
               >
                 {saving ? 'Speichert…' : 'Eintrag speichern'}
