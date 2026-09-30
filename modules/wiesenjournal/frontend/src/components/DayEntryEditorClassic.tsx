@@ -12,6 +12,7 @@ import {
   addDaysIso,
   fmtDate,
   isoDateRange,
+  todayIso,
   type UsageColorFamily,
 } from '../lib/format'
 import { deleteFertilizationEntry, loadFertilizerTypes, saveFertilizationEntry } from '../lib/fertilization'
@@ -115,8 +116,18 @@ export default function DayEntryEditorClassic({
   const [fert, setFert] = useState<FertState>(EMPTY_FERT)
   const [existingFert, setExistingFert] = useState<FertilizationEntry | null>(null)
 
+  // "Arbeit planen" (siehe save()) nur für heute/künftige Tage anbieten —
+  // vergangene Tage werden dokumentiert, nicht geplant. wasPlanned merkt sich
+  // den beim Laden vorgefundenen Stand, damit der Knopf verschwindet, sobald
+  // hier schon ein DEFINITIVER Eintrag liegt (sonst könnte man ihn aus
+  // Versehen wieder zu einem Plan zurückstufen).
+  const canPlan = date >= todayIso()
+  const [wasPlanned, setWasPlanned] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
   useEffect(() => {
     let cancelled = false
+    setConfirmDelete(false)
     ;(async () => {
       try {
       const pg = await getDb()
@@ -136,6 +147,8 @@ export default function DayEntryEditorClassic({
       setExistingByDate(byDateSingle)
 
       const run = findRunAt(days, byDate)
+      const f0 = fertilizations[0] ?? null
+      setWasPlanned(!!run?.entry.is_planned || !!f0?.is_planned)
       if (run) {
         const runDays = isoDateRange(date, addDaysIso(date, run.span - 1))
         setInitialRunDays(runDays)
@@ -161,7 +174,7 @@ export default function DayEntryEditorClassic({
         setRangeOpen(false)
       }
 
-      const f = fertilizations[0] ?? null
+      const f = f0
       setExistingFert(f)
       if (f) {
         const typeId = f.fertilizer_type_id ?? ftypes.find((t) => t.legacy_code === f.duengung_code)?.id ?? ftypes[0]?.id ?? ''
@@ -220,7 +233,7 @@ export default function DayEntryEditorClassic({
     return null
   }
 
-  async function save() {
+  async function save(planned: boolean) {
     setSaving(true)
     try {
       const usageType = resolveUsageType()
@@ -248,6 +261,7 @@ export default function DayEntryEditorClassic({
           paddock_version_id: existing?.paddock_version_id ?? null,
           notes: notes.trim() || null,
           import_key: existing?.import_key ?? null,
+          is_planned: planned,
         } as never)
       }
 
@@ -276,6 +290,7 @@ export default function DayEntryEditorClassic({
           track_id: null,
           track_width_m: null,
           import_key: fert.importKey,
+          is_planned: planned,
         })
       }
 
@@ -286,8 +301,32 @@ export default function DayEntryEditorClassic({
     }
   }
 
+  // "Löschen" mit Sicherheitsabfrage: erster Klick bewaffnet (Knopf wird zur
+  // Rückfrage), zweiter Klick oder Ctrl/Cmd+Enter (siehe Tastatur-Handler im
+  // Modal) löscht sofort — verhindert ein versehentliches Löschen, ohne für
+  // Vielnutzer einen eigenen Dialog zu brauchen.
+  async function handleDelete() {
+    setSaving(true)
+    try {
+      for (const d of initialRunDays) {
+        const existing = existingByDate[d]
+        if (existing) await softDeleteRow('usage_entries', existing.id)
+      }
+      if (existingFert) {
+        const pg = await getDb()
+        await deleteFertilizationEntry(pg, existingFert.id)
+      }
+      onSaved()
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const input = 'rounded border border-gray-300 px-2 py-1.5 text-xs'
   const FAMILY_OPTIONS: (UsageColorFamily | 'keine')[] = ['keine', 'weide', 'eingrasen', 'silage', 'duerr', 'pflege', 'sonstig']
+  const hasExisting = initialRunDays.length > 0 || existingFert !== null
+  const showPlanButton = canPlan && !(hasExisting && !wasPlanned)
 
   return (
     <Modal title={`${parcel.name} · ${fmtDate(date)}`} onClose={onClose}>
@@ -296,7 +335,15 @@ export default function DayEntryEditorClassic({
       ) : loadError ? (
         <p className="rounded bg-red-50 p-3 text-sm text-red-700">{loadError}</p>
       ) : (
-        <div className="space-y-4">
+        <div
+          className="space-y-4"
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && hasExisting && !saving) {
+              e.preventDefault()
+              void handleDelete()
+            }
+          }}
+        >
           <section>
             <h3 className="mb-2 text-sm font-bold text-gray-700">Nutzung</h3>
             <div className="flex flex-wrap gap-1.5">
@@ -533,18 +580,47 @@ export default function DayEntryEditorClassic({
             />
           </section>
 
-          <div className="flex justify-end gap-2 border-t pt-3">
-            <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-gray-600">
-              Abbrechen
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving}
-              className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {saving ? 'Speichert…' : 'Speichern'}
-            </button>
+          <div className="flex items-center justify-between gap-2 border-t pt-3">
+            {hasExisting ? (
+              <button
+                type="button"
+                onClick={() => (confirmDelete ? void handleDelete() : setConfirmDelete(true))}
+                onBlur={() => setConfirmDelete(false)}
+                disabled={saving}
+                title="Nochmals klicken oder Ctrl+Enter zum Bestätigen"
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
+                  confirmDelete ? 'bg-red-600 text-white' : 'text-red-600'
+                }`}
+              >
+                {confirmDelete ? 'Wirklich löschen?' : 'Löschen'}
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-gray-600">
+                Abbrechen
+              </button>
+              {showPlanButton && (
+                <button
+                  type="button"
+                  onClick={() => save(true)}
+                  disabled={saving}
+                  title="Als Plan speichern — auffällig umrahmt, noch kein definitiver Eintrag"
+                  className="rounded-lg border-2 border-dashed border-gray-500 px-3 py-1.5 text-sm font-medium text-gray-700 disabled:opacity-50"
+                >
+                  Arbeit planen
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => save(false)}
+                disabled={saving}
+                className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {saving ? 'Speichert…' : 'Eintrag speichern'}
+              </button>
+            </div>
           </div>
         </div>
       )}

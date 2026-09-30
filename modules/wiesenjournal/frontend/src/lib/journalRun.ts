@@ -7,7 +7,10 @@ export interface UsageBar {
 }
 
 function usageSignature(e: UsageEntry): string {
-  return `${e.usage_type}|${e.animal_category ?? ''}|${e.day_only ? 1 : 0}|${e.label ?? ''}`
+  // is_planned Teil der Signatur: ein Plan neben einem inhaltlich gleichen
+  // definitiven Eintrag soll NICHT verschmelzen, sonst verschwindet dessen
+  // auffälliger Rahmen im gemeinsamen Balken (siehe JournalGridClassic.tsx).
+  return `${e.usage_type}|${e.animal_category ?? ''}|${e.day_only ? 1 : 0}|${e.label ?? ''}|${e.is_planned ? 1 : 0}`
 }
 
 export function sameUsageRun(a: UsageEntry, b: UsageEntry): boolean {

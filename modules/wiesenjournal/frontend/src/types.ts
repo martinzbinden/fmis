@@ -91,6 +91,7 @@ export interface UsageEntry {
   yield_amount: number | null
   yield_unit: YieldUnit | null
   import_key: string | null
+  is_planned: boolean
 }
 
 export type DuengungCode = 'RGv' | 'RGk' | 'RMI' | 'RMs' | 'SG' | 'SM' | 'A' | 'H' | 'V'
@@ -145,6 +146,7 @@ export interface FertilizationEntry {
   p2o5_kg: number | null
   k2o_kg: number | null
   import_key: string | null
+  is_planned: boolean
 }
 
 // Anteil einer Massnahme an einer Journal-(GELAN-)Parzelle.

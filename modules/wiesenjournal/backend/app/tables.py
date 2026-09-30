@@ -17,7 +17,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "parcel_id", "entry_date", "usage_type", "animal_count",
         "animal_group", "paddock_version_id", "notes", "updated_at", "deleted_at",
         "animal_category", "day_only", "label", "value_num", "yield_amount",
-        "yield_unit", "import_key",
+        "yield_unit", "import_key", "is_planned",
     ],
     # fertilizer_types VOR fertilization_entries, fertilization_shares DANACH
     # (Pull wendet Tabellen in dieser Reihenfolge an; shares haben echte FKs).
@@ -32,7 +32,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "gabe_number", "notes", "updated_at", "deleted_at",
         "fertilizer_type_id", "dilution", "dilution_factor", "container_count",
         "extent_type", "track_id", "track_width_m", "geometry", "area_a",
-        "n_kg", "n_avail_kg", "p2o5_kg", "k2o_kg", "import_key",
+        "n_kg", "n_avail_kg", "p2o5_kg", "k2o_kg", "import_key", "is_planned",
     ],
     "fertilization_shares": [
         "id", "entry_id", "parcel_id", "area_a", "n_kg", "n_avail_kg",

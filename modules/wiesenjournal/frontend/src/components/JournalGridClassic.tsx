@@ -174,7 +174,13 @@ const ClassicRow = memo(function ClassicRow({
                 background: dayOnly ? `${color}22` : color,
                 border: dayOnly ? `1.5px solid ${color}` : 'none',
                 color: dayOnly ? color : '#ffffff',
+                // Planungseintrag: auffälliger gestrichelter Rahmen, unabhängig
+                // von der Tagweide-Umrandung oben (eigene CSS-Eigenschaft, kein
+                // Konflikt mit "border").
+                outline: bar.entry.is_planned ? '2px dashed #1e293b' : 'none',
+                outlineOffset: bar.entry.is_planned ? 1 : 0,
               }}
+              title={bar.entry.is_planned ? 'Geplant — noch kein definitiver Eintrag' : undefined}
             >
               <span className="text-[10px] font-bold">{letter}</span>
               {detail && <span className="mt-0.5 max-w-full truncate text-[8px] font-normal opacity-90">{detail}</span>}
@@ -218,14 +224,27 @@ const ClassicRow = memo(function ClassicRow({
           if (fert.length === 0) return null
           const amount = fert[0].amount
           const showAmount = cellWidth >= 24 && amount != null
+          const planned = fert[0].is_planned
           return (
-            <div key={`fert-${d}`} className="pointer-events-none absolute" style={{ left: idx * cellWidth + 2, width: cellWidth - 4, bottom: 3 }}>
+            <div
+              key={`fert-${d}`}
+              className="pointer-events-none absolute"
+              style={{ left: idx * cellWidth + 2, width: cellWidth - 4, bottom: 3 }}
+              title={planned ? 'Geplant — noch kein definitiver Eintrag' : undefined}
+            >
               {showAmount && (
                 <div className="mb-0.5 truncate text-center text-[7px] font-semibold leading-none text-amber-800">
                   {amount}
                 </div>
               )}
-              <div className="rounded-sm" style={{ height: 4, background: '#92400e' }} />
+              <div
+                className="rounded-sm"
+                style={
+                  planned
+                    ? { height: 4, background: '#92400e22', border: '1.5px dashed #92400e' }
+                    : { height: 4, background: '#92400e' }
+                }
+              />
             </div>
           )
         })}
@@ -330,6 +349,7 @@ export default function JournalGridClassic({
       paddock_version_id: e.paddock_version_id,
       notes: e.notes,
       import_key: null,
+      is_planned: e.is_planned,
     } as never)
   }, [])
 

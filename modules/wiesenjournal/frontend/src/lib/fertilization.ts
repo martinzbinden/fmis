@@ -75,6 +75,7 @@ export interface FertInput {
   track_id: string | null          // bei 'track'
   track_width_m: number | null
   import_key: string | null
+  is_planned?: boolean
 }
 
 function scaleNutrients(n: Nutrients, frac: number): Nutrients {
@@ -139,6 +140,7 @@ export async function saveFertilizationEntry(pg: PGlite, input: FertInput): Prom
     area_a: areaA,
     ...nutrients,
     import_key: input.import_key,
+    is_planned: input.is_planned ?? false,
   } as never)
 
   const { rows: existing } = await pg.query<FertilizationShare>(
