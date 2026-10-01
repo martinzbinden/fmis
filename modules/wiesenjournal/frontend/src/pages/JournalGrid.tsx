@@ -117,11 +117,11 @@ export default function JournalGridPage() {
   // oben — reine Anzeige-Umschichtung NACH der Sortierung, verändert deren
   // Ergebnis innerhalb der zwei Gruppen nicht (Array.sort ist stabil).
   const [activeFirst, setActiveFirst] = useState(false)
-  // "BFF": schneller Zugriff auf dieselbe Kategorie, die auch als Filter-Chip
-  // existiert (lib/parcelFilter.ts) — als eigener Schalter statt nur über
-  // das Filterfeld, weil die BFF-Ansicht für Beitragsnachweise regelmässig
-  // gebraucht wird. Session-only wie "Aktive zuerst", keine Dauereinstellung.
-  const [bffOnly, setBffOnly] = useState(false)
+  // "BFF": wie der Ackerkulturen-Schalter — standardmässig ausgeblendet,
+  // Schalter zeigt sie dazu (statt wie der Filter-Chip in lib/parcelFilter.ts
+  // ausschliesslich auf BFF einzuschränken). Session-only wie "Aktive
+  // zuerst", keine Dauereinstellung.
+  const [showBff, setShowBff] = useState(false)
 
   const allParcels = data?.parcels ?? []
   const parcels = useMemo(() => {
@@ -129,15 +129,15 @@ export default function JournalGridPage() {
     if (filterChips.length > 0) {
       list = list.filter((p) => filterChips.some((c) => parcelMatchesChip(p, c)))
     }
-    if (bffOnly) {
-      list = list.filter((p) => matchesVirtualCategory(p, 'bff'))
+    if (!showBff) {
+      list = list.filter((p) => !matchesVirtualCategory(p, 'bff'))
     }
     const q = search.trim().toLowerCase()
     if (q) {
       list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.kultur_name_de ?? '').toLowerCase().includes(q))
     }
     return sortParcels(list, sort)
-  }, [allParcels, filterChips, bffOnly, search, sort])
+  }, [allParcels, filterChips, showBff, search, sort])
 
   const usageByDay = useMemo(() => indexByParcelAndDay<UsageEntry>(data?.usage ?? []), [data])
   // Düngung je Parzelle über die Anteile (Polygon/Track/mehrere Parzellen
@@ -191,10 +191,10 @@ export default function JournalGridPage() {
         <div className="flex flex-wrap items-center gap-2">
           <AckerToggle />
           <ToggleSwitch
-            checked={bffOnly}
-            onChange={setBffOnly}
+            checked={showBff}
+            onChange={setShowBff}
             label="BFF"
-            title="Nur Biodiversitätsförderflächen (BFF) anzeigen"
+            title="Biodiversitätsförderflächen (BFF) ein-/ausblenden"
           />
           <ToggleSwitch
             checked={activeFirst}
