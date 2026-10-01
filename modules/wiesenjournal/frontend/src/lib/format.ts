@@ -120,6 +120,19 @@ export const ANIMAL_CATEGORY_LABEL: Record<string, string> = {
   legehennen: 'Legehennen',
 }
 
+// Für Kartenmarker (PaddockMap.tsx AnimalGroupMarkersLayer) — es gibt kein
+// eigenes Emoji je Rindergruppe, darum zusätzlich der Buchstabe aus
+// ANIMAL_CATEGORY_LETTER auf dem Marker, um Kühe/Rinder/Kälber/Galtkühe
+// trotz ähnlichem Symbol sicher zu unterscheiden.
+export const ANIMAL_CATEGORY_ICON: Record<string, string> = {
+  kuehe: '🐄',
+  rinder: '🐂',
+  kaelber: '🐮',
+  galtkuehe: '🐄',
+  schafe: '🐑',
+  legehennen: '🐔',
+}
+
 export const YIELD_UNIT_LABEL: Record<string, string> = {
   rb: 'Rundballen',
   fu: 'Fuder',

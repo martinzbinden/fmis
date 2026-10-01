@@ -6,8 +6,17 @@ import 'leaflet-draw'
 import { colorForKultur } from '@fmis/fields/lib/kulturColor'
 import 'leaflet-draw/dist/leaflet.draw.css'
 import LocateControl from '@fmis/core/LocateControl'
+import { getDb } from '../db/pglite'
 import { loadFieldsBackground, type FieldsBackgroundFeature } from '../lib/fieldsBackground'
-import { WEED_TYPE_COLOR, WEED_TYPE_LABEL } from '../lib/format'
+import {
+  ANIMAL_CATEGORY_ICON,
+  ANIMAL_CATEGORY_LABEL,
+  ANIMAL_CATEGORY_LETTER,
+  WEED_TYPE_COLOR,
+  WEED_TYPE_LABEL,
+  addDaysIso,
+  todayIso,
+} from '../lib/format'
 import { fetchFertilizationMap, type FertilizationMapProps } from '../lib/report'
 import type { TrackPoint } from '../lib/tracking'
 import type { Paddock, Parcel, Track, WeedObservation } from '../types'
@@ -182,6 +191,170 @@ function FocusHighlightLayer({ parcel }: { parcel: Parcel | undefined }) {
       map.removeLayer(layer)
     }
   }, [map, parcel])
+  return null
+}
+
+/** Tiergruppen gemäss Wiesenjournal als Symbol auf der Karte — je Parzelle
+ * mit einer heutigen Weide-Nutzung ein Marker am Flächenschwerpunkt, Symbol
+ * + Buchstabe nach Tierkategorie (siehe lib/format.ts). Verknüpft über
+ * usage_entries.parcel_id statt paddock_version_id: Letzteres wird vom
+ * Tageseditor nirgends tatsächlich gesetzt (immer null), Ersteres ist auf
+ * jedem Eintrag verlässlich vorhanden. */
+function AnimalGroupMarkersLayer({ parcels, today }: { parcels: Parcel[]; today: string }) {
+  const map = useMap()
+  const [rows, setRows] = useState<{ parcel_id: string; animal_category: string }[]>([])
+
+  useEffect(() => {
+    let active = true
+    getDb()
+      .then((pg) =>
+        pg.query<{ parcel_id: string; animal_category: string }>(
+          `select distinct parcel_id, animal_category from usage_entries
+           where usage_type = 'weide' and animal_category is not null and entry_date = $1 and deleted_at is null`,
+          [today],
+        ),
+      )
+      .then(({ rows }) => {
+        if (active) setRows(rows)
+      })
+    return () => {
+      active = false
+    }
+  }, [today])
+
+  useEffect(() => {
+    const byParcel = new Map(parcels.map((p) => [p.id, p]))
+    // Zwei Gruppen auf derselben Parzelle am selben Tag (selten, z.B.
+    // Mischweide) sonst exakt deckungsgleich — minimaler Versatz pro
+    // weiterem Marker, damit beide antippbar bleiben.
+    const seenAtParcel = new Map<string, number>()
+    const group = L.layerGroup()
+    for (const r of rows) {
+      const parcel = byParcel.get(r.parcel_id)
+      if (!parcel?.base_geometry) continue
+      const center = L.geoJSON(JSON.parse(parcel.base_geometry) as never).getBounds().getCenter()
+      const n = seenAtParcel.get(r.parcel_id) ?? 0
+      seenAtParcel.set(r.parcel_id, n + 1)
+      const lat = center.lat + n * 0.00012
+      const icon = L.divIcon({
+        className: '',
+        html:
+          `<div style="position:relative;font-size:20px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5))">` +
+          `${ANIMAL_CATEGORY_ICON[r.animal_category] ?? '🐾'}` +
+          `<span style="position:absolute;bottom:-3px;right:-5px;background:#fff;border:1px solid #334155;border-radius:50%;` +
+          `width:13px;height:13px;font-size:8px;line-height:12px;text-align:center;font-weight:700;color:#334155">` +
+          `${ANIMAL_CATEGORY_LETTER[r.animal_category] ?? ''}</span></div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      })
+      L.marker([lat, center.lng], { icon })
+        .bindTooltip(`${ANIMAL_CATEGORY_LABEL[r.animal_category] ?? r.animal_category} · ${parcel.name}`)
+        .addTo(group)
+    }
+    group.addTo(map)
+    return () => {
+      map.removeLayer(group)
+    }
+  }, [map, rows, parcels])
+
+  return null
+}
+
+// Farbrampe Weidetage (Schafe) für die Parasitendruck-Karte.
+const SHEEP_RAMP: [number, string][] = [
+  [1, '#fef9c3'],
+  [3, '#fde047'],
+  [7, '#fb923c'],
+  [14, '#f97316'],
+  [30, '#dc2626'],
+  [60, '#7f1d1d'],
+]
+function sheepColor(days: number): string {
+  let c = SHEEP_RAMP[0][1]
+  for (const [t, col] of SHEEP_RAMP) if (days >= t) c = col
+  return c
+}
+
+/** Parasitendruck-Karte für Schafweiden: Weidetage mit Schafen je Parzelle
+ * im gewählten Zeitraum, als Farbrampe — rein client-seitig aus
+ * usage_entries gezählt (anders als die Düngungskarte kein geometrischer
+ * Verschnitt nötig, eine Parzelle ist bereits die richtige Einheit). */
+function SheepPressureLayer({
+  parcels,
+  from,
+  to,
+  onInfo,
+}: {
+  parcels: Parcel[]
+  from: string
+  to: string
+  onInfo: (msg: string | null) => void
+}) {
+  const map = useMap()
+  const [counts, setCounts] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    let active = true
+    onInfo(null)
+    getDb()
+      .then((pg) =>
+        pg.query<{ parcel_id: string; days: unknown }>(
+          `select parcel_id, count(distinct entry_date) as days from usage_entries
+           where usage_type = 'weide' and animal_category = 'schafe' and deleted_at is null
+             and entry_date between $1 and $2
+           group by parcel_id`,
+          [from, to],
+        ),
+      )
+      .then(({ rows }) => {
+        if (!active) return
+        const next: Record<string, number> = {}
+        for (const r of rows) next[r.parcel_id] = Number(r.days)
+        setCounts(next)
+        if (rows.length === 0) onInfo('Keine Schafweide-Einträge im gewählten Zeitraum.')
+      })
+    return () => {
+      active = false
+    }
+  }, [from, to, onInfo])
+
+  useEffect(() => {
+    const features = parcels
+      .filter((p) => p.base_geometry && counts[p.id] > 0)
+      .map((p) => ({
+        type: 'Feature' as const,
+        properties: { name: p.name, days: counts[p.id] },
+        geometry: JSON.parse(p.base_geometry!),
+      }))
+    if (features.length === 0) return
+    const layer = L.geoJSON({ type: 'FeatureCollection', features } as never, {
+      style: (f) => ({ color: '#7f1d1d', weight: 0.5, fillColor: sheepColor((f?.properties as { days: number }).days), fillOpacity: 0.6 }),
+      onEachFeature: (f, l) => {
+        const p = f.properties as { name: string; days: number }
+        l.bindTooltip(`${p.name} · ${p.days} Weidetag${p.days === 1 ? '' : 'e'} (Schafe)`, { sticky: true })
+      },
+    })
+    layer.addTo(map)
+    const Legend = L.Control.extend({
+      onAdd: () => {
+        const div = L.DomUtil.create('div', 'rounded bg-white/90 p-2 text-[10px] leading-tight shadow')
+        div.innerHTML =
+          '<div class="mb-1 font-semibold">Weidetage (Schafe)</div>' +
+          SHEEP_RAMP.map(([t, c], i) => {
+            const next = SHEEP_RAMP[i + 1]?.[0]
+            return `<div class="flex items-center gap-1"><span style="background:${c};width:14px;height:10px;display:inline-block;border:1px solid #7f1d1d"></span>${next ? `${t}–${next - 1}` : `≥ ${t}`}</div>`
+          }).join('')
+        return div
+      },
+    })
+    const legend = new Legend({ position: 'bottomleft' })
+    legend.addTo(map)
+    return () => {
+      map.removeLayer(layer)
+      map.removeControl(legend)
+    }
+  }, [map, parcels, counts])
+
   return null
 }
 
@@ -446,6 +619,15 @@ export default function PaddockMap({
   const [showFertilization, setShowFertilization] = useState(false)
   const [showHeat, setShowHeat] = useState(false)
   const [heatError, setHeatError] = useState<string | null>(null)
+  // Tiergruppen (heutige Weide-Nutzung) — standardmässig an, im Gegensatz zu
+  // den übrigen Overlays die Hauptsache, wenn man auf die Karte schaut.
+  const [showAnimals, setShowAnimals] = useState(true)
+  const [showSheep, setShowSheep] = useState(false)
+  const [sheepWindow, setSheepWindow] = useState<'2months' | 'year'>('2months')
+  const [sheepInfo, setSheepInfo] = useState<string | null>(null)
+  const today = todayIso()
+  const sheepFrom = sheepWindow === '2months' ? addDaysIso(today, -60) : `${seasonYear}-01-01`
+  const sheepTo = sheepWindow === '2months' ? today : `${seasonYear}-12-31`
   const [isFullscreen, setIsFullscreen] = useState(false)
   const mapRef = useRef<L.Map | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -537,6 +719,40 @@ export default function PaddockMap({
         </button>
         <button
           type="button"
+          onClick={() => setShowAnimals((v) => !v)}
+          title="Tiergruppen gemäss Wiesenjournal (heutige Weide-Nutzung) als Symbol anzeigen"
+          className={`rounded px-2 py-1 font-medium ${showAnimals ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-gray-600'}`}
+        >
+          🐄 Tiergruppen
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowSheep((v) => !v)}
+          title="Parasitendruck: Weidetage mit Schafen je Parzelle im gewählten Zeitraum"
+          className={`rounded px-2 py-1 font-medium ${showSheep ? 'bg-red-800 text-white' : 'bg-gray-100 text-gray-600'}`}
+        >
+          🐑 Parasitendruck
+        </button>
+        {showSheep && (
+          <div className="flex overflow-hidden rounded border border-red-800">
+            <button
+              type="button"
+              onClick={() => setSheepWindow('2months')}
+              className={`px-2 py-1 font-medium ${sheepWindow === '2months' ? 'bg-red-800 text-white' : 'bg-white text-red-800'}`}
+            >
+              2 Mte.
+            </button>
+            <button
+              type="button"
+              onClick={() => setSheepWindow('year')}
+              className={`px-2 py-1 font-medium ${sheepWindow === 'year' ? 'bg-red-800 text-white' : 'bg-white text-red-800'}`}
+            >
+              Jahr
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
           onClick={() => mapRef.current?.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true })}
           title="Auf meinen Standort zoomen"
           className="rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
@@ -568,6 +784,8 @@ export default function PaddockMap({
         {focusParcelId && <FocusHighlightLayer parcel={focusParcel} />}
         {showFertilization && <FertilizationLayer features={fertilization} />}
         {showHeat && <FertilizationHeatLayer seasonYear={seasonYear} onError={setHeatError} />}
+        {showAnimals && <AnimalGroupMarkersLayer parcels={parcels} today={today} />}
+        {showSheep && <SheepPressureLayer parcels={parcels} from={sheepFrom} to={sheepTo} onInfo={setSheepInfo} />}
         {showTemplate && <FieldsTemplateLayer onAdopt={onAdoptFieldsGeometry} />}
         <DrawLayer paddocks={paddocks} onCreated={onCreated} onEdited={onEdited} onDeleted={onDeleted} onSelect={onSelect} />
         <TracksLayer tracks={tracks} livePoints={livePoints} />
@@ -577,6 +795,9 @@ export default function PaddockMap({
       </MapContainer>
       {showHeat && heatError && (
         <div className="border-t bg-amber-50 p-2 text-center text-xs text-amber-800">{heatError}</div>
+      )}
+      {showSheep && sheepInfo && (
+        <div className="border-t bg-red-50 p-2 text-center text-xs text-red-800">{sheepInfo}</div>
       )}
       {pickingLocation && (
         <div className="border-t bg-amber-50 p-2 text-center text-xs font-medium text-amber-800">
