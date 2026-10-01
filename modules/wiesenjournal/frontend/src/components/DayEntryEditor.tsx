@@ -287,6 +287,9 @@ export default function DayEntryEditor({
           paddock_version_id: row.paddock_version_id,
           notes: row.notes.trim() || null,
           import_key: row.import_key,
+          // Dieser Editor kennt keine Planungseinträge (nur
+          // DayEntryEditorClassic.tsx) — immer definitiv.
+          is_planned: false,
         } as never)
       }
 
