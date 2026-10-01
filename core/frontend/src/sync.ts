@@ -1,5 +1,5 @@
 import type { PGlite } from '@electric-sql/pglite'
-import { API_URL, getToken } from './auth'
+import { API_URL, getToken, logout } from './auth'
 
 export type SyncStatus = 'offline' | 'synced' | 'syncing' | 'error'
 
@@ -16,6 +16,25 @@ export interface SyncClient {
 function authHeaders(): Record<string, string> {
   const token = getToken()
   return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+/**
+ * Abgelaufenes oder entzogenes Token am eigenen Backend (fmis-api liegt
+ * bewusst NICHT hinter Authelia, siehe core/backend/fmis_core/auth.py) wird
+ * hier bislang nirgends erkannt: push()/pull() werfen bei jedem Fehlschlag
+ * denselben generischen Error, syncNow() faengt ihn als stillen
+ * Sync-Status "error" ab (SyncStatusDot) — ohne jemals zur Anmeldung
+ * zurueckzufuehren. Bei einem 60-Sekunden-Takt scheitert das nach
+ * Tokenablauf endlos leise, bis jemand von Hand neu laedt. Analog zu
+ * fetchModules()' eigener 401-Behandlung in modulesApi.ts, nur hier per
+ * echtem Neuladen statt React-State: dieser Code liegt ausserhalb des
+ * Komponentenbaums und hat kein onLoggedOut() zur Hand.
+ */
+function handleUnauthorized(res: Response): void {
+  if (res.status === 401) {
+    logout()
+    window.location.reload()
+  }
 }
 
 function formatValue(value: unknown, dateOnly: boolean): unknown {
@@ -121,6 +140,7 @@ export function createSyncClient(
       body: JSON.stringify({ tables: payload }),
     })
     if (!res.ok) {
+      handleUnauthorized(res)
       throw new Error(`Push fehlgeschlagen (${res.status})`)
     }
 
@@ -145,6 +165,7 @@ export function createSyncClient(
 
     const res = await fetch(url.toString(), { headers: authHeaders() })
     if (!res.ok) {
+      handleUnauthorized(res)
       throw new Error(`Pull fehlgeschlagen (${res.status})`)
     }
     const data = (await res.json()) as {
