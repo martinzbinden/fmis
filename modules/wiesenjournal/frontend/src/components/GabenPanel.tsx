@@ -49,7 +49,9 @@ export default function GabenPanel({
       [parcelId, seasonYear],
     )
     setRows(entries.map(rowFromEntry))
-    setTotals(await loadParcelNutrientTotals(pg, parcelId, seasonYear))
+    // Nur definitive Massnahmen zählen als bereits ausgebracht — Geplantes
+    // steht im Parzellenblatt (ParcelSheetModal) separat als "Soll".
+    setTotals(await loadParcelNutrientTotals(pg, parcelId, seasonYear, false))
     setLoading(false)
   }
 
@@ -103,7 +105,7 @@ export default function GabenPanel({
         <div className="space-y-3">
           {totals && (
             <div className="rounded-lg bg-brand-50 p-3 text-sm text-brand-900">
-              <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">Nährstoffe aus den Massnahmen {seasonYear}</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">Nährstoffe aus den definitiven Massnahmen {seasonYear}</div>
               <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-4">
                 <div>N gesamt <b>{totals.n_kg.toFixed(1)} kg</b></div>
                 <div>N verfügbar <b>{totals.n_avail_kg.toFixed(1)} kg</b></div>

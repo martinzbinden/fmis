@@ -191,11 +191,15 @@ export async function loadSharesInRange(
   return rows.map((r) => ({ share: r, entry_date: isoDate(r.entry_date) }))
 }
 
-/** Nährstoff-Summe einer Parzelle in einer Saison (offline, aus den Anteilen). */
+/** Nährstoff-Summe einer Parzelle in einer Saison (offline, aus den Anteilen).
+ * `planned` trennt Geplantes (Soll, noch nicht ausgebracht) von Definitivem
+ * (Ist) — ungefiltert zusammengezählt hätte ein geplanter Gülleeinsatz die
+ * "bereits ausgebrachten" Nährstoffe fälschlich erhöht. */
 export async function loadParcelNutrientTotals(
   pg: PGlite,
   parcelId: string,
   seasonYear: number,
+  planned: boolean,
 ): Promise<{ n_kg: number; n_avail_kg: number; p2o5_kg: number; k2o_kg: number; applications: number }> {
   const { rows } = await pg.query<{ n_kg: unknown; n_avail_kg: unknown; p2o5_kg: unknown; k2o_kg: unknown; applications: unknown }>(
     `select coalesce(sum(s.n_kg), 0) as n_kg, coalesce(sum(s.n_avail_kg), 0) as n_avail_kg,
@@ -203,8 +207,9 @@ export async function loadParcelNutrientTotals(
             count(distinct s.entry_id) as applications
      from fertilization_shares s
      join fertilization_entries e on e.id = s.entry_id and e.deleted_at is null
-     where s.parcel_id = $1 and s.deleted_at is null and extract(year from e.entry_date) = $2`,
-    [parcelId, seasonYear],
+     where s.parcel_id = $1 and s.deleted_at is null and extract(year from e.entry_date) = $2
+       and e.is_planned = $3`,
+    [parcelId, seasonYear, planned],
   )
   const r = rows[0]
   return {

@@ -9,6 +9,7 @@ import JournalGridClassic, { LABEL_COL_WIDTH as LABEL_COL_WIDTH_KLASSISCH } from
 import DayEntryEditor from '../components/DayEntryEditor'
 import DayEntryEditorClassic from '../components/DayEntryEditorClassic'
 import GabenPanel from '../components/GabenPanel'
+import ParcelSheetModal from '../components/ParcelSheetModal'
 import DailyLogEditor from '../components/DailyLogEditor'
 import AckerToggle from '../components/AckerToggle'
 import GridViewToggle from '../components/GridViewToggle'
@@ -22,7 +23,7 @@ import { useRestoreScroll } from '../hooks/useRestoreScroll'
 import { useStickyTopOffset } from '../hooks/useStickyTopOffset'
 import { useViewportWidth, MOBILE_BREAKPOINT } from '../hooks/useViewportWidth'
 import { sortParcels, nextSortState, type SortState } from '../lib/parcelSort'
-import { parcelMatchesChip, type FilterChip } from '../lib/parcelFilter'
+import { matchesVirtualCategory, parcelMatchesChip, type FilterChip } from '../lib/parcelFilter'
 import { summarizeParcels } from '../lib/parcelSummary'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { isoDate, num, todayIso } from '../lib/format'
@@ -103,6 +104,7 @@ export default function JournalGridPage() {
 
   const [editorTarget, setEditorTarget] = useState<{ parcel: Parcel; date: string } | null>(null)
   const [gabenTarget, setGabenTarget] = useState<Parcel | null>(null)
+  const [sheetTarget, setSheetTarget] = useState<Parcel | null>(null)
   const [farmLogDate, setFarmLogDate] = useState<string | null>(null)
 
   // Filter (Freitext + Vorschlags-Knöpfe) und Sortierung — siehe
@@ -115,6 +117,11 @@ export default function JournalGridPage() {
   // oben — reine Anzeige-Umschichtung NACH der Sortierung, verändert deren
   // Ergebnis innerhalb der zwei Gruppen nicht (Array.sort ist stabil).
   const [activeFirst, setActiveFirst] = useState(false)
+  // "BFF": wie der Ackerkulturen-Schalter — standardmässig ausgeblendet,
+  // Schalter zeigt sie dazu (statt wie der Filter-Chip in lib/parcelFilter.ts
+  // ausschliesslich auf BFF einzuschränken). Session-only wie "Aktive
+  // zuerst", keine Dauereinstellung.
+  const [showBff, setShowBff] = useState(false)
 
   const allParcels = data?.parcels ?? []
   const parcels = useMemo(() => {
@@ -122,12 +129,15 @@ export default function JournalGridPage() {
     if (filterChips.length > 0) {
       list = list.filter((p) => filterChips.some((c) => parcelMatchesChip(p, c)))
     }
+    if (!showBff) {
+      list = list.filter((p) => !matchesVirtualCategory(p, 'bff'))
+    }
     const q = search.trim().toLowerCase()
     if (q) {
       list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.kultur_name_de ?? '').toLowerCase().includes(q))
     }
     return sortParcels(list, sort)
-  }, [allParcels, filterChips, search, sort])
+  }, [allParcels, filterChips, showBff, search, sort])
 
   const usageByDay = useMemo(() => indexByParcelAndDay<UsageEntry>(data?.usage ?? []), [data])
   // Düngung je Parzelle über die Anteile (Polygon/Track/mehrere Parzellen
@@ -180,6 +190,12 @@ export default function JournalGridPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <AckerToggle />
+          <ToggleSwitch
+            checked={showBff}
+            onChange={setShowBff}
+            label="BFF"
+            title="Biodiversitätsförderflächen (BFF) ein-/ausblenden"
+          />
           <ToggleSwitch
             checked={activeFirst}
             onChange={setActiveFirst}
@@ -254,7 +270,7 @@ export default function JournalGridPage() {
           summary={summaryByParcel}
           onCellClick={(parcel, date) => setEditorTarget({ parcel, date })}
           onFarmCellClick={(date) => setFarmLogDate(date)}
-          onGabenClick={(parcel) => setGabenTarget(parcel)}
+          onOpenParcelSheet={(parcel) => setSheetTarget(parcel)}
           onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
         />
       )}
@@ -275,6 +291,7 @@ export default function JournalGridPage() {
           summary={summaryByParcel}
           onDayOpen={(parcel, date) => setEditorTarget({ parcel, date })}
           onFarmCellClick={(date) => setFarmLogDate(date)}
+          onOpenParcelSheet={(parcel) => setSheetTarget(parcel)}
           onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
         />
       )}
@@ -305,6 +322,20 @@ export default function JournalGridPage() {
           parcelAreaA={num(gabenTarget.area_a)}
           seasonYear={seasonYear}
           onClose={() => setGabenTarget(null)}
+        />
+      )}
+      {sheetTarget && (
+        <ParcelSheetModal
+          parcel={sheetTarget}
+          seasonYear={seasonYear}
+          usageByDate={usageByDay[sheetTarget.id]}
+          fertByDate={fertByDay[sheetTarget.id]}
+          onOpenDay={(date) => setEditorTarget({ parcel: sheetTarget, date })}
+          onOpenGaben={() => {
+            setGabenTarget(sheetTarget)
+            setSheetTarget(null)
+          }}
+          onClose={() => setSheetTarget(null)}
         />
       )}
       {farmLogDate && <DailyLogEditor date={farmLogDate} onClose={() => setFarmLogDate(null)} onSaved={refresh} />}
