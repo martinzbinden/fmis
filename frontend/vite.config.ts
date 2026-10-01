@@ -21,6 +21,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Eigene Registrierung (src/UpdatePrompt.tsx) statt des injizierten
+      // Minimal-Skripts: das würde nur bei einem vollen Seiten-Neuladen neu
+      // nach einer Version suchen — eine als Homescreen-App weiterlaufende
+      // PWA wird aber oft nie neu geladen, nur in den Vordergrund geholt.
+      injectRegister: null,
       // Only precache the app shell (JS/CSS/HTML/icons). Data lives in
       // pglite/IndexedDB and must never be handled by the service worker.
       includeAssets: ['favicon.svg'],
