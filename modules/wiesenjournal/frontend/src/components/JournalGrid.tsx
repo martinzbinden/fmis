@@ -4,6 +4,7 @@ import type { SortField, SortState } from '../lib/parcelSort'
 import type { ParcelSummary } from '../lib/parcelSummary'
 import ParcelHeaderSort from './ParcelHeaderSort'
 import { SUMMARY_TOTAL_WIDTH, SummaryHeaderCells, SummaryRowCells } from './ParcelSummaryColumns'
+import { useSelectedParcel } from '../hooks/useSelectedParcel'
 
 export const LABEL_COL_WIDTH = 220
 const ROW_HEIGHT = 46
@@ -84,6 +85,10 @@ export default function JournalGrid({
   const CELL_WIDTH = cellWidth
   const trackWidth = days.length * CELL_WIDTH
   const today = todayIso()
+  // Markierung bleibt bestehen, bis die Zeile wieder abgewählt wird — auch
+  // über einen Abstecher zur Karte (Globus) und zurück, siehe
+  // hooks/useSelectedParcel.ts.
+  const { selectedId, toggle: toggleSelected, select: selectParcel } = useSelectedParcel()
 
   return (
     <div
@@ -124,15 +129,20 @@ export default function JournalGrid({
         </div>
 
         {/* Parzellen-Zeilen */}
-        {parcels.map((p) => (
-          <div key={p.id} className={`flex border-b ${p.category === 'acker' ? 'bg-amber-50/40' : ''}`}>
+        {parcels.map((p) => {
+          const isSelected = selectedId === p.id
+          return (
+          <div key={p.id} className={`flex border-b ${isSelected ? 'bg-teal-50' : p.category === 'acker' ? 'bg-amber-50/40' : ''}`}>
             <div
               className={`sticky left-0 z-10 flex shrink-0 cursor-pointer items-center gap-1 p-2 text-xs font-medium text-gray-800 hover:bg-brand-50/60 active:bg-brand-50 ${
-                p.category === 'acker' ? 'bg-amber-50' : 'bg-white'
+                isSelected ? 'bg-teal-100 ring-2 ring-inset ring-teal-500' : p.category === 'acker' ? 'bg-amber-50' : 'bg-white'
               }`}
               style={{ width: LABEL_COL_WIDTH, height: ROW_HEIGHT }}
-              onClick={() => onOpenParcelSheet(p)}
-              title="Parzellenblatt öffnen (Nutzungen, Düngungen)"
+              onClick={() => {
+                toggleSelected(p.id)
+                onOpenParcelSheet(p)
+              }}
+              title="Parzellenblatt öffnen (Nutzungen, Düngungen) · markiert die Zeile"
             >
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
@@ -147,6 +157,7 @@ export default function JournalGrid({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
+                  selectParcel(p.id)
                   onFocusMap(p)
                 }}
                 title="Auf Karte zeigen"
@@ -196,7 +207,8 @@ export default function JournalGrid({
             </div>
             {showSummary && <SummaryRowCells summary={summary?.[p.id]} height={ROW_HEIGHT} tinted={p.category === 'acker'} />}
           </div>
-        ))}
+          )
+        })}
 
         {/* Betriebsweite Tagesmeldung */}
         {(

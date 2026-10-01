@@ -18,6 +18,7 @@ import type { ParcelSummary } from '../lib/parcelSummary'
 import ParcelHeaderSort from './ParcelHeaderSort'
 import { SUMMARY_TOTAL_WIDTH, SummaryHeaderCells, SummaryRowCells } from './ParcelSummaryColumns'
 import { useViewportWidth, MOBILE_BREAKPOINT } from '../hooks/useViewportWidth'
+import { useSelectedParcel } from '../hooks/useSelectedParcel'
 import type { DayIndex } from './JournalGrid'
 
 export const LABEL_COL_WIDTH = 190
@@ -129,17 +130,30 @@ const ClassicRow = memo(function ClassicRow({
       : parcel.kultur_name_de
     : null
 
+  // Markierung bleibt bestehen, bis die Zeile wieder abgewählt wird — auch
+  // über einen Abstecher zur Karte (Globus) und zurück, siehe
+  // hooks/useSelectedParcel.ts. Eigener Hook-Aufruf HIER statt als Prop von
+  // aussen: so lösen nur die betroffenen zwei Zeilen (alte/neue Markierung)
+  // ein Rerender aus, nicht alle — memo() oben bleibt dadurch wirksam.
+  const { selectedId, toggle: toggleSelected, select: selectParcel } = useSelectedParcel()
+  const isSelected = selectedId === parcel.id
+
   const acker = parcel.category === 'acker'
-  const bgClass = acker ? 'bg-amber-50' : 'bg-white'
+  const bgClass = isSelected ? 'bg-teal-100' : acker ? 'bg-amber-50' : 'bg-white'
 
   return (
     <>
-      <div className={`flex border-b ${acker ? 'bg-amber-50/40' : ''}`}>
+      <div className={`flex border-b ${isSelected ? 'bg-teal-50' : acker ? 'bg-amber-50/40' : ''}`}>
         <div
-          className={`sticky left-0 z-10 flex shrink-0 cursor-pointer flex-col justify-center gap-0.5 py-1 pl-1.5 pr-1 hover:brightness-95 active:brightness-90 ${bgClass}`}
+          className={`sticky left-0 z-10 flex shrink-0 cursor-pointer flex-col justify-center gap-0.5 py-1 pl-1.5 pr-1 hover:brightness-95 active:brightness-90 ${bgClass} ${
+            isSelected ? 'ring-2 ring-inset ring-teal-500' : ''
+          }`}
           style={{ width: labelColWidth, height: ROW_HEIGHT }}
-          onClick={() => onOpenParcelSheet(parcel)}
-          title="Parzellenblatt öffnen (Nutzungen, Düngungen)"
+          onClick={() => {
+            toggleSelected(parcel.id)
+            onOpenParcelSheet(parcel)
+          }}
+          title="Parzellenblatt öffnen (Nutzungen, Düngungen) · markiert die Zeile"
         >
           <div className="flex items-center gap-1">
             <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-800" title={parcel.name}>
@@ -149,6 +163,7 @@ const ClassicRow = memo(function ClassicRow({
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
+                selectParcel(parcel.id)
                 onFocusMap(parcel)
               }}
               title="Auf Karte zeigen"
