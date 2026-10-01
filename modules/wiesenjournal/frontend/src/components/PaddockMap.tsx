@@ -152,6 +152,39 @@ function BaseGeometryLayer({ parcels }: { parcels: Parcel[] }) {
   return null
 }
 
+/** Zusätzliche, kräftige Hervorhebung der vom Globus-Knopf im Journal-Raster
+ * angesteuerten Parzelle — der dünne, gestrichelte Umriss aus
+ * BaseGeometryLayer reicht im dichten Parzellenraster allein nicht, man
+ * müsste ihn erst suchen. Blinkt kurz beim Erscheinen, bleibt danach als
+ * kräftiger roter Umriss stehen. */
+function FocusHighlightLayer({ parcel }: { parcel: Parcel | undefined }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!parcel?.base_geometry) return
+    const layer = L.geoJSON(JSON.parse(parcel.base_geometry) as never, {
+      style: { color: '#dc2626', weight: 5, fillColor: '#dc2626', fillOpacity: 0.3 },
+      interactive: false,
+    })
+    layer.addTo(map)
+    layer.bringToFront()
+    let visible = true
+    const blink = window.setInterval(() => {
+      visible = !visible
+      layer.setStyle({ opacity: visible ? 1 : 0.15, fillOpacity: visible ? 0.3 : 0.05 })
+    }, 350)
+    const stopBlink = window.setTimeout(() => {
+      window.clearInterval(blink)
+      layer.setStyle({ opacity: 1, fillOpacity: 0.3 })
+    }, 1800)
+    return () => {
+      window.clearInterval(blink)
+      window.clearTimeout(stopBlink)
+      map.removeLayer(layer)
+    }
+  }, [map, parcel])
+  return null
+}
+
 /** Optionale Vorlage aus dem Kulturen-Modul: dotted Referenzlayer, Klick übernimmt die Geometrie 1:1 als neuen Weidegang. */
 function FieldsTemplateLayer({ onAdopt }: { onAdopt: (geometry: string, label: string) => void }) {
   const map = useMap()
@@ -432,15 +465,18 @@ export default function PaddockMap({
     if (bounds) mapRef.current?.fitBounds(bounds, { padding: [24, 24] })
   }, [bounds])
 
+  const focusParcel = useMemo(
+    () => parcels.find((p) => p.id === focusParcelId),
+    [parcels, focusParcelId],
+  )
+
   // Vom Globus-Knopf im Journal-Raster (?parcel=…) — näher heranzoomen als
   // die allgemeine Gesamtansicht oben, läuft deshalb danach (überschreibt sie).
   useEffect(() => {
-    if (!focusParcelId) return
-    const p = parcels.find((x) => x.id === focusParcelId)
-    if (!p?.base_geometry) return
-    const b = L.geoJSON(JSON.parse(p.base_geometry) as never).getBounds()
+    if (!focusParcel?.base_geometry) return
+    const b = L.geoJSON(JSON.parse(focusParcel.base_geometry) as never).getBounds()
     if (b.isValid()) mapRef.current?.fitBounds(b, { padding: [40, 40], maxZoom: 18 })
-  }, [focusParcelId, parcels])
+  }, [focusParcel])
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -529,6 +565,7 @@ export default function PaddockMap({
           attribution="&copy; swisstopo"
         />
         <BaseGeometryLayer parcels={parcels} />
+        {focusParcelId && <FocusHighlightLayer parcel={focusParcel} />}
         {showFertilization && <FertilizationLayer features={fertilization} />}
         {showHeat && <FertilizationHeatLayer seasonYear={seasonYear} onError={setHeatError} />}
         {showTemplate && <FieldsTemplateLayer onAdopt={onAdoptFieldsGeometry} />}

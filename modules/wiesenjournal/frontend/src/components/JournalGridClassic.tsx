@@ -12,6 +12,7 @@ import {
   usageLegend,
 } from '../lib/format'
 import { groupUsageRuns, type UsageBar } from '../lib/journalRun'
+import { primaryVirtualCategory, VIRTUAL_CATEGORY_COLOR } from '../lib/parcelFilter'
 import { upsertRow } from '../db/write'
 import type { SortField, SortState } from '../lib/parcelSort'
 import type { ParcelSummary } from '../lib/parcelSummary'
@@ -118,7 +119,18 @@ const ClassicRow = memo(function ClassicRow({
   // ein Tipp auf den Namen Details darunter — auf Desktop reicht der Platz
   // ohnehin, dort bleibt der Name reiner Text (siehe expanded-Nutzung unten).
   const [expanded, setExpanded] = useState(false)
-  const kulturText = isMobile && parcel.kultur_name_de ? abbreviateKultur(parcel.kultur_name_de) : parcel.kultur_name_de
+  // Kulturcode statt ausgeschriebenem Namen spart Breite im zweizeiligen
+  // Layout; Farbe nach virtueller Kategorie (Wiese/Weide/Acker/BFF) macht
+  // sie auf einen Blick unterscheidbar. Ohne Code (z.B. manuell erfasste
+  // Parzellen) bleibt der — auf Smartphones abgekürzte — Kulturname als
+  // Fallback.
+  const virtualCat = primaryVirtualCategory(parcel)
+  const kulturColor = virtualCat ? VIRTUAL_CATEGORY_COLOR[virtualCat] : '#6b7280'
+  const kulturFallbackText = parcel.kultur_name_de
+    ? isMobile
+      ? abbreviateKultur(parcel.kultur_name_de)
+      : parcel.kultur_name_de
+    : null
 
   const acker = parcel.category === 'acker'
   const bgClass = acker ? 'bg-amber-50' : 'bg-white'
@@ -156,8 +168,17 @@ const ClassicRow = memo(function ClassicRow({
             </button>
           </div>
           <div className="truncate text-[10px] text-gray-400" title={`${fmtArea(parcel.area_a)}${parcel.kultur_name_de ? ' · ' + parcel.kultur_name_de : ''}`}>
+            {parcel.kultur_code ? (
+              <span style={{ color: kulturColor }} className="font-semibold">
+                ({parcel.kultur_code})
+              </span>
+            ) : kulturFallbackText ? (
+              <span style={{ color: kulturColor }} className="font-semibold">
+                {kulturFallbackText}
+              </span>
+            ) : null}
+            {' '}
             {fmtArea(parcel.area_a)}
-            {kulturText ? ` · ${kulturText}` : ''}
           </div>
         </div>
 

@@ -32,6 +32,28 @@ const BFF_NAME_PATTERNS = [
   /streuefläche/i,
 ]
 
+// Für die Farbgebung im Raster (JournalGridClassic.tsx) — Reihenfolge
+// entscheidet, welche Kategorie zählt, wenn mehrere zutreffen (eine
+// extensiv genutzte Wiese ist z.B. BFF UND Wiese): BFF zuerst, weil es die
+// eigenständigste/auffälligste Einordnung ist.
+const CATEGORY_PRIORITY: VirtualCategory[] = ['bff', 'acker', 'weiden', 'wiesen']
+
+export const VIRTUAL_CATEGORY_COLOR: Record<VirtualCategory, string> = {
+  wiesen: '#16a34a',
+  weiden: '#0284c7',
+  acker: '#b45309',
+  bff: '#9333ea',
+}
+
+/** Welche virtuelle Kategorie für eine Parzelle zählt (für Farbe/Anzeige),
+ * null wenn keine zutrifft (z.B. Kategorie "andere"). */
+export function primaryVirtualCategory(p: Parcel): VirtualCategory | null {
+  for (const cat of CATEGORY_PRIORITY) {
+    if (matchesVirtualCategory(p, cat)) return cat
+  }
+  return null
+}
+
 export function matchesVirtualCategory(p: Parcel, cat: VirtualCategory): boolean {
   const name = (p.kultur_name_de ?? '').toLowerCase()
   switch (cat) {
