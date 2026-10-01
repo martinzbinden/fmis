@@ -52,7 +52,7 @@ interface Props {
   dailyLogByDate: Record<string, DailyFarmLog>
   onCellClick: (parcel: Parcel, date: string) => void
   onFarmCellClick: (date: string) => void
-  onGabenClick: (parcel: Parcel) => void
+  onOpenParcelSheet: (parcel: Parcel) => void
   onFocusMap: (parcel: Parcel) => void
   cellWidth?: number
   scrollRef?: (node: HTMLDivElement | null) => void
@@ -71,7 +71,7 @@ export default function JournalGrid({
   dailyLogByDate,
   onCellClick,
   onFarmCellClick,
-  onGabenClick,
+  onOpenParcelSheet,
   onFocusMap,
   cellWidth = 34,
   scrollRef,
@@ -127,10 +127,12 @@ export default function JournalGrid({
         {parcels.map((p) => (
           <div key={p.id} className={`flex border-b ${p.category === 'acker' ? 'bg-amber-50/40' : ''}`}>
             <div
-              className={`sticky left-0 z-10 flex shrink-0 items-center gap-1 p-2 text-xs font-medium text-gray-800 ${
+              className={`sticky left-0 z-10 flex shrink-0 cursor-pointer items-center gap-1 p-2 text-xs font-medium text-gray-800 hover:bg-brand-50/60 active:bg-brand-50 ${
                 p.category === 'acker' ? 'bg-amber-50' : 'bg-white'
               }`}
               style={{ width: LABEL_COL_WIDTH, height: ROW_HEIGHT }}
+              onClick={() => onOpenParcelSheet(p)}
+              title="Parzellenblatt öffnen (Nutzungen, Düngungen)"
             >
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
@@ -143,22 +145,19 @@ export default function JournalGrid({
               </span>
               <button
                 type="button"
-                onClick={() => onFocusMap(p)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onFocusMap(p)
+                }}
                 title="Auf Karte zeigen"
                 aria-label="Auf Karte zeigen"
                 className="rounded p-1 text-sm leading-none active:bg-gray-100"
               >
                 🌐
               </button>
-              <button
-                type="button"
-                onClick={() => onGabenClick(p)}
-                title="Gaben (Stickstoff)"
-                aria-label="Gaben"
-                className="rounded p-1 text-sm leading-none text-gray-500 active:bg-gray-100"
-              >
-                ☰
-              </button>
+              <span className="rounded p-1 text-sm leading-none text-gray-500" aria-hidden="true">
+                📋
+              </span>
             </div>
             <div className="flex">
               {days.map((d) => {

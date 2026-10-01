@@ -9,6 +9,7 @@ import JournalGridClassic, { LABEL_COL_WIDTH as LABEL_COL_WIDTH_KLASSISCH } from
 import DayEntryEditor from '../components/DayEntryEditor'
 import DayEntryEditorClassic from '../components/DayEntryEditorClassic'
 import GabenPanel from '../components/GabenPanel'
+import ParcelSheetModal from '../components/ParcelSheetModal'
 import DailyLogEditor from '../components/DailyLogEditor'
 import AckerToggle from '../components/AckerToggle'
 import GridViewToggle from '../components/GridViewToggle'
@@ -103,6 +104,7 @@ export default function JournalGridPage() {
 
   const [editorTarget, setEditorTarget] = useState<{ parcel: Parcel; date: string } | null>(null)
   const [gabenTarget, setGabenTarget] = useState<Parcel | null>(null)
+  const [sheetTarget, setSheetTarget] = useState<Parcel | null>(null)
   const [farmLogDate, setFarmLogDate] = useState<string | null>(null)
 
   // Filter (Freitext + Vorschlags-Knöpfe) und Sortierung — siehe
@@ -254,7 +256,7 @@ export default function JournalGridPage() {
           summary={summaryByParcel}
           onCellClick={(parcel, date) => setEditorTarget({ parcel, date })}
           onFarmCellClick={(date) => setFarmLogDate(date)}
-          onGabenClick={(parcel) => setGabenTarget(parcel)}
+          onOpenParcelSheet={(parcel) => setSheetTarget(parcel)}
           onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
         />
       )}
@@ -275,6 +277,7 @@ export default function JournalGridPage() {
           summary={summaryByParcel}
           onDayOpen={(parcel, date) => setEditorTarget({ parcel, date })}
           onFarmCellClick={(date) => setFarmLogDate(date)}
+          onOpenParcelSheet={(parcel) => setSheetTarget(parcel)}
           onFocusMap={(parcel) => navigate(`/wiesenjournal/karte?parcel=${parcel.id}`)}
         />
       )}
@@ -305,6 +308,20 @@ export default function JournalGridPage() {
           parcelAreaA={num(gabenTarget.area_a)}
           seasonYear={seasonYear}
           onClose={() => setGabenTarget(null)}
+        />
+      )}
+      {sheetTarget && (
+        <ParcelSheetModal
+          parcel={sheetTarget}
+          seasonYear={seasonYear}
+          usageByDate={usageByDay[sheetTarget.id]}
+          fertByDate={fertByDay[sheetTarget.id]}
+          onOpenDay={(date) => setEditorTarget({ parcel: sheetTarget, date })}
+          onOpenGaben={() => {
+            setGabenTarget(sheetTarget)
+            setSheetTarget(null)
+          }}
+          onClose={() => setSheetTarget(null)}
         />
       )}
       {farmLogDate && <DailyLogEditor date={farmLogDate} onClose={() => setFarmLogDate(null)} onSaved={refresh} />}
