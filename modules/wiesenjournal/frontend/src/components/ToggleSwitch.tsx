@@ -22,8 +22,15 @@ export default function ToggleSwitch({
         className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? 'bg-brand-600' : 'bg-gray-300'}`}
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
-            checked ? 'translate-x-[18px]' : 'translate-x-0.5'
+          // left-0.5 + right-auto explizit setzen statt dem Browser zu
+          // überlassen: manche Engines legen auf role="switch" von sich aus
+          // einen eigenen left/right-Versatz aufs erste Kind, der sich mit
+          // dem eigenen translate-x addiert und das Thumb aus dem Schalter
+          // herausschiebt (am 2026-10-01 so gefunden — Browser-UA-Quirk,
+          // kein Tailwind-Problem, siehe keine passende Regel in den eigenen
+          // Stylesheets).
+          className={`absolute left-0.5 right-auto top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+            checked ? 'translate-x-[18px]' : 'translate-x-0'
           }`}
         />
       </button>

@@ -23,7 +23,7 @@ import { useRestoreScroll } from '../hooks/useRestoreScroll'
 import { useStickyTopOffset } from '../hooks/useStickyTopOffset'
 import { useViewportWidth, MOBILE_BREAKPOINT } from '../hooks/useViewportWidth'
 import { sortParcels, nextSortState, type SortState } from '../lib/parcelSort'
-import { parcelMatchesChip, type FilterChip } from '../lib/parcelFilter'
+import { matchesVirtualCategory, parcelMatchesChip, type FilterChip } from '../lib/parcelFilter'
 import { summarizeParcels } from '../lib/parcelSummary'
 import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { isoDate, num, todayIso } from '../lib/format'
@@ -117,6 +117,11 @@ export default function JournalGridPage() {
   // oben — reine Anzeige-Umschichtung NACH der Sortierung, verändert deren
   // Ergebnis innerhalb der zwei Gruppen nicht (Array.sort ist stabil).
   const [activeFirst, setActiveFirst] = useState(false)
+  // "BFF": schneller Zugriff auf dieselbe Kategorie, die auch als Filter-Chip
+  // existiert (lib/parcelFilter.ts) — als eigener Schalter statt nur über
+  // das Filterfeld, weil die BFF-Ansicht für Beitragsnachweise regelmässig
+  // gebraucht wird. Session-only wie "Aktive zuerst", keine Dauereinstellung.
+  const [bffOnly, setBffOnly] = useState(false)
 
   const allParcels = data?.parcels ?? []
   const parcels = useMemo(() => {
@@ -124,12 +129,15 @@ export default function JournalGridPage() {
     if (filterChips.length > 0) {
       list = list.filter((p) => filterChips.some((c) => parcelMatchesChip(p, c)))
     }
+    if (bffOnly) {
+      list = list.filter((p) => matchesVirtualCategory(p, 'bff'))
+    }
     const q = search.trim().toLowerCase()
     if (q) {
       list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.kultur_name_de ?? '').toLowerCase().includes(q))
     }
     return sortParcels(list, sort)
-  }, [allParcels, filterChips, search, sort])
+  }, [allParcels, filterChips, bffOnly, search, sort])
 
   const usageByDay = useMemo(() => indexByParcelAndDay<UsageEntry>(data?.usage ?? []), [data])
   // Düngung je Parzelle über die Anteile (Polygon/Track/mehrere Parzellen
@@ -182,6 +190,12 @@ export default function JournalGridPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <AckerToggle />
+          <ToggleSwitch
+            checked={bffOnly}
+            onChange={setBffOnly}
+            label="BFF"
+            title="Nur Biodiversitätsförderflächen (BFF) anzeigen"
+          />
           <ToggleSwitch
             checked={activeFirst}
             onChange={setActiveFirst}
