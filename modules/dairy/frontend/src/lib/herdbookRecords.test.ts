@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { animalKey } from './animalId'
+import { animalKey } from '@fmis/core/earTag'
 import {
   mergePedigree,
   parseK01Pedigree,

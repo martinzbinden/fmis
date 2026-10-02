@@ -15,7 +15,7 @@ import { upsertRow } from '../db/write'
 import { inTransaction } from '../db/transaction'
 import type { SyncTable } from '../db/tables'
 import type { AnimalSex, AnimalStatus, LactationClosureType } from '../types'
-import { animalKey } from './animalId'
+import { animalKey } from '@fmis/core/earTag'
 import {
   mergePedigree,
   parseK01Pedigree,

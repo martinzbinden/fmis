@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { animalKey } from '../lib/animalId'
+import { animalKey } from '@fmis/core/earTag'
 import { sireLabel, type SireOption } from '../lib/sires'
 
 export interface SireValue {

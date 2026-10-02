@@ -4,6 +4,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtChf, num } from '../lib/format'
 import type { AnimalEconomics } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 interface Row extends AnimalEconomics {
   animal_id: string
@@ -127,7 +128,7 @@ export default function Economics() {
                 <tr key={r.animal_id} className="border-t">
                   <td className="px-3 py-2">
                     <Link to={`/tiere/${r.animal_id}`} className="font-medium text-brand-700">
-                      {r.ear_tag}
+                      {shortEarTag(r.ear_tag)}
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-gray-500">{r.group_name ?? '–'}</td>

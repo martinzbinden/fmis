@@ -7,6 +7,7 @@ import { parseAdisFiles, importAdisData, readHerdbookFile, type HerdbookSpecies,
 import { parseTierbestand, importSmgData, type SmgImportSummary } from '../lib/importSmg'
 import { fmtDate } from '../lib/format'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
+import { animalLabel } from '@fmis/core/earTag'
 
 async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
   const { rows } = await pg.query<AnimalRow>(`
@@ -106,7 +107,7 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
             <div className="flex items-center justify-between gap-2">
               <Link to={a.id} className="font-semibold text-gray-800">
                 {a.lauf_nr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{a.lauf_nr}</span>}
-                {a.name ?? a.ear_tag}
+                {animalLabel(a)}
               </Link>
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -117,7 +118,7 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
               </span>
             </div>
             <div className="mt-1 text-xs text-gray-500">
-              {a.ear_tag} {a.breed_code ? `· ${a.breed_code}` : ''} · geb. {fmtDate(a.birth_date)}
+              {a.breed_code ? `${a.breed_code} · ` : ''}geb. {fmtDate(a.birth_date)}
             </div>
             <div className="mt-1 text-xs text-gray-500">
               {a.milk_test_count} Milchtests erfasst

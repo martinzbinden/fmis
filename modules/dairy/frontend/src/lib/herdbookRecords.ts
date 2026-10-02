@@ -6,7 +6,7 @@
 // Codes laut CODE.C01: Bezug 11 Geschlecht, 17 Belegungsart, 19
 // Geburtsverlauf, 20 verendet innert 24 h, 67 Totgeburt.
 
-import { animalKey } from './animalId'
+import { animalKey } from '@fmis/core/earTag'
 
 export function field(line: string, from: number, to: number): string {
   return line.slice(from - 1, to)

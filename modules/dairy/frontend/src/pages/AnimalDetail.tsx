@@ -10,7 +10,7 @@ import { useQuery } from '../hooks/useQuery'
 import { loadHerdContext, latestValues, type AnimalContext } from '../lib/herdContext'
 import { cullingReasons, fmtCells, type CullingReason } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
-import { animalKey } from '../lib/animalId'
+import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { TRAIT_LABEL, TRAIT_ORDER } from '../lib/breedingTraits'
 import { fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
@@ -123,7 +123,7 @@ function PedigreeCell({
     )
   }
   const herdId = herdIdByKey.get(node.animal_key)
-  const label = node.name ?? node.ear_tag
+  const label = animalLabel(node)
   return (
     <div className="min-w-0 rounded border border-gray-200 p-2 text-xs">
       <div className="text-gray-500">{role}</div>
@@ -137,7 +137,6 @@ function PedigreeCell({
         )}
       </div>
       <div className="break-all text-gray-500">
-        {node.name ? `${node.ear_tag} · ` : ''}
         {node.breed_code ?? ''}
         {node.birth_date ? ` · ${node.birth_date.slice(0, 4)}` : ''}
       </div>
@@ -259,7 +258,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         </Link>
         <h1 className="mt-1 text-xl font-bold text-gray-800">
           {a.lauf_nr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-lg">{a.lauf_nr}</span>}
-          {a.name ?? a.ear_tag}
+          {animalLabel(a)}
         </h1>
         <p className="text-sm text-gray-500">
           {a.ear_tag}
@@ -363,7 +362,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                   <div className="text-xs text-gray-600">
                     Vater {b.sire_name ?? pedigreeByKey.get(b.sire_key ?? '')?.name ?? b.sire_ear_tag ?? 'unbekannt'} ·{' '}
                     {b.offspring
-                      .map((o) => `${o.sex === 'w' ? '♀' : o.sex === 'm' ? '♂' : '?'}${o.stillborn || o.died_24h ? '†' : ''}${o.ear_tag ? ` ${o.ear_tag.slice(-6)}` : ''}`)
+                      .map((o) => `${o.sex === 'w' ? '♀' : o.sex === 'm' ? '♂' : '?'}${o.stillborn || o.died_24h ? '†' : ''}${o.ear_tag ? ` ${shortEarTag(o.ear_tag)}` : ''}`)
                       .join(', ')}
                   </div>
                 </li>

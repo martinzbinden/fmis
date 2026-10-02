@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fmtDate } from '../lib/format'
 import type { Animal } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 export interface AnimalRow extends Animal {
   milk_test_count: number
@@ -14,7 +15,7 @@ export interface AnimalRow extends Animal {
 const COLUMNS: { key: keyof AnimalRow; label: string; format?: (v: unknown) => string }[] = [
   { key: 'lauf_nr', label: 'Nr.' },
   { key: 'name', label: 'Name' },
-  { key: 'ear_tag', label: 'Ohrmarke' },
+  { key: 'ear_tag', label: 'Ohrmarke', format: (v) => shortEarTag(v as string) },
   { key: 'breed_code', label: 'Rasse' },
   { key: 'sex', label: 'Geschlecht', format: (v) => (v === 'w' ? 'weiblich' : v === 'm' ? 'männlich' : '') },
   { key: 'birth_date', label: 'Geburtsdatum', format: (v) => fmtDate(v as string | null) },

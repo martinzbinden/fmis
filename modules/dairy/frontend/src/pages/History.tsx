@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { fmtDateTime } from '../lib/format'
 import { speciesTerms } from '../lib/species'
 import type { DataHistory, HistoryAction } from '../types'
+import { animalLabel } from '@fmis/core/earTag'
 
 const TABLE_LABEL: Record<string, string> = {
   milk_tests: 'Milchtest',
@@ -34,7 +35,7 @@ function describeEntry(entry: DataHistory, moduleKey: string): { label: string; 
 
   switch (entry.table_name) {
     case 'animals':
-      return { label: s(snap.ear_tag) ?? entry.row_id, link: `/${moduleKey}/kuehe/${entry.row_id}` }
+      return { label: snap.ear_tag ? animalLabel({ ear_tag: String(snap.ear_tag), name: s(snap.name) }) : entry.row_id, link: `/${moduleKey}/kuehe/${entry.row_id}` }
     case 'milk_tests':
       return {
         label: `${s(snap.milk_kg) ?? '?'} kg am ${s(snap.test_date) ?? '?'}`,

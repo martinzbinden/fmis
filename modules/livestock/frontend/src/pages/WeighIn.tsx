@@ -13,6 +13,7 @@ import {
   type ParsedCsv,
   type ImportWeightsResult,
 } from '../lib/importWeights'
+import { shortEarTag } from '@fmis/core/earTag'
 
 interface GroupOption {
   id: string
@@ -353,7 +354,7 @@ export default function WeighIn() {
         {(visibleAnimals ?? []).map((a) => (
           <li key={a.animal_id} className="flex items-center gap-3 rounded-lg bg-white p-3 shadow-sm">
             <div className="flex-1">
-              <div className="font-semibold text-gray-800">{a.ear_tag}</div>
+              <div className="font-semibold text-gray-800">{shortEarTag(a.ear_tag)}</div>
               {a.last_weight != null && (
                 <div className="text-xs text-gray-500">zuletzt {num(a.last_weight)} kg</div>
               )}

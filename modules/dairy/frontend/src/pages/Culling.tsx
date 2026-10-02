@@ -7,6 +7,7 @@ import { useCullingThresholds } from '../lib/cullingSettings'
 import { todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { ReasonChips } from './AnimalDetail'
+import { animalLabel } from '@fmis/core/earTag'
 
 const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: number }[] = [
   { key: 'intervalDays', label: 'Zwischengeburtszeit über (Tage)' },
@@ -70,7 +71,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
         )
         return {
           id: c.animal.id,
-          label: c.animal.name ?? c.animal.ear_tag,
+          label: animalLabel(c.animal),
           laufNr: c.animal.lauf_nr,
           earTag: c.animal.ear_tag,
           lactation: c.lactationNumber,

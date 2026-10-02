@@ -7,6 +7,7 @@ import { useDb } from '@fmis/core/DbContext'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
 import type { Animal } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 interface AnimalOption {
   id: string
@@ -116,7 +117,7 @@ export default function SlaughterEntry() {
             <option value="">Bitte wählen…</option>
             {selectOptions.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.ear_tag}
+                {shortEarTag(a.ear_tag)}
               </option>
             ))}
           </select>

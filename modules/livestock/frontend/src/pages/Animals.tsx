@@ -8,6 +8,7 @@ import { importAnimalRows, parseIntakeCsv, type SeedRow } from '../lib/importCsv
 import { parseIntakePdf } from '../lib/parsePdfIntake'
 import { fmtKg, fmtAge, num } from '../lib/format'
 import type { AnimalStatus } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 interface Row {
   id: string
@@ -222,7 +223,7 @@ export default function Animals() {
               className="flex items-center justify-between rounded-lg bg-white p-3 shadow-sm active:bg-gray-50"
             >
               <div>
-                <div className="font-semibold text-gray-800">{a.ear_tag}</div>
+                <div className="font-semibold text-gray-800">{shortEarTag(a.ear_tag)}</div>
                 <div className="text-xs text-gray-500">
                   {fmtAge(a.birth_date)}
                   {a.group_name ? ` · ${a.group_name}` : ''}

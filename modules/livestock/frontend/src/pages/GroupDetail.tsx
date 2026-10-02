@@ -8,6 +8,7 @@ import { upsertRow, softDeleteRow } from '../db/write'
 import { addEarTagsToGroup, type EarTagImportResult } from '../lib/importCsv'
 import { fmtDate, fmtChf, num, todayIso } from '../lib/format'
 import type { AnimalGroup, FeedRecord, Expense, GroupStatus } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 const GROUP_STATUS_OPTIONS: GroupStatus[] = ['aktiv', 'abgeschlossen']
 
@@ -264,7 +265,7 @@ export default function GroupDetail() {
             {members.map((m) => (
               <li key={m.membership_id} className="flex items-center justify-between py-2 text-sm">
                 <Link to={`/tiere/${m.animal_id}`} className="font-medium text-brand-700">
-                  {m.ear_tag}
+                  {shortEarTag(m.ear_tag)}
                 </Link>
                 <span className="text-gray-500">
                   {fmtDate(m.start_date)} – {m.end_date ? fmtDate(m.end_date) : 'aktiv'}

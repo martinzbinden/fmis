@@ -1,5 +1,5 @@
 import type { PGlite } from '@electric-sql/pglite'
-import { animalKey } from './animalId'
+import { animalKey } from '@fmis/core/earTag'
 import { isoDate } from './format'
 
 export interface SireOption {

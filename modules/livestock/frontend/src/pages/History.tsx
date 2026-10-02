@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useServerHistory } from '@fmis/core/historyApi'
 import { fmtDateTime } from '../lib/format'
 import type { DataHistory, HistoryAction } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 const TABLE_LABEL: Record<string, string> = {
   animals: 'Tier',
@@ -40,7 +41,7 @@ function describeEntry(entry: DataHistory): { label: string; link: string | null
 
   switch (entry.table_name) {
     case 'animals':
-      return { label: s(snap.ear_tag) ?? entry.row_id, link: `/tiere/${entry.row_id}` }
+      return { label: snap.ear_tag ? shortEarTag(String(snap.ear_tag)) : entry.row_id, link: `/tiere/${entry.row_id}` }
     case 'animal_groups':
       return { label: s(snap.name) ?? entry.row_id, link: `/gruppen/${entry.row_id}` }
     case 'weighings':

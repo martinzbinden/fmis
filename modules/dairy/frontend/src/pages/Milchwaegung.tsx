@@ -10,6 +10,7 @@ import { getDairySyncClient } from '../db/sync'
 import { fmtDate, fmtDateTime, isoDate } from '../lib/format'
 import { speciesTerms } from '../lib/species'
 import type { Animal, MilkingBank, MilkingSlot } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 interface SessionState {
   active: boolean
@@ -544,7 +545,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
                   <span className="w-14 text-xl font-bold text-gray-800">{a.lauf_nr ?? '–'}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-gray-800">{a.name ?? ''}</span>
-                    <span className="block text-xs text-gray-500">{a.ear_tag}</span>
+                    <span className="block text-xs text-gray-500">{shortEarTag(a.ear_tag)}</span>
                   </span>
                   {inBank && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">schon in Bank</span>}
                 </li>
@@ -838,7 +839,7 @@ function BankTable({
                       weicht sie, damit Häkchen und Laufnummer ohne Scrollen
                       sichtbar bleiben — auf hohen Geräten ist sie da. */}
                   <div className="hidden text-[11px] text-gray-400 [@media(min-height:760px)]:block">
-                    {s.ear_tag ?? ''}
+                    {shortEarTag(s.ear_tag)}
                     {s.transponder && s.transponder !== s.ear_tag ? ` · ${s.transponder}` : ''}
                   </div>
                 </td>

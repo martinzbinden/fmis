@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Animal } from '../types'
+import { animalLabel } from '@fmis/core/earTag'
 
 /** Tierauswahl per Laufnummer, Name oder Ohrmarke — für die Erfassungs-
  * formulare. Mit `multiple` mehrere Tiere (z.B. eine Belegperiode für die
@@ -26,7 +27,7 @@ export default function AnimalPicker({
       .filter((a) => !selected.includes(a.id))
       .map((a) => {
         const nr = (a.lauf_nr ?? '').toLowerCase()
-        const score = nr === q ? 0 : nr.startsWith(q) ? 1 : (a.name ?? '').toLowerCase().includes(q) ? 2 : a.ear_tag.toLowerCase().includes(q) ? 3 : 9
+        const score = nr === q ? 0 : nr.startsWith(q) ? 1 : (a.name ?? '').toLowerCase().includes(q) ? 2 : a.ear_tag.toLowerCase().includes(q.replace(/[.\s]/g, '')) ? 3 : 9
         return { a, score }
       })
       .filter((m) => m.score < 9)
@@ -40,7 +41,7 @@ export default function AnimalPicker({
     setQuery('')
   }
 
-  const label = (a: Animal) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${a.name ?? a.ear_tag}`
+  const label = (a: Animal) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${animalLabel(a)}`
 
   return (
     <div>
@@ -86,7 +87,6 @@ export default function AnimalPicker({
                 <li key={a.id}>
                   <button type="button" onClick={() => pick(a.id)} className="w-full px-3 py-2.5 text-left active:bg-gray-50">
                     <span className="font-semibold text-gray-800">{label(a)}</span>
-                    <span className="ml-2 text-xs text-gray-500">{a.ear_tag}</span>
                   </button>
                 </li>
               ))}

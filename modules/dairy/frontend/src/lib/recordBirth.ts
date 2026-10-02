@@ -1,6 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
-import { animalKey } from './animalId'
+import { animalKey } from '@fmis/core/earTag'
 import type { Animal } from '../types'
 
 export type OffspringFate = 'lebend' | 'totgeboren' | 'verendet'

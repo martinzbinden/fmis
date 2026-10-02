@@ -7,6 +7,7 @@ import EarTagFilterInput from '../components/EarTagFilterInput'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
 import type { MedicationReference } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 interface AnimalOption {
   id: string
@@ -205,7 +206,7 @@ export default function MedicationEntry() {
                           onChange={() => toggleMember(m.animal_id)}
                           className="h-5 w-5"
                         />
-                        <span className="text-gray-800">{m.ear_tag}</span>
+                        <span className="text-gray-800">{shortEarTag(m.ear_tag)}</span>
                       </label>
                     </li>
                   ))}
@@ -226,7 +227,7 @@ export default function MedicationEntry() {
               <option value="">Bitte wählen…</option>
               {(animals ?? []).map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.ear_tag}
+                  {shortEarTag(a.ear_tag)}
                 </option>
               ))}
             </select>

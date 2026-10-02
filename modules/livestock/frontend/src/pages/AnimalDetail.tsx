@@ -7,6 +7,7 @@ import { upsertRow, softDeleteRow } from '../db/write'
 import { fmtKg, fmtChf, fmtDate, fmtAge, num, todayIso } from '../lib/format'
 import { computeForecast } from '../lib/forecast'
 import type { Animal, Weighing, Medication, SlaughterResult, AnimalGroup, AnimalSex, AnimalStatus } from '../types'
+import { shortEarTag } from '@fmis/core/earTag'
 
 const SEX_LABEL: Record<AnimalSex, string> = { m: 'männlich', w: 'weiblich', k: 'kastriert' }
 const STATUS_OPTIONS: AnimalStatus[] = ['aktiv', 'verkauft', 'geschlachtet', 'verendet']
@@ -177,7 +178,7 @@ export default function AnimalDetail() {
           ← Alle Tiere
         </Link>
         <div className="mt-1 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-800">{animal.ear_tag}</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{shortEarTag(animal.ear_tag)}</h1>
           {!editingAnimal && (
             <button
               type="button"

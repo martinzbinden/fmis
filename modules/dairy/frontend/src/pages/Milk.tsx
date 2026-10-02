@@ -5,6 +5,7 @@ import { fmtDate, fmtKg, fmtPct, num } from '../lib/format'
 import { selectYogurtCows, TARGET_PROTEIN_PCT, type YogurtSelectionResult } from '../lib/yogurtSelection'
 import { speciesTerms } from '../lib/species'
 import type { AnimalMilkCurrent, LactationSummary } from '../types'
+import { animalLabel } from '@fmis/core/earTag'
 
 type SortKey =
   | 'name'
@@ -262,7 +263,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
                       selectedIds.has(c.animal_id) ? 'bg-brand-50' : ''
                     }`}
                   >
-                    <td className="px-3 py-2 font-medium text-gray-800">{c.name ?? c.ear_tag}</td>
+                    <td className="px-3 py-2 font-medium text-gray-800">{animalLabel(c)}</td>
                     <td className="px-3 py-2 text-gray-600">
                       {fmtDate(c.test_date)}
                       {!c.has_analysis && (
@@ -313,7 +314,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
             <tbody>
               {lactations.map((l) => (
                 <tr key={l.lactation_id} className="border-b last:border-0">
-                  <td className="px-3 py-2 font-medium text-gray-800">{l.name ?? l.ear_tag}</td>
+                  <td className="px-3 py-2 font-medium text-gray-800">{animalLabel(l)}</td>
                   <td className="px-3 py-2 text-gray-600">{l.lactation_number}</td>
                   <td className="px-3 py-2 text-gray-600">{fmtDate(l.calving_date)}</td>
                   <td className="px-3 py-2 text-gray-600">

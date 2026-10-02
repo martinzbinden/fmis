@@ -21,7 +21,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
 import type { ParsedLactation, ParsedMilkTest } from './importAdis'
 import type { AnimalSex, AnimalStatus } from '../types'
-import { animalKey } from './animalId'
+import { animalKey } from '@fmis/core/earTag'
 
 export interface TvdAnimal {
   ear_tag: string
