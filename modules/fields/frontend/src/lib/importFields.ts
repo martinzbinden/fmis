@@ -3,6 +3,7 @@ import { parseShp, parseDbf, combine } from 'shpjs'
 import proj4 from 'proj4'
 import { getDb } from '../db/pglite'
 import { upsertRow } from '../db/write'
+import { keepExisting, sameRow } from '@fmis/core/importMerge'
 import { num } from './format'
 
 // CH1903+/LV95 (EPSG:2056), amtliche Projektionsdefinition (Swiss Oblique
@@ -141,19 +142,29 @@ export interface ImportSummary {
   warnings: string[]
 }
 
-async function loadExistingIds(
+type Row = Record<string, unknown> & { id: string }
+
+async function loadExisting(
   pg: Awaited<ReturnType<typeof getDb>>,
   table: string,
   keyColumns: string[],
-): Promise<Map<string, string>> {
-  const { rows } = await pg.query<Record<string, unknown>>(
-    `select id, ${keyColumns.map((c) => `"${c}"`).join(', ')} from "${table}" where deleted_at is null`,
-  )
-  const map = new Map<string, string>()
+): Promise<Map<string, Row>> {
+  const { rows } = await pg.query<Row>(`select * from "${table}" where deleted_at is null`)
+  const map = new Map<string, Row>()
   for (const row of rows) {
-    map.set(keyColumns.map((c) => String(row[c] ?? '')).join('|'), row.id as string)
+    map.set(keyColumns.map((c) => String(row[c] ?? '')).join('|'), row)
   }
   return map
+}
+
+/** Import-Regel (core/frontend/src/importMerge.ts): nie löschen, nur
+ * ergänzen — leere GELAN-Felder und von Hand gepflegte Spalten (Notizen,
+ * Sorte, Start/Ende) bleiben; geschrieben wird nur bei einer Änderung. */
+async function writeMerged(table: Parameters<typeof upsertRow>[0], row: Row, prev: Row | undefined): Promise<boolean> {
+  const merged = keepExisting(row, prev)
+  if (sameRow(merged, prev)) return false
+  await upsertRow(table, merged as never)
+  return true
 }
 
 export async function importFieldsZips(files: File[]): Promise<ImportSummary> {
@@ -165,9 +176,9 @@ export async function importFieldsZips(files: File[]): Promise<ImportSummary> {
     warnings: [],
   }
 
-  const farmsByUid = await loadExistingIds(pg, 'farms', ['external_uid'])
-  const unitsByKey = await loadExistingIds(pg, 'management_units', ['farm_id', 'external_id', 'jahr'])
-  const declByKey = await loadExistingIds(pg, 'field_declarations', [
+  const farmsByUid = await loadExisting(pg, 'farms', ['external_uid'])
+  const unitsByKey = await loadExisting(pg, 'management_units', ['farm_id', 'external_id', 'jahr'])
+  const declByKey = await loadExisting(pg, 'field_declarations', [
     'farm_id',
     'external_kultur_id',
     'jahr',
@@ -198,14 +209,16 @@ export async function importFieldsZips(files: File[]): Promise<ImportSummary> {
       summary.warnings.push(`${file.name}: Betrieb ohne UID — Datei übersprungen.`)
       continue
     }
-    const farmId = farmsByUid.get(uid) ?? crypto.randomUUID()
-    farmsByUid.set(uid, farmId)
-    await upsertRow('farms', {
+    const prevFarm = farmsByUid.get(uid)
+    const farmId = prevFarm?.id ?? crypto.randomUUID()
+    const farmRow = {
       id: farmId,
       external_uid: uid,
       bur_nr: str(field(p, 'BUR_NR')),
-      name: str(field(p, 'Name')) ?? uid,
-    })
+      name: str(field(p, 'Name')) ?? (prevFarm?.name as string | undefined) ?? uid,
+    }
+    await writeMerged('farms', farmRow, prevFarm)
+    farmsByUid.set(uid, keepExisting(farmRow, prevFarm))
     summary.farmsImported++
 
     for (const feature of layers.betrieb_bewirtschaftungseinheit?.features ?? []) {
@@ -217,10 +230,9 @@ export async function importFieldsZips(files: File[]): Promise<ImportSummary> {
         continue
       }
       const key = `${farmId}|${externalId}|${jahr}`
-      const id = unitsByKey.get(key) ?? crypto.randomUUID()
-      unitsByKey.set(key, id)
-      await upsertRow('management_units', {
-        id,
+      const prevUnit = unitsByKey.get(key)
+      const unitRow = {
+        id: prevUnit?.id ?? crypto.randomUUID(),
         farm_id: farmId,
         external_id: externalId,
         jahr,
@@ -231,7 +243,9 @@ export async function importFieldsZips(files: File[]): Promise<ImportSummary> {
         area_unprod_a: num(field(up, 'Fl_Unprod', 'Fl Unprod')),
         area_wald_a: num(field(up, 'Fl_Wald', 'Fl Wald')),
         area_land_a: num(field(up, 'Fl_Land', 'Fl Land')),
-      })
+      }
+      await writeMerged('management_units', unitRow, prevUnit)
+      unitsByKey.set(key, keepExisting(unitRow, prevUnit))
       summary.managementUnitsImported++
     }
 
@@ -250,18 +264,17 @@ export async function importFieldsZips(files: File[]): Promise<ImportSummary> {
       }
       const sequenceInYear = 1
       const declKey = `${farmId}|${externalKulturId ?? ''}|${jahr}|${sequenceInYear}`
-      const id = declByKey.get(declKey) ?? crypto.randomUUID()
-      declByKey.set(declKey, id)
+      const prevDecl = declByKey.get(declKey)
 
       const lineageKey = externalKulturId ? `${farmId}|${externalKulturId}` : null
       const lineageId = (lineageKey && lineageByKultur.get(lineageKey)) || crypto.randomUUID()
       if (lineageKey) lineageByKultur.set(lineageKey, lineageId)
 
       const { de, fr } = parseKulturName(field(fp, 'Kultur_Nam', 'Kultur_Name'))
-      await upsertRow('field_declarations', {
-        id,
+      const declRow = {
+        id: prevDecl?.id ?? crypto.randomUUID(),
         farm_id: farmId,
-        lineage_id: lineageId,
+        lineage_id: (prevDecl?.lineage_id as string | undefined) ?? lineageId,
         management_unit_external_id: str(field(fp, 'ID_BewE', 'ID BewE')),
         external_kultur_id: externalKulturId,
         jahr,
@@ -274,7 +287,9 @@ export async function importFieldsZips(files: File[]): Promise<ImportSummary> {
         baeume: int(field(fp, 'Baeume')),
         geometry: feature.geometry ? JSON.stringify(feature.geometry) : null,
         source: 'import',
-      })
+      }
+      await writeMerged('field_declarations', declRow, prevDecl)
+      declByKey.set(declKey, keepExisting(declRow, prevDecl))
       summary.fieldDeclarationsImported++
     }
   }

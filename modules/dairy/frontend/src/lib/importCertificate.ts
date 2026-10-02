@@ -122,6 +122,8 @@ function display(field: string, v: string | number | boolean): string {
   return String(v)
 }
 
+const withoutEmpty = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v != null && v !== ''))
+
 const keyOf = (a: CertificateAnimal) => animalKey(a.ear_tag) ?? a.ear_tag
 const labelOf = (a: CertificateAnimal) => [a.name, shortEarTag(a.ear_tag)].filter(Boolean).join(' ')
 
@@ -164,7 +166,8 @@ export async function planCertificateImport(pg: PGlite, cert: SmgCertificate): P
     }
     writes.push({
       table,
-      row: merge(prev, { ...values, ...('document_date' in fresh ? meta : {}) }),
+      // Leere Werte des Ausweises löschen nichts (Import-Regel: nur ergänzen).
+      row: merge(prev, { ...withoutEmpty(values), ...('document_date' in fresh ? meta : {}) }),
       gapsOnly: changes.length ? (Object.keys(fills).length ? merge(prev, fills) : null) : null,
       changes,
     })

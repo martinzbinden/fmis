@@ -11,7 +11,7 @@
 // offiziellen Spec übernommen und gegen echte Exportdateien verifiziert.
 
 import type { PGlite } from '@electric-sql/pglite'
-import { upsertRow } from '../db/write'
+import { sqlDate, writeImportRow } from './importMerge'
 import { inTransaction } from '../db/transaction'
 import type { SyncTable } from '../db/tables'
 import type { AnimalSex, AnimalStatus, LactationClosureType } from '../types'
@@ -302,37 +302,6 @@ export interface ImportSummary {
   unmatchedEarTags: string[]
 }
 
-function sqlDate(v: unknown): string {
-  return v instanceof Date ? v.toISOString().slice(0, 10) : String(v)
-}
-
-function sameValue(a: unknown, b: unknown): boolean {
-  if (a == null || a === '') return b == null || b === ''
-  if (b == null || b === '') return false
-  // pglite liefert date-Spalten als Date (UTC-Mitternacht), numeric als string.
-  const norm = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v)
-  const x = norm(a)
-  const y = norm(b)
-  if (typeof x === 'boolean' || typeof y === 'boolean') return Boolean(x) === Boolean(y)
-  const nx = Number(x)
-  const ny = Number(y)
-  if (!Number.isNaN(nx) && !Number.isNaN(ny) && String(x).trim() !== '' && String(y).trim() !== '') return nx === ny
-  return String(x) === String(y)
-}
-
-/** upsertRow nur, wenn sich ein Feld gegenüber der bestehenden Zeile ändert —
- * ein wiederholter Import des gleichen Exports soll weder den Sync noch die
- * Änderungshistorie mit hunderten unveränderten Zeilen füllen. */
-async function writeIfChanged(
-  pg: PGlite,
-  table: SyncTable,
-  row: Record<string, unknown> & { id: string },
-  prev: Record<string, unknown> | undefined,
-): Promise<boolean> {
-  if (prev && Object.keys(row).every((k) => sameValue(row[k], prev[k]))) return false
-  await upsertRow(pg, table, row as never)
-  return true
-}
 
 async function loadByKey(pg: PGlite, table: string, keyColumn: string): Promise<Map<string, Record<string, unknown>>> {
   const { rows } = await pg.query<Record<string, unknown>>(`select * from "${table}" where ${keyColumn} is not null`)
@@ -363,17 +332,10 @@ async function importBreedingData(
       row = { ...prev, id: String(prev.id) }
       for (const [k, v] of Object.entries(base)) if (row[k] == null && v != null) row[k] = v
     } else {
-      // Export-Werte gehen vor, aber eine Lücke im Export (z.B. Widder ohne
-      // Eltern) löscht nichts, was ein Leistungsausweis ergänzt hat.
-      const kept = Object.fromEntries(
-        Object.entries(base).map(([k, v]) => {
-          const old = prev?.[k]
-          return [k, v ?? (old == null ? null : k === 'birth_date' ? sqlDate(old) : old)]
-        }),
-      )
-      row = { id: prev ? String(prev.id) : crypto.randomUUID(), ...kept, source: 'import' }
+      // Lücken im Export (z.B. Widder ohne Eltern) füllt writeImportRow aus dem Bestand.
+      row = { id: prev ? String(prev.id) : crypto.randomUUID(), ...base, source: 'import' }
     }
-    if (await writeIfChanged(pg, 'pedigree', row, prev)) pedigreeWritten++
+    if (await writeImportRow(pg, 'pedigree', row, prev)) pedigreeWritten++
   }
 
   let matingsWritten = 0
@@ -404,7 +366,7 @@ async function importBreedingData(
       import_key: importKey,
       notes: prev?.notes ?? null,
     }
-    if (await writeIfChanged(pg, 'matings', row, prev)) matingsWritten++
+    if (await writeImportRow(pg, 'matings', row, prev)) matingsWritten++
   }
 
   // Geburten: K11 hat eine Zeile je Nachkomme — Ereignis = Muttertier + Datum.
@@ -445,7 +407,7 @@ async function importBreedingData(
       import_key: importKey,
       notes: prev?.notes ?? null,
     }
-    if (await writeIfChanged(pg, 'births', row, prev)) birthsWritten++
+    if (await writeImportRow(pg, 'births', row, prev)) birthsWritten++
 
     for (const [i, l] of lines.entries()) {
       const offKey = animalKey(l.offspring_ear_tag)
@@ -463,7 +425,7 @@ async function importBreedingData(
         birth_weight_kg: l.birth_weight_kg,
         import_key: offImportKey,
       }
-      if (await writeIfChanged(pg, 'birth_offspring', offRow, prevOff)) offspringWritten++
+      if (await writeImportRow(pg, 'birth_offspring', offRow, prevOff)) offspringWritten++
     }
   }
 
@@ -489,7 +451,7 @@ async function importBreedingData(
       base: bv.base,
       import_key: importKey,
     }
-    if (await writeIfChanged(pg, 'breeding_values', row, prev)) breedingValuesWritten++
+    if (await writeImportRow(pg, 'breeding_values', row, prev)) breedingValuesWritten++
   }
 
   return { pedigreeWritten, matingsWritten, birthsWritten, offspringWritten, breedingValuesWritten }
@@ -535,7 +497,7 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<Import
       lauf_nr: animal.lauf_nr ?? (prev?.lauf_nr as string | null) ?? null,
       notes: (prev?.notes as string | null) ?? null,
     }
-    await writeIfChanged(pg, 'animals', row, prev)
+    await writeImportRow(pg, 'animals', row, prev)
   }
 
   const idFor = (earTag: string) => animalIdByKey.get(animalKey(earTag) ?? earTag) ?? earTagToId.get(earTag)
@@ -556,7 +518,7 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<Import
     const { ear_tag: _earTag, ...rest } = test
     const row = { id: prev?.id ?? crypto.randomUUID(), animal_id: animalId, ...rest }
     testByKey.set(key, row)
-    await writeIfChanged(pg, 'milk_tests', row, prev)
+    await writeImportRow(pg, 'milk_tests', row, prev)
     milkTestsImported++
   }
 
@@ -577,7 +539,7 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<Import
     const { ear_tag: _earTag, ...rest } = lactation
     const row = { id: prev?.id ?? crypto.randomUUID(), animal_id: animalId, ...rest }
     lactationByKey.set(key, row)
-    await writeIfChanged(pg, 'lactations', row, prev)
+    await writeImportRow(pg, 'lactations', row, prev)
     lactationsImported++
   }
 

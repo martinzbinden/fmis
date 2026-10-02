@@ -8,7 +8,9 @@ Idempotent pro Saison: Schlüssel ist (season_year, fields_lineage_id) — die
 lineage_id des Kulturen-Moduls bleibt über die Jahre stabil (GELAN "ID
 Kultur"). Bestehende Zeilen werden nur bei tatsächlicher Änderung
 aktualisiert; die manuell gepflegten Felder (wiesentyp, intensitaet, notes)
-bleiben unangetastet. Geschrieben wird wie upsertRow() im Client: updated_at
+bleiben unangetastet. Import-Regel: nie löschen, nur ergänzen — leere
+GELAN-Werte überschreiben nichts (coalesce), und Parzellen, deren
+Deklaration es nicht mehr gibt, werden nur gemeldet, nicht gelöscht. Geschrieben wird wie upsertRow() im Client: updated_at
 = now() (damit der Pull die Zeilen liefert) plus data_history-Zeile mit
 GeoJSON-Text im Snapshot (nicht dem PostGIS-Typ), damit die Verlauf-Seite
 alles gleich darstellt.
@@ -32,8 +34,9 @@ class ImportResult(BaseModel):
     updated: int
     unchanged: int
     # Parzellen mit source='fields', deren GELAN-Deklaration im Jahr nicht
-    # (mehr) existiert, die aber noch Einträge tragen — nicht gelöscht.
+    # (mehr) existiert — gemeldet, nicht gelöscht (löschen geht von Hand).
     orphaned: list[str]
+    # Immer 0 (Feld bleibt für ältere Clients bestehen).
     deleted: int
 
 
@@ -64,18 +67,22 @@ order by fd.lineage_id, fd.sequence_in_year
 
 _UPDATE_SQL = """
 update parcels p set
-  name = s.name, area_a = s.area_a, base_geometry = s.geometry, farm_id = s.farm_id,
-  farm_name = s.farm_name, fields_declaration_id = s.fd_id, external_kultur_id = s.external_kultur_id,
-  kultur_code = s.kultur_code, kultur_name_de = s.kultur_name_de, category = s.category,
-  source = 'fields', updated_at = now()
+  name = s.name, area_a = coalesce(s.area_a, p.area_a), base_geometry = coalesce(s.geometry, p.base_geometry),
+  farm_id = coalesce(s.farm_id, p.farm_id), farm_name = coalesce(s.farm_name, p.farm_name),
+  fields_declaration_id = coalesce(s.fd_id, p.fields_declaration_id),
+  external_kultur_id = coalesce(s.external_kultur_id, p.external_kultur_id),
+  kultur_code = coalesce(s.kultur_code, p.kultur_code), kultur_name_de = coalesce(s.kultur_name_de, p.kultur_name_de),
+  category = s.category, source = 'fields', updated_at = now()
 from src s
 where p.season_year = %(year)s and p.deleted_at is null and p.fields_lineage_id = s.lineage_id
   and (
     (p.name, p.area_a, p.kultur_code, p.kultur_name_de, p.category, p.farm_id, p.farm_name,
      p.fields_declaration_id, p.external_kultur_id)
       is distinct from
-    (s.name, s.area_a, s.kultur_code, s.kultur_name_de, s.category, s.farm_id, s.farm_name,
-     s.fd_id, s.external_kultur_id)
+    (s.name, coalesce(s.area_a, p.area_a), coalesce(s.kultur_code, p.kultur_code),
+     coalesce(s.kultur_name_de, p.kultur_name_de), s.category, coalesce(s.farm_id, p.farm_id),
+     coalesce(s.farm_name, p.farm_name), coalesce(s.fd_id, p.fields_declaration_id),
+     coalesce(s.external_kultur_id, p.external_kultur_id))
     or p.base_geometry is null or not ST_Equals(p.base_geometry, s.geometry)
   )
 returning p.id
@@ -103,13 +110,9 @@ where p.season_year = %(year)s and p.deleted_at is null
 """
 
 # Verwaiste GELAN-Parzellen: source='fields', aber im Jahr keine Quelle mehr
-# (Deklaration gelöscht/umkategorisiert). Ohne Einträge → soft-delete, sonst melden.
+# (Deklaration gelöscht/umkategorisiert) — nur melden.
 _ORPHANS_SQL = """
-select p.id, p.name,
-       exists (select 1 from usage_entries u where u.parcel_id = p.id and u.deleted_at is null)
-    or exists (select 1 from fertilization_entries fe where fe.parcel_id = p.id and fe.deleted_at is null)
-    or exists (select 1 from paddocks pd where pd.parcel_id = p.id and pd.deleted_at is null)
-    or exists (select 1 from n_dose_summary n where n.parcel_id = p.id and n.deleted_at is null) as in_use
+select p.name
 from parcels p
 where p.season_year = %(year)s and p.deleted_at is null and p.source = 'fields'
   and p.fields_lineage_id is not null
@@ -143,16 +146,9 @@ async def import_from_fields(
         unchanged = (await (await conn.execute(_UNCHANGED_SQL, {"year": year})).fetchone())[0]
         unchanged -= len(updated_ids) + len(inserted_ids)
 
-        orphans = await (await conn.execute(_ORPHANS_SQL, {"year": year})).fetchall()
-        orphan_names = [name for _id, name, in_use in orphans if in_use]
-        delete_ids = [_id for _id, _name, in_use in orphans if not in_use]
-        if delete_ids:
-            await conn.execute(
-                "update parcels set deleted_at = now(), updated_at = now() where id = any(%s::uuid[])",
-                (delete_ids,),
-            )
+        orphan_names = [r[0] for r in await (await conn.execute(_ORPHANS_SQL, {"year": year})).fetchall()]
 
-        for action, ids in (("insert", inserted_ids), ("update", updated_ids), ("delete", delete_ids)):
+        for action, ids in (("insert", inserted_ids), ("update", updated_ids)):
             if ids:
                 await conn.execute(_HISTORY_SQL, {"action": action, "email": user.email, "ids": ids})
         await conn.commit()
@@ -163,5 +159,5 @@ async def import_from_fields(
         updated=len(updated_ids),
         unchanged=max(unchanged, 0),
         orphaned=orphan_names,
-        deleted=len(delete_ids),
+        deleted=0,
     )

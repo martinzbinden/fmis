@@ -155,7 +155,7 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
   const [error, setError] = useState<string | null>(null)
   const [found, setFound] = useState<ImportFile[]>([])
   const [summary, setSummary] = useState<ImportSummary | null>(null)
-  const [tvdCount, setTvdCount] = useState<number | null>(null)
+  const [tvdCount, setTvdCount] = useState<{ read: number; written: number } | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [certificates, setCertificates] = useState<CertificateImportResult[]>([])
   const [pending, setPending] = useState<CertificatePlan[]>([])
@@ -200,7 +200,7 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
         nextWarnings.push(...parsed.warnings)
       }
 
-      let tvd = 0
+      const tvd = { read: 0, written: 0 }
       for (const f of of('tvd')) {
         try {
           const animals = await parseTierbestand(new File([f.data], f.name))
@@ -208,7 +208,8 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
             nextWarnings.push(`${f.name}: keine Tiere erkannt (Spalte «Ohrmarkennummer» fehlt?)`)
             continue
           }
-          tvd += await inTransaction(db, (tx) => importTierbestand(tx, animals))
+          tvd.read += animals.length
+          tvd.written += await inTransaction(db, (tx) => importTierbestand(tx, animals))
         } catch (err) {
           nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
         }
@@ -299,7 +300,7 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
         </div>
       )}
       {tvdCount != null && (
-        <p className="mt-2 rounded bg-brand-50 p-3 text-sm text-brand-900">TVD-Tierbestand: {tvdCount} Tiere übernommen.</p>
+        <p className="mt-2 rounded bg-brand-50 p-3 text-sm text-brand-900">TVD-Tierbestand: {tvdCount.read} Tiere gelesen, {tvdCount.written} neu oder ergänzt.</p>
       )}
       {pending.map((plan) => (
         <div key={plan.subject} className="mt-2 space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">

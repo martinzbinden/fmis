@@ -8,7 +8,7 @@
 import { read, utils, type WorkSheet } from 'xlsx'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey } from '@fmis/core/earTag'
-import { upsertRow } from '../db/write'
+import { writeImportRow } from './importMerge'
 import type { AnimalSex, AnimalStatus } from '../types'
 
 export interface TvdAnimal {
@@ -92,23 +92,21 @@ export async function parseTierbestand(file: File): Promise<TvdAnimal[]> {
     .filter((a): a is TvdAnimal => a !== null)
 }
 
-/** Legt neue Tiere an bzw. aktualisiert bestehende. Die Langform einer
- * bereits bekannten Ohrmarke bleibt erhalten, ebenso in der App gepflegte
- * Felder (Laufnummer, Bemerkung). */
+/** Legt neue Tiere an bzw. ergänzt bestehende (lib/importMerge.ts: leere
+ * Felder der TVD-Liste löschen nichts, z.B. Namen aus dem Herdebuch). Die
+ * Langform einer bereits bekannten Ohrmarke bleibt erhalten. Gibt die Zahl
+ * neu angelegter oder geänderter Tiere zurück. */
 export async function importTierbestand(pg: PGlite, tierbestand: TvdAnimal[]): Promise<number> {
-  const { rows: existing } = await pg.query<{ id: string; ear_tag: string; notes: string | null; lauf_nr: string | null }>(
-    'select id, ear_tag, notes, lauf_nr from animals',
-  )
+  const { rows: existing } = await pg.query<Record<string, unknown> & { id: string; ear_tag: string }>('select * from animals')
   const byKey = new Map(existing.map((a) => [animalKey(a.ear_tag) ?? a.ear_tag, a]))
+  let written = 0
   for (const animal of tierbestand) {
-    const prev = byKey.get(animalKey(animal.ear_tag) ?? animal.ear_tag)
-    await upsertRow(pg, 'animals', {
-      id: prev?.id ?? crypto.randomUUID(),
-      ...animal,
-      ear_tag: prev?.ear_tag ?? animal.ear_tag,
-      lauf_nr: prev?.lauf_nr ?? null,
-      notes: prev?.notes ?? null,
-    })
+    const key = animalKey(animal.ear_tag) ?? animal.ear_tag
+    const prev = byKey.get(key)
+    const row = { id: prev?.id ?? crypto.randomUUID(), ...animal, ear_tag: prev?.ear_tag ?? animal.ear_tag }
+    if (await writeImportRow(pg, 'animals', row, prev)) written++
+    // doppelte Zeilen in derselben Liste nicht zweimal anlegen
+    byKey.set(key, prev ?? row)
   }
-  return tierbestand.length
+  return written
 }

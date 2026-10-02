@@ -208,10 +208,10 @@ export default function Parcels() {
           ) : (
             <>
               GELAN {importResult.year}: {importResult.inserted} neu, {importResult.updated} aktualisiert,{' '}
-              {importResult.unchanged} unverändert, {importResult.deleted} entfernt.
+              {importResult.unchanged} unverändert.
               {importResult.orphaned.length > 0 && (
                 <div className="mt-1 text-xs text-amber-700">
-                  Nicht mehr in GELAN, aber mit Einträgen (bleiben): {importResult.orphaned.join(', ')}
+                  Nicht mehr in GELAN (bleiben bestehen, bei Bedarf von Hand löschen): {importResult.orphaned.join(', ')}
                 </div>
               )}
             </>
