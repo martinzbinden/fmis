@@ -2,8 +2,8 @@ import { useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useDb } from '@fmis/core/DbContext'
-import { parseAdisFiles, importAdisData, type ImportSummary } from '../lib/importAdis'
-import { parseTierbestand, parseSmgFiles, importSmgData, type SmgImportSummary } from '../lib/importSmg'
+import { parseAdisFiles, importAdisData, readHerdbookFile, type HerdbookSpecies, type ImportSummary } from '../lib/importAdis'
+import { parseTierbestand, importSmgData, type SmgImportSummary } from '../lib/importSmg'
 import { fmtDate } from '../lib/format'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
 
@@ -53,11 +53,8 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
     <div className={`mx-auto space-y-6 p-4 pb-24 ${view === 'list' ? 'max-w-5xl' : 'max-w-2xl'}`}>
       <h1 className="text-xl font-bold text-gray-800">Tiere</h1>
 
-      {moduleKey === 'dairy' ? (
-        <ImportForm onImported={refresh} />
-      ) : (
-        <TierbestandImportForm onImported={refresh} />
-      )}
+      <ImportForm onImported={refresh} species={moduleKey === 'dairy' ? 'cattle' : 'sheep'} />
+      {moduleKey !== 'dairy' && <TierbestandImportForm onImported={refresh} />}
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && allAnimals.length === 0 && (
@@ -133,7 +130,7 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
   )
 }
 
-function ImportForm({ onImported }: { onImported: () => void }) {
+function ImportForm({ onImported, species }: { onImported: () => void; species: HerdbookSpecies }) {
   const db = useDb()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -146,10 +143,8 @@ function ImportForm({ onImported }: { onImported: () => void }) {
     setError(null)
     setSummary(null)
     try {
-      const files = await Promise.all(
-        [...fileList].map(async (f) => ({ name: f.name, text: await f.text() })),
-      )
-      const parsed = parseAdisFiles(files)
+      const files = await Promise.all([...fileList].map(readHerdbookFile))
+      const parsed = parseAdisFiles(files, species)
       const result = await importAdisData(db, parsed)
       setSummary(result)
       setWarnings(parsed.warnings)
@@ -163,11 +158,14 @@ function ImportForm({ onImported }: { onImported: () => void }) {
 
   return (
     <div className="rounded-lg bg-white p-4 shadow-sm">
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">Herdebuch-Export importieren</h2>
+      <h2 className="mb-2 text-sm font-semibold text-gray-700">
+        Herdebuch-Export importieren ({species === 'sheep' ? 'SMG' : 'swissherdbook/Braunvieh'})
+      </h2>
       <p className="mb-3 text-xs text-gray-500">
-        Alle Dateien des Herdebuch-Exports auswählen (z.B. <code>b&lt;nr&gt;.Y01</code>,{' '}
-        <code>b&lt;nr&gt;.K33</code>, …) — die Satzart wird pro Zeile erkannt, nicht am
-        Dateinamen. Nichts verlässt den Browser.
+        Alle Dateien des Exports auswählen (z.B. <code>b&lt;nr&gt;.Y01</code>, <code>.Y02</code>,{' '}
+        <code>.K04</code>, <code>.K09</code>–<code>.K11</code>, <code>.K33</code>) — die Satzart wird
+        pro Zeile erkannt, nicht am Dateinamen. Liest Stammdaten, Abstammung, Milchproben,
+        Laktationen, Belegungen, Geburten und Zuchtwerte. Nichts verlässt den Browser.
       </p>
       <input
         type="file"
@@ -180,13 +178,15 @@ function ImportForm({ onImported }: { onImported: () => void }) {
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {summary && (
         <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
-          <p>{summary.animalsImported} Kühe importiert.</p>
-          <p>{summary.milkTestsImported} Milchtests importiert.</p>
-          <p>{summary.lactationsImported} Laktationsdaten importiert.</p>
+          <p>{summary.animalsImported} Tiere, {summary.milkTestsImported} Milchproben, {summary.lactationsImported} Laktationsdaten gelesen.</p>
+          <p>
+            Neu oder geändert: {summary.pedigreeWritten} Stammbaum-Einträge, {summary.matingsWritten} Belegungen,{' '}
+            {summary.birthsWritten} Geburten ({summary.offspringWritten} Nachkommen), {summary.breedingValuesWritten} Zuchtwerte.
+          </p>
           {summary.unmatchedEarTags.length > 0 && (
             <p className="mt-1 text-amber-700">
-              {summary.unmatchedEarTags.length} Einträge ohne passende Kuh übersprungen:{' '}
-              {summary.unmatchedEarTags.join(', ')}
+              {summary.unmatchedEarTags.length} Muttertiere nicht (mehr) im Bestand — ihre Einträge wurden
+              übersprungen: {summary.unmatchedEarTags.join(', ')}
             </p>
           )}
         </div>
@@ -202,19 +202,17 @@ function ImportForm({ onImported }: { onImported: () => void }) {
   )
 }
 
-/** Import für die Milchschafe-Instanz: TVD-Tierbestand (Pflicht, liefert
- * alle aktuellen Tiere) + optional die SMG-Zuchtorganisationsdateien
- * (Laktationen/Milchkontrollen für die Teilmenge mit Milchleistungsdaten).
- * Zwei getrennte Dateiauswahlfelder, da unterschiedliche Quellen/Formate —
- * siehe lib/importSmg.ts für die Herleitung des Ohrmarken-Abgleichs. */
+/** Zusatz-Import für die Milchschafe: der SMG-Export enthält nur Auen mit
+ * Milchleistungsdaten — Jungtiere und Widder kommen aus dem TVD-Tierbestand.
+ * Abgleich über den normalisierten Ohrmarken-Schlüssel (lib/animalId.ts),
+ * damit Kurz- und Langform nicht doppelt angelegt werden. */
 function TierbestandImportForm({ onImported }: { onImported: () => void }) {
   const db = useDb()
   const [tierbestandFile, setTierbestandFile] = useState<File | null>(null)
-  const [smgFiles, setSmgFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<SmgImportSummary | null>(null)
-  const [warnings, setWarnings] = useState<string[]>([])
+  const [warnings] = useState<string[]>([])
 
   async function handleImport() {
     if (!tierbestandFile) return
@@ -223,10 +221,8 @@ function TierbestandImportForm({ onImported }: { onImported: () => void }) {
     setSummary(null)
     try {
       const tierbestand = await parseTierbestand(tierbestandFile)
-      const smg = smgFiles.length > 0 ? await parseSmgFiles(smgFiles) : { lactations: [], milkTests: [], warnings: [] }
-      const result = await importSmgData(db, tierbestand, smg)
+      const result = await importSmgData(db, tierbestand, { lactations: [], milkTests: [], warnings: [] })
       setSummary(result)
-      setWarnings(smg.warnings)
       onImported()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
@@ -237,11 +233,10 @@ function TierbestandImportForm({ onImported }: { onImported: () => void }) {
 
   return (
     <div className="rounded-lg bg-white p-4 shadow-sm">
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">Tierbestand + SMG-Daten importieren</h2>
+      <h2 className="mb-2 text-sm font-semibold text-gray-700">TVD-Tierbestand importieren (Jungtiere, Widder)</h2>
       <p className="mb-3 text-xs text-gray-500">
-        Zuerst den TVD-Tierbestand (<code>Tierbestand.xlsx</code>, alle aktuellen Tiere) auswählen,
-        optional zusätzlich die SMG-Exportdateien (<code>b&lt;nr&gt;.K04</code>,{' '}
-        <code>b&lt;nr&gt;.K33</code>) für Laktationen/Milchkontrollen. Nichts verlässt den Browser.
+        Der SMG-Export enthält nur Auen mit Milchleistung. Jungtiere und Widder kommen aus dem
+        TVD-Tierbestand (<code>Tierbestand.xlsx</code>). Nichts verlässt den Browser.
       </p>
       <label className="block text-xs font-medium text-gray-600">
         TVD-Tierbestand (Excel)
@@ -250,16 +245,6 @@ function TierbestandImportForm({ onImported }: { onImported: () => void }) {
           accept=".xlsx,.xls"
           disabled={busy}
           onChange={(e) => setTierbestandFile(e.target.files?.[0] ?? null)}
-          className="mt-1 block w-full text-sm text-gray-600"
-        />
-      </label>
-      <label className="mt-3 block text-xs font-medium text-gray-600">
-        SMG-Dateien (optional)
-        <input
-          type="file"
-          multiple
-          disabled={busy}
-          onChange={(e) => setSmgFiles(e.target.files ? [...e.target.files] : [])}
           className="mt-1 block w-full text-sm text-gray-600"
         />
       </label>
@@ -274,15 +259,7 @@ function TierbestandImportForm({ onImported }: { onImported: () => void }) {
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {summary && (
         <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
-          <p>{summary.animalsImported} Tiere importiert.</p>
-          <p>{summary.lactationsImported} Laktationsdaten importiert.</p>
-          <p>{summary.milkTestsImported} Milchtests importiert.</p>
-          {summary.unmatchedEarTags.length > 0 && (
-            <p className="mt-1 text-amber-700">
-              {summary.unmatchedEarTags.length} Einträge ohne passendes Tier übersprungen:{' '}
-              {summary.unmatchedEarTags.join(', ')}
-            </p>
-          )}
+          <p>{summary.animalsImported} Tiere aus dem TVD-Tierbestand übernommen.</p>
         </div>
       )}
       {warnings.length > 0 && (

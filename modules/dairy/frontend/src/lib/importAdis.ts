@@ -1,15 +1,42 @@
-// Parser für den ADIS-Herdebuch-Export ("Datenschnittstelle Rindvieh-Schweiz",
+// Parser für den Herdebuch-Export ("Datenschnittstelle Rindvieh-Schweiz",
 // Qualitas AG) — feste Satzlängen, eine Zeile pro Datensatz. Die Satzart steht
 // in den ersten 3 Zeichen JEDER ZEILE, nicht im Dateinamen (z.B. enthält eine
-// Datei mit der Endung .Y01 tatsächlich K01-Sätze). Unbekannte Satzarten
-// werden einfach übersprungen (K05/K07-K11, B01/B04, CODE.C01, Y02, ...) —
-// gebraucht werden K01 (Tier-Stammdaten), K33 (alle Milchproben) und K04
-// (Laktationsdaten). Spaltenoffsets 1:1 aus der offiziellen Spec übernommen
-// und gegen echte Exportdateien verifiziert.
+// Datei mit der Endung .Y01 tatsächlich K01-Sätze, .Y02 K02-Sätze). Gilt für
+// beide Instanzen: der SMG-Export der Milchschafe folgt derselben Spec, nur
+// K09 (Zuchtwerte) weicht ab, siehe lib/herdbookRecords.ts.
+// Gelesen werden K01 (Tier-Stammdaten + Eltern), K02 (drei Generationen),
+// K33 (Milchproben), K04 (Laktationen), K09 (Zuchtwerte), K10 (Belegungen)
+// und K11 (Geburten); übrige Satzarten (K03/K05/K07/K08/K44/K45/K16,
+// B01/B04, CODE.C01) werden übersprungen. Spaltenoffsets 1:1 aus der
+// offiziellen Spec übernommen und gegen echte Exportdateien verifiziert.
 
-import type { PGlite } from '@electric-sql/pglite'
+import type { PGlite, Transaction } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
+import type { SyncTable } from '../db/tables'
 import type { AnimalSex, AnimalStatus, LactationClosureType } from '../types'
+import { animalKey } from './animalId'
+import {
+  mergePedigree,
+  parseK01Pedigree,
+  parseK02Pedigree,
+  parseK09Cattle,
+  parseK09Sheep,
+  parseK10,
+  parseK11,
+  type ParsedBirthLine,
+  type ParsedBreedingValue,
+  type ParsedMating,
+  type PedigreeEntry,
+} from './herdbookRecords'
+
+export type HerdbookSpecies = 'cattle' | 'sheep'
+
+/** Herdebuch-Dateien sind Latin-1; File.text() würde als UTF-8 dekodieren
+ * und Umlaute in Namen zerstören. windows-1252 deckt Latin-1 ab. */
+export async function readHerdbookFile(file: File): Promise<{ name: string; text: string }> {
+  const buf = await file.arrayBuffer()
+  return { name: file.name, text: new TextDecoder('windows-1252').decode(buf) }
+}
 
 export interface ParsedAnimal {
   ear_tag: string
@@ -54,6 +81,10 @@ export interface ParseResult {
   animals: ParsedAnimal[]
   milkTests: ParsedMilkTest[]
   lactations: ParsedLactation[]
+  pedigree: PedigreeEntry[]
+  matings: ParsedMating[]
+  births: ParsedBirthLine[]
+  breedingValues: ParsedBreedingValue[]
   warnings: string[]
   ignoredLines: number
 }
@@ -158,10 +189,14 @@ function parseK04Line(line: string): ParsedLactation | null {
   }
 }
 
-export function parseAdisFiles(files: { name: string; text: string }[]): ParseResult {
+export function parseAdisFiles(files: { name: string; text: string }[], species: HerdbookSpecies = 'cattle'): ParseResult {
   const animals: ParsedAnimal[] = []
   const milkTests: ParsedMilkTest[] = []
   const lactations: ParsedLactation[] = []
+  const pedigreeEntries: PedigreeEntry[] = []
+  const matings: ParsedMating[] = []
+  const births: ParsedBirthLine[] = []
+  const breedingValues: ParsedBreedingValue[] = []
   const warnings: string[] = []
   let ignoredLines = 0
 
@@ -173,6 +208,20 @@ export function parseAdisFiles(files: { name: string; text: string }[]): ParseRe
         const parsed = parseK01Line(line)
         if (parsed) animals.push(parsed)
         else warnings.push(`${file.name}: K01-Zeile ohne Ohrmarke übersprungen`)
+        const ped = parseK01Pedigree(line)
+        if (ped) pedigreeEntries.push(ped)
+      } else if (tag === 'K02') {
+        pedigreeEntries.push(...parseK02Pedigree(line))
+      } else if (tag === 'K09') {
+        breedingValues.push(...(species === 'sheep' ? parseK09Sheep(line) : parseK09Cattle(line)))
+      } else if (tag === 'K10') {
+        const parsed = parseK10(line)
+        if (parsed) matings.push(parsed)
+        else warnings.push(`${file.name}: K10-Zeile ohne Tier oder Datum übersprungen`)
+      } else if (tag === 'K11') {
+        const parsed = parseK11(line)
+        if (parsed) births.push(parsed)
+        else warnings.push(`${file.name}: K11-Zeile ohne Muttertier oder Datum übersprungen`)
       } else if (tag === 'K33') {
         const parsed = parseK33Line(line)
         if (parsed) milkTests.push(parsed)
@@ -188,14 +237,237 @@ export function parseAdisFiles(files: { name: string; text: string }[]): ParseRe
     }
   }
 
-  return { animals, milkTests, lactations, warnings, ignoredLines }
+  // Väter aus Belegungen/Geburten und die Nachkommen selbst gehören ebenfalls
+  // in den Stammbaum — sonst fehlt z.B. bei einem Lamm, das nie in K01/K02
+  // auftaucht, die Verbindung zu seinen Eltern.
+  for (const m of matings) {
+    const key = animalKey(m.sire_ear_tag)
+    if (key && m.sire_ear_tag) {
+      pedigreeEntries.push({
+        key, ear_tag: m.sire_ear_tag, sire_key: null, dam_key: null,
+        breed_code: m.sire_breed, name: m.sire_name, birth_date: null, sex: 'm',
+      })
+    }
+  }
+  for (const b of births) {
+    const key = animalKey(b.offspring_ear_tag)
+    if (key && b.offspring_ear_tag) {
+      pedigreeEntries.push({
+        key, ear_tag: b.offspring_ear_tag, sire_key: animalKey(b.sire_ear_tag),
+        dam_key: animalKey(b.dam_ear_tag), breed_code: null, name: null,
+        birth_date: b.birth_date, sex: b.offspring_sex,
+      })
+    }
+  }
+
+  return {
+    animals,
+    milkTests,
+    lactations,
+    pedigree: mergePedigree(pedigreeEntries),
+    matings,
+    births,
+    breedingValues,
+    warnings,
+    ignoredLines,
+  }
 }
 
 export interface ImportSummary {
   animalsImported: number
   milkTestsImported: number
   lactationsImported: number
+  pedigreeWritten: number
+  matingsWritten: number
+  birthsWritten: number
+  offspringWritten: number
+  breedingValuesWritten: number
   unmatchedEarTags: string[]
+}
+
+function sqlDate(v: unknown): string {
+  return v instanceof Date ? v.toISOString().slice(0, 10) : String(v)
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a == null || a === '') return b == null || b === ''
+  if (b == null || b === '') return false
+  // pglite liefert date-Spalten als Date (UTC-Mitternacht), numeric als string.
+  const norm = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v)
+  const x = norm(a)
+  const y = norm(b)
+  if (typeof x === 'boolean' || typeof y === 'boolean') return Boolean(x) === Boolean(y)
+  const nx = Number(x)
+  const ny = Number(y)
+  if (!Number.isNaN(nx) && !Number.isNaN(ny) && String(x).trim() !== '' && String(y).trim() !== '') return nx === ny
+  return String(x) === String(y)
+}
+
+/** upsertRow nur, wenn sich ein Feld gegenüber der bestehenden Zeile ändert —
+ * ein wiederholter Import des gleichen Exports soll weder den Sync noch die
+ * Änderungshistorie mit hunderten unveränderten Zeilen füllen. */
+async function writeIfChanged(
+  pg: PGlite,
+  table: SyncTable,
+  row: Record<string, unknown> & { id: string },
+  prev: Record<string, unknown> | undefined,
+): Promise<boolean> {
+  if (prev && Object.keys(row).every((k) => sameValue(row[k], prev[k]))) return false
+  await upsertRow(pg, table, row as never)
+  return true
+}
+
+async function loadByKey(pg: PGlite, table: string, keyColumn: string): Promise<Map<string, Record<string, unknown>>> {
+  const { rows } = await pg.query<Record<string, unknown>>(`select * from "${table}" where ${keyColumn} is not null`)
+  return new Map(rows.map((r) => [String(r[keyColumn]), r]))
+}
+
+/** Abstammung, Belegungen, Geburten und Zuchtwerte schreiben. Bereits in der
+ * App gelöschte Zeilen (deleted_at) werden nicht wiederbelebt; von Hand
+ * erfasste Stammbaum-Einträge (source 'manual') nur in leeren Feldern
+ * ergänzt. */
+async function importBreedingData(
+  pg: PGlite,
+  parsed: ParseResult,
+  animalIdByKey: Map<string, string>,
+  unmatched: Set<string>,
+) {
+  let pedigreeWritten = 0
+  const pedigreeByKey = await loadByKey(pg, 'pedigree', 'animal_key')
+  for (const e of parsed.pedigree) {
+    const prev = pedigreeByKey.get(e.key)
+    if (prev?.deleted_at) continue
+    const base = {
+      animal_key: e.key, ear_tag: e.ear_tag, sire_key: e.sire_key, dam_key: e.dam_key,
+      breed_code: e.breed_code, name: e.name, birth_date: e.birth_date, sex: e.sex,
+    }
+    let row: Record<string, unknown> & { id: string }
+    if (prev && prev.source === 'manual') {
+      row = { ...prev, id: String(prev.id) }
+      for (const [k, v] of Object.entries(base)) if (row[k] == null && v != null) row[k] = v
+    } else {
+      row = { id: prev ? String(prev.id) : crypto.randomUUID(), ...base, source: 'import' }
+    }
+    if (await writeIfChanged(pg, 'pedigree', row, prev)) pedigreeWritten++
+  }
+
+  let matingsWritten = 0
+  const matingsByKey = await loadByKey(pg, 'matings', 'import_key')
+  for (const m of parsed.matings) {
+    const damKey = animalKey(m.ear_tag)
+    const animalId = damKey ? animalIdByKey.get(damKey) : undefined
+    if (!animalId || !damKey) {
+      unmatched.add(m.ear_tag)
+      continue
+    }
+    const sireKey = animalKey(m.sire_ear_tag)
+    const importKey = `${damKey}|${m.service_date}|${m.seq ?? ''}|${sireKey ?? ''}`
+    const prev = matingsByKey.get(importKey)
+    if (prev?.deleted_at) continue
+    const row = {
+      id: prev ? String(prev.id) : crypto.randomUUID(),
+      animal_id: animalId,
+      service_date: m.service_date,
+      service_to: m.service_to,
+      kind: m.kind,
+      seq: m.seq,
+      sire_key: sireKey,
+      sire_ear_tag: m.sire_ear_tag,
+      sire_name: m.sire_name,
+      sire_breed: m.sire_breed,
+      source: 'import',
+      import_key: importKey,
+      notes: prev?.notes ?? null,
+    }
+    if (await writeIfChanged(pg, 'matings', row, prev)) matingsWritten++
+  }
+
+  // Geburten: K11 hat eine Zeile je Nachkomme — Ereignis = Muttertier + Datum.
+  const events = new Map<string, ParsedBirthLine[]>()
+  for (const b of parsed.births) {
+    const damKey = animalKey(b.dam_ear_tag)
+    if (!damKey) continue
+    const k = `${damKey}|${b.birth_date}`
+    events.set(k, [...(events.get(k) ?? []), b])
+  }
+  let birthsWritten = 0
+  let offspringWritten = 0
+  const birthsByKey = await loadByKey(pg, 'births', 'import_key')
+  const offspringByKey = await loadByKey(pg, 'birth_offspring', 'import_key')
+  for (const [importKey, lines] of events) {
+    const first = lines[0]
+    const damKey = importKey.split('|')[0]
+    const damId = animalIdByKey.get(damKey)
+    if (!damId) {
+      unmatched.add(first.dam_ear_tag)
+      continue
+    }
+    const prev = birthsByKey.get(importKey)
+    if (prev?.deleted_at) continue
+    const sireLine = lines.find((l) => l.sire_ear_tag) ?? first
+    const birthId = prev ? String(prev.id) : crypto.randomUUID()
+    const row = {
+      id: birthId,
+      dam_id: damId,
+      birth_date: first.birth_date,
+      parity: first.parity,
+      sire_key: animalKey(sireLine.sire_ear_tag),
+      sire_ear_tag: sireLine.sire_ear_tag,
+      sire_name: (prev?.sire_name as string | null) ?? null,
+      ease: first.ease,
+      conception_date: lines.find((l) => l.conception_date)?.conception_date ?? null,
+      source: 'import',
+      import_key: importKey,
+      notes: prev?.notes ?? null,
+    }
+    if (await writeIfChanged(pg, 'births', row, prev)) birthsWritten++
+
+    for (const [i, l] of lines.entries()) {
+      const offKey = animalKey(l.offspring_ear_tag)
+      const offImportKey = `${importKey}|${offKey ?? `#${i}`}`
+      const prevOff = offspringByKey.get(offImportKey)
+      if (prevOff?.deleted_at) continue
+      const offRow = {
+        id: prevOff ? String(prevOff.id) : crypto.randomUUID(),
+        birth_id: birthId,
+        ear_tag: l.offspring_ear_tag,
+        animal_key: offKey,
+        sex: l.offspring_sex,
+        stillborn: l.stillborn,
+        died_24h: l.died_24h,
+        birth_weight_kg: l.birth_weight_kg,
+        import_key: offImportKey,
+      }
+      if (await writeIfChanged(pg, 'birth_offspring', offRow, prevOff)) offspringWritten++
+    }
+  }
+
+  let breedingValuesWritten = 0
+  const bvByKey = await loadByKey(pg, 'breeding_values', 'import_key')
+  for (const bv of parsed.breedingValues) {
+    const key = animalKey(bv.ear_tag)
+    const animalId = key ? animalIdByKey.get(key) : undefined
+    if (!animalId || !key) {
+      unmatched.add(bv.ear_tag)
+      continue
+    }
+    const importKey = `${key}|${bv.eval_date}|${bv.trait}`
+    const prev = bvByKey.get(importKey)
+    if (prev?.deleted_at) continue
+    const row = {
+      id: prev ? String(prev.id) : crypto.randomUUID(),
+      animal_id: animalId,
+      eval_date: bv.eval_date,
+      trait: bv.trait,
+      value: bv.value,
+      reliability: bv.reliability,
+      base: bv.base,
+      import_key: importKey,
+    }
+    if (await writeIfChanged(pg, 'breeding_values', row, prev)) breedingValuesWritten++
+  }
+
+  return { pedigreeWritten, matingsWritten, birthsWritten, offspringWritten, breedingValuesWritten }
 }
 
 /**
@@ -208,71 +480,101 @@ export interface ImportSummary {
  * unterschiedlicher Abschlussart sind gewollt (siehe schema/0003_lactations.sql).
  */
 export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<ImportSummary> {
-  const { rows: existingAnimals } = await pg.query<{ id: string; ear_tag: string; notes: string | null; lauf_nr: string | null }>(
-    'select id, ear_tag, notes, lauf_nr from animals',
+  // Eine Transaktion für den ganzen Import: ohne sie läuft jede der rund fünf
+  // Abfragen pro Zeile als eigene Transaktion samt IndexedDB-Flush — beim
+  // vollständigen Schaf-Export (~3000 Zeilen) dauerte das viele Minuten. Dazu
+  // ist der Import so atomar: bricht er ab, bleibt der alte Stand.
+  return pg.transaction((tx) => importAdisDataIn(txClient(tx), parsed))
+}
+
+/** Stellt eine laufende Transaktion als PGlite dar, damit upsertRow & Co.
+ * unverändert darin schreiben können. */
+function txClient(tx: Transaction): PGlite {
+  return {
+    query: tx.query.bind(tx),
+    exec: tx.exec.bind(tx),
+    transaction: <T>(cb: (inner: Transaction) => Promise<T>) => cb(tx),
+  } as unknown as PGlite
+}
+
+async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<ImportSummary> {
+  const { rows: existingAnimals } = await pg.query<Record<string, unknown> & { id: string; ear_tag: string }>(
+    'select * from animals',
   )
+  // Abgleich über den normalisierten Schlüssel (lib/animalId.ts): ein Schaf,
+  // das via TVD-Tierbestand in der Kurzform angelegt wurde, ist dasselbe Tier
+  // wie im Herdebuch-Export in der Langform — kein Duplikat anlegen.
+  const existingByKey = new Map(existingAnimals.map((a) => [animalKey(a.ear_tag) ?? a.ear_tag, a]))
+  const animalIdByKey = new Map(existingAnimals.map((a) => [animalKey(a.ear_tag) ?? a.ear_tag, a.id]))
   const earTagToId = new Map(existingAnimals.map((a) => [a.ear_tag, a.id]))
-  // In der App gepflegte Felder (Bemerkung, Laufnummer) beim Re-Import nicht
-  // überschreiben, wenn der Export nichts dazu liefert.
-  const existingByTag = new Map(existingAnimals.map((a) => [a.ear_tag, a]))
 
   for (const animal of parsed.animals) {
-    const id = earTagToId.get(animal.ear_tag) ?? crypto.randomUUID()
+    const key = animalKey(animal.ear_tag) ?? animal.ear_tag
+    const prev = existingByKey.get(key)
+    const id = prev?.id ?? crypto.randomUUID()
+    animalIdByKey.set(key, id)
     earTagToId.set(animal.ear_tag, id)
-    const prev = existingByTag.get(animal.ear_tag)
-    await upsertRow(pg, 'animals', { id, ...animal, lauf_nr: animal.lauf_nr ?? prev?.lauf_nr ?? null, notes: prev?.notes ?? null })
+    // In der App gepflegte Felder (Bemerkung, Laufnummer) beim Re-Import nicht
+    // überschreiben, wenn der Export nichts dazu liefert.
+    const row = {
+      id,
+      ...animal,
+      lauf_nr: animal.lauf_nr ?? (prev?.lauf_nr as string | null) ?? null,
+      notes: (prev?.notes as string | null) ?? null,
+    }
+    await writeIfChanged(pg, 'animals', row, prev)
   }
 
-  const { rows: existingTests } = await pg.query<{ id: string; animal_id: string; test_date: string }>(
-    'select id, animal_id, test_date from milk_tests',
-  )
-  const testKeyToId = new Map(existingTests.map((t) => [`${t.animal_id}|${t.test_date}`, t.id]))
+  const idFor = (earTag: string) => animalIdByKey.get(animalKey(earTag) ?? earTag) ?? earTagToId.get(earTag)
+
+  const { rows: existingTests } = await pg.query<Record<string, unknown> & { id: string }>('select * from milk_tests')
+  const testByKey = new Map(existingTests.map((t) => [`${t.animal_id}|${sqlDate(t.test_date)}`, t]))
 
   const unmatchedEarTags = new Set<string>()
   let milkTestsImported = 0
   for (const test of parsed.milkTests) {
-    const animalId = earTagToId.get(test.ear_tag)
+    const animalId = idFor(test.ear_tag)
     if (!animalId) {
       unmatchedEarTags.add(test.ear_tag)
       continue
     }
     const key = `${animalId}|${test.test_date}`
-    const id = testKeyToId.get(key) ?? crypto.randomUUID()
-    testKeyToId.set(key, id)
+    const prev = testByKey.get(key)
     const { ear_tag: _earTag, ...rest } = test
-    await upsertRow(pg, 'milk_tests', { id, animal_id: animalId, ...rest })
+    const row = { id: prev?.id ?? crypto.randomUUID(), animal_id: animalId, ...rest }
+    testByKey.set(key, row)
+    await writeIfChanged(pg, 'milk_tests', row, prev)
     milkTestsImported++
   }
 
-  const { rows: existingLactations } = await pg.query<{
-    id: string
-    animal_id: string
-    lactation_number: number
-    closure_type: number
-  }>('select id, animal_id, lactation_number, closure_type from lactations')
-  const lactationKeyToId = new Map(
-    existingLactations.map((l) => [`${l.animal_id}|${l.lactation_number}|${l.closure_type}`, l.id]),
+  const { rows: existingLactations } = await pg.query<Record<string, unknown> & { id: string }>('select * from lactations')
+  const lactationByKey = new Map(
+    existingLactations.map((l) => [`${l.animal_id}|${l.lactation_number}|${l.closure_type}`, l]),
   )
 
   let lactationsImported = 0
   for (const lactation of parsed.lactations) {
-    const animalId = earTagToId.get(lactation.ear_tag)
+    const animalId = idFor(lactation.ear_tag)
     if (!animalId) {
       unmatchedEarTags.add(lactation.ear_tag)
       continue
     }
     const key = `${animalId}|${lactation.lactation_number}|${lactation.closure_type}`
-    const id = lactationKeyToId.get(key) ?? crypto.randomUUID()
-    lactationKeyToId.set(key, id)
+    const prev = lactationByKey.get(key)
     const { ear_tag: _earTag, ...rest } = lactation
-    await upsertRow(pg, 'lactations', { id, animal_id: animalId, ...rest })
+    const row = { id: prev?.id ?? crypto.randomUUID(), animal_id: animalId, ...rest }
+    lactationByKey.set(key, row)
+    await writeIfChanged(pg, 'lactations', row, prev)
     lactationsImported++
   }
+
+  const breeding = await importBreedingData(pg, parsed, animalIdByKey, unmatchedEarTags)
 
   return {
     animalsImported: parsed.animals.length,
     milkTestsImported,
     lactationsImported,
+    ...breeding,
     unmatchedEarTags: [...unmatchedEarTags],
   }
 }

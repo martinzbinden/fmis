@@ -21,6 +21,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
 import type { ParsedLactation, ParsedMilkTest } from './importAdis'
 import type { AnimalSex, AnimalStatus } from '../types'
+import { animalKey } from './animalId'
 
 export interface TvdAnimal {
   ear_tag: string
@@ -250,16 +251,25 @@ export async function importSmgData(
   const { rows: existingAnimals } = await pg.query<{ id: string; ear_tag: string; notes: string | null; lauf_nr: string | null }>(
     'select id, ear_tag, notes, lauf_nr from animals',
   )
-  const earTagToId = new Map(existingAnimals.map((a) => [a.ear_tag, a.id]))
-  // In der App gepflegte Felder (Bemerkung, Laufnummer) beim Re-Import nicht
-  // überschreiben, wenn der Export nichts dazu liefert.
-  const existingByTag = new Map(existingAnimals.map((a) => [a.ear_tag, a]))
+  // Abgleich über den normalisierten Schlüssel (lib/animalId.ts): der
+  // Bestand führt Schafe in der Langform "CH113…", der TVD-Tierbestand in der
+  // Kurzform — ohne Normalisierung entstünde jedes Schaf doppelt. Die
+  // Langform eines bereits bekannten Tiers bleibt erhalten.
+  const byKey = new Map(existingAnimals.map((a) => [animalKey(a.ear_tag) ?? a.ear_tag, a]))
+  const earTagToId = new Map(existingAnimals.map((a) => [animalKey(a.ear_tag) ?? a.ear_tag, a.id]))
 
   for (const animal of tierbestand) {
-    const id = earTagToId.get(animal.ear_tag) ?? crypto.randomUUID()
-    earTagToId.set(animal.ear_tag, id)
-    const prev = existingByTag.get(animal.ear_tag)
-    await upsertRow(pg, 'animals', { id, ...animal, lauf_nr: prev?.lauf_nr ?? null, notes: prev?.notes ?? null })
+    const key = animalKey(animal.ear_tag) ?? animal.ear_tag
+    const prev = byKey.get(key)
+    const id = prev?.id ?? crypto.randomUUID()
+    earTagToId.set(key, id)
+    await upsertRow(pg, 'animals', {
+      id,
+      ...animal,
+      ear_tag: prev?.ear_tag ?? animal.ear_tag,
+      lauf_nr: prev?.lauf_nr ?? null,
+      notes: prev?.notes ?? null,
+    })
   }
 
   const { rows: existingLactations } = await pg.query<{
@@ -275,7 +285,7 @@ export async function importSmgData(
   const unmatchedEarTags = new Set<string>()
   let lactationsImported = 0
   for (const lactation of smg.lactations) {
-    const animalId = earTagToId.get(lactation.ear_tag)
+    const animalId = earTagToId.get(animalKey(lactation.ear_tag) ?? lactation.ear_tag)
     if (!animalId) {
       unmatchedEarTags.add(lactation.ear_tag)
       continue
@@ -291,11 +301,18 @@ export async function importSmgData(
   const { rows: existingTests } = await pg.query<{ id: string; animal_id: string; test_date: string }>(
     'select id, animal_id, test_date from milk_tests',
   )
-  const testKeyToId = new Map(existingTests.map((t) => [`${t.animal_id}|${t.test_date}`, t.id]))
+  // pglite liefert date-Spalten als Date — ohne Normalisierung passte der
+  // Schlüssel nie und ein Re-Import hätte jede Probe verdoppelt.
+  const testKeyToId = new Map(
+    existingTests.map((t) => {
+      const d = t.test_date as unknown
+      return [`${t.animal_id}|${d instanceof Date ? d.toISOString().slice(0, 10) : String(d)}`, t.id]
+    }),
+  )
 
   let milkTestsImported = 0
   for (const test of smg.milkTests) {
-    const animalId = earTagToId.get(test.ear_tag)
+    const animalId = earTagToId.get(animalKey(test.ear_tag) ?? test.ear_tag)
     if (!animalId) {
       unmatchedEarTags.add(test.ear_tag)
       continue

@@ -28,6 +28,27 @@ export const SYNC_TABLES = {
   animal_journal: [
     'id', 'animal_id', 'entry_date', 'source', 'text', 'ref_id', 'updated_at', 'deleted_at',
   ],
+  pedigree: [
+    'id', 'animal_key', 'ear_tag', 'sire_key', 'dam_key', 'breed_code', 'name',
+    'birth_date', 'sex', 'source', 'updated_at', 'deleted_at',
+  ],
+  matings: [
+    'id', 'animal_id', 'service_date', 'service_to', 'kind', 'seq', 'sire_key',
+    'sire_ear_tag', 'sire_name', 'sire_breed', 'source', 'import_key', 'notes',
+    'updated_at', 'deleted_at',
+  ],
+  births: [
+    'id', 'dam_id', 'birth_date', 'parity', 'sire_key', 'sire_ear_tag', 'sire_name',
+    'ease', 'conception_date', 'source', 'import_key', 'notes', 'updated_at', 'deleted_at',
+  ],
+  birth_offspring: [
+    'id', 'birth_id', 'ear_tag', 'animal_key', 'sex', 'stillborn', 'died_24h',
+    'birth_weight_kg', 'import_key', 'updated_at', 'deleted_at',
+  ],
+  breeding_values: [
+    'id', 'animal_id', 'eval_date', 'trait', 'value', 'reliability', 'base',
+    'import_key', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -46,5 +67,10 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   milking_banks: new Set(['session_date']),
   milking_slots: new Set(),
   animal_journal: new Set(['entry_date']),
+  pedigree: new Set(['birth_date']),
+  matings: new Set(['service_date', 'service_to']),
+  births: new Set(['birth_date', 'conception_date']),
+  birth_offspring: new Set(),
+  breeding_values: new Set(['eval_date']),
   data_history: new Set(),
 }
