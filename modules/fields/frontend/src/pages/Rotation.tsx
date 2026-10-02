@@ -130,7 +130,7 @@ export default function Rotation() {
             lineages={filteredLineages}
             declarationsByLineage={byLineage}
             onFocusMap={(lineage) =>
-              navigate('/', { state: { focusLineageId: lineage.lineage_id, focusJahr: lineage.latest_jahr } })
+              navigate('/fields', { state: { focusLineageId: lineage.lineage_id, focusJahr: lineage.latest_jahr } })
             }
             onOpenDetails={(lineage) => setDetailsLineage(lineage)}
           />
