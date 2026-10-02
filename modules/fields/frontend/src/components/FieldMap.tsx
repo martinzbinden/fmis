@@ -51,10 +51,12 @@ function FitToFeatures({
   features,
   focusFeatureIds,
   popupsRef,
+  openPopupIdRef,
 }: {
   features: Feature[]
   focusFeatureIds: Set<string> | null
   popupsRef: React.MutableRefObject<Map<string, L.Layer>>
+  openPopupIdRef: React.MutableRefObject<string | null>
 }) {
   const map = useMap()
   useEffect(() => {
@@ -69,8 +71,11 @@ function FitToFeatures({
       map.fitBounds(bounds, { padding: [24, 24], maxZoom: focused.length > 0 ? 18 : undefined })
     }
     if (focused.length > 0) {
-      const layer = popupsRef.current.get(focused[0].properties.declarationId)
-      layer?.openPopup?.()
+      // Auch merken, nicht nur öffnen: der Zoom auf die Parzelle baut die
+      // GeoJSON-Ebene meist neu auf (Einzelbäume), dort wird es wieder geöffnet.
+      const id = focused[0].properties.declarationId
+      openPopupIdRef.current = id
+      popupsRef.current.get(id)?.openPopup?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [features, focusFeatureIds, map])
@@ -105,6 +110,11 @@ export default function FieldMap({
   const byId = useMemo(() => new Map(declarations.map((d) => [d.id, d])), [declarations])
   const popupsRef = useRef(new Map<string, L.Layer>())
   const layersRef = useRef(new Map<string, { layer: L.Layer; popupHtml: string }>())
+  // Parzelle mit gerade offenem Popup. Die GeoJSON-Ebene wird bei jeder
+  // Änderung der sichtbaren Features neu aufgebaut (key, z.B. beim
+  // Überschreiten von MIN_ZOOM_FOR_TREES), was offene Popups schliesst —
+  // über diesen Ref wird es auf der neuen Ebene wieder geöffnet.
+  const openPopupIdRef = useRef<string | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -291,10 +301,26 @@ export default function FieldMap({
               layer.on('click', () => {
                 if (selectionModeRef.current) onToggleSelectRef.current?.(decl.id)
               })
+              layer.on('popupopen', () => {
+                openPopupIdRef.current = decl.id
+              })
+              layer.on('popupclose', () => {
+                // Beim Neuaufbau ist die Ebene schon von der Karte entfernt,
+                // wenn Leaflet das Popup schliesst — dann offen merken.
+                if (mapRef.current?.hasLayer(layer) && openPopupIdRef.current === decl.id) {
+                  openPopupIdRef.current = null
+                }
+              })
+              if (openPopupIdRef.current === decl.id) layer.once('add', () => layer.openPopup())
             }}
           />
         )}
-        <FitToFeatures features={features} focusFeatureIds={focusFeatureIds} popupsRef={popupsRef} />
+        <FitToFeatures
+          features={features}
+          focusFeatureIds={focusFeatureIds}
+          popupsRef={popupsRef}
+          openPopupIdRef={openPopupIdRef}
+        />
       </MapContainer>
     </div>
   )
