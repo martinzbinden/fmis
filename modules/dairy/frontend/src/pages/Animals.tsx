@@ -4,7 +4,8 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useDb } from '@fmis/core/DbContext'
 import { parseAdisFiles, importAdisData, readHerdbookFile, type HerdbookSpecies, type ImportSummary } from '../lib/importAdis'
-import { parseTierbestand, importSmgData, type SmgImportSummary } from '../lib/importSmg'
+import { parseTierbestand, importTierbestand } from '../lib/importTvd'
+import { inTransaction } from '../db/transaction'
 import { fmtDate } from '../lib/format'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
 import { animalKey, animalLabel } from '@fmis/core/earTag'
@@ -220,8 +221,7 @@ function TierbestandImportForm({ onImported }: { onImported: () => void }) {
   const [tierbestandFile, setTierbestandFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [summary, setSummary] = useState<SmgImportSummary | null>(null)
-  const [warnings] = useState<string[]>([])
+  const [summary, setSummary] = useState<number | null>(null)
 
   async function handleImport() {
     if (!tierbestandFile) return
@@ -230,8 +230,7 @@ function TierbestandImportForm({ onImported }: { onImported: () => void }) {
     setSummary(null)
     try {
       const tierbestand = await parseTierbestand(tierbestandFile)
-      const result = await importSmgData(db, tierbestand, { lactations: [], milkTests: [], warnings: [] })
-      setSummary(result)
+      setSummary(await inTransaction(db, (tx) => importTierbestand(tx, tierbestand)))
       onImported()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
@@ -266,17 +265,10 @@ function TierbestandImportForm({ onImported }: { onImported: () => void }) {
         {busy ? 'Importiere…' : 'Importieren'}
       </button>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      {summary && (
+      {summary != null && (
         <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
-          <p>{summary.animalsImported} Tiere aus dem TVD-Tierbestand übernommen.</p>
+          <p>{summary} Tiere aus dem TVD-Tierbestand übernommen.</p>
         </div>
-      )}
-      {warnings.length > 0 && (
-        <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
-          {warnings.map((w, i) => (
-            <li key={i}>{w}</li>
-          ))}
-        </ul>
       )}
     </div>
   )

@@ -11,11 +11,12 @@ export const SYNC_TABLES = {
     'id', 'animal_id', 'test_date', 'calving_date', 'lactation_number',
     'milk_kg', 'fat_pct', 'protein_pct', 'lactose_pct', 'cell_count',
     'urea_mg_dl', 'updated_at', 'deleted_at',
+    'milk_morning_kg', 'milk_evening_kg', 'sample_persistency', 'bhb_mmol', 'acetone_mmol',
   ],
   lactations: [
     'id', 'animal_id', 'lactation_number', 'calving_date', 'closure_type',
     'days_in_milk', 'milk_kg', 'fat_kg', 'fat_pct', 'protein_kg',
-    'protein_pct', 'updated_at', 'deleted_at',
+    'protein_pct', 'updated_at', 'deleted_at', 'cell_count', 'persistency',
   ],
   milking_banks: [
     'id', 'session_date', 'bank_number', 'capacity', 'opened_at', 'closed_at',

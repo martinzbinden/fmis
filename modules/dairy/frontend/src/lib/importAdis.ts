@@ -63,6 +63,12 @@ export interface ParsedMilkTest {
   lactose_pct: number | null
   cell_count: number | null
   urea_mg_dl: number | null
+  // Prüfbericht-Felder (schema/0008_test_details.sql)
+  milk_morning_kg: number | null
+  milk_evening_kg: number | null
+  sample_persistency: number | null
+  bhb_mmol: number | null
+  acetone_mmol: number | null
 }
 
 export interface ParsedLactation {
@@ -76,6 +82,8 @@ export interface ParsedLactation {
   fat_pct: number | null
   protein_kg: number | null
   protein_pct: number | null
+  cell_count: number | null
+  persistency: number | null
 }
 
 export interface ParseResult {
@@ -163,6 +171,11 @@ function parseK33Line(line: string): ParsedMilkTest | null {
     lactose_pct: parseAdisNumber(field(line, 102, 105)),
     cell_count: parseAdisInt(field(line, 109, 112)),
     urea_mg_dl: parseAdisInt(field(line, 113, 115)),
+    sample_persistency: parseAdisInt(field(line, 106, 108)),
+    milk_morning_kg: parseAdisNumber(field(line, 130, 133)),
+    milk_evening_kg: parseAdisNumber(field(line, 134, 137)),
+    acetone_mmol: parseAdisNumber(field(line, 184, 187)),
+    bhb_mmol: parseAdisNumber(field(line, 188, 191)),
   }
 }
 
@@ -189,6 +202,8 @@ function parseK04Line(line: string): ParsedLactation | null {
     fat_pct: parseAdisNumber(field(line, 98, 101)),
     protein_kg: parseAdisInt(field(line, 102, 105)),
     protein_pct: parseAdisNumber(field(line, 106, 109)),
+    cell_count: parseAdisInt(field(line, 114, 118)),
+    persistency: parseAdisInt(field(line, 122, 124)),
   }
 }
 

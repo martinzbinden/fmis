@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
@@ -120,7 +121,12 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
-      <h1 className="text-xl font-bold text-gray-800">Leistung</h1>
+      <div className="flex items-baseline justify-between gap-2">
+        <h1 className="text-xl font-bold text-gray-800">Leistung</h1>
+        <Link to="pruefbericht" className="text-sm text-brand-700">
+          Prüfbericht →
+        </Link>
+      </div>
 
       <div className="flex gap-1 border-b">
         {(

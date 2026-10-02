@@ -15,6 +15,7 @@ import BirthEntry from './pages/BirthEntry'
 import MatingEntry from './pages/MatingEntry'
 import JournalEntry from './pages/JournalEntry'
 import MatingPlanner from './pages/MatingPlanner'
+import Pruefbericht from './pages/Pruefbericht'
 import './theme.css'
 
 /**
@@ -52,6 +53,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'belegung', element: <MatingEntry moduleKey={key} /> },
       { path: 'journal', element: <JournalEntry moduleKey={key} /> },
       { path: 'anpaarung', element: <MatingPlanner moduleKey={key} /> },
+      { path: 'pruefbericht', element: <Pruefbericht moduleKey={key} /> },
       { path: 'verlauf', element: <History moduleKey={key} /> },
       { path: 'milchwaegung', element: <Milchwaegung moduleKey={key} /> },
       { path: 'melken', element: <Navigate to="../milchwaegung" replace /> },
