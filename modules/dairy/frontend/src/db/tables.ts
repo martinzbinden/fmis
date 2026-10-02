@@ -52,6 +52,7 @@ export const SYNC_TABLES = {
     'id', 'animal_id', 'eval_date', 'trait', 'value', 'reliability', 'base',
     'import_key', 'updated_at', 'deleted_at',
   ],
+  lamb_selection: ['id', 'animal_key', 'purpose', 'decided_on', 'notes', 'updated_at', 'deleted_at'],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -75,5 +76,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   births: new Set(['birth_date', 'conception_date']),
   birth_offspring: new Set(),
   breeding_values: new Set(['eval_date']),
+  lamb_selection: new Set(['decided_on']),
   data_history: new Set(),
 }

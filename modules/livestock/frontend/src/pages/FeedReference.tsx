@@ -197,7 +197,7 @@ export default function FeedReference() {
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4 pb-24">
       <div>
-        <Link to="/futter" className="text-sm text-brand-700">
+        <Link to="/livestock/futter" className="text-sm text-brand-700">
           ← Futter erfassen
         </Link>
         <h1 className="mt-1 text-xl font-bold text-gray-800">Futtermittel-Referenz</h1>

@@ -262,7 +262,7 @@ export default function MedicationEntry() {
               Absetzfrist aus Referenz übernommen ({matchedReference.default_withdrawal_days} Tage)
             </p>
           )}
-          <Link to="/medikamente/referenz" className="mt-1 inline-block text-xs text-brand-700">
+          <Link to="/livestock/medikamente/referenz" className="mt-1 inline-block text-xs text-brand-700">
             Referenz verwalten →
           </Link>
         </Field>

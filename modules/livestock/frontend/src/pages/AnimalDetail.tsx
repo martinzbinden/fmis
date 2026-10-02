@@ -86,7 +86,7 @@ export default function AnimalDetail() {
     return (
       <div className="p-6 text-center">
         <p className="text-gray-500">Tier nicht gefunden.</p>
-        <Link to="/tiere" className="mt-2 inline-block text-brand-700 underline">
+        <Link to="/livestock/tiere" className="mt-2 inline-block text-brand-700 underline">
           Zurück zur Liste
         </Link>
       </div>
@@ -105,7 +105,7 @@ export default function AnimalDetail() {
   async function deleteAnimal() {
     if (!confirm(`${animal.ear_tag} wirklich löschen?`)) return
     await softDeleteRow('animals', animal.id)
-    navigate('/tiere')
+    navigate('/livestock/tiere')
   }
 
   async function saveWeighing(w: Weighing) {
@@ -174,7 +174,7 @@ export default function AnimalDetail() {
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4">
       <div>
-        <Link to="/tiere" className="text-sm text-brand-700">
+        <Link to="/livestock/tiere" className="text-sm text-brand-700">
           ← Alle Tiere
         </Link>
         <div className="mt-1 flex items-center justify-between">
@@ -329,6 +329,12 @@ export default function AnimalDetail() {
           <InfoTile label="Geburtsdatum" value={fmtDate(animal.birth_date)} />
           <InfoTile label="Gruppe" value={group?.name ?? '–'} />
           <InfoTile label="Aktuelles Gewicht" value={last ? fmtKg(num(last.weight_kg)) : '–'} />
+          {(animal.dam_ear_tag || animal.sire_ear_tag) && (
+            <>
+              <InfoTile label="Mutter" value={shortEarTag(animal.dam_ear_tag) || '–'} />
+              <InfoTile label="Vater" value={shortEarTag(animal.sire_ear_tag) || '–'} />
+            </>
+          )}
         </section>
       )}
 

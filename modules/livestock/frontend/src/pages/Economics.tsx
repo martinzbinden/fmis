@@ -127,7 +127,7 @@ export default function Economics() {
               {rows.map((r) => (
                 <tr key={r.animal_id} className="border-t">
                   <td className="px-3 py-2">
-                    <Link to={`/tiere/${r.animal_id}`} className="font-medium text-brand-700">
+                    <Link to={`/livestock/tiere/${r.animal_id}`} className="font-medium text-brand-700">
                       {shortEarTag(r.ear_tag)}
                     </Link>
                   </td>

@@ -83,7 +83,7 @@ export default function GroupDetail() {
     return (
       <div className="p-6 text-center">
         <p className="text-gray-500">Gruppe nicht gefunden.</p>
-        <Link to="/gruppen" className="mt-2 inline-block text-brand-700 underline">
+        <Link to="/livestock/gruppen" className="mt-2 inline-block text-brand-700 underline">
           Zurück zur Liste
         </Link>
       </div>
@@ -109,7 +109,7 @@ export default function GroupDetail() {
   async function deleteGroup() {
     if (!confirm(`Gruppe "${group.name}" wirklich löschen?`)) return
     await softDeleteRow('animal_groups', group.id)
-    navigate('/gruppen')
+    navigate('/livestock/gruppen')
   }
 
   async function saveFeed(f: FeedRecord) {
@@ -163,7 +163,7 @@ export default function GroupDetail() {
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4">
       <div>
-        <Link to="/gruppen" className="text-sm text-brand-700">
+        <Link to="/livestock/gruppen" className="text-sm text-brand-700">
           ← Alle Gruppen
         </Link>
         <h1 className="mt-1 text-2xl font-bold text-gray-800">{group.name}</h1>
@@ -264,7 +264,7 @@ export default function GroupDetail() {
           <ul className="divide-y">
             {members.map((m) => (
               <li key={m.membership_id} className="flex items-center justify-between py-2 text-sm">
-                <Link to={`/tiere/${m.animal_id}`} className="font-medium text-brand-700">
+                <Link to={`/livestock/tiere/${m.animal_id}`} className="font-medium text-brand-700">
                   {shortEarTag(m.ear_tag)}
                 </Link>
                 <span className="text-gray-500">
@@ -283,7 +283,7 @@ export default function GroupDetail() {
         </h2>
         {feed.length === 0 ? (
           <p className="text-sm text-gray-400">
-            Keine Einträge. <Link to="/futter" className="text-brand-700">Futter erfassen</Link>
+            Keine Einträge. <Link to="/livestock/futter" className="text-brand-700">Futter erfassen</Link>
           </p>
         ) : (
           <ul className="divide-y">

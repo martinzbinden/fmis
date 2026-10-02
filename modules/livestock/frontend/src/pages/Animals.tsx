@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
@@ -6,6 +6,8 @@ import { useEarTagFilter } from '../hooks/useEarTagFilter'
 import EarTagFilterInput from '../components/EarTagFilterInput'
 import { importAnimalRows, parseIntakeCsv, type SeedRow } from '../lib/importCsv'
 import { parseIntakePdf } from '../lib/parsePdfIntake'
+import { importOwnLambs, loadOwnMastLambs, type OwnLamb } from '../lib/ownLambs'
+import { useDb } from '@fmis/core/DbContext'
 import { fmtKg, fmtAge, num } from '../lib/format'
 import type { AnimalStatus } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
@@ -166,9 +168,125 @@ function ImportForm({ onDone }: { onDone: () => void }) {
   )
 }
 
+/** Mast-Entscheide aus der Lämmer-Selektion der Milchschafe übernehmen
+ * (lib/ownLambs.ts). */
+function OwnLambsForm({ onDone }: { onDone: () => void }) {
+  const db = useDb()
+  const { data: groups } = useQuery((pg) =>
+    pg.query<{ id: string; name: string }>("select id, name from animal_groups where deleted_at is null and status = 'aktiv' order by created_date desc").then((r) => r.rows),
+  )
+  const [lambs, setLambs] = useState<OwnLamb[] | null | undefined>(undefined)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [groupId, setGroupId] = useState('neu')
+  const [groupName, setGroupName] = useState(`Eigene Lämmer ${today()}`)
+  const [entryDate, setEntryDate] = useState(today())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void loadOwnMastLambs(db).then((l) => {
+      setLambs(l)
+      setSelected(new Set((l ?? []).map((x) => x.ear_tag)))
+    })
+  }, [db])
+
+  async function handleImport() {
+    if (!lambs) return
+    setBusy(true)
+    setError(null)
+    try {
+      await importOwnLambs(
+        lambs.filter((l) => selected.has(l.ear_tag)),
+        groupId === 'neu' ? { newGroupName: groupName.trim() || `Eigene Lämmer ${entryDate}` } : { groupId },
+        entryDate,
+      )
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Übernahme fehlgeschlagen')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function toggle(tag: string) {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(tag)) next.delete(tag)
+      else next.add(tag)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+      {lambs === undefined && <p className="text-sm text-gray-500">Lese Selektion der Milchschafe…</p>}
+      {lambs === null && (
+        <p className="text-sm text-gray-600">
+          Die Milchschafe sind auf diesem Gerät noch nicht geladen. Einmal die Milchschafe öffnen, dann hier erneut versuchen.
+        </p>
+      )}
+      {lambs && lambs.length === 0 && (
+        <p className="text-sm text-gray-600">
+          Keine neuen Mastlämmer. In den Milchschafen unter Erfassen → Lämmer-Selektion «Mast» wählen.
+        </p>
+      )}
+      {lambs && lambs.length > 0 && (
+        <>
+          <p className="text-sm text-gray-600">In der Lämmer-Selektion als Mast markiert, im Mastplaner noch nicht vorhanden:</p>
+          <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
+            {lambs.map((l) => (
+              <li key={l.ear_tag}>
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={selected.has(l.ear_tag)} onChange={() => toggle(l.ear_tag)} />
+                  <span className="font-semibold">{shortEarTag(l.ear_tag)}</span>
+                  <span className="text-gray-500">
+                    {l.sex === 'w' ? '♀' : '♂'} · {fmtAge(l.birth_date)}
+                    {l.dam_ear_tag ? ` · Mutter ${shortEarTag(l.dam_ear_tag)}` : ''}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <label className="block text-sm">
+            Gruppe
+            <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className="mt-1 w-full rounded border border-gray-300 p-2">
+              <option value="neu">Neue Gruppe</option>
+              {(groups ?? []).map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {groupId === 'neu' && (
+            <label className="block text-sm">
+              Gruppenname
+              <input type="text" value={groupName} onChange={(e) => setGroupName(e.target.value)} className="mt-1 w-full rounded border border-gray-300 p-2" />
+            </label>
+          )}
+          <label className="block text-sm">
+            Eingangsdatum
+            <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="mt-1 w-full rounded border border-gray-300 p-2" />
+          </label>
+          <button
+            type="button"
+            onClick={handleImport}
+            disabled={busy || selected.size === 0}
+            className="w-full rounded-lg bg-brand-700 px-5 py-3 font-semibold text-white active:bg-brand-800 disabled:opacity-50"
+          >
+            {busy ? 'Übernehme…' : `${selected.size} Lämmer übernehmen`}
+          </button>
+        </>
+      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+    </div>
+  )
+}
+
 export default function Animals() {
   const { data, loading, refresh } = useQuery(loadAnimals)
   const [showImport, setShowImport] = useState(false)
+  const [showOwn, setShowOwn] = useState(false)
   const { filter, setFilter, filtered } = useEarTagFilter(data, (a) => a.ear_tag)
 
   if (loading && !data) {
@@ -183,6 +301,8 @@ export default function Animals() {
       <div className="mx-auto max-w-md p-6">
         <p className="mb-4 text-center text-gray-500">Noch keine Tiere erfasst.</p>
         <ImportForm onDone={refresh} />
+        <h2 className="mb-2 mt-6 text-sm font-semibold text-gray-700">Eigene Lämmer aus der Milchschaf-Selektion</h2>
+        <OwnLambsForm onDone={refresh} />
       </div>
     )
   }
@@ -191,6 +311,14 @@ export default function Animals() {
     <div className="mx-auto max-w-2xl p-4">
       <div className="mb-3 flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-800">Tiere ({animals.length})</h1>
+        <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setShowOwn((v) => !v)}
+          className="rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
+        >
+          {showOwn ? 'Schliessen' : 'Eigene Lämmer'}
+        </button>
         <button
           type="button"
           onClick={() => setShowImport((v) => !v)}
@@ -198,7 +326,18 @@ export default function Animals() {
         >
           {showImport ? 'Schliessen' : '+ Tiere importieren'}
         </button>
+        </div>
       </div>
+      {showOwn && (
+        <div className="mb-4">
+          <OwnLambsForm
+            onDone={() => {
+              setShowOwn(false)
+              refresh()
+            }}
+          />
+        </div>
+      )}
       {showImport && (
         <div className="mb-4">
           <ImportForm
@@ -219,7 +358,7 @@ export default function Animals() {
         {visibleAnimals.map((a) => (
           <li key={a.id}>
             <Link
-              to={`/tiere/${a.id}`}
+              to={`/livestock/tiere/${a.id}`}
               className="flex items-center justify-between rounded-lg bg-white p-3 shadow-sm active:bg-gray-50"
             >
               <div>

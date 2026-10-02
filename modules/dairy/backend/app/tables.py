@@ -51,6 +51,9 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "animal_id", "eval_date", "trait", "value", "reliability", "base",
         "import_key", "updated_at", "deleted_at",
     ],
+    "lamb_selection": [
+        "id", "animal_key", "purpose", "decided_on", "notes", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
@@ -82,5 +85,6 @@ def table_area(key: str) -> dict[str, str]:
         "births": f"{key}:animals",
         "birth_offspring": f"{key}:animals",
         "breeding_values": f"{key}:animals",
+        "lamb_selection": f"{key}:animals",
         "data_history": f"{key}:history",
     }

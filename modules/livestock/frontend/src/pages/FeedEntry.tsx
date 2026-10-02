@@ -128,7 +128,7 @@ export default function FeedEntry() {
                 .join(' · ') || 'Referenzeintrag gefunden'}
             </p>
           )}
-          <Link to="/futter/referenz" className="mt-1 inline-block text-xs text-brand-700">
+          <Link to="/livestock/futter/referenz" className="mt-1 inline-block text-xs text-brand-700">
             Referenz verwalten →
           </Link>
         </Field>

@@ -102,7 +102,7 @@ export default function Dashboard() {
     return (
       <div className="p-6 text-center">
         <p className="text-gray-500">Noch keine aktiven Tiere erfasst.</p>
-        <Link to="/tiere" className="mt-3 inline-block text-brand-700 underline">
+        <Link to="/livestock/tiere" className="mt-3 inline-block text-brand-700 underline">
           Tiere verwalten
         </Link>
       </div>
@@ -142,7 +142,7 @@ export default function Dashboard() {
               {groups[s].map((a) => (
                 <li key={a.id}>
                   <Link
-                    to={`/tiere/${a.id}`}
+                    to={`/livestock/tiere/${a.id}`}
                     className={`flex items-center justify-between rounded-lg border p-3 shadow-sm active:opacity-80 ${STATUS_META[s].color}`}
                   >
                     <div>

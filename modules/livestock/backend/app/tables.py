@@ -5,7 +5,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     "animals": [
         "id", "ear_tag", "birth_date", "sex", "status", "entry_date",
         "entry_weight_kg", "purchase_cost", "source_tvd_nr", "source_name",
-        "notes", "updated_at", "deleted_at",
+        "notes", "updated_at", "deleted_at", "dam_ear_tag", "sire_ear_tag",
     ],
     "animal_groups": [
         "id", "name", "created_date", "target_weight_min_kg", "target_weight_max_kg",

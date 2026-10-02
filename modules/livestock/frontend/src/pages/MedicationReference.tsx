@@ -73,7 +73,7 @@ export default function MedicationReference() {
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4 pb-24">
       <div>
-        <Link to="/medikamente" className="text-sm text-brand-700">
+        <Link to="/livestock/medikamente" className="text-sm text-brand-700">
           ← Medikamente erfassen
         </Link>
         <h1 className="mt-1 text-xl font-bold text-gray-800">Medikamenten-Referenz</h1>

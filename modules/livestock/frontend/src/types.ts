@@ -18,6 +18,9 @@ export interface Animal {
   notes: string | null
   updated_at: string
   deleted_at: string | null
+  /** Nur bei eigenen Lämmern aus der Milchschaf-Selektion (schema/0004). */
+  dam_ear_tag: string | null
+  sire_ear_tag: string | null
 }
 
 export interface AnimalGroup {

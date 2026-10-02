@@ -49,7 +49,7 @@ export default function Groups() {
           {groups.map((g) => (
             <li key={g.id}>
               <Link
-                to={`/gruppen/${g.id}`}
+                to={`/livestock/gruppen/${g.id}`}
                 className="flex items-center justify-between rounded-lg bg-white p-3 shadow-sm active:bg-gray-50"
               >
                 <div>
