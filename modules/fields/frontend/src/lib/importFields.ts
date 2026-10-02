@@ -3,7 +3,9 @@ import { parseShp, parseDbf, combine } from 'shpjs'
 import proj4 from 'proj4'
 import { getDb } from '../db/pglite'
 import { upsertRow } from '../db/write'
+import { SYNC_TABLES } from '../db/tables'
 import { keepExisting, sameRow } from '@fmis/core/importMerge'
+import { API_URL, getToken } from '@fmis/core/auth'
 import { num } from './format'
 
 // CH1903+/LV95 (EPSG:2056), amtliche Projektionsdefinition (Swiss Oblique
@@ -144,24 +146,96 @@ export interface ImportSummary {
 
 type Row = Record<string, unknown> & { id: string }
 
-async function loadExisting(
-  pg: Awaited<ReturnType<typeof getDb>>,
-  table: string,
-  keyColumns: string[],
-): Promise<Map<string, Row>> {
-  const { rows } = await pg.query<Row>(`select * from "${table}" where deleted_at is null`)
+function byKey(rows: Row[], keyColumns: string[]): Map<string, Row> {
   const map = new Map<string, Row>()
   for (const row of rows) {
+    if (row.deleted_at) continue
     map.set(keyColumns.map((c) => String(row[c] ?? '')).join('|'), row)
   }
   return map
 }
 
+const SYNCED_TABLES = ['farms', 'management_units', 'field_declarations'] as const
+
+/** Sicherung: Abgleich gegen den Stand auf dem SERVER, nicht gegen die lokale
+ * Kopie. Ein Gerät, das die Kulturen nicht vollständig geladen hat (oder
+ * noch alte, nie hochgeladene Zeilen trägt), fände bestehende Betriebe und
+ * Flächen sonst nicht und legte sie doppelt an. Ohne Verbindung oder mit
+ * ungesendeten lokalen Änderungen wird nicht importiert. */
+async function loadServerState(pg: Awaited<ReturnType<typeof getDb>>): Promise<Record<(typeof SYNCED_TABLES)[number], Row[]>> {
+  const { rows } = await pg.query<{ n: number }>(
+    'select count(*)::int as n from sync_outbox where table_name = any($1)',
+    [[...SYNCED_TABLES]],
+  )
+  if (rows[0]?.n) {
+    throw new Error(
+      `Auf diesem Gerät sind noch ${rows[0].n} Änderungen an den Kulturen nicht beim Server — zuerst synchronisieren (Punkt oben rechts), dann erneut importieren.`,
+    )
+  }
+  let res: Response
+  try {
+    res = await fetch(new URL(`${API_URL}/fields/sync/pull`, window.location.origin).toString(), {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+  } catch {
+    throw new Error('Für den Import braucht es eine Verbindung zum Server (Abgleich mit den bestehenden Betrieben und Flächen).')
+  }
+  if (!res.ok) throw new Error(`Abgleich mit dem Server fehlgeschlagen (${res.status}) — Import abgebrochen.`)
+  const data = (await res.json()) as { tables: Record<string, Row[]> }
+  // Serverstand zuerst lokal übernehmen (wie ein Sync-Pull: neuere Zeile
+  // gewinnt) — sonst fehlen einem veralteten Gerät z.B. die Betriebe, auf die
+  // die Kulturflächen verweisen.
+  await pg.transaction(async (tx) => {
+    for (const table of SYNCED_TABLES) {
+      const columns = SYNC_TABLES[table]
+      const colList = columns.map((c) => `"${c}"`).join(', ')
+      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
+      const setClause = columns.filter((c) => c !== 'id').map((c) => `"${c}" = excluded."${c}"`).join(', ')
+      for (const row of data.tables[table] ?? []) {
+        await tx.query(
+          `insert into "${table}" (${colList}) values (${placeholders})
+           on conflict (id) do update set ${setClause} where "${table}".updated_at < excluded.updated_at`,
+          columns.map((c) => row[c] ?? null),
+        )
+      }
+    }
+  })
+  return {
+    farms: data.tables.farms ?? [],
+    management_units: data.tables.management_units ?? [],
+    field_declarations: data.tables.field_declarations ?? [],
+  }
+}
+
 /** Import-Regel (core/frontend/src/importMerge.ts): nie löschen, nur
  * ergänzen — leere GELAN-Felder und von Hand gepflegte Spalten (Notizen,
  * Sorte, Start/Ende) bleiben; geschrieben wird nur bei einer Änderung. */
+function flatCoords(v: unknown, out: number[] = []): number[] {
+  if (Array.isArray(v)) for (const x of v) flatCoords(x, out)
+  else if (typeof v === 'number') out.push(v)
+  return out
+}
+
+/** Gleiche Geometrie trotz anderer Schreibweise? Der Server gibt GeoJSON mit
+ * 9 Nachkommastellen zurück (ST_AsGeoJSON), der Import rechnet mit voller
+ * Genauigkeit — Abweichungen unter ~1 cm gelten als gleich. */
+export function sameGeometry(a: unknown, b: unknown): boolean {
+  if (a == null || b == null) return a == b
+  try {
+    const ga = (typeof a === 'string' ? JSON.parse(a) : a) as { type?: string; coordinates?: unknown }
+    const gb = (typeof b === 'string' ? JSON.parse(b) : b) as { type?: string; coordinates?: unknown }
+    if (ga.type !== gb.type) return false
+    const ca = flatCoords(ga.coordinates)
+    const cb = flatCoords(gb.coordinates)
+    return ca.length === cb.length && ca.every((x, i) => Math.abs(x - cb[i]) < 1e-7)
+  } catch {
+    return false
+  }
+}
+
 async function writeMerged(table: Parameters<typeof upsertRow>[0], row: Row, prev: Row | undefined): Promise<boolean> {
   const merged = keepExisting(row, prev)
+  if (prev && 'geometry' in merged && sameGeometry(merged.geometry, prev.geometry)) merged.geometry = prev.geometry
   if (sameRow(merged, prev)) return false
   await upsertRow(table, merged as never)
   return true
@@ -176,23 +250,16 @@ export async function importFieldsZips(files: File[]): Promise<ImportSummary> {
     warnings: [],
   }
 
-  const farmsByUid = await loadExisting(pg, 'farms', ['external_uid'])
-  const unitsByKey = await loadExisting(pg, 'management_units', ['farm_id', 'external_id', 'jahr'])
-  const declByKey = await loadExisting(pg, 'field_declarations', [
-    'farm_id',
-    'external_kultur_id',
-    'jahr',
-    'sequence_in_year',
-  ])
+  const server = await loadServerState(pg)
+  const farmsByUid = byKey(server.farms, ['external_uid'])
+  const unitsByKey = byKey(server.management_units, ['farm_id', 'external_id', 'jahr'])
+  const declByKey = byKey(server.field_declarations, ['farm_id', 'external_kultur_id', 'jahr', 'sequence_in_year'])
   // Für die lineage_id-Vererbung: irgendeine bisherige Zeile mit derselben
   // (farm_id, external_kultur_id) unabhängig vom Jahr finden.
-  const { rows: lineageRows } = await pg.query<{ farm_id: string; external_kultur_id: string; lineage_id: string }>(
-    `select farm_id, external_kultur_id, lineage_id from field_declarations
-     where deleted_at is null and external_kultur_id is not null`,
-  )
   const lineageByKultur = new Map<string, string>()
-  for (const r of lineageRows) {
-    lineageByKultur.set(`${r.farm_id}|${r.external_kultur_id}`, r.lineage_id)
+  for (const r of server.field_declarations) {
+    if (r.deleted_at || !r.external_kultur_id) continue
+    lineageByKultur.set(`${r.farm_id}|${r.external_kultur_id}`, String(r.lineage_id))
   }
 
   for (const file of files) {
