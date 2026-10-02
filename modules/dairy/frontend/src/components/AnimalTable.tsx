@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { fmtDate } from '../lib/format'
 import type { Animal } from '../types'
 
@@ -152,6 +153,10 @@ export default function AnimalTable({ animals, storageKey }: { animals: AnimalRo
                       >
                         {a.status}
                       </span>
+                    ) : c.key === 'name' || c.key === 'ear_tag' || c.key === 'lauf_nr' ? (
+                      <Link to={a.id} className="hover:text-brand-700 hover:underline">
+                        {cellText(c, a) || '–'}
+                      </Link>
                     ) : (
                       cellText(c, a) || '–'
                     )}

@@ -170,9 +170,11 @@ function parseK04Line(line: string): ParsedLactation | null {
   const lactation_number = parseAdisInt(field(line, 69, 70))
   const closure_type = parseAdisInt(field(line, 84, 84))
   const milk_kg = parseAdisInt(field(line, 89, 93))
-  // Die Tier-Kopfzeile (Laktationsnummer 0, keine Werte) wird hier über das
-  // fehlende milk_kg herausgefiltert, wie bei K33 auch.
-  if (!ear_tag || lactation_number == null || closure_type == null || milk_kg == null) {
+  // Die Tier-Kopfzeile hat Laktationsnummer 0. Eine abgeschlossene Laktation
+  // OHNE Milchmenge (z.B. nach Verwerfen) bleibt dagegen erhalten — sie zählt
+  // für die Laktationszahl und damit für die Altersstandardisierung (siehe
+  // lib/herdPerformance.ts), genau wie im bisherigen Selektionsablauf.
+  if (!ear_tag || lactation_number == null || lactation_number === 0 || closure_type == null) {
     return null
   }
   return {

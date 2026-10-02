@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useDb } from '@fmis/core/DbContext'
@@ -103,10 +104,10 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
         {animals.map((a) => (
           <li key={a.id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-gray-800">
+              <Link to={a.id} className="font-semibold text-gray-800">
                 {a.lauf_nr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{a.lauf_nr}</span>}
                 {a.name ?? a.ear_tag}
-              </span>
+              </Link>
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                   a.status === 'aktiv' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'

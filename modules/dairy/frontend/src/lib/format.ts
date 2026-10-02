@@ -34,3 +34,22 @@ export function fmtDateTime(v: string | null | undefined): string {
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
+
+/** pglite liefert date-Spalten als Date (UTC-Mitternacht) — für Vergleiche
+ * und Rechnungen den reinen YYYY-MM-DD-String. */
+export function isoDate(v: unknown): string | null {
+  if (v == null || v === '') return null
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  return String(v).slice(0, 10)
+}
+
+/** Ganze Tage von a nach b (b − a), in UTC gerechnet. */
+export function daysBetween(a: string, b: string): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
+}
+
+export function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}

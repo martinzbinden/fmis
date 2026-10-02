@@ -22,7 +22,7 @@ const ACTION_COLOR: Record<HistoryAction, string> = {
 }
 
 /** Extrahiert eine sprechende Kurzbeschreibung + optionalen Detail-Link aus dem Snapshot. */
-function describeEntry(entry: DataHistory): { label: string; link: string | null } {
+function describeEntry(entry: DataHistory, moduleKey: string): { label: string; link: string | null } {
   let snap: Record<string, unknown> = {}
   try {
     snap = JSON.parse(entry.snapshot)
@@ -34,11 +34,11 @@ function describeEntry(entry: DataHistory): { label: string; link: string | null
 
   switch (entry.table_name) {
     case 'animals':
-      return { label: s(snap.ear_tag) ?? entry.row_id, link: `/kuehe/${entry.row_id}` }
+      return { label: s(snap.ear_tag) ?? entry.row_id, link: `/${moduleKey}/kuehe/${entry.row_id}` }
     case 'milk_tests':
       return {
         label: `${s(snap.milk_kg) ?? '?'} kg am ${s(snap.test_date) ?? '?'}`,
-        link: snap.animal_id ? `/kuehe/${s(snap.animal_id)}` : null,
+        link: snap.animal_id ? `/${moduleKey}/kuehe/${s(snap.animal_id)}` : null,
       }
     default:
       return { label: entry.row_id, link: null }
@@ -54,8 +54,8 @@ export default function History({ moduleKey }: { moduleKey: string }) {
   const entries = data ?? []
 
   const decorated = useMemo(
-    () => entries.map((e) => ({ entry: e, ...describeEntry(e) })),
-    [entries],
+    () => entries.map((e) => ({ entry: e, ...describeEntry(e, moduleKey) })),
+    [entries, moduleKey],
   )
 
   const filtered = decorated.filter(({ entry, label }) => {

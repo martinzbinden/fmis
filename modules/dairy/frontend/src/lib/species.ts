@@ -25,6 +25,12 @@ const TERMS: Record<string, SpeciesTerms> = {
   },
 }
 
+/** Tierart der Instanz — steuert Tragzeit, Schwellenwerte und den
+ * K09-Satzaufbau (Schafe weichen ab). */
+export function speciesOf(moduleKey: string): 'cattle' | 'sheep' {
+  return moduleKey === 'dairy' ? 'cattle' : 'sheep'
+}
+
 export function speciesTerms(moduleKey: string): SpeciesTerms {
   return TERMS[moduleKey] ?? { singular: 'Tier', plural: 'Tiere', importHint: 'Zuerst unter "Tiere" die Daten importieren.' }
 }
