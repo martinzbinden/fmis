@@ -34,9 +34,8 @@ export type HerdbookSpecies = 'cattle' | 'sheep'
 
 /** Herdebuch-Dateien sind Latin-1; File.text() würde als UTF-8 dekodieren
  * und Umlaute in Namen zerstören. windows-1252 deckt Latin-1 ab. */
-export async function readHerdbookFile(file: File): Promise<{ name: string; text: string }> {
-  const buf = await file.arrayBuffer()
-  return { name: file.name, text: new TextDecoder('windows-1252').decode(buf) }
+export function decodeHerdbookFile(name: string, data: ArrayBuffer): { name: string; text: string } {
+  return { name, text: new TextDecoder('windows-1252').decode(data) }
 }
 
 export interface ParsedAnimal {
@@ -364,7 +363,15 @@ async function importBreedingData(
       row = { ...prev, id: String(prev.id) }
       for (const [k, v] of Object.entries(base)) if (row[k] == null && v != null) row[k] = v
     } else {
-      row = { id: prev ? String(prev.id) : crypto.randomUUID(), ...base, source: 'import' }
+      // Export-Werte gehen vor, aber eine Lücke im Export (z.B. Widder ohne
+      // Eltern) löscht nichts, was ein Leistungsausweis ergänzt hat.
+      const kept = Object.fromEntries(
+        Object.entries(base).map(([k, v]) => {
+          const old = prev?.[k]
+          return [k, v ?? (old == null ? null : k === 'birth_date' ? sqlDate(old) : old)]
+        }),
+      )
+      row = { id: prev ? String(prev.id) : crypto.randomUUID(), ...kept, source: 'import' }
     }
     if (await writeIfChanged(pg, 'pedigree', row, prev)) pedigreeWritten++
   }

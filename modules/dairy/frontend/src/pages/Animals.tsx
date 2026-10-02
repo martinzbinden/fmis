@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useDb } from '@fmis/core/DbContext'
-import { parseAdisFiles, importAdisData, readHerdbookFile, type HerdbookSpecies, type ImportSummary } from '../lib/importAdis'
+import { decodeHerdbookFile, parseAdisFiles, importAdisData, type HerdbookSpecies, type ImportSummary } from '../lib/importAdis'
+import { expandImportFiles, type ImportFile } from '../lib/importFiles'
 import { parseTierbestand, importTierbestand } from '../lib/importTvd'
 import { inTransaction } from '../db/transaction'
 import { fmtDate, todayIso } from '../lib/format'
@@ -66,7 +67,6 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
       <h1 className="text-xl font-bold text-gray-800">Tiere</h1>
 
       <ImportForm onImported={refresh} species={moduleKey === 'dairy' ? 'cattle' : 'sheep'} />
-      {moduleKey !== 'dairy' && <TierbestandImportForm onImported={refresh} />}
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && allAnimals.length === 0 && (
@@ -142,11 +142,20 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
   )
 }
 
+/** Ein Importfeld für alle Quellen (lib/importFiles.ts): Herdebuch-Export,
+ * TVD-Tierbestand (Excel; bei den Schafen für Jungtiere und Widder, die im
+ * SMG-Export fehlen) und SMG-Leistungsausweise (PDF), einzeln oder als ZIP.
+ * Reihenfolge: Export, dann TVD (Abgleich über den Ohrmarken-Schlüssel, Kurz-
+ * und Langform werden nicht doppelt angelegt), zuletzt Ausweise — so hat der
+ * Export-Stammbaum Vorrang und der Ausweis füllt Lücken. */
 function ImportForm({ onImported, species }: { onImported: () => void; species: HerdbookSpecies }) {
   const db = useDb()
   const [busy, setBusy] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [found, setFound] = useState<ImportFile[]>([])
   const [summary, setSummary] = useState<ImportSummary | null>(null)
+  const [tvdCount, setTvdCount] = useState<number | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [certificates, setCertificates] = useState<CertificateImportResult[]>([])
   const [pending, setPending] = useState<CertificatePlan[]>([])
@@ -165,37 +174,57 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
     }
   }
 
-  async function handleFiles(fileList: FileList | null) {
+  async function handleFiles(fileList: FileList | File[] | null) {
     if (!fileList || fileList.length === 0) return
     setBusy(true)
     setError(null)
+    setFound([])
     setSummary(null)
+    setTvdCount(null)
     setCertificates([])
     setPending([])
     setWarnings([])
     try {
-      const all = [...fileList]
-      const pdfs = all.filter((f) => f.name.toLowerCase().endsWith('.pdf'))
-      const exportFiles = all.filter((f) => !pdfs.includes(f))
-      const nextWarnings: string[] = []
-      if (exportFiles.length > 0) {
-        const files = await Promise.all(exportFiles.map(readHerdbookFile))
-        const parsed = parseAdisFiles(files, species)
+      const files = await expandImportFiles([...fileList])
+      setFound(files)
+      const of = (kind: ImportFile['kind']) => files.filter((f) => f.kind === kind)
+      const nextWarnings = of('ignored').map((f) => `${f.name}: übergangen (${f.reason})`)
+
+      const herdbook = of('herdbook')
+      if (herdbook.length > 0) {
+        const parsed = parseAdisFiles(
+          herdbook.map((f) => decodeHerdbookFile(f.name, f.data)),
+          species,
+        )
         setSummary(await importAdisData(db, parsed))
         nextWarnings.push(...parsed.warnings)
       }
-      // Abstammungs-/Leistungsausweise (PDF) nach dem Export, damit dessen
-      // Stammbaum Vorrang hat und der Ausweis nur Lücken füllt.
+
+      let tvd = 0
+      for (const f of of('tvd')) {
+        try {
+          const animals = await parseTierbestand(new File([f.data], f.name))
+          if (animals.length === 0) {
+            nextWarnings.push(`${f.name}: keine Tiere erkannt (Spalte «Ohrmarkennummer» fehlt?)`)
+            continue
+          }
+          tvd += await inTransaction(db, (tx) => importTierbestand(tx, animals))
+        } catch (err) {
+          nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
+        }
+      }
+      if (of('tvd').length) setTvdCount(tvd)
+
       // Ohne Abweichungen direkt speichern, sonst zuerst nachfragen.
       const results: CertificateImportResult[] = []
       const toDecide: CertificatePlan[] = []
-      for (const pdf of pdfs) {
+      for (const f of of('certificate')) {
         try {
-          const plan = await planCertificateImport(db, parseSmgCertificate(await readPdfText(await pdf.arrayBuffer()), todayIso()))
+          const plan = await planCertificateImport(db, parseSmgCertificate(await readPdfText(f.data), todayIso()))
           if (plan.conflicts.length) toDecide.push(plan)
           else results.push(await inTransaction(db, (tx) => applyCertificatePlan(tx, plan, true)))
         } catch (err) {
-          nextWarnings.push(`${pdf.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
+          nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
         }
       }
       setCertificates(results)
@@ -209,37 +238,54 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
     }
   }
 
+  const counts = (['herdbook', 'tvd', 'certificate'] as const)
+    .map((k) => [k, found.filter((f) => f.kind === k).length] as const)
+    .filter(([, n]) => n > 0)
+  const KIND_LABEL = { herdbook: 'Herdebuch-Dateien', tvd: 'TVD-Liste(n)', certificate: 'Leistungsausweis(e)' }
+
   return (
     <div className="rounded-lg bg-white p-4 shadow-sm">
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">
-        Herdebuch-Export importieren ({species === 'sheep' ? 'SMG' : 'swissherdbook/Braunvieh'})
-      </h2>
+      <h2 className="mb-2 text-sm font-semibold text-gray-700">Daten importieren</h2>
       <p className="mb-3 text-xs text-gray-500">
-        Alle Dateien des Exports auswählen (z.B. <code>b&lt;nr&gt;.Y01</code>, <code>.Y02</code>,{' '}
-        <code>.K04</code>, <code>.K09</code>–<code>.K11</code>, <code>.K33</code>) — die Satzart wird
-        pro Zeile erkannt, nicht am Dateinamen. Liest Stammdaten, Abstammung, Milchproben,
-        Laktationen, Belegungen, Geburten und Zuchtwerte.
-        {species === 'sheep' && (
-          <>
-            {' '}
-            Zusätzlich SMG-Abstammungs- und Leistungsausweise (PDF, z.B. von Widdern): ergänzen den Stammbaum um drei Generationen
-            und deren Zuchtwerte.
-          </>
-        )}{' '}
-        Nichts verlässt den Browser.
+        Herdebuch-Export ({species === 'sheep' ? 'SMG' : 'swissherdbook/Braunvieh'}: <code>b&lt;nr&gt;.Y01</code>, <code>.K04</code>,{' '}
+        <code>.K09</code>–<code>.K11</code>, <code>.K33</code> …), TVD-Tierbestand (Excel)
+        {species === 'sheep' ? ', SMG-Abstammungs- und Leistungsausweise (PDF)' : ''} — einzeln, mehrere zusammen oder als ZIP. Die
+        Dateiart wird automatisch erkannt. Nichts verlässt den Browser.
       </p>
-      <input
-        type="file"
-        multiple
-        disabled={busy}
-        onChange={(e) => void handleFiles(e.target.files)}
-        className="block w-full text-sm text-gray-600"
-      />
-      {busy && <p className="mt-2 text-sm text-gray-500">Importiere…</p>}
+      <label
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragging(false)
+          void handleFiles(e.dataTransfer.files)
+        }}
+        className={`block cursor-pointer rounded-lg border-2 border-dashed p-4 text-center text-sm ${
+          dragging ? 'border-brand-500 bg-brand-50' : 'border-gray-300 text-gray-600'
+        }`}
+      >
+        {busy ? 'Importiere…' : 'Dateien oder ZIP hierher ziehen oder antippen zum Auswählen'}
+        <input
+          type="file"
+          multiple
+          disabled={busy}
+          onChange={(e) => {
+            void handleFiles(e.target.files)
+            e.target.value = ''
+          }}
+          className="sr-only"
+        />
+      </label>
+      {counts.length > 0 && (
+        <p className="mt-2 text-xs text-gray-500">Erkannt: {counts.map(([k, n]) => `${n} ${KIND_LABEL[k]}`).join(', ')}</p>
+      )}
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {summary && (
         <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
-          <p>{summary.animalsImported} Tiere, {summary.milkTestsImported} Milchproben, {summary.lactationsImported} Laktationsdaten gelesen.</p>
+          <p>Herdebuch: {summary.animalsImported} Tiere, {summary.milkTestsImported} Milchproben, {summary.lactationsImported} Laktationsdaten gelesen.</p>
           <p>
             Neu oder geändert: {summary.pedigreeWritten} Stammbaum-Einträge, {summary.matingsWritten} Belegungen,{' '}
             {summary.birthsWritten} Geburten ({summary.offspringWritten} Nachkommen), {summary.breedingValuesWritten} Zuchtwerte.
@@ -251,6 +297,9 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
             </p>
           )}
         </div>
+      )}
+      {tvdCount != null && (
+        <p className="mt-2 rounded bg-brand-50 p-3 text-sm text-brand-900">TVD-Tierbestand: {tvdCount} Tiere übernommen.</p>
       )}
       {pending.map((plan) => (
         <div key={plan.subject} className="mt-2 space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
@@ -298,68 +347,6 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
             <li key={i}>{w}</li>
           ))}
         </ul>
-      )}
-    </div>
-  )
-}
-
-/** Zusatz-Import für die Milchschafe: der SMG-Export enthält nur Auen mit
- * Milchleistungsdaten — Jungtiere und Widder kommen aus dem TVD-Tierbestand.
- * Abgleich über den normalisierten Ohrmarken-Schlüssel (lib/animalId.ts),
- * damit Kurz- und Langform nicht doppelt angelegt werden. */
-function TierbestandImportForm({ onImported }: { onImported: () => void }) {
-  const db = useDb()
-  const [tierbestandFile, setTierbestandFile] = useState<File | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [summary, setSummary] = useState<number | null>(null)
-
-  async function handleImport() {
-    if (!tierbestandFile) return
-    setBusy(true)
-    setError(null)
-    setSummary(null)
-    try {
-      const tierbestand = await parseTierbestand(tierbestandFile)
-      setSummary(await inTransaction(db, (tx) => importTierbestand(tx, tierbestand)))
-      onImported()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="rounded-lg bg-white p-4 shadow-sm">
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">TVD-Tierbestand importieren (Jungtiere, Widder)</h2>
-      <p className="mb-3 text-xs text-gray-500">
-        Der SMG-Export enthält nur Auen mit Milchleistung. Jungtiere und Widder kommen aus dem
-        TVD-Tierbestand (<code>Tierbestand.xlsx</code>). Nichts verlässt den Browser.
-      </p>
-      <label className="block text-xs font-medium text-gray-600">
-        TVD-Tierbestand (Excel)
-        <input
-          type="file"
-          accept=".xlsx,.xls"
-          disabled={busy}
-          onChange={(e) => setTierbestandFile(e.target.files?.[0] ?? null)}
-          className="mt-1 block w-full text-sm text-gray-600"
-        />
-      </label>
-      <button
-        type="button"
-        onClick={() => void handleImport()}
-        disabled={busy || !tierbestandFile}
-        className="mt-3 w-full rounded-lg bg-brand-700 py-2 text-sm font-semibold text-white disabled:opacity-50"
-      >
-        {busy ? 'Importiere…' : 'Importieren'}
-      </button>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      {summary != null && (
-        <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
-          <p>{summary} Tiere aus dem TVD-Tierbestand übernommen.</p>
-        </div>
       )}
     </div>
   )
