@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useDb } from '@fmis/core/DbContext'
 import { decodeHerdbookFile, parseAdisFiles, importAdisData, type HerdbookSpecies, type ImportSummary } from '../lib/importAdis'
 import { expandImportFiles, type ImportFile } from '../lib/importFiles'
+import { openDairyImport } from '../lib/importSession'
+import type { ImportSession } from '@fmis/core/importSession'
 import { parseTierbestand, importTierbestand } from '../lib/importTvd'
 import { inTransaction } from '../db/transaction'
 import { fmtDate, todayIso } from '../lib/format'
@@ -66,7 +68,7 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
     <div className={`mx-auto space-y-6 p-4 pb-24 ${view === 'list' ? 'max-w-5xl' : 'max-w-2xl'}`}>
       <h1 className="text-xl font-bold text-gray-800">Tiere</h1>
 
-      <ImportForm onImported={refresh} species={moduleKey === 'dairy' ? 'cattle' : 'sheep'} />
+      <ImportForm onImported={refresh} moduleKey={moduleKey} species={moduleKey === 'dairy' ? 'cattle' : 'sheep'} />
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && allAnimals.length === 0 && (
@@ -148,8 +150,9 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
  * Reihenfolge: Export, dann TVD (Abgleich über den Ohrmarken-Schlüssel, Kurz-
  * und Langform werden nicht doppelt angelegt), zuletzt Ausweise — so hat der
  * Export-Stammbaum Vorrang und der Ausweis füllt Lücken. */
-function ImportForm({ onImported, species }: { onImported: () => void; species: HerdbookSpecies }) {
-  const db = useDb()
+function ImportForm({ onImported, moduleKey, species }: { onImported: () => void; moduleKey: string; species: HerdbookSpecies }) {
+  // Offene Sitzung, solange Leistungsausweise auf einen Entscheid warten.
+  const session = useRef<ImportSession | null>(null)
   const [busy, setBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -160,12 +163,22 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
   const [certificates, setCertificates] = useState<CertificateImportResult[]>([])
   const [pending, setPending] = useState<CertificatePlan[]>([])
 
+  async function closeSession() {
+    await session.current?.close().catch(() => {})
+    session.current = null
+  }
+
   async function decide(plan: CertificatePlan, overwrite: boolean) {
+    const s = session.current
+    if (!s) return
     setBusy(true)
     try {
-      const result = await inTransaction(db, (tx) => applyCertificatePlan(tx, plan, overwrite))
+      const result = await inTransaction(s.pg, (tx) => applyCertificatePlan(tx, plan, overwrite))
+      await s.commit()
       setCertificates((c) => [...c, result])
-      setPending((p) => p.filter((x) => x !== plan))
+      const rest = pending.filter((x) => x !== plan)
+      setPending(rest)
+      if (rest.length === 0) await closeSession()
       onImported()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
@@ -176,6 +189,9 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
 
   async function handleFiles(fileList: FileList | File[] | null) {
     if (!fileList || fileList.length === 0) return
+    // Sofort kopieren: das Eingabefeld wird gleich zurückgesetzt, und eine
+    // FileList ist eine Live-Ansicht darauf.
+    const picked = [...fileList]
     setBusy(true)
     setError(null)
     setFound([])
@@ -184,19 +200,26 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
     setCertificates([])
     setPending([])
     setWarnings([])
+    await closeSession()
     try {
-      const files = await expandImportFiles([...fileList])
+      const files = await expandImportFiles(picked)
+      // Alles gegen den Serverstand (core/frontend/src/importSession.ts):
+      // die lokale Datenbank wird erst über den Sync-Pull aktualisiert.
+      const s = await openDairyImport(moduleKey)
+      session.current = s
+      const db = s.pg
       setFound(files)
       const of = (kind: ImportFile['kind']) => files.filter((f) => f.kind === kind)
       const nextWarnings = of('ignored').map((f) => `${f.name}: übergangen (${f.reason})`)
 
+      let herdbookSummary: ImportSummary | null = null
       const herdbook = of('herdbook')
       if (herdbook.length > 0) {
         const parsed = parseAdisFiles(
           herdbook.map((f) => decodeHerdbookFile(f.name, f.data)),
           species,
         )
-        setSummary(await importAdisData(db, parsed))
+        herdbookSummary = await importAdisData(db, parsed)
         nextWarnings.push(...parsed.warnings)
       }
 
@@ -214,7 +237,6 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
           nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
         }
       }
-      if (of('tvd').length) setTvdCount(tvd)
 
       // Ohne Abweichungen direkt speichern, sonst zuerst nachfragen.
       const results: CertificateImportResult[] = []
@@ -228,11 +250,16 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
           nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
         }
       }
+      await s.commit()
+      if (toDecide.length === 0) await closeSession()
+      setSummary(herdbookSummary)
+      if (of('tvd').length) setTvdCount(tvd)
       setCertificates(results)
       setPending(toDecide)
       setWarnings(nextWarnings)
       onImported()
     } catch (err) {
+      await closeSession()
       setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
     } finally {
       setBusy(false)

@@ -103,9 +103,9 @@ async function recordHistory(
 export async function upsertRow<T extends SyncTable>(
   table: T,
   row: Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string },
-  options?: { action?: HistoryAction },
+  options?: { action?: HistoryAction; /** andere Datenbank, z.B. Import-Sitzung (core/frontend/src/importSession.ts) */ pg?: PGlite },
 ): Promise<void> {
-  const pg = await ready()
+  const pg = options?.pg ?? (await ready())
   const columns = SYNC_TABLES[table] as readonly string[]
   const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
 

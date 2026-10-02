@@ -3,6 +3,8 @@ import { useLocation } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { importFieldsZips, type ImportSummary } from '../lib/importFields'
+import { openFieldsImport } from '../lib/importSession'
+import type { ImportSession } from '@fmis/core/importSession'
 import {
   copyToPlan,
   createPlanParcel,
@@ -133,9 +135,15 @@ export default function Fields() {
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return
+    const picked = [...fileList] // vor dem ersten await kopieren (Live-Liste des Eingabefelds)
     setImporting(true)
+    // Gegen den Serverstand importieren und in einem Stück speichern
+    // (lib/importSession.ts) — das Gerät holt die Änderungen per Sync.
+    let session: ImportSession | null = null
     try {
-      const summary = await importFieldsZips([...fileList])
+      session = await openFieldsImport()
+      const summary = await importFieldsZips(picked, session.pg)
+      summary.changed = await session.commit()
       setImportSummary(summary)
       refresh()
     } catch (err) {
@@ -146,6 +154,7 @@ export default function Fields() {
         warnings: [err instanceof Error ? err.message : 'Import fehlgeschlagen'],
       })
     } finally {
+      await session?.close().catch(() => {})
       setImporting(false)
     }
   }
@@ -269,7 +278,8 @@ export default function Fields() {
           <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
             <p>
               {importSummary.farmsImported} Betriebe, {importSummary.managementUnitsImported}{' '}
-              Bewirtschaftungseinheiten, {importSummary.fieldDeclarationsImported} Kulturflächen importiert.
+              Bewirtschaftungseinheiten, {importSummary.fieldDeclarationsImported} Kulturflächen gelesen
+              {importSummary.changed != null ? `, davon ${importSummary.changed} Einträge neu oder geändert` : ''}.
             </p>
             {importSummary.warnings.length > 0 && (
               <ul className="mt-2 list-disc pl-4 text-amber-800">

@@ -12,7 +12,7 @@ const migrationModules = import.meta.glob('../../../schema/*.sql', {
   eager: true,
 }) as Record<string, string>
 
-const migrations: Migration[] = Object.entries(migrationModules)
+export const migrations: Migration[] = Object.entries(migrationModules)
   .map(([path, sql]) => ({ version: path.split('/').pop()!, sql }))
   .sort((a, b) => a.version.localeCompare(b.version))
 
