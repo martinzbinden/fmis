@@ -8,7 +8,7 @@ import { parseTierbestand, importTierbestand } from '../lib/importTvd'
 import { inTransaction } from '../db/transaction'
 import { fmtDate, todayIso } from '../lib/format'
 import { parseSmgCertificate, readPdfText } from '../lib/smgCertificate'
-import { importCertificate, type CertificateImportResult } from '../lib/importCertificate'
+import { applyCertificatePlan, planCertificateImport, type CertificateImportResult, type CertificatePlan } from '../lib/importCertificate'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
 import { animalKey, animalLabel } from '@fmis/core/earTag'
 import { loadInbreeding } from '../lib/pedigreeData'
@@ -149,6 +149,21 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [certificates, setCertificates] = useState<CertificateImportResult[]>([])
+  const [pending, setPending] = useState<CertificatePlan[]>([])
+
+  async function decide(plan: CertificatePlan, overwrite: boolean) {
+    setBusy(true)
+    try {
+      const result = await inTransaction(db, (tx) => applyCertificatePlan(tx, plan, overwrite))
+      setCertificates((c) => [...c, result])
+      setPending((p) => p.filter((x) => x !== plan))
+      onImported()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return
@@ -156,6 +171,7 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
     setError(null)
     setSummary(null)
     setCertificates([])
+    setPending([])
     setWarnings([])
     try {
       const all = [...fileList]
@@ -170,18 +186,20 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
       }
       // Abstammungs-/Leistungsausweise (PDF) nach dem Export, damit dessen
       // Stammbaum Vorrang hat und der Ausweis nur Lücken füllt.
+      // Ohne Abweichungen direkt speichern, sonst zuerst nachfragen.
       const results: CertificateImportResult[] = []
+      const toDecide: CertificatePlan[] = []
       for (const pdf of pdfs) {
         try {
-          const cert = parseSmgCertificate(await readPdfText(await pdf.arrayBuffer()), todayIso())
-          const result = await inTransaction(db, (tx) => importCertificate(tx, cert))
-          results.push(result)
-          nextWarnings.push(...result.warnings)
+          const plan = await planCertificateImport(db, parseSmgCertificate(await readPdfText(await pdf.arrayBuffer()), todayIso()))
+          if (plan.conflicts.length) toDecide.push(plan)
+          else results.push(await inTransaction(db, (tx) => applyCertificatePlan(tx, plan, true)))
         } catch (err) {
           nextWarnings.push(`${pdf.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
         }
       }
       setCertificates(results)
+      setPending(toDecide)
       setWarnings(nextWarnings)
       onImported()
     } catch (err) {
@@ -234,10 +252,44 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
           )}
         </div>
       )}
+      {pending.map((plan) => (
+        <div key={plan.subject} className="mt-2 space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">
+            Leistungsausweis {plan.subject}
+            {plan.document_date ? ` (Stand ${fmtDate(plan.document_date)})` : ''} weicht von gespeicherten Angaben ab:
+          </p>
+          {plan.older_than_stored && (
+            <p className="font-semibold text-red-700">Achtung: Dieser Ausweis ist älter als bereits gespeicherte Angaben.</p>
+          )}
+          <ul className="max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs">
+            {plan.conflicts.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void decide(plan, true)}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${plan.older_than_stored ? 'border border-amber-400 bg-white' : 'bg-amber-600 text-white'}`}
+            >
+              Mit Ausweis überschreiben
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void decide(plan, false)}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${plan.older_than_stored ? 'bg-amber-600 text-white' : 'border border-amber-400 bg-white'}`}
+            >
+              Nur Neues ergänzen
+            </button>
+          </div>
+        </div>
+      ))}
       {certificates.map((c) => (
         <p key={c.subject} className="mt-2 rounded bg-brand-50 p-3 text-sm text-brand-900">
-          Leistungsausweis {c.subject}: {c.pedigreeWritten} Stammbaum-Einträge, {c.breedingValuesWritten} Zuchtwerte neu oder
-          geändert.
+          Leistungsausweis {c.subject}: {c.written} Einträge neu oder geändert
+          {c.skipped ? `, ${c.skipped} abweichende Angaben belassen` : ''}.
         </p>
       ))}
       {warnings.length > 0 && (

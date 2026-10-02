@@ -277,7 +277,11 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-right">{scc != null ? fmtCells(scc) : '–'}</td>
                     <td className="whitespace-nowrap px-2 py-2">
-                      {r.sire_key ? shortEarTag(r.sire_key) : '–'}
+                      {r.sire_key ? (
+                        <Link to={`/${moduleKey}/stammbaum/${encodeURIComponent(r.sire_key)}`}>{shortEarTag(r.sire_key)}</Link>
+                      ) : (
+                        '–'
+                      )}
                       {r.sire_value != null && (
                         <div className="text-xs text-gray-500">
                           {sireTrait.label} {r.sire_value}

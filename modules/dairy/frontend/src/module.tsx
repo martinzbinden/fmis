@@ -17,6 +17,7 @@ import JournalEntry from './pages/JournalEntry'
 import MatingPlanner from './pages/MatingPlanner'
 import Pruefbericht from './pages/Pruefbericht'
 import LambSelection from './pages/LambSelection'
+import PedigreeAnimal from './pages/PedigreeAnimal'
 import './theme.css'
 
 /**
@@ -54,6 +55,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'belegung', element: <MatingEntry moduleKey={key} /> },
       { path: 'journal', element: <JournalEntry moduleKey={key} /> },
       { path: 'anpaarung', element: <MatingPlanner moduleKey={key} /> },
+      { path: 'stammbaum/:key', element: <PedigreeAnimal moduleKey={key} /> },
       { path: 'selektion', element: <LambSelection moduleKey={key} /> },
       { path: 'pruefbericht', element: <Pruefbericht moduleKey={key} /> },
       { path: 'verlauf', element: <History moduleKey={key} /> },

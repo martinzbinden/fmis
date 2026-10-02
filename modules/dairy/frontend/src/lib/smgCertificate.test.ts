@@ -37,6 +37,21 @@ const page1: PdfPageText = {
     { str: 'LAC 100.00%', x: 530, y: 182 },
     { str: 'Inzuchtgrad:', x: 422, y: 210 },
     { str: '1.56 %', x: 530, y: 210 },
+    { str: 'Farbe:', x: 422, y: 225 },
+    { str: 'Parasitenresistenz:', x: 620, y: 225 },
+    { str: 'Maedi Visna:', x: 620, y: 239 },
+    { str: 'KK', x: 687, y: 239 },
+    { str: 'CCR5:', x: 734, y: 239 },
+    { str: 'NN', x: 772, y: 239 },
+    { str: 'Anzahl Nachkommen', x: 489, y: 406 },
+    { str: 'Männlich', x: 429, y: 417, w: 33 },
+    { str: 'Weiblich', x: 486.6, y: 417, w: 31 },
+    { str: 'Total', x: 549.5, y: 417, w: 19 },
+    { str: 'Davon Zucht', x: 592.4, y: 417, w: 45 },
+    { str: '12', x: 441, y: 428.6, w: 9 },
+    { str: '10', x: 498, y: 428.6, w: 9 },
+    { str: '22', x: 554, y: 428.6, w: 9 },
+    { str: 'M: 0 F: 3', x: 597, y: 428.6, w: 36 },
     { str: '15.05.2026', x: 718, y: 578 },
   ],
 }
@@ -53,6 +68,31 @@ const page2: PdfPageText = {
     // Mutter des Vaters unbekannt (Slot 1 leer), Muttersvater ausländisch
     ...box(1, 2, 'IMPORT HB', '123.456.789 AT', '28.01.96 2', null),
     ...box(2, 7, 'HB', '99990005', '05.09.11', '2026 81% 82 105 94 91'),
+    // Punktierung des Vaters (Altersklasse, Format, Fundament, ·, ·, Wolle)
+    { str: '14.05.19', x: 17.8, y: 139.4 },
+    { str: 'J', x: 60.4, y: 139.4 },
+    { str: '4', x: 74.5, y: 139.4 },
+    { str: '5', x: 88.7, y: 139.4 },
+    { str: '5', x: 131.2, y: 139.4 },
+    { str: 'Töchterleistungen nach Laktationen', x: 15, y: 262.9 },
+    ...[['1. Laktation', '63', '291 Tage', '383', '6.96', '5.33', '50']].flatMap((r) =>
+      r.map((str, i) => ({ str, x: [17.8, 74.5, 124.4, 178.6, 204.9, 233.3, 261.6][i], y: 278.3 })),
+    ),
+    // Mutter: LBE mit umbrochener Bemerkung, Laktation, Mittel, Lebensleistung
+    { str: '02.05.23 91 / 90 / 89 / 80 / 87 Euterfülle: leer, Wollenfeinheit: ideal,', x: 15.8, y: 388.8 },
+    { str: 'Schwanz: sehr lang', x: 15.8, y: 397.8 },
+    { str: 'Milchleistung:', x: 15, y: 449.3 },
+    ...['1', 'AT4', '14.04.20', '1.08', '264', '312', '7.98', '5.61', '40'].map((str, i) => ({
+      str,
+      x: [17.8, 34.9, 60.4, 110.9, 147.4, 178.6, 204.9, 233.3, 261.6][i],
+      y: 462.5,
+    })),
+    ...['360', '360 ZWZ', '257 Tage', '355', '7.49', '5.38', '158'].map((str, i) => ({
+      str,
+      x: [17.8, 60.4, 124.4, 178.6, 204.9, 233.3, 261.6][i],
+      y: 556.1,
+    })),
+    ...['LL', '7 Nachkommen', '1774', '7.49', '5.38'].map((str, i) => ({ str, x: [17.8, 60.4, 173.6, 204.9, 233.3][i], y: 567.4 })),
   ],
 }
 
@@ -81,6 +121,36 @@ describe('parseSmgCertificate', () => {
     expect(byPos.D).toMatchObject({ ear_tag: 'CH99990003', name: null })
     expect(byPos.DS).toMatchObject({ ear_tag: 'AT123456789', name: 'IMPORT', birth_date: '1996-01-28', breeding_values: null })
     expect(byPos.DDD.ear_tag).toBe('99990005')
+  })
+
+  it('liest Gesundheit und Nachkommen des Tiers', () => {
+    expect(c.subject.info).toMatchObject({
+      color: null,
+      parasite_resistance: null,
+      maedi_visna: 'KK',
+      ccr5: 'NN',
+      offspring_male: 12,
+      offspring_female: 10,
+      offspring_total: 22,
+      offspring_breeding: 'M: 0 F: 3',
+    })
+  })
+
+  it('liest Punktierungen, LBE und Leistungen in den Boxen', () => {
+    const byPos = Object.fromEntries(c.ancestors.map((a) => [a.position, a]))
+    expect(byPos.S.scores).toEqual([
+      { kind: 'punktierung', date: '2019-05-14', age_class: 'J', format: 4, fundament: 5, udder: null, teats: null, wool: 5, total: null, defects: null, remarks: null },
+    ])
+    expect(byPos.S.performance).toEqual([
+      expect.objectContaining({ kind: 'toechter', lactation_number: 1, count: 63, days: 291, milk_kg: 383, fat_pct: 6.96, protein_pct: 5.33, cell_count: 50 }),
+    ])
+    expect(byPos.D.scores).toEqual([
+      expect.objectContaining({ kind: 'lbe', date: '2023-05-02', format: 91, fundament: 90, udder: 89, teats: 80, total: 87, remarks: 'Euterfülle: leer, Wollenfeinheit: ideal, Schwanz: sehr lang' }),
+    ])
+    expect(byPos.D.performance.map((p) => p.kind)).toEqual(['laktation', 'mittel', 'lebensleistung'])
+    expect(byPos.D.performance[0]).toMatchObject({ lactation_number: 1, test_type: 'AT4', calving_date: '2020-04-14', age: '1.08', days: 264, milk_kg: 312, cell_count: 40 })
+    expect(byPos.D.performance[1]).toMatchObject({ interval_days: 360, days: 257, milk_kg: 355, cell_count: 158 })
+    expect(byPos.D.performance[2]).toMatchObject({ count: 7, milk_kg: 1774, fat_pct: 7.49 })
   })
 
   it('lehnt andere PDFs ab', () => {

@@ -55,6 +55,15 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "animal_key", "eval_date", "trait", "value", "reliability", "source",
         "import_key", "updated_at", "deleted_at",
     ],
+    "pedigree_info": [
+        "id", "animal_key", "color", "maedi_visna", "ccr5", "scrapie", "parasite_resistance", "offspring_male", "offspring_female", "offspring_total", "offspring_breeding", "document_date", "source", "updated_at", "deleted_at",
+    ],
+    "conformation_scores": [
+        "id", "animal_key", "score_date", "kind", "age_class", "format", "fundament", "udder", "teats", "wool", "total", "defects", "remarks", "document_date", "source", "import_key", "updated_at", "deleted_at",
+    ],
+    "pedigree_performance": [
+        "id", "animal_key", "kind", "lactation_number", "calving_date", "age", "test_type", "count", "interval_days", "days", "milk_kg", "fat_pct", "fat_kg", "protein_pct", "protein_kg", "cell_count", "persistency", "document_date", "source", "import_key", "updated_at", "deleted_at",
+    ],
     "lamb_selection": [
         "id", "animal_key", "purpose", "decided_on", "notes", "updated_at", "deleted_at",
     ],
@@ -91,5 +100,8 @@ def table_area(key: str) -> dict[str, str]:
         "breeding_values": f"{key}:animals",
         "lamb_selection": f"{key}:animals",
         "pedigree_breeding_values": f"{key}:animals",
+        "pedigree_info": f"{key}:animals",
+        "conformation_scores": f"{key}:animals",
+        "pedigree_performance": f"{key}:animals",
         "data_history": f"{key}:history",
     }

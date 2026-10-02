@@ -11,31 +11,22 @@ import { loadHerdContext, latestValues, type AnimalContext } from '../lib/herdCo
 import { cullingReasons, fmtCells, type CullingReason } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
-import { SIRE_TRAIT, TRAIT_LABEL, TRAIT_ORDER } from '../lib/breedingTraits'
-import { Inbreeding, fmtInbreeding, inbreedingClass, type PedigreeLink } from '../lib/inbreeding'
+import { TRAIT_LABEL, TRAIT_ORDER } from '../lib/breedingTraits'
+import { fmtInbreeding, inbreedingClass } from '../lib/inbreeding'
+import PedigreeTree, { loadPedigreeData, pedigreeLink } from '../components/PedigreeTree'
+import CertificateDetailsView from '../components/CertificateDetails'
+import { hasCertificateDetails, loadCertificateDetails } from '../lib/certificateData'
 import { loadSireOptions, sireLabel } from '../lib/sires'
 import { fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import type { AnimalJournalEntry, LactationSummary } from '../types'
 
-interface PedigreeNode {
-  animal_key: string
-  ear_tag: string
-  sire_key: string | null
-  dam_key: string | null
-  name: string | null
-  breed_code: string | null
-  birth_date: string | null
-  /** Gesamtzuchtwert (Schafe GZW, Kühe ISET) aus Export oder Leistungsausweis. */
-  bv: { value: number; reliability: number | null; label: string } | null
-}
-
 async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
   const today = todayIso()
-  const bvTrait = SIRE_TRAIT[species].trait
-  const [herd, pedigree, lactations, tests, journal, sires, externalBvs] = await Promise.all([
-    loadHerdContext(pg, species, today),
-    pg.query<Record<string, unknown>>('select * from pedigree where deleted_at is null'),
+  const herd = await loadHerdContext(pg, species, today)
+  const ctx = herd.get(id) ?? null
+  const [pedigreeData, lactations, tests, journal, sires, certificate] = await Promise.all([
+    loadPedigreeData(pg, herd, species),
     pg.query<LactationSummary>('select * from v_lactation_summary where animal_id = $1 order by lactation_number desc', [id]),
     pg.query<{ test_date: unknown; milk_kg: unknown; cell_count: unknown }>(
       'select test_date, milk_kg, cell_count from milk_tests where animal_id = $1 and deleted_at is null order by test_date',
@@ -46,45 +37,13 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
       [id],
     ),
     loadSireOptions(pg),
-    pg.query<{ animal_key: string; value: unknown; reliability: unknown }>(
-      'select animal_key, value, reliability from pedigree_breeding_values where deleted_at is null and trait = $1 order by eval_date',
-      [bvTrait],
-    ),
+    ctx ? loadCertificateDetails(pg, animalKey(ctx.animal.ear_tag) ?? ctx.animal.ear_tag) : Promise.resolve(null),
   ])
-  const bvLabel = SIRE_TRAIT[species].label
-  const bvByKey = new Map<string, { value: number; reliability: number | null; label: string }>(
-    externalBvs.rows.map((r) => [r.animal_key, { value: num(r.value)!, reliability: num(r.reliability), label: bvLabel }]),
-  )
-  for (const c of herd.values()) {
-    const own = c.breedingValues[bvTrait]
-    const key = animalKey(c.animal.ear_tag)
-    if (own && key) bvByKey.set(key, { value: own.value, reliability: own.reliability, label: bvLabel })
-  }
-  const pedigreeByKey = new Map<string, PedigreeNode>(
-    pedigree.rows.map((p) => [
-      String(p.animal_key),
-      {
-        animal_key: String(p.animal_key),
-        ear_tag: String(p.ear_tag),
-        sire_key: (p.sire_key as string) ?? null,
-        dam_key: (p.dam_key as string) ?? null,
-        name: (p.name as string) ?? null,
-        breed_code: (p.breed_code as string) ?? null,
-        birth_date: isoDate(p.birth_date),
-        bv: bvByKey.get(String(p.animal_key)) ?? null,
-      },
-    ]),
-  )
-  const herdIdByKey = new Map([...herd.values()].map((c) => [animalKey(c.animal.ear_tag) ?? c.animal.ear_tag, c.animal.id]))
-  const inbreeding = new Inbreeding(
-    new Map<string, PedigreeLink>([...pedigreeByKey.values()].map((p) => [p.animal_key, { sire: p.sire_key, dam: p.dam_key }])),
-  )
   return {
-    ctx: herd.get(id) ?? null,
-    inbreeding,
+    ctx,
+    ...pedigreeData,
     sires,
-    pedigreeByKey,
-    herdIdByKey,
+    certificate,
     lactations: lactations.rows,
     tests: tests.rows.map((t) => ({ date: isoDate(t.test_date)!, milk: num(t.milk_kg), scc: num(t.cell_count) })),
     journal: journal.rows.map((j) => ({ ...j, entry_date: isoDate(j.entry_date)! })),
@@ -131,50 +90,6 @@ export function ReasonChips({ reasons }: { reasons: CullingReason[] }) {
   )
 }
 
-function PedigreeCell({
-  node,
-  role,
-  herdIdByKey,
-}: {
-  node: PedigreeNode | undefined
-  role: string
-  herdIdByKey: Map<string, string>
-}) {
-  if (!node) {
-    return (
-      <div className="rounded border border-dashed border-gray-200 p-2 text-xs text-gray-400">
-        {role}: unbekannt
-      </div>
-    )
-  }
-  const herdId = herdIdByKey.get(node.animal_key)
-  const label = animalLabel(node)
-  return (
-    <div className="min-w-0 rounded border border-gray-200 p-2 text-xs">
-      <div className="text-gray-500">{role}</div>
-      <div className="break-words font-medium text-gray-800">
-        {herdId ? (
-          <Link to={`../${herdId}`} relative="path" className="text-brand-700">
-            {label}
-          </Link>
-        ) : (
-          label
-        )}
-      </div>
-      <div className="break-all text-gray-500">
-        {node.breed_code ?? ''}
-        {node.birth_date ? ` · ${node.birth_date.slice(0, 4)}` : ''}
-      </div>
-      {node.bv && (
-        <div className="text-gray-700">
-          {node.bv.label} <span className="font-semibold">{node.bv.value}</span>
-          {node.bv.reliability != null ? ` (${node.bv.reliability} %)` : ''}
-        </div>
-      )}
-    </div>
-  )
-}
-
 const INBREEDING_STYLE = {
   none: 'bg-green-100 text-green-800',
   low: 'bg-lime-100 text-lime-800',
@@ -195,39 +110,6 @@ function InbreedingNote({ f, completeness }: { f: number; completeness: number }
         Stammbaum: {completeness.toLocaleString('de-CH', { maximumFractionDigits: 1 })} vollständige Generationen
         {completeness < 3 ? ' — bei so wenig bekannten Vorfahren ist der Wert eher zu tief' : ''}
       </span>
-    </div>
-  )
-}
-
-function PedigreeTree({
-  rootKey,
-  pedigreeByKey,
-  herdIdByKey,
-}: {
-  rootKey: string
-  pedigreeByKey: Map<string, PedigreeNode>
-  herdIdByKey: Map<string, string>
-}) {
-  const root = pedigreeByKey.get(rootKey)
-  const sire = root?.sire_key ? pedigreeByKey.get(root.sire_key) : undefined
-  const dam = root?.dam_key ? pedigreeByKey.get(root.dam_key) : undefined
-  const at = (k: string | null | undefined) => (k ? pedigreeByKey.get(k) : undefined)
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      <div className="space-y-2">
-        <PedigreeCell node={sire} role="Vater" herdIdByKey={herdIdByKey} />
-        <div className="grid grid-cols-2 gap-2 pl-2">
-          <PedigreeCell node={at(sire?.sire_key)} role="Vatersvater" herdIdByKey={herdIdByKey} />
-          <PedigreeCell node={at(sire?.dam_key)} role="Vatersmutter" herdIdByKey={herdIdByKey} />
-        </div>
-      </div>
-      <div className="space-y-2">
-        <PedigreeCell node={dam} role="Mutter" herdIdByKey={herdIdByKey} />
-        <div className="grid grid-cols-2 gap-2 pl-2">
-          <PedigreeCell node={at(dam?.sire_key)} role="Muttersvater" herdIdByKey={herdIdByKey} />
-          <PedigreeCell node={at(dam?.dam_key)} role="Muttersmutter" herdIdByKey={herdIdByKey} />
-        </div>
-      </div>
     </div>
   )
 }
@@ -278,7 +160,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   if (loading && !data) return <p className="p-4 text-center text-gray-400">Lädt…</p>
   if (!data?.ctx) return <p className="p-4 text-center text-gray-500">Tier nicht gefunden.</p>
 
-  const { ctx, inbreeding, sires, pedigreeByKey, herdIdByKey, lactations, tests, journal } = data
+  const { ctx, inbreeding, sires, pedigreeByKey, herdIdByKey, lactations, tests, journal, certificate } = data
   const a = ctx.animal
   const f = ctx.fertility
   const p = ctx.performance
@@ -358,7 +240,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       <JournalSection animalId={a.id} journal={journal} />
 
       <Section title="Abstammung">
-        <PedigreeTree rootKey={offspringKey} pedigreeByKey={pedigreeByKey} herdIdByKey={herdIdByKey} />
+        <PedigreeTree rootKey={offspringKey} pedigreeByKey={pedigreeByKey} linkFor={(k) => pedigreeLink(moduleKey, herdIdByKey, k)} />
         <InbreedingNote f={inbreeding.inbreeding(offspringKey)} completeness={inbreeding.completeness(offspringKey)} />
       </Section>
 
@@ -388,6 +270,12 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       <Section title="Zuchtwerte">
         <BreedingValues ctx={ctx} />
       </Section>
+
+      {certificate && hasCertificateDetails(certificate) && (
+        <Section title="Leistungsausweis">
+          <CertificateDetailsView details={certificate} />
+        </Section>
+      )}
 
       {tests.length > 0 && (
         <Section title="Milchproben">
