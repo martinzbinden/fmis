@@ -10,6 +10,10 @@ import History from './pages/History'
 import Milchwaegung from './pages/Milchwaegung'
 import AnimalDetail from './pages/AnimalDetail'
 import Culling from './pages/Culling'
+import Erfassen from './pages/Erfassen'
+import BirthEntry from './pages/BirthEntry'
+import MatingEntry from './pages/MatingEntry'
+import JournalEntry from './pages/JournalEntry'
 import './theme.css'
 
 /**
@@ -32,6 +36,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     navItems: [
       { to: '', label: 'Leistung', icon: '🥛' },
       { to: 'kuehe', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
+      { to: 'erfassen', label: 'Erfassen', icon: '✏️' },
       { to: 'milchwaegung', label: 'Milchwägung', icon: '⚖️' },
       { to: 'ausmerzen', label: 'Ausmerzliste', icon: '📋' },
     ],
@@ -41,6 +46,10 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'kuehe', element: <Animals moduleKey={key} /> },
       { path: 'kuehe/:id', element: <AnimalDetail moduleKey={key} /> },
       { path: 'ausmerzen', element: <Culling moduleKey={key} /> },
+      { path: 'erfassen', element: <Erfassen moduleKey={key} /> },
+      { path: 'geburt', element: <BirthEntry moduleKey={key} /> },
+      { path: 'belegung', element: <MatingEntry moduleKey={key} /> },
+      { path: 'journal', element: <JournalEntry moduleKey={key} /> },
       { path: 'verlauf', element: <History moduleKey={key} /> },
       { path: 'milchwaegung', element: <Milchwaegung moduleKey={key} /> },
       { path: 'melken', element: <Navigate to="../milchwaegung" replace /> },

@@ -7,7 +7,7 @@ import { useDb } from '@fmis/core/DbContext'
 import { upsertRow, softDeleteRow, notifyDataChanged } from '../db/write'
 import { SYNC_TABLES } from '../db/tables'
 import { getDairySyncClient } from '../db/sync'
-import { fmtDate, fmtDateTime } from '../lib/format'
+import { fmtDate, fmtDateTime, isoDate } from '../lib/format'
 import { speciesTerms } from '../lib/species'
 import type { Animal, MilkingBank, MilkingSlot } from '../types'
 
@@ -69,6 +69,8 @@ async function applyReaderEvent(pg: PGlite, ev: ReaderEvent): Promise<void> {
 
 interface SlotRow extends MilkingSlot {
   animal: Animal | null
+  /** Letzter Tag einer offenen Milch-Absetzfrist (Tierjournal, Behandlung). */
+  withdrawalUntil: string | null
 }
 
 interface BankWithSlots {
@@ -82,8 +84,12 @@ async function loadBanks(pg: PGlite, date: string): Promise<BankWithSlots[]> {
     [date],
   )
   if (banks.length === 0) return []
-  const { rows: slots } = await pg.query<MilkingSlot & { a_id: string | null; a_name: string | null; a_lauf_nr: string | null; a_ear_tag: string | null }>(
-    `select s.*, a.id as a_id, a.name as a_name, a.lauf_nr as a_lauf_nr, a.ear_tag as a_ear_tag
+  const { rows: slots } = await pg.query<
+    MilkingSlot & { a_id: string | null; a_name: string | null; a_lauf_nr: string | null; a_ear_tag: string | null; withdrawal_until: unknown }
+  >(
+    `select s.*, a.id as a_id, a.name as a_name, a.lauf_nr as a_lauf_nr, a.ear_tag as a_ear_tag,
+       (select max(j.entry_date + j.withdrawal_milk_days) from animal_journal j
+         where j.animal_id = s.animal_id and j.deleted_at is null and j.withdrawal_milk_days > 0) as withdrawal_until
      from milking_slots s left join animals a on a.id = s.animal_id
      where s.bank_id = any($1) and s.deleted_at is null order by s.position`,
     [banks.map((b) => b.id)],
@@ -95,6 +101,7 @@ async function loadBanks(pg: PGlite, date: string): Promise<BankWithSlots[]> {
       .map((s) => ({
         ...s,
         animal: s.a_id ? ({ id: s.a_id, name: s.a_name, lauf_nr: s.a_lauf_nr, ear_tag: s.a_ear_tag } as Animal) : null,
+        withdrawalUntil: isoDate(s.withdrawal_until),
       })),
   }))
 }
@@ -721,6 +728,7 @@ function BankTable({
           source: 'milchwaegung',
           text: `Milchwägung Bank ${bank.bank.bank_number}: ${text}`,
           ref_id: s.id,
+          category: 'notiz',
         })
       } else if (rows[0]) {
         await softDeleteRow(pg, 'animal_journal', rows[0].id)
@@ -821,6 +829,11 @@ function BankTable({
                   <div className="truncate text-sm font-medium text-gray-800">
                     {s.animal?.name ?? (s.animal ? '' : <span className="text-amber-700">unbekannt</span>)}
                   </div>
+                  {s.withdrawalUntil && s.withdrawalUntil >= (isoDate(bank.bank.session_date) ?? '') && (
+                    <div className="text-[11px] font-semibold text-red-700">
+                      ⚠ Milch-Absetzfrist bis {fmtDate(s.withdrawalUntil)}
+                    </div>
+                  )}
                   {/* Zweite Zeile kostet ~14 px mal zwölf. Auf kurzen Schirmen
                       weicht sie, damit Häkchen und Laufnummer ohne Scrollen
                       sichtbar bleiben — auf hohen Geräten ist sie da. */}

@@ -29,6 +29,8 @@ export interface CullingThresholds {
   lactationNumber: number
   /** Anteil tote Nachkommen in den letzten zwei Geburten ab … (0 = aus) */
   offspringLossShare: number
+  /** Krankheits-/Behandlungstage im Journal der letzten 12 Monate ab … (0 = aus) */
+  healthEvents12m: number
 }
 
 export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
@@ -44,6 +46,7 @@ export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
     udderBreedingValue: 90,
     lactationNumber: 8,
     offspringLossShare: 0,
+    healthEvents12m: 3,
   },
   sheep: {
     intervalDays: 400,
@@ -57,10 +60,11 @@ export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
     udderBreedingValue: 0,
     lactationNumber: 7,
     offspringLossShare: 0.5,
+    healthEvents12m: 2,
   },
 }
 
-export type ReasonArea = 'fruchtbarkeit' | 'euter' | 'leistung' | 'zucht' | 'alter' | 'nachkommen'
+export type ReasonArea = 'fruchtbarkeit' | 'euter' | 'leistung' | 'zucht' | 'alter' | 'nachkommen' | 'gesundheit'
 
 export interface CullingReason {
   area: ReasonArea
@@ -79,6 +83,9 @@ export interface CullingInput {
   lactationNumber: number | null
   /** Nachkommen der letzten zwei Geburten. */
   recentOffspring: { stillborn: boolean; died_24h: boolean }[]
+  /** Tage mit Krankheits-/Behandlungseinträgen in den letzten 12 Monaten,
+   * mit den Diagnosen (für den Klartext). */
+  healthEvents12m?: { date: string; diagnosis: string | null }[]
 }
 
 /** Zellzahl in 1000/ml als ausgeschriebene Zahl mit Schweizer Tausender-
@@ -149,6 +156,16 @@ export function cullingReasons(input: CullingInput, t: CullingThresholds): Culli
     if (lost / input.recentOffspring.length >= t.offspringLossShare) {
       reasons.push({ area: 'nachkommen', weight: 1, text: `${lost} von ${input.recentOffspring.length} Nachkommen tot (letzte zwei Geburten)` })
     }
+  }
+
+  const events = input.healthEvents12m ?? []
+  if (t.healthEvents12m > 0 && events.length >= t.healthEvents12m) {
+    const diagnoses = [...new Set(events.map((e) => e.diagnosis).filter(Boolean))].slice(0, 3).join(', ')
+    reasons.push({
+      area: 'gesundheit',
+      weight: 2,
+      text: `${events.length} Krankheits-/Behandlungstage in 12 Monaten${diagnoses ? ` (${diagnoses})` : ''}`,
+    })
   }
 
   return reasons

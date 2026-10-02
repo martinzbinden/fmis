@@ -1,6 +1,10 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
+import { useDb } from '@fmis/core/DbContext'
+import { softDeleteRow } from '../db/write'
+import JournalForm from '../components/JournalForm'
+import { categoryIcon, categoryLabel, journalSummary, withdrawalEnd } from '../lib/journal'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useQuery } from '../hooks/useQuery'
 import { loadHerdContext, latestValues, type AnimalContext } from '../lib/herdContext'
@@ -8,9 +12,9 @@ import { cullingReasons, fmtCells, type CullingReason } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { animalKey } from '../lib/animalId'
 import { TRAIT_LABEL, TRAIT_ORDER } from '../lib/breedingTraits'
-import { fmtDate, isoDate, num, todayIso } from '../lib/format'
+import { fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
-import type { LactationSummary } from '../types'
+import type { AnimalJournalEntry, LactationSummary } from '../types'
 
 interface PedigreeNode {
   animal_key: string
@@ -32,8 +36,8 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
       'select test_date, milk_kg, cell_count from milk_tests where animal_id = $1 and deleted_at is null order by test_date',
       [id],
     ),
-    pg.query<{ id: string; entry_date: unknown; source: string; text: string }>(
-      'select id, entry_date, source, text from animal_journal where animal_id = $1 and deleted_at is null order by entry_date desc, updated_at desc',
+    pg.query<AnimalJournalEntry>(
+      'select * from animal_journal where animal_id = $1 and deleted_at is null order by entry_date desc, updated_at desc',
       [id],
     ),
   ])
@@ -87,6 +91,7 @@ const AREA_STYLE: Record<CullingReason['area'], string> = {
   zucht: 'bg-violet-100 text-violet-800',
   alter: 'bg-gray-100 text-gray-700',
   nachkommen: 'bg-orange-100 text-orange-800',
+  gesundheit: 'bg-red-100 text-red-800',
 }
 
 export function ReasonChips({ reasons }: { reasons: CullingReason[] }) {
@@ -212,6 +217,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const terms = speciesTerms(moduleKey)
   const birthWord = species === 'sheep' ? 'Ablammung' : 'Abkalbung'
   const intervalWord = species === 'sheep' ? 'Zwischenlammzeit' : 'Zwischenkalbezeit'
+  const db = useDb()
   const { thresholds } = useCullingThresholds(moduleKey, species)
   const { data, loading } = useQuery((pg) => loadDetail(pg, id, species), [id, species])
 
@@ -230,10 +236,20 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
     breedingValues: latestValues(ctx.breedingValues),
     lactationNumber: ctx.lactationNumber,
     recentOffspring: ctx.births.slice(-2).flatMap((b) => b.offspring),
+    healthEvents12m: ctx.healthEvents12m,
   }, thresholds) : []
   const ageYears = a.birth_date ? ((Date.now() - Date.parse(a.birth_date)) / (365.25 * 86_400_000)).toFixed(1) : null
   const offspringKey = animalKey(a.ear_tag) ?? a.ear_tag
   const sccLimit = thresholds.sccHighTest
+  const today = localTodayIso()
+  const openUntil = (field: 'withdrawal_milk_days' | 'withdrawal_meat_days') =>
+    journal
+      .map((j) => withdrawalEnd(j.entry_date, num(j[field])))
+      .filter((d): d is string => d != null && d >= today)
+      .sort()
+      .at(-1) ?? null
+  const milkUntil = openUntil('withdrawal_milk_days')
+  const meatUntil = openUntil('withdrawal_meat_days')
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
@@ -251,6 +267,13 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
           {ageYears ? ` (${ageYears} J.)` : ''} · {a.status}
         </p>
       </div>
+
+      {(milkUntil || meatUntil) && (
+        <div className="rounded-lg bg-red-600 p-3 text-sm font-semibold text-white">
+          {milkUntil && <div>⚠ Milch-Absetzfrist bis {fmtDate(milkUntil)}</div>}
+          {meatUntil && <div>⚠ Fleisch-Absetzfrist bis {fmtDate(meatUntil)}</div>}
+        </div>
+      )}
 
       {reasons.length > 0 && (
         <Section title="Hinweise (Ausmerzliste)">
@@ -277,6 +300,8 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
           <Field label="Datenbasis" value={p?.data_basis === 'duenn' ? 'dünn' : p?.data_basis ?? '–'} />
         </div>
       </Section>
+
+      <JournalSection animalId={a.id} journal={journal} />
 
       <Section title="Abstammung">
         <PedigreeTree rootKey={offspringKey} pedigreeByKey={pedigreeByKey} herdIdByKey={herdIdByKey} />
@@ -323,8 +348,16 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                       {fmtDate(b.birth_date)}
                       {b.parity ? ` · ${b.parity}. ${birthWord}` : ''}
                     </span>
-                    <span className="text-xs text-gray-500">
+                    <span className="flex items-center gap-1 text-xs text-gray-500">
                       {cycle?.interval_days != null ? `${intervalWord} ${cycle.interval_days} T.` : ''}
+                      {b.source === 'manual' && (
+                        <DeleteButton
+                          onConfirm={async () => {
+                            for (const o of b.offspring) await softDeleteRow(db, 'birth_offspring', o.id)
+                            await softDeleteRow(db, 'births', b.id)
+                          }}
+                        />
+                      )}
                     </span>
                   </div>
                   <div className="text-xs text-gray-600">
@@ -351,8 +384,9 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                   {fmtDate(m.service_date)}
                   {m.service_to ? ` – ${fmtDate(m.service_to)}` : ''}
                 </span>
-                <span className="text-right text-xs text-gray-600">
+                <span className="flex items-center gap-1 text-right text-xs text-gray-600">
                   {m.kind === 'kb' ? 'KB' : m.kind === 'natursprung' ? 'Natursprung' : ''} · {m.sire_name ?? m.sire_ear_tag ?? '?'}
+                  {m.source === 'manual' && <DeleteButton onConfirm={() => softDeleteRow(db, 'matings', m.id)} />}
                 </span>
               </li>
             ))}
@@ -394,20 +428,97 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         )}
       </Section>
 
-      <Section title="Journal">
-        {journal.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine Einträge.</p>
-        ) : (
-          <ul className="divide-y text-sm">
-            {journal.map((j) => (
-              <li key={j.id} className="py-1.5">
-                <span className="text-xs text-gray-500">{fmtDate(j.entry_date)} · </span>
-                {j.text}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
     </div>
+  )
+}
+
+/** Löschen mit Rückfrage — nur für in FMIS erfasste Einträge; importierte
+ * kämen mit dem nächsten Herdebuch-Export ohnehin wieder. Bei einer Geburt
+ * bleiben die angelegten Jungtiere im Bestand. */
+function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
+  const [confirm, setConfirm] = useState(false)
+  return confirm ? (
+    <button type="button" onClick={() => void onConfirm().then(() => setConfirm(false))} className="rounded bg-red-600 px-2 py-0.5 text-xs text-white">
+      Wirklich löschen?
+    </button>
+  ) : (
+    <button type="button" onClick={() => setConfirm(true)} className="px-1 text-base leading-none text-gray-400" aria-label="löschen">
+      ×
+    </button>
+  )
+}
+
+function JournalSection({ animalId, journal }: { animalId: string; journal: AnimalJournalEntry[] }) {
+  const db = useDb()
+  const [open, setOpen] = useState(false)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  return (
+    <Section title="Journal">
+      {open ? (
+        <div className="mb-3 rounded-lg border border-gray-200 p-3">
+          <JournalForm animalIds={[animalId]} onSaved={() => setOpen(false)} />
+          <button type="button" onClick={() => setOpen(false)} className="mt-2 w-full text-sm text-gray-500">
+            Abbrechen
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setOpen(true)} className="mb-2 w-full rounded-lg border border-dashed border-brand-300 py-2.5 text-sm font-medium text-brand-700">
+          ＋ Beobachtung / Behandlung erfassen
+        </button>
+      )}
+      {journal.length === 0 ? (
+        <p className="text-sm text-gray-400">Keine Einträge.</p>
+      ) : (
+        <ul className="divide-y text-sm">
+          {journal.map((j) => {
+            const milk = withdrawalEnd(j.entry_date, num(j.withdrawal_milk_days))
+            const meat = withdrawalEnd(j.entry_date, num(j.withdrawal_meat_days))
+            return (
+              <li key={j.id} className="py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-xs text-gray-500">
+                      {fmtDate(j.entry_date)} · {categoryIcon(j.category)} {categoryLabel(j.category)}
+                    </span>
+                    <div className="break-words text-gray-800">{j.text}</div>
+                    {(() => {
+                      // Ohne eigene Bemerkung steht die Zusammenfassung schon als Text da.
+                      const own = j.text !== journalSummary(j)
+                      const details = [
+                        own && j.diagnosis,
+                        own && [j.medication, j.dose].filter(Boolean).join(' '),
+                        j.administered_by && `durch ${j.administered_by}`,
+                      ].filter(Boolean)
+                      return details.length > 0 && <div className="text-xs text-gray-600">{details.join(' · ')}</div>
+                    })()}
+                    {(milk || meat) && (
+                      <div className="text-xs text-red-700">
+                        Absetzfrist {milk ? `Milch bis ${fmtDate(milk)}` : ''}
+                        {milk && meat ? ', ' : ''}
+                        {meat ? `Fleisch bis ${fmtDate(meat)}` : ''}
+                      </div>
+                    )}
+                  </div>
+                  {j.source === 'manual' &&
+                    (confirmId === j.id ? (
+                      <button
+                        type="button"
+                        onClick={() => void softDeleteRow(db, 'animal_journal', j.id).then(() => setConfirmId(null))}
+                        className="shrink-0 rounded bg-red-600 px-2 py-1 text-xs text-white"
+                      >
+                        Wirklich löschen?
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => setConfirmId(j.id)} className="shrink-0 px-1 text-gray-400" aria-label="löschen">
+                        ×
+                      </button>
+                    ))}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </Section>
   )
 }

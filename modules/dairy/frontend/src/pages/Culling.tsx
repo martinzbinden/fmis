@@ -20,6 +20,7 @@ const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: nu
   { key: 'udderBreedingValue', label: 'ZW Zellzahl/Mastitis unter (0 = aus)' },
   { key: 'lactationNumber', label: 'Hinweis ab Laktation' },
   { key: 'offspringLossShare', label: 'Anteil tote Nachkommen ab (0 = aus)', step: 0.05 },
+  { key: 'healthEvents12m', label: 'Krankheits-/Behandlungstage in 12 Mt. ab (0 = aus)' },
 ]
 
 interface Row {
@@ -63,6 +64,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
             breedingValues: bv,
             lactationNumber: c.lactationNumber,
             recentOffspring: c.births.slice(-2).flatMap((b) => b.offspring),
+            healthEvents12m: c.healthEvents12m,
           },
           thresholds,
         )

@@ -48,6 +48,8 @@ export interface MilkingSlot {
   deleted_at: string | null
 }
 
+export type JournalCategory = 'notiz' | 'beobachtung' | 'krankheit' | 'behandlung' | 'brunst' | 'klauen'
+
 export interface AnimalJournalEntry {
   id: string
   animal_id: string
@@ -57,6 +59,14 @@ export interface AnimalJournalEntry {
   ref_id: string | null
   updated_at: string
   deleted_at: string | null
+  // schema/0007_journal_health.sql — null bei Zeilen von älteren Geräten = 'notiz'
+  category: JournalCategory | null
+  diagnosis: string | null
+  medication: string | null
+  dose: string | null
+  withdrawal_milk_days: number | null
+  withdrawal_meat_days: number | null
+  administered_by: string | null
 }
 
 export interface MilkTest {

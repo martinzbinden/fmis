@@ -26,6 +26,8 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "animal_journal": [
         "id", "animal_id", "entry_date", "source", "text", "ref_id", "updated_at", "deleted_at",
+        "category", "diagnosis", "medication", "dose", "withdrawal_milk_days",
+        "withdrawal_meat_days", "administered_by",
     ],
     "pedigree": [
         "id", "animal_key", "ear_tag", "sire_key", "dam_key", "breed_code", "name",

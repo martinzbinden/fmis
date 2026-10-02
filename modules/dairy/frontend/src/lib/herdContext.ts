@@ -18,6 +18,7 @@ export interface BreedingValueEntry {
 }
 
 export interface OffspringRow {
+  id: string
   ear_tag: string | null
   sex: 'w' | 'm' | null
   stillborn: boolean
@@ -53,10 +54,13 @@ export interface AnimalContext {
   currentLactationScc: (number | null)[]
   breedingValues: Record<string, BreedingValueEntry>
   lactationNumber: number | null
+  /** Tage mit Krankheit/Behandlung im Journal der letzten 12 Monate. */
+  healthEvents12m: { date: string; diagnosis: string | null }[]
 }
 
 export async function loadHerdContext(pg: PGlite, species: Species, today: string): Promise<Map<string, AnimalContext>> {
-  const [animals, lactations, tests, births, offspring, matings, bvs] = await Promise.all([
+  const yearAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 365 * 86_400_000).toISOString().slice(0, 10)
+  const [animals, lactations, tests, births, offspring, matings, bvs, health] = await Promise.all([
     pg.query<Animal>('select * from animals where deleted_at is null'),
     pg.query<Record<string, unknown>>(
       'select animal_id, lactation_number, closure_type, milk_kg, fat_kg, protein_kg, days_in_milk, calving_date from lactations where deleted_at is null',
@@ -68,6 +72,12 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
     pg.query<Record<string, unknown>>('select * from birth_offspring where deleted_at is null'),
     pg.query<Record<string, unknown>>('select * from matings where deleted_at is null'),
     pg.query<Record<string, unknown>>('select * from breeding_values where deleted_at is null order by eval_date'),
+    pg.query<{ animal_id: string; entry_date: unknown; diagnosis: string | null }>(
+      `select animal_id, entry_date, max(diagnosis) as diagnosis from animal_journal
+       where deleted_at is null and category in ('krankheit', 'behandlung') and entry_date >= $1
+       group by animal_id, entry_date`,
+      [yearAgo],
+    ),
   ])
 
   const byAnimal = <T>(rows: T[], key: (r: T) => string) => {
@@ -89,6 +99,7 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
       ease: num(b.ease),
       source: String(b.source),
       offspring: (offspringByBirth.get(String(b.id)) ?? []).map((o) => ({
+        id: String(o.id),
         ear_tag: (o.ear_tag as string) ?? null,
         sex: (o.sex as 'w' | 'm') ?? null,
         stillborn: Boolean(o.stillborn),
@@ -115,6 +126,7 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
     (m) => m.animal_id,
   )
   const lactationsByAnimal = byAnimal(lactations.rows, (l) => String(l.animal_id))
+  const healthByAnimal = byAnimal(health.rows, (h) => h.animal_id)
   const testsByAnimal = byAnimal(tests.rows, (t) => t.animal_id)
   const bvByAnimal = new Map<string, Record<string, BreedingValueEntry>>()
   for (const bv of bvs.rows) {
@@ -174,6 +186,7 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
         : [],
       breedingValues: bvByAnimal.get(a.id) ?? {},
       lactationNumber: maxLact || null,
+      healthEvents12m: (healthByAnimal.get(a.id) ?? []).map((h) => ({ date: isoDate(h.entry_date)!, diagnosis: h.diagnosis })),
     })
   }
   return out

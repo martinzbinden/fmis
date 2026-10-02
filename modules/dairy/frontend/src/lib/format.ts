@@ -35,6 +35,13 @@ export function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** Heutiges Datum in LOKALER Zeit — für Erfassungsformulare (todayIso() ist
+ * UTC und läge abends nach Mitternacht UTC bzw. früh morgens falsch). */
+export function localTodayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** pglite liefert date-Spalten als Date (UTC-Mitternacht) — für Vergleiche
  * und Rechnungen den reinen YYYY-MM-DD-String. */
 export function isoDate(v: unknown): string | null {

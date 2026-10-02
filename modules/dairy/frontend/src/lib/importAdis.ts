@@ -10,8 +10,9 @@
 // B01/B04, CODE.C01) werden übersprungen. Spaltenoffsets 1:1 aus der
 // offiziellen Spec übernommen und gegen echte Exportdateien verifiziert.
 
-import type { PGlite, Transaction } from '@electric-sql/pglite'
+import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
+import { inTransaction } from '../db/transaction'
 import type { SyncTable } from '../db/tables'
 import type { AnimalSex, AnimalStatus, LactationClosureType } from '../types'
 import { animalKey } from './animalId'
@@ -482,21 +483,9 @@ async function importBreedingData(
  * unterschiedlicher Abschlussart sind gewollt (siehe schema/0003_lactations.sql).
  */
 export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<ImportSummary> {
-  // Eine Transaktion für den ganzen Import: ohne sie läuft jede der rund fünf
-  // Abfragen pro Zeile als eigene Transaktion samt IndexedDB-Flush — beim
-  // vollständigen Schaf-Export (~3000 Zeilen) dauerte das viele Minuten. Dazu
-  // ist der Import so atomar: bricht er ab, bleibt der alte Stand.
-  return pg.transaction((tx) => importAdisDataIn(txClient(tx), parsed))
-}
-
-/** Stellt eine laufende Transaktion als PGlite dar, damit upsertRow & Co.
- * unverändert darin schreiben können. */
-function txClient(tx: Transaction): PGlite {
-  return {
-    query: tx.query.bind(tx),
-    exec: tx.exec.bind(tx),
-    transaction: <T>(cb: (inner: Transaction) => Promise<T>) => cb(tx),
-  } as unknown as PGlite
+  // Eine Transaktion für den ganzen Import (siehe db/transaction.ts) — beim
+  // vollständigen Schaf-Export (~3000 Zeilen) Sekunden statt Minuten.
+  return inTransaction(pg, (tx) => importAdisDataIn(tx, parsed))
 }
 
 async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<ImportSummary> {
