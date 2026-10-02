@@ -7,7 +7,8 @@ import { parseAdisFiles, importAdisData, readHerdbookFile, type HerdbookSpecies,
 import { parseTierbestand, importSmgData, type SmgImportSummary } from '../lib/importSmg'
 import { fmtDate } from '../lib/format'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
-import { animalLabel } from '@fmis/core/earTag'
+import { animalKey, animalLabel } from '@fmis/core/earTag'
+import { loadInbreeding } from '../lib/pedigreeData'
 
 async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
   const { rows } = await pg.query<AnimalRow>(`
@@ -20,7 +21,13 @@ async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
     where a.deleted_at is null
     order by a.status, a.lauf_nr nulls last, a.ear_tag
   `)
-  return rows.map((r) => ({ ...r, milk_test_count: Number(r.milk_test_count), journal_count: Number(r.journal_count) }))
+  const inbreeding = await loadInbreeding(pg)
+  return rows.map((r) => ({
+    ...r,
+    milk_test_count: Number(r.milk_test_count),
+    journal_count: Number(r.journal_count),
+    inbreeding: inbreeding.inbreeding(animalKey(r.ear_tag) ?? r.ear_tag),
+  }))
 }
 
 type ViewMode = 'cards' | 'list'

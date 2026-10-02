@@ -7,23 +7,27 @@ import { inTransaction } from '../db/transaction'
 import AnimalPicker from '../components/AnimalPicker'
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
-import { animalKey } from '@fmis/core/earTag'
+import { animalKey, animalLabel } from '@fmis/core/earTag'
+import { loadInbreeding } from '../lib/pedigreeData'
+import { InbreedingBadge } from './AnimalDetail'
 import { isoDate, localTodayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import type { Animal } from '../types'
 
 async function loadData(pg: PGlite) {
-  const [animals, sires, lastBirths, matings] = await Promise.all([
+  const [animals, sires, lastBirths, matings, inbreeding] = await Promise.all([
     pg.query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' and coalesce(sex, 'w') = 'w' order by lauf_nr nulls last, ear_tag"),
     loadSireOptions(pg),
     pg.query<{ dam_id: string; last_birth: unknown }>('select dam_id, max(birth_date) as last_birth from births where deleted_at is null group by dam_id'),
     pg.query<{ animal_id: string; service_date: unknown }>('select animal_id, service_date from matings where deleted_at is null'),
+    loadInbreeding(pg),
   ])
   return {
     females: animals.rows,
     sires,
     lastBirth: new Map(lastBirths.rows.map((b) => [b.dam_id, isoDate(b.last_birth)])),
     matings: matings.rows.map((m) => ({ animal_id: m.animal_id, service_date: isoDate(m.service_date)! })),
+    inbreeding,
   }
 }
 
@@ -134,6 +138,27 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
           <input value={notes} onChange={(e) => setNotes(e.target.value)} className={input} />
         </label>
       </div>
+
+      {data && ids.length > 0 && (sire.key ?? animalKey(sire.ear_tag)) && (
+        <div className="rounded-lg bg-white p-4 shadow-sm">
+          <div className="mb-1 text-sm text-gray-600">Erwartete Inzucht der Nachkommen</div>
+          <ul className="divide-y text-sm">
+            {ids.map((id) => {
+              const a = byId.get(id)!
+              const f = data.inbreeding.offspring(animalKey(a.ear_tag), sire.key ?? animalKey(sire.ear_tag))
+              return (
+                <li key={id} className="flex items-center justify-between py-1.5">
+                  <span>{animalLabel(a)}</span>
+                  <InbreedingBadge f={f} />
+                </li>
+              )
+            })}
+          </ul>
+          {ids.some((id) => data.inbreeding.offspring(animalKey(byId.get(id)!.ear_tag), sire.key ?? animalKey(sire.ear_tag)) >= 0.0625) && (
+            <p className="mt-2 text-sm font-medium text-red-700">⚠ Mindestens eine Anpaarung liegt bei 6.25 % oder mehr.</p>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       <button

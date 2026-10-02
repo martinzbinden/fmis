@@ -3,11 +3,14 @@ import { Link } from 'react-router-dom'
 import { fmtDate } from '../lib/format'
 import type { Animal } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
+import { fmtInbreeding } from '../lib/inbreeding'
 
 export interface AnimalRow extends Animal {
   milk_test_count: number
   journal_count: number
   last_journal: string | null
+  /** Inzuchtkoeffizient aus dem Stammbaum (lib/inbreeding.ts). */
+  inbreeding: number
 }
 
 // Alle wählbaren Spalten; die Auswahl wird pro Instanz in localStorage
@@ -26,6 +29,7 @@ const COLUMNS: { key: keyof AnimalRow; label: string; format?: (v: unknown) => s
   { key: 'journal_count', label: 'Journal' },
   { key: 'last_journal', label: 'Letzter Journaleintrag' },
   { key: 'notes', label: 'Bemerkung' },
+  { key: 'inbreeding', label: 'Inzucht', format: (v) => fmtInbreeding(Number(v)) },
 ]
 const DEFAULT_COLUMNS: (keyof AnimalRow)[] = ['lauf_nr', 'name', 'ear_tag', 'breed_code', 'birth_date', 'status', 'milk_test_count']
 

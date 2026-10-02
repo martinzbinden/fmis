@@ -12,6 +12,8 @@ import { cullingReasons, fmtCells, type CullingReason } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { TRAIT_LABEL, TRAIT_ORDER } from '../lib/breedingTraits'
+import { Inbreeding, fmtInbreeding, inbreedingClass, type PedigreeLink } from '../lib/inbreeding'
+import { loadSireOptions, sireLabel } from '../lib/sires'
 import { fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import type { AnimalJournalEntry, LactationSummary } from '../types'
@@ -28,7 +30,7 @@ interface PedigreeNode {
 
 async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
   const today = todayIso()
-  const [herd, pedigree, lactations, tests, journal] = await Promise.all([
+  const [herd, pedigree, lactations, tests, journal, sires] = await Promise.all([
     loadHerdContext(pg, species, today),
     pg.query<Record<string, unknown>>('select * from pedigree where deleted_at is null'),
     pg.query<LactationSummary>('select * from v_lactation_summary where animal_id = $1 order by lactation_number desc', [id]),
@@ -40,6 +42,7 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
       'select * from animal_journal where animal_id = $1 and deleted_at is null order by entry_date desc, updated_at desc',
       [id],
     ),
+    loadSireOptions(pg),
   ])
   const pedigreeByKey = new Map<string, PedigreeNode>(
     pedigree.rows.map((p) => [
@@ -56,8 +59,13 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
     ]),
   )
   const herdIdByKey = new Map([...herd.values()].map((c) => [animalKey(c.animal.ear_tag) ?? c.animal.ear_tag, c.animal.id]))
+  const inbreeding = new Inbreeding(
+    new Map<string, PedigreeLink>([...pedigreeByKey.values()].map((p) => [p.animal_key, { sire: p.sire_key, dam: p.dam_key }])),
+  )
   return {
     ctx: herd.get(id) ?? null,
+    inbreeding,
+    sires,
     pedigreeByKey,
     herdIdByKey,
     lactations: lactations.rows,
@@ -144,6 +152,30 @@ function PedigreeCell({
   )
 }
 
+const INBREEDING_STYLE = {
+  none: 'bg-green-100 text-green-800',
+  low: 'bg-lime-100 text-lime-800',
+  medium: 'bg-amber-100 text-amber-800',
+  high: 'bg-red-600 text-white',
+} as const
+
+export function InbreedingBadge({ f }: { f: number }) {
+  return <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ${INBREEDING_STYLE[inbreedingClass(f)]}`}>{fmtInbreeding(f)}</span>
+}
+
+function InbreedingNote({ f, completeness }: { f: number; completeness: number }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-700">
+      <span>Inzucht</span>
+      <InbreedingBadge f={f} />
+      <span className="text-xs text-gray-500">
+        Stammbaum: {completeness.toLocaleString('de-CH', { maximumFractionDigits: 1 })} vollständige Generationen
+        {completeness < 3 ? ' — bei so wenig bekannten Vorfahren ist der Wert eher zu tief' : ''}
+      </span>
+    </div>
+  )
+}
+
 function PedigreeTree({
   rootKey,
   pedigreeByKey,
@@ -223,7 +255,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   if (loading && !data) return <p className="p-4 text-center text-gray-400">Lädt…</p>
   if (!data?.ctx) return <p className="p-4 text-center text-gray-500">Tier nicht gefunden.</p>
 
-  const { ctx, pedigreeByKey, herdIdByKey, lactations, tests, journal } = data
+  const { ctx, inbreeding, sires, pedigreeByKey, herdIdByKey, lactations, tests, journal } = data
   const a = ctx.animal
   const f = ctx.fertility
   const p = ctx.performance
@@ -304,7 +336,31 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
 
       <Section title="Abstammung">
         <PedigreeTree rootKey={offspringKey} pedigreeByKey={pedigreeByKey} herdIdByKey={herdIdByKey} />
+        <InbreedingNote f={inbreeding.inbreeding(offspringKey)} completeness={inbreeding.completeness(offspringKey)} />
       </Section>
+
+      {a.sex !== 'm' && sires.length > 0 && (
+        <Section title="Anpaarung: erwartete Inzucht der Nachkommen">
+          <ul className="divide-y text-sm">
+            {sires.slice(0, 8).map((s) => (
+              <li key={s.key} className="flex items-center justify-between gap-2 py-1.5">
+                <span className="min-w-0 break-words">
+                  {sireLabel(s)}
+                  {s.lastUsed && <span className="ml-1 text-xs text-gray-400">zuletzt {fmtDate(s.lastUsed)}</span>}
+                </span>
+                <InbreedingBadge f={inbreeding.offspring(offspringKey, s.key)} />
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-gray-400">
+            Verwandtschaft aus dem bekannten Stammbaum; unbekannte Vorfahren gelten als unverwandt. Mehr im{' '}
+            <Link to="../../anpaarung" relative="path" className="text-brand-700">
+              Anpaarungsplaner
+            </Link>
+            .
+          </p>
+        </Section>
+      )}
 
       <Section title="Zuchtwerte">
         <BreedingValues ctx={ctx} />

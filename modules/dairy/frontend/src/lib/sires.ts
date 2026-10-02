@@ -1,5 +1,5 @@
 import type { PGlite } from '@electric-sql/pglite'
-import { animalKey } from '@fmis/core/earTag'
+import { animalKey, animalLabel } from '@fmis/core/earTag'
 import { isoDate } from './format'
 
 export interface SireOption {
@@ -33,5 +33,5 @@ export async function loadSireOptions(pg: PGlite): Promise<SireOption[]> {
 }
 
 export function sireLabel(s: SireOption): string {
-  return s.name ? `${s.name} (${s.ear_tag})` : s.ear_tag
+  return animalLabel({ ear_tag: s.ear_tag, name: s.name })
 }
