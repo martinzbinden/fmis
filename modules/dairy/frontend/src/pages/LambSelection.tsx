@@ -155,8 +155,8 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
       </div>
       <p className="text-xs text-gray-500">
         Bewertet wird die Mutter: Leistung im Vergleich mit Gleichaltrigen (Lebenstagleistung, bei Erstlingen die Standardlaktation)
-        und Zellzahl, je auf Mittel 100 / Streuung 10 gebracht. Optional zählt der {sireTrait.label} des Vaters mit — nur bekannt,
-        wenn der Vater ein eigenes, bewertetes Tier ist. Geschwister eines Wurfs sind gleich eingestuft; dort entscheiden Exterieur,
+        und Zellzahl, je auf Mittel 100 / Streuung 10 gebracht. Optional zählt der {sireTrait.label} des Vaters mit — aus dem
+        Herdebuch-Export oder einem importierten Leistungsausweis (PDF); fehlt sein eigener Wert, das Mittel seiner Eltern. Geschwister eines Wurfs sind gleich eingestuft; dort entscheiden Exterieur,
         Euteranlage und Entwicklung am Tier.
       </p>
 
@@ -281,6 +281,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                       {r.sire_value != null && (
                         <div className="text-xs text-gray-500">
                           {sireTrait.label} {r.sire_value}
+                          {data?.sireValueBasis.get(r.sire_key ?? '') === 'eltern' ? ' (Elternmittel)' : ''}
                         </div>
                       )}
                     </td>

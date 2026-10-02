@@ -8,6 +8,7 @@ import type { Species } from './fertility'
 import { isoDate, num } from './format'
 import { loadHerdContext } from './herdContext'
 import { loadInbreeding } from './pedigreeData'
+import { SIRE_TRAIT } from './breedingTraits'
 import type { Inbreeding } from './inbreeding'
 import type { DamInfo, LambCandidate, Purpose } from './lambSelection'
 import type { Animal } from '../types'
@@ -16,18 +17,16 @@ export interface LambSelectionData {
   candidates: LambCandidate[]
   dams: Map<string, DamInfo>
   sireValues: Map<string, number>
+  /** Herkunft des Vater-Zuchtwerts: eigener ZW oder Elternmittel (Pedigree-Index). */
+  sireValueBasis: Map<string, 'eigen' | 'eltern'>
   decisions: Map<string, { id: string; purpose: Purpose | null; decided_on: string | null; notes: string | null }>
   inbreeding: Inbreeding
 }
 
-/** Zuchtwert des Vaters: Schafe GZW, Kühe ISET (beide um 100). */
-export const SIRE_TRAIT: Record<Species, { trait: string; label: string }> = {
-  sheep: { trait: 'gzw', label: 'GZW' },
-  cattle: { trait: 'iset', label: 'ISET' },
-}
+export { SIRE_TRAIT }
 
 export async function loadLambSelection(pg: PGlite, species: Species, today: string): Promise<LambSelectionData> {
-  const [context, births, offspring, pedigree, decisions, inbreeding] = await Promise.all([
+  const [context, births, offspring, pedigree, decisions, inbreeding, externalValues] = await Promise.all([
     loadHerdContext(pg, species, today),
     pg.query<Record<string, unknown>>('select id, dam_id, birth_date, sire_key from births where deleted_at is null'),
     pg.query<Record<string, unknown>>('select birth_id, ear_tag, animal_key, sex, stillborn, died_24h, birth_weight_kg from birth_offspring where deleted_at is null'),
@@ -36,6 +35,10 @@ export async function loadLambSelection(pg: PGlite, species: Species, today: str
     ),
     pg.query<Record<string, unknown>>('select * from lamb_selection where deleted_at is null order by updated_at'),
     loadInbreeding(pg),
+    pg.query<{ animal_key: string; value: unknown }>(
+      'select animal_key, value from pedigree_breeding_values where deleted_at is null and trait = $1 order by eval_date',
+      [SIRE_TRAIT[species].trait],
+    ),
   ])
 
   const dams = new Map<string, DamInfo>()
@@ -49,6 +52,8 @@ export async function loadLambSelection(pg: PGlite, species: Species, today: str
     const bv = ctx.breedingValues[SIRE_TRAIT[species].trait]
     if (bv) sireValues.set(key, bv.value)
   }
+  // Tiere ausserhalb des Bestands (Leistungsausweis-PDF); eigene K09-Werte haben Vorrang.
+  for (const r of externalValues.rows) if (!sireValues.has(r.animal_key) && num(r.value) != null) sireValues.set(r.animal_key, num(r.value)!)
   const animalKeyById = new Map([...context.values()].map((c) => [c.animal.id, animalKey(c.animal.ear_tag)]))
 
   // 1. Geburten (Erfassung in FMIS und Herdebuch-Export K11): lebende Nachkommen mit Ohrmarke.
@@ -110,7 +115,20 @@ export async function loadLambSelection(pg: PGlite, species: Species, today: str
     })
   }
 
-  return { candidates: [...candidates.values()], dams, sireValues, decisions: decisionMap, inbreeding }
+  // Väter ohne eigenen Zuchtwert (junge Widder): Elternmittel, wenn beide
+  // Eltern bewertet sind — der übliche Pedigree-Index.
+  const sireValueBasis = new Map<string, 'eigen' | 'eltern'>([...sireValues.keys()].map((k) => [k, 'eigen']))
+  for (const sireKey of new Set([...candidates.values()].map((c) => c.sire_key))) {
+    if (!sireKey || sireValues.has(sireKey)) continue
+    const p = pedigreeByKey.get(sireKey)
+    const a = p?.sire_key ? sireValues.get(p.sire_key) : undefined
+    const b = p?.dam_key ? sireValues.get(p.dam_key) : undefined
+    if (a == null || b == null || sireValueBasis.get(p!.sire_key!) !== 'eigen' || sireValueBasis.get(p!.dam_key!) !== 'eigen') continue
+    sireValues.set(sireKey, Math.round(((a + b) / 2) * 10) / 10)
+    sireValueBasis.set(sireKey, 'eltern')
+  }
+
+  return { candidates: [...candidates.values()], dams, sireValues, sireValueBasis, decisions: decisionMap, inbreeding }
 }
 
 /** Entscheid speichern bzw. zurücknehmen (purpose null) — immer dieselbe

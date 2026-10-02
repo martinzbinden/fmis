@@ -6,7 +6,9 @@ import { useDb } from '@fmis/core/DbContext'
 import { parseAdisFiles, importAdisData, readHerdbookFile, type HerdbookSpecies, type ImportSummary } from '../lib/importAdis'
 import { parseTierbestand, importTierbestand } from '../lib/importTvd'
 import { inTransaction } from '../db/transaction'
-import { fmtDate } from '../lib/format'
+import { fmtDate, todayIso } from '../lib/format'
+import { parseSmgCertificate, readPdfText } from '../lib/smgCertificate'
+import { importCertificate, type CertificateImportResult } from '../lib/importCertificate'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
 import { animalKey, animalLabel } from '@fmis/core/earTag'
 import { loadInbreeding } from '../lib/pedigreeData'
@@ -146,18 +148,41 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
+  const [certificates, setCertificates] = useState<CertificateImportResult[]>([])
 
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return
     setBusy(true)
     setError(null)
     setSummary(null)
+    setCertificates([])
+    setWarnings([])
     try {
-      const files = await Promise.all([...fileList].map(readHerdbookFile))
-      const parsed = parseAdisFiles(files, species)
-      const result = await importAdisData(db, parsed)
-      setSummary(result)
-      setWarnings(parsed.warnings)
+      const all = [...fileList]
+      const pdfs = all.filter((f) => f.name.toLowerCase().endsWith('.pdf'))
+      const exportFiles = all.filter((f) => !pdfs.includes(f))
+      const nextWarnings: string[] = []
+      if (exportFiles.length > 0) {
+        const files = await Promise.all(exportFiles.map(readHerdbookFile))
+        const parsed = parseAdisFiles(files, species)
+        setSummary(await importAdisData(db, parsed))
+        nextWarnings.push(...parsed.warnings)
+      }
+      // Abstammungs-/Leistungsausweise (PDF) nach dem Export, damit dessen
+      // Stammbaum Vorrang hat und der Ausweis nur Lücken füllt.
+      const results: CertificateImportResult[] = []
+      for (const pdf of pdfs) {
+        try {
+          const cert = parseSmgCertificate(await readPdfText(await pdf.arrayBuffer()), todayIso())
+          const result = await inTransaction(db, (tx) => importCertificate(tx, cert))
+          results.push(result)
+          nextWarnings.push(...result.warnings)
+        } catch (err) {
+          nextWarnings.push(`${pdf.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
+        }
+      }
+      setCertificates(results)
+      setWarnings(nextWarnings)
       onImported()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
@@ -175,7 +200,15 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
         Alle Dateien des Exports auswählen (z.B. <code>b&lt;nr&gt;.Y01</code>, <code>.Y02</code>,{' '}
         <code>.K04</code>, <code>.K09</code>–<code>.K11</code>, <code>.K33</code>) — die Satzart wird
         pro Zeile erkannt, nicht am Dateinamen. Liest Stammdaten, Abstammung, Milchproben,
-        Laktationen, Belegungen, Geburten und Zuchtwerte. Nichts verlässt den Browser.
+        Laktationen, Belegungen, Geburten und Zuchtwerte.
+        {species === 'sheep' && (
+          <>
+            {' '}
+            Zusätzlich SMG-Abstammungs- und Leistungsausweise (PDF, z.B. von Widdern): ergänzen den Stammbaum um drei Generationen
+            und deren Zuchtwerte.
+          </>
+        )}{' '}
+        Nichts verlässt den Browser.
       </p>
       <input
         type="file"
@@ -201,6 +234,12 @@ function ImportForm({ onImported, species }: { onImported: () => void; species: 
           )}
         </div>
       )}
+      {certificates.map((c) => (
+        <p key={c.subject} className="mt-2 rounded bg-brand-50 p-3 text-sm text-brand-900">
+          Leistungsausweis {c.subject}: {c.pedigreeWritten} Stammbaum-Einträge, {c.breedingValuesWritten} Zuchtwerte neu oder
+          geändert.
+        </p>
+      ))}
       {warnings.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
           {warnings.map((w, i) => (

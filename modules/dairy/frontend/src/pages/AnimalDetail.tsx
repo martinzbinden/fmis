@@ -11,7 +11,7 @@ import { loadHerdContext, latestValues, type AnimalContext } from '../lib/herdCo
 import { cullingReasons, fmtCells, type CullingReason } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
-import { TRAIT_LABEL, TRAIT_ORDER } from '../lib/breedingTraits'
+import { SIRE_TRAIT, TRAIT_LABEL, TRAIT_ORDER } from '../lib/breedingTraits'
 import { Inbreeding, fmtInbreeding, inbreedingClass, type PedigreeLink } from '../lib/inbreeding'
 import { loadSireOptions, sireLabel } from '../lib/sires'
 import { fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
@@ -26,11 +26,14 @@ interface PedigreeNode {
   name: string | null
   breed_code: string | null
   birth_date: string | null
+  /** Gesamtzuchtwert (Schafe GZW, Kühe ISET) aus Export oder Leistungsausweis. */
+  bv: { value: number; reliability: number | null; label: string } | null
 }
 
 async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
   const today = todayIso()
-  const [herd, pedigree, lactations, tests, journal, sires] = await Promise.all([
+  const bvTrait = SIRE_TRAIT[species].trait
+  const [herd, pedigree, lactations, tests, journal, sires, externalBvs] = await Promise.all([
     loadHerdContext(pg, species, today),
     pg.query<Record<string, unknown>>('select * from pedigree where deleted_at is null'),
     pg.query<LactationSummary>('select * from v_lactation_summary where animal_id = $1 order by lactation_number desc', [id]),
@@ -43,7 +46,20 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
       [id],
     ),
     loadSireOptions(pg),
+    pg.query<{ animal_key: string; value: unknown; reliability: unknown }>(
+      'select animal_key, value, reliability from pedigree_breeding_values where deleted_at is null and trait = $1 order by eval_date',
+      [bvTrait],
+    ),
   ])
+  const bvLabel = SIRE_TRAIT[species].label
+  const bvByKey = new Map<string, { value: number; reliability: number | null; label: string }>(
+    externalBvs.rows.map((r) => [r.animal_key, { value: num(r.value)!, reliability: num(r.reliability), label: bvLabel }]),
+  )
+  for (const c of herd.values()) {
+    const own = c.breedingValues[bvTrait]
+    const key = animalKey(c.animal.ear_tag)
+    if (own && key) bvByKey.set(key, { value: own.value, reliability: own.reliability, label: bvLabel })
+  }
   const pedigreeByKey = new Map<string, PedigreeNode>(
     pedigree.rows.map((p) => [
       String(p.animal_key),
@@ -55,6 +71,7 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
         name: (p.name as string) ?? null,
         breed_code: (p.breed_code as string) ?? null,
         birth_date: isoDate(p.birth_date),
+        bv: bvByKey.get(String(p.animal_key)) ?? null,
       },
     ]),
   )
@@ -148,6 +165,12 @@ function PedigreeCell({
         {node.breed_code ?? ''}
         {node.birth_date ? ` · ${node.birth_date.slice(0, 4)}` : ''}
       </div>
+      {node.bv && (
+        <div className="text-gray-700">
+          {node.bv.label} <span className="font-semibold">{node.bv.value}</span>
+          {node.bv.reliability != null ? ` (${node.bv.reliability} %)` : ''}
+        </div>
+      )}
     </div>
   )
 }
