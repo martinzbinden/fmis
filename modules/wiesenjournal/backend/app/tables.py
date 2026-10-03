@@ -51,11 +51,19 @@ SYNC_TABLES: dict[str, list[str]] = {
     "machines": [
         "id", "name", "kind", "capacity", "capacity_unit", "width_m", "notes",
         "active", "sort_order", "updated_at", "deleted_at",
+        "manufacturer", "model", "type_no", "serial_no", "year_built", "weight_kg",
+        "power_hp", "front_pto", "tractor_id",
+    ],
+    # Nur die Angaben; der Inhalt liegt in machine_file_data (nur Server).
+    "machine_files": [
+        "id", "machine_id", "kind", "title", "filename", "content_type",
+        "size_bytes", "source_url", "sort_order", "updated_at", "deleted_at",
     ],
     "tracks": [
         "id", "season_year", "label", "started_at", "ended_at", "width_m",
         "geometry", "point_times", "point_count", "notes", "created_by",
         "updated_at", "deleted_at", "work_type", "machine", "operator", "machine_id",
+        "tractor_id",
     ],
     "weed_observations": [
         "id", "season_year", "parcel_id", "track_id", "observed_at",
@@ -85,6 +93,7 @@ TABLE_AREA: dict[str, str] = {
     "n_dose_summary": "wiesenjournal:duengung",
     "daily_farm_log": "wiesenjournal:tagesmeldung",
     "machines": "wiesenjournal:tracking",
+    "machine_files": "wiesenjournal:tracking",
     "tracks": "wiesenjournal:tracking",
     "weed_observations": "wiesenjournal:tracking",
     "data_history": "wiesenjournal:history",

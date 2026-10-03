@@ -200,6 +200,7 @@ export default function Map() {
       machine: details.machine,
       operator: details.operator,
       machine_id: details.machineId ?? null,
+      tractor_id: details.tractorId ?? null,
     })
     setLivePoints([])
     setDwellCandidate(null)
@@ -212,9 +213,10 @@ export default function Map() {
       label: `${plan.task.title} ${fmtDate(plan.task.date)}`,
       widthM: plan.width_m,
       workType: plan.task.work_type,
-      machine: plan.machine_name,
+      machine: [plan.machine_name, plan.tractor_name].filter(Boolean).join(' + ') || null,
       operator: getCurrentUserEmail(),
       machineId: plan.machine_id,
+      tractorId: plan.tractor_id ?? null,
     })
     updateActivePlan({ ...plan, track_id: trackId })
   }
@@ -469,6 +471,7 @@ export default function Map() {
             <span className="font-semibold">
               {recording ? '● Arbeitsplan läuft' : 'Arbeitsplan unterbrochen'}: {activePlan.task.title} · {fmtDate(activePlan.task.date)}
               {activePlan.machine_name ? ` · ${activePlan.machine_name}` : ''}
+              {activePlan.tractor_name ? ` + ${activePlan.tractor_name}` : ''}
             </span>
             <span className="text-xs">
               {visited.size} / {activePlan.task.items.length} Parzellen befahren

@@ -13,6 +13,7 @@ import History from './pages/History'
 import FertilizerTypes from './pages/FertilizerTypes'
 import WorkPlan from './pages/WorkPlan'
 import Machines from './pages/Machines'
+import MachineDetail from './pages/MachineDetail'
 import './theme.css'
 
 function WiesenjournalDbProvider({ children }: { children: ReactNode }) {
@@ -43,6 +44,7 @@ const wiesenjournalModule: ModuleDescriptor = {
     { path: 'duengerarten', element: <FertilizerTypes /> },
     { path: 'arbeitsplan', element: <WorkPlan /> },
     { path: 'maschinen', element: <Machines /> },
+    { path: 'maschinen/:id', element: <MachineDetail /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],
   DbProvider: WiesenjournalDbProvider,

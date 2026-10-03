@@ -1,76 +1,67 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
-import { upsertRow, softDeleteRow } from '../db/write'
-import { loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
-import Modal from '../components/Modal'
-import type { DuengungUnit, Machine, MachineKind } from '../types'
+import { isTractor, loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
+import { loadMachineFiles } from '../lib/machineFiles'
+import MachineForm from '../components/MachineForm'
+import MachineImage from '../components/MachineImage'
+import type { Machine, MachineFile } from '../types'
 
-interface FormState {
-  existing: Machine | null
-  name: string
-  kind: MachineKind
-  capacity: string
-  capacity_unit: DuengungUnit | ''
-  width_m: string
-  active: boolean
-  notes: string
+const UNIT_LABEL = { m3: 'm³', t: 't', kg: 'kg' } as const
+
+async function load(pg: PGlite) {
+  const [machines, files] = await Promise.all([loadMachines(pg, false), loadMachineFiles(pg)])
+  return { machines, files }
 }
 
-function formFrom(m: Machine | null): FormState {
-  return {
-    existing: m,
-    name: m?.name ?? '',
-    kind: m?.kind ?? 'guellefass',
-    capacity: m?.capacity == null ? '' : String(m.capacity),
-    capacity_unit: m?.capacity_unit ?? (m ? '' : 'm3'),
-    width_m: m?.width_m == null ? '' : String(m.width_m),
-    active: m?.active ?? true,
-    notes: m?.notes ?? '',
-  }
+export function machineFacts(m: Machine, machines: Machine[]): string[] {
+  const facts: string[] = [MACHINE_KIND_LABEL[m.kind] ?? m.kind]
+  if (m.power_hp != null) facts.push(`${m.power_hp} PS`)
+  if (m.front_pto) facts.push('Frontzapfwelle')
+  if (m.capacity != null && m.capacity_unit) facts.push(`${m.capacity} ${UNIT_LABEL[m.capacity_unit]}`)
+  if (m.width_m != null) facts.push(`Arbeitsbreite ${m.width_m} m`)
+  if (m.year_built != null) facts.push(`Baujahr ${m.year_built}`)
+  const tractor = m.tractor_id ? machines.find((t) => t.id === m.tractor_id) : null
+  if (tractor) facts.push(`mit ${tractor.name}`)
+  if (!m.active) facts.push('nicht aktiv')
+  return facts
 }
 
-const UNIT_LABEL: Record<DuengungUnit, string> = { m3: 'm³', t: 't', kg: 'kg' }
+function MachineRow({ m, machines, files }: { m: Machine; machines: Machine[]; files: MachineFile[] }) {
+  const image = files.find((f) => f.machine_id === m.id && f.kind === 'bild')
+  const docs = files.filter((f) => f.machine_id === m.id && f.kind !== 'bild').length
+  return (
+    <li>
+      <Link to={m.id} className={`flex items-center gap-3 rounded-lg bg-white p-2 shadow-sm active:bg-gray-50 ${m.active ? '' : 'opacity-50'}`}>
+        {image ? (
+          <MachineImage fileId={image.id} alt={m.name} className="h-16 w-16 shrink-0 rounded" />
+        ) : (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-gray-100 text-2xl">{isTractor(m) ? '🚜' : '⚙️'}</div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-gray-800">{m.name}</div>
+          <div className="text-xs text-gray-500">{machineFacts(m, machines).join(' · ')}</div>
+          {docs > 0 && <div className="text-xs text-brand-700">📄 {docs === 1 ? '1 Anleitung/Dokument' : `${docs} Anleitungen/Dokumente`}</div>}
+        </div>
+        <span className="text-gray-300">›</span>
+      </Link>
+    </li>
+  )
+}
 
-/** Maschinenliste: Fassgrösse/Ladevolumen und Arbeitsbreite für Arbeitsplan
- * und GPS-Aufzeichnung (schema/0015_machines.sql). */
+/** Maschinenliste: Traktoren und Anbaugeräte mit Bild; Details, Typenschild
+ * und Anleitungen auf der Detailseite (pages/MachineDetail.tsx). */
 export default function Machines() {
-  const { data, loading, refresh } = useQuery((pg) => loadMachines(pg, false), [])
+  const { data, loading, refresh } = useQuery(load, [])
   const canWrite = useHasPermission('wiesenjournal:tracking:write')
-  const [form, setForm] = useState<FormState | null>(null)
-  const [saving, setSaving] = useState(false)
-  const machines = data ?? []
-
-  async function save() {
-    if (!form || !form.name.trim()) return
-    setSaving(true)
-    try {
-      const n = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')))
-      await upsertRow('machines', {
-        ...(form.existing ?? { id: crypto.randomUUID(), sort_order: (machines.length + 1) * 10 }),
-        name: form.name.trim(),
-        kind: form.kind,
-        capacity: n(form.capacity),
-        capacity_unit: n(form.capacity) == null ? null : form.capacity_unit || null,
-        width_m: n(form.width_m),
-        active: form.active,
-        notes: form.notes.trim() || null,
-      } as never)
-      setForm(null)
-      refresh()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function remove(m: Machine) {
-    if (!confirm(`Maschine "${m.name}" löschen? Bisherige Spuren behalten den Namen.`)) return
-    await softDeleteRow('machines', m.id)
-    refresh()
-  }
-
-  const field = 'w-full rounded border border-gray-300 px-2 py-1.5 text-sm'
+  const [adding, setAdding] = useState(false)
+  const navigate = useNavigate()
+  const machines = data?.machines ?? []
+  const files = data?.files ?? []
+  const tractors = machines.filter(isTractor)
+  const implements_ = machines.filter((m) => !isTractor(m))
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
@@ -81,13 +72,14 @@ export default function Machines() {
           </Link>
           <h1 className="text-xl font-bold text-gray-800">Maschinen</h1>
           <p className="text-xs text-gray-500">
-            Fassgrösse bzw. Ladevolumen (für die Anzahl Fässer im Arbeitsplan) und Arbeitsbreite (für die GPS-Spur).
+            Fassgrösse bzw. Ladevolumen (Anzahl Fässer im Arbeitsplan), Arbeitsbreite (GPS-Spur) und der Traktor, der zum Gerät
+            vorgeschlagen wird.
           </p>
         </div>
         {canWrite && (
           <button
             type="button"
-            onClick={() => setForm(formFrom(null))}
+            onClick={() => setAdding(true)}
             className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white active:bg-brand-700"
           >
             + Maschine
@@ -98,91 +90,38 @@ export default function Machines() {
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && machines.length === 0 && <p className="text-center text-sm text-gray-500">Noch keine Maschinen erfasst.</p>}
 
-      <ul className="space-y-2">
-        {machines.map((m) => (
-          <li key={m.id} className={`flex items-center justify-between gap-3 rounded-lg bg-white p-3 shadow-sm ${m.active ? '' : 'opacity-50'}`}>
-            <div className="min-w-0">
-              <div className="font-semibold text-gray-800">{m.name}</div>
-              <div className="text-xs text-gray-500">
-                {MACHINE_KIND_LABEL[m.kind] ?? m.kind}
-                {m.capacity != null && m.capacity_unit ? ` · ${m.capacity} ${UNIT_LABEL[m.capacity_unit]}` : ''}
-                {m.width_m != null ? ` · Arbeitsbreite ${m.width_m} m` : ''}
-                {!m.active && ' · nicht aktiv'}
-              </div>
-              {m.notes && <div className="text-xs text-gray-400">{m.notes}</div>}
-            </div>
-            {canWrite && (
-              <div className="flex shrink-0 gap-1">
-                <button type="button" onClick={() => setForm(formFrom(m))} className="rounded border border-gray-300 px-2 py-1 text-xs">
-                  Bearbeiten
-                </button>
-                <button type="button" onClick={() => void remove(m)} className="rounded border border-gray-300 px-2 py-1 text-xs text-red-700">
-                  Löschen
-                </button>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
+      {tractors.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Traktoren</h2>
+          <ul className="space-y-2">
+            {tractors.map((m) => (
+              <MachineRow key={m.id} m={m} machines={machines} files={files} />
+            ))}
+          </ul>
+        </section>
+      )}
+      {implements_.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Geräte</h2>
+          <ul className="space-y-2">
+            {implements_.map((m) => (
+              <MachineRow key={m.id} m={m} machines={machines} files={files} />
+            ))}
+          </ul>
+        </section>
+      )}
 
-      {form && (
-        <Modal title={form.existing ? 'Maschine bearbeiten' : 'Neue Maschine'} onClose={() => setForm(null)}>
-          <div className="space-y-3 text-sm">
-            <label className="block">
-              <span className="mb-1 block font-medium text-gray-700">Bezeichnung</span>
-              <input className={field} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="z.B. Güllefass Fliegl 6.5 m³" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block font-medium text-gray-700">Art</span>
-              <select className={field} value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as MachineKind })}>
-                {Object.entries(MACHINE_KIND_LABEL).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block font-medium text-gray-700">Fass / Ladevolumen</span>
-                <input className={field} inputMode="decimal" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block font-medium text-gray-700">Einheit</span>
-                <select
-                  className={field}
-                  value={form.capacity_unit}
-                  onChange={(e) => setForm({ ...form, capacity_unit: e.target.value as DuengungUnit | '' })}
-                >
-                  <option value="">–</option>
-                  <option value="m3">m³</option>
-                  <option value="t">t</option>
-                  <option value="kg">kg</option>
-                </select>
-              </label>
-            </div>
-            <label className="block">
-              <span className="mb-1 block font-medium text-gray-700">Arbeitsbreite (m)</span>
-              <input className={field} inputMode="decimal" value={form.width_m} onChange={(e) => setForm({ ...form, width_m: e.target.value })} />
-            </label>
-            <label className="block">
-              <span className="mb-1 block font-medium text-gray-700">Bemerkung</span>
-              <input className={field} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="z.B. Schleppschuhverteiler" />
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
-              aktiv (in Auswahllisten)
-            </label>
-            <button
-              type="button"
-              disabled={saving || !form.name.trim()}
-              onClick={() => void save()}
-              className="w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50"
-            >
-              Speichern
-            </button>
-          </div>
-        </Modal>
+      {adding && (
+        <MachineForm
+          machine={null}
+          machines={machines}
+          onClose={() => setAdding(false)}
+          onSaved={(id) => {
+            setAdding(false)
+            refresh()
+            navigate(id)
+          }}
+        />
       )}
     </div>
   )

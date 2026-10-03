@@ -75,8 +75,8 @@ function fertWork(unit: DuengungUnit, code: string | null): { work: string; kind
 function usageWork(type: string): { work: string; kinds: MachineKind[] } {
   if (MOW.has(type)) return { work: 'Mähen', kinds: ['maehwerk'] }
   if (type === 'striegeln') return { work: 'Striegeln', kinds: ['andere'] }
-  if (type === 'pflug') return { work: 'Pflügen', kinds: ['andere'] }
-  if (type === 'saat' || type === 'uebersaat') return { work: 'Säen', kinds: ['saemaschine'] }
+  if (type === 'pflug') return { work: 'Pflügen', kinds: ['pflug'] }
+  if (type === 'saat' || type === 'uebersaat') return { work: 'Säen', kinds: ['saatkombination', 'saemaschine'] }
   return { work: USAGE_TYPE_LABEL[type] ?? type, kinds: [] }
 }
 
@@ -224,6 +224,9 @@ export interface ActivePlan {
   task: PlanTask
   machine_id: string | null
   machine_name: string | null
+  /** Traktor dazu (Vorschlag aus dem Standard-Traktor des Geräts). */
+  tractor_id?: string | null
+  tractor_name?: string | null
   width_m: number | null
   started_at: string
   /** Laufende GPS-Spur; fehlt, solange die Karte sie noch nicht gestartet hat. */

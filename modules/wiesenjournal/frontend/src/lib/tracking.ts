@@ -31,6 +31,8 @@ export interface StartTrackDetails {
   operator: string | null
   /** Maschine aus der Liste (schema/0015), sonst nur Freitext in `machine`. */
   machineId?: string | null
+  /** Traktor aus der Liste (schema/0016). */
+  tractorId?: string | null
 }
 
 export async function startTrack(seasonYear: number, details: StartTrackDetails): Promise<string> {
@@ -51,6 +53,7 @@ export async function startTrack(seasonYear: number, details: StartTrackDetails)
     machine: details.machine,
     operator: details.operator,
     machine_id: details.machineId ?? null,
+    tractor_id: details.tractorId ?? null,
   } as never)
   return id
 }

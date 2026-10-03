@@ -216,6 +216,8 @@ export interface Track {
   operator: string | null
   /** Verknüpfung mit der Maschinenliste (schema/0015); machine bleibt als Anzeigename. */
   machine_id?: string | null
+  /** Traktor dazu (schema/0016). */
+  tractor_id?: string | null
 }
 
 export type MachineKind =
@@ -227,6 +229,9 @@ export type MachineKind =
   | 'schwader'
   | 'ladewagen'
   | 'saemaschine'
+  | 'saatkombination'
+  | 'kreiselegge'
+  | 'pflug'
   | 'traktor'
   | 'andere'
 
@@ -239,6 +244,35 @@ export interface Machine {
   width_m: number | null
   notes: string | null
   active: boolean
+  sort_order: number
+  updated_at: string
+  deleted_at: string | null
+  // Typenschild (schema/0016)
+  manufacturer: string | null
+  model: string | null
+  type_no: string | null
+  serial_no: string | null
+  year_built: number | null
+  weight_kg: number | null
+  /** Nur Traktoren. */
+  power_hp: number | null
+  front_pto: boolean | null
+  /** Anbaugeräte: Standard-Traktor (Vorschlag in Arbeitsplan und Tracking). */
+  tractor_id: string | null
+}
+
+export type MachineFileKind = 'bild' | 'anleitung' | 'dokument'
+
+/** Bild/Anleitung zu einer Maschine; der Inhalt liegt nur auf dem Server. */
+export interface MachineFile {
+  id: string
+  machine_id: string
+  kind: MachineFileKind
+  title: string | null
+  filename: string
+  content_type: string
+  size_bytes: number | null
+  source_url: string | null
   sort_order: number
   updated_at: string
   deleted_at: string | null

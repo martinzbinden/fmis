@@ -52,11 +52,18 @@ export const SYNC_TABLES = {
   machines: [
     'id', 'name', 'kind', 'capacity', 'capacity_unit', 'width_m', 'notes',
     'active', 'sort_order', 'updated_at', 'deleted_at',
+    'manufacturer', 'model', 'type_no', 'serial_no', 'year_built', 'weight_kg',
+    'power_hp', 'front_pto', 'tractor_id',
+  ],
+  machine_files: [
+    'id', 'machine_id', 'kind', 'title', 'filename', 'content_type',
+    'size_bytes', 'source_url', 'sort_order', 'updated_at', 'deleted_at',
   ],
   tracks: [
     'id', 'season_year', 'label', 'started_at', 'ended_at', 'width_m',
     'geometry', 'point_times', 'point_count', 'notes', 'created_by',
     'updated_at', 'deleted_at', 'work_type', 'machine', 'operator', 'machine_id',
+    'tractor_id',
   ],
   weed_observations: [
     'id', 'season_year', 'parcel_id', 'track_id', 'observed_at',
@@ -85,6 +92,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   n_dose_summary: new Set(),
   daily_farm_log: new Set(['entry_date']),
   machines: new Set(),
+  machine_files: new Set(),
   tracks: new Set(),
   weed_observations: new Set(['treated_at']),
   data_history: new Set(),
