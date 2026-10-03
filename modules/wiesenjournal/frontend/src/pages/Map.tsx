@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
+import { getCurrentUserEmail } from '@fmis/core/auth'
+import { useDb } from '@fmis/core/DbContext'
 import { useQuery } from '../hooks/useQuery'
 import PaddockMap, { type FertilizationFeature } from '../components/PaddockMap'
 import Modal from '../components/Modal'
@@ -23,6 +25,7 @@ import {
 import { detectDwell, haversineMeters } from '../lib/geo'
 import type { NearbyObservation } from '../components/MiniLocationMap'
 import { downloadGpx } from '../lib/gpx'
+import { completePlan, getActivePlan, setActivePlan, visitedParcels, type ActivePlan } from '../lib/workPlan'
 import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
 import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
@@ -63,8 +66,50 @@ async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean) {
   return { paddocks, parcels, tracks, weedObservations, fertilization }
 }
 
+/** Bildschirm während der Aufzeichnung wach halten: Browser liefern GPS nur,
+ * solange die Seite sichtbar ist — bei ausgeschaltetem Bildschirm oder im
+ * Hintergrund stoppt watchPosition. */
+function useWakeLock(active: boolean) {
+  useEffect(() => {
+    if (!active || !('wakeLock' in navigator)) return
+    let lock: WakeLockSentinel | null = null
+    let cancelled = false
+    const request = async () => {
+      try {
+        const l = await navigator.wakeLock.request('screen')
+        if (cancelled) void l.release()
+        else lock = l
+      } catch {
+        // z.B. Energiesparmodus — dann eben ohne
+      }
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void request()
+    }
+    void request()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
+      void lock?.release()
+    }
+  }, [active])
+}
+
+/** Punkte eines gespeicherten Tracks (GeoJSON LineString). */
+function trackPoints(t: Track): { lat: number; lng: number }[] {
+  if (!t.geometry) return []
+  try {
+    const g = JSON.parse(t.geometry) as { coordinates: [number, number][] }
+    return g.coordinates.map(([lng, lat]) => ({ lat, lng }))
+  } catch {
+    return []
+  }
+}
+
 export default function Map() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const db = useDb()
   const focusParcelId = searchParams.get('parcel')
   const [seasonYear] = useState(CURRENT_YEAR)
   const [showAcker] = useShowAcker()
@@ -90,6 +135,21 @@ export default function Map() {
   const [dwellCandidate, setDwellCandidate] = useState<{ lat: number; lng: number } | null>(null)
   const currentTrackRef = useRef(currentTrack)
   currentTrackRef.current = currentTrack
+  useWakeLock(recording)
+
+  // --- Arbeitsplan-Ausführung (pages/WorkPlan.tsx) ---
+  const [activePlan, setActivePlanState] = useState<ActivePlan | null>(() => getActivePlan())
+  const [completing, setCompleting] = useState(false)
+  const updateActivePlan = (plan: ActivePlan | null) => {
+    setActivePlan(plan)
+    setActivePlanState(plan)
+  }
+  // Befahrene Parzellen: alle Spuren seit Planstart plus laufende Aufzeichnung.
+  const visited = useMemo(() => {
+    if (!activePlan) return new Set<string>()
+    const earlier = tracks.filter((t) => t.started_at >= activePlan.started_at).flatMap(trackPoints)
+    return visitedParcels(activePlan.task.items, [...earlier, ...(recording ? livePoints : [])])
+  }, [activePlan, tracks, livePoints, recording])
 
   useEffect(() => {
     if (!recording || !currentTrack) return
@@ -118,7 +178,7 @@ export default function Map() {
     return () => navigator.geolocation.clearWatch(id)
   }, [recording, currentTrack])
 
-  async function startRecording(details: StartTrackDetails) {
+  async function startRecording(details: StartTrackDetails): Promise<string> {
     setStartingTrack(false)
     const trackId = await startTrack(seasonYear, details)
     refresh()
@@ -139,11 +199,36 @@ export default function Map() {
       work_type: details.workType,
       machine: details.machine,
       operator: details.operator,
+      machine_id: details.machineId ?? null,
     })
     setLivePoints([])
     setDwellCandidate(null)
     setRecording(true)
+    return trackId
   }
+
+  async function startPlanRecording(plan: ActivePlan) {
+    const trackId = await startRecording({
+      label: `${plan.task.title} ${fmtDate(plan.task.date)}`,
+      widthM: plan.width_m,
+      workType: plan.task.work_type,
+      machine: plan.machine_name,
+      operator: getCurrentUserEmail(),
+      machineId: plan.machine_id,
+    })
+    updateActivePlan({ ...plan, track_id: trackId })
+  }
+
+  // Vom Arbeitsplan hierher: Aufzeichnung sofort starten.
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (searchParams.get('plan') !== 'start' || autoStarted.current || !canTrack) return
+    autoStarted.current = true
+    setSearchParams({}, { replace: true })
+    const plan = getActivePlan()
+    if (plan && !recording) void startPlanRecording(plan)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, canTrack])
 
   async function stopRecording() {
     if (currentTrack) {
@@ -153,6 +238,15 @@ export default function Map() {
     setCurrentTrack(null)
     setLivePoints([])
     setDwellCandidate(null)
+    refresh()
+    if (activePlan) setCompleting(true)
+  }
+
+  async function finishPlan(done: Set<string>) {
+    if (!activePlan) return
+    await completePlan(db, activePlan, done, todayIso())
+    updateActivePlan(null)
+    setCompleting(false)
     refresh()
   }
 
@@ -369,6 +463,58 @@ export default function Map() {
         </div>
       )}
 
+      {activePlan && (
+        <div className={`space-y-2 rounded-lg p-3 text-sm ${recording ? 'bg-green-50 text-green-900' : 'bg-amber-50 text-amber-900'}`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="font-semibold">
+              {recording ? '● Arbeitsplan läuft' : 'Arbeitsplan unterbrochen'}: {activePlan.task.title} · {fmtDate(activePlan.task.date)}
+              {activePlan.machine_name ? ` · ${activePlan.machine_name}` : ''}
+            </span>
+            <span className="text-xs">
+              {visited.size} / {activePlan.task.items.length} Parzellen befahren
+            </span>
+          </div>
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs sm:grid-cols-3">
+            {activePlan.task.items.map((it) => (
+              <li key={it.parcel_id} className={visited.has(it.parcel_id) ? 'font-semibold' : 'opacity-70'}>
+                {visited.has(it.parcel_id) ? '✓' : '○'} {it.parcel_name}
+                {it.amount != null && it.unit ? ` · ${it.amount} ${it.unit === 'm3' ? 'm³' : it.unit}` : ''}
+              </li>
+            ))}
+          </ul>
+          {recording ? (
+            <p className="text-xs">
+              Bildschirm bleibt eingeschaltet. App im Vordergrund lassen — im Hintergrund oder bei ausgeschaltetem Bildschirm
+              zeichnet der Browser kein GPS auf. Ladekabel anschliessen.
+            </p>
+          ) : (
+            canTrack && (
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => void startPlanRecording(activePlan)} className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white">
+                  ▶ Aufzeichnung fortsetzen
+                </button>
+                <button type="button" onClick={() => setCompleting(true)} className="rounded border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium">
+                  Ausführung abschliessen
+                </button>
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      {completing && activePlan && (
+        <CompletePlanModal
+          plan={activePlan}
+          visited={visited}
+          onClose={() => setCompleting(false)}
+          onCancelPlan={() => {
+            updateActivePlan(null)
+            setCompleting(false)
+          }}
+          onDone={finishPlan}
+        />
+      )}
+
       {dwellCandidate && (
         <div className="flex items-center justify-between rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           <span>Hier länger angehalten — Unkraut melden?</span>
@@ -575,6 +721,85 @@ function PaddockDetailsModal({
               Speichern
             </button>
           </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function CompletePlanModal({
+  plan,
+  visited,
+  onClose,
+  onCancelPlan,
+  onDone,
+}: {
+  plan: ActivePlan
+  visited: Set<string>
+  onClose: () => void
+  onCancelPlan: () => void
+  onDone: (done: Set<string>) => Promise<void>
+}) {
+  const [done, setDone] = useState<Set<string>>(() => new Set(visited))
+  const [saving, setSaving] = useState(false)
+  const toggle = (id: string) =>
+    setDone((d) => {
+      const next = new Set(d)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  return (
+    <Modal title="Ausführung abschliessen" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <p className="text-gray-600">
+          Erledigte Parzellen werden als ausgeführt ins Journal übernommen (Datum heute). Nicht angekreuzte bleiben geplant.
+          Vorausgewählt ist, was laut GPS befahren wurde.
+        </p>
+        <ul className="divide-y">
+          {plan.task.items.map((it) => (
+            <li key={it.parcel_id}>
+              <label className="flex items-center gap-2 py-1.5">
+                <input type="checkbox" checked={done.has(it.parcel_id)} onChange={() => toggle(it.parcel_id)} />
+                <span className="flex-1">{it.parcel_name}</span>
+                {it.amount != null && it.unit && (
+                  <span className="text-gray-600">
+                    {it.amount} {it.unit === 'm3' ? 'm³' : it.unit}
+                  </span>
+                )}
+                {visited.has(it.parcel_id) && <span className="text-xs text-green-700">befahren</span>}
+              </label>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true)
+            try {
+              await onDone(done)
+            } finally {
+              setSaving(false)
+            }
+          }}
+          className="w-full rounded-lg bg-green-600 py-2 font-semibold text-white disabled:opacity-50"
+        >
+          {done.size} {done.size === 1 ? 'Parzelle' : 'Parzellen'} als ausgeführt übernehmen
+        </button>
+        <div className="flex justify-between text-xs">
+          <button type="button" onClick={onClose} className="text-gray-600 underline">
+            Später
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('Plan-Ausführung abbrechen? Die Einträge bleiben geplant, die GPS-Spur bleibt gespeichert.')) onCancelPlan()
+            }}
+            className="text-red-700 underline"
+          >
+            Ausführung abbrechen
+          </button>
         </div>
       </div>
     </Modal>

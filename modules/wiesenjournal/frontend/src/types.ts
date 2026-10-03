@@ -214,6 +214,34 @@ export interface Track {
   work_type: string | null
   machine: string | null
   operator: string | null
+  /** Verknüpfung mit der Maschinenliste (schema/0015); machine bleibt als Anzeigename. */
+  machine_id?: string | null
+}
+
+export type MachineKind =
+  | 'guellefass'
+  | 'miststreuer'
+  | 'duengerstreuer'
+  | 'maehwerk'
+  | 'zettwender'
+  | 'schwader'
+  | 'ladewagen'
+  | 'saemaschine'
+  | 'traktor'
+  | 'andere'
+
+export interface Machine {
+  id: string
+  name: string
+  kind: MachineKind
+  capacity: number | null
+  capacity_unit: DuengungUnit | null
+  width_m: number | null
+  notes: string | null
+  active: boolean
+  sort_order: number
+  updated_at: string
+  deleted_at: string | null
 }
 
 export type WeedType = 'blacken' | 'disteln' | 'andere'

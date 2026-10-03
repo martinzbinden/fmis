@@ -48,10 +48,14 @@ SYNC_TABLES: dict[str, list[str]] = {
         "laufhof_kaelber", "laufhof_galtkuehe", "laufhof_schafe", "laufhof_legehennen",
         "animal_counts", "wetter_quelle",
     ],
+    "machines": [
+        "id", "name", "kind", "capacity", "capacity_unit", "width_m", "notes",
+        "active", "sort_order", "updated_at", "deleted_at",
+    ],
     "tracks": [
         "id", "season_year", "label", "started_at", "ended_at", "width_m",
         "geometry", "point_times", "point_count", "notes", "created_by",
-        "updated_at", "deleted_at", "work_type", "machine", "operator",
+        "updated_at", "deleted_at", "work_type", "machine", "operator", "machine_id",
     ],
     "weed_observations": [
         "id", "season_year", "parcel_id", "track_id", "observed_at",
@@ -80,6 +84,7 @@ TABLE_AREA: dict[str, str] = {
     "fertilization_shares": "wiesenjournal:duengung",
     "n_dose_summary": "wiesenjournal:duengung",
     "daily_farm_log": "wiesenjournal:tagesmeldung",
+    "machines": "wiesenjournal:tracking",
     "tracks": "wiesenjournal:tracking",
     "weed_observations": "wiesenjournal:tracking",
     "data_history": "wiesenjournal:history",

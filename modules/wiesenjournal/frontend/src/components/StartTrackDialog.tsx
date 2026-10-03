@@ -2,6 +2,8 @@ import { useState } from 'react'
 import Modal from './Modal'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 import type { StartTrackDetails } from '../lib/tracking'
+import { useQuery } from '../hooks/useQuery'
+import { loadMachines, machineSummary } from '../lib/machines'
 
 // Vorschläge für die Arbeitsart — kein CHECK in der DB (siehe schema/0012),
 // darum hier nur ein <datalist>: Freitext bleibt möglich, Tippen wird schneller.
@@ -35,7 +37,7 @@ function rememberDetails(details: StartTrackDetails): void {
     // Bezeichnung sind pro Fahrt verschieden, sollen nicht vorausgefüllt werden.
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ machine: details.machine, operator: details.operator, widthM: details.widthM }),
+      JSON.stringify({ machine: details.machine, operator: details.operator, widthM: details.widthM, machineId: details.machineId }),
     )
   } catch {
     // privates Fenster o.ä. — dann eben ohne Vorbelegung beim nächsten Mal
@@ -55,6 +57,17 @@ export default function StartTrackDialog({
   const [machine, setMachine] = useState(last.machine ?? '')
   const [widthM, setWidthM] = useState(last.widthM != null ? String(last.widthM) : '')
   const [operator, setOperator] = useState(last.operator ?? getCurrentUserEmail() ?? '')
+  const [machineId, setMachineId] = useState<string>(last.machineId ?? '')
+  const { data: machines } = useQuery((pg) => loadMachines(pg), [])
+
+  function pickMachine(id: string) {
+    setMachineId(id)
+    const m = machines?.find((x) => x.id === id)
+    if (m) {
+      setMachine(m.name)
+      if (m.width_m != null) setWidthM(String(m.width_m))
+    }
+  }
 
   function start() {
     const details: StartTrackDetails = {
@@ -63,6 +76,7 @@ export default function StartTrackDialog({
       workType: workType.trim() || null,
       machine: machine.trim() || null,
       operator: operator.trim() || null,
+      machineId: machineId || null,
     }
     rememberDetails(details)
     onStart(details)
@@ -91,11 +105,24 @@ export default function StartTrackDialog({
         </label>
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-gray-700">Maschine</span>
+          {machines && machines.length > 0 && (
+            <select value={machineId} onChange={(e) => pickMachine(e.target.value)} className={`${input} mb-1`}>
+              <option value="">— aus der Maschinenliste wählen —</option>
+              {machines.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {machineSummary(m)}
+                </option>
+              ))}
+            </select>
+          )}
           <input
             type="text"
             placeholder="z.B. Fendt 313 + Güllefass"
             value={machine}
-            onChange={(e) => setMachine(e.target.value)}
+            onChange={(e) => {
+              setMachine(e.target.value)
+              setMachineId('')
+            }}
             className={input}
           />
         </label>

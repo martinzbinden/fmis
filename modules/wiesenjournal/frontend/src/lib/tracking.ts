@@ -29,6 +29,8 @@ export interface StartTrackDetails {
   workType: string | null
   machine: string | null
   operator: string | null
+  /** Maschine aus der Liste (schema/0015), sonst nur Freitext in `machine`. */
+  machineId?: string | null
 }
 
 export async function startTrack(seasonYear: number, details: StartTrackDetails): Promise<string> {
@@ -48,6 +50,7 @@ export async function startTrack(seasonYear: number, details: StartTrackDetails)
     work_type: details.workType,
     machine: details.machine,
     operator: details.operator,
+    machine_id: details.machineId ?? null,
   } as never)
   return id
 }
