@@ -28,16 +28,16 @@ import { downloadGpx } from '../lib/gpx'
 import { completePlan, getActivePlan, setActivePlan, visitedParcels, type ActivePlan } from '../lib/workPlan'
 import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
 import AckerToggle from '../components/AckerToggle'
-import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
+import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import type { Paddock, Parcel, Track, WeedObservation } from '../types'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
-async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean) {
+async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean, showSmall: boolean) {
   const [paddocks, { rows: parcels }, { rows: tracks }, { rows: weedObservations }, { rows: fertRows }] = await Promise.all([
     loadCurrentPaddocks(seasonYear),
     pg.query<Parcel>(
-      `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)} order by sort_order, name`,
+      `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker, showSmall)} order by sort_order, name`,
       [seasonYear],
     ),
     pg.query<Track>('select * from tracks where season_year = $1 and deleted_at is null order by started_at desc', [seasonYear]),
@@ -113,7 +113,8 @@ export default function Map() {
   const focusParcelId = searchParams.get('parcel')
   const [seasonYear] = useState(CURRENT_YEAR)
   const [showAcker] = useShowAcker()
-  const { data, refresh } = useQuery((pg) => loadMapData(pg, seasonYear, showAcker), [seasonYear, showAcker])
+  const [showSmall] = useShowSmall()
+  const { data, refresh } = useQuery((pg) => loadMapData(pg, seasonYear, showAcker, showSmall), [seasonYear, showAcker, showSmall])
   const canTrack = useHasPermission('wiesenjournal:tracking:write')
 
   const [detailTarget, setDetailTarget] = useState<Paddock | null>(null)

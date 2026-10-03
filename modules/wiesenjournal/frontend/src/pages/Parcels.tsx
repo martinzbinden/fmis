@@ -8,16 +8,16 @@ import { syncClient } from '../db/sync'
 import { fmtArea, PARCEL_CATEGORY_COLOR, PARCEL_CATEGORY_LABEL, PARCEL_SOURCE_LABEL } from '../lib/format'
 import { importParcelsFromFields, type ParcelsImportResult } from '../lib/parcelsImport'
 import { mergeParcel } from '../lib/parcels'
-import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
+import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import AckerToggle from '../components/AckerToggle'
 import Modal from '../components/Modal'
 import type { Intensitaet, Parcel, ParcelCategory } from '../types'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
-async function loadParcels(pg: PGlite, seasonYear: number, showAcker: boolean): Promise<Parcel[]> {
+async function loadParcels(pg: PGlite, seasonYear: number, showAcker: boolean, showSmall: boolean): Promise<Parcel[]> {
   const { rows } = await pg.query<Parcel>(
-    `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)}
+    `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker, showSmall)}
      order by farm_name nulls last, category, sort_order, name`,
     [seasonYear],
   )
@@ -54,7 +54,8 @@ const EMPTY_FORM: FormState = {
 export default function Parcels() {
   const [seasonYear, setSeasonYear] = useState(CURRENT_YEAR)
   const [showAcker] = useShowAcker()
-  const { data, loading, refresh } = useQuery((pg) => loadParcels(pg, seasonYear, showAcker), [seasonYear, showAcker])
+  const [showSmall] = useShowSmall()
+  const { data, loading, refresh } = useQuery((pg) => loadParcels(pg, seasonYear, showAcker, showSmall), [seasonYear, showAcker, showSmall])
   const canWrite = useHasPermission('wiesenjournal:parcels:write')
   const [form, setForm] = useState<FormState | null>(null)
   const [saving, setSaving] = useState(false)

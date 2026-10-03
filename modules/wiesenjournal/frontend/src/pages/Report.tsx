@@ -10,7 +10,7 @@ import {
   type ParcelOverlapReport,
 } from '../lib/report'
 import { fmtArea, fmtDate, PARCEL_CATEGORY_LABEL } from '../lib/format'
-import { useShowAcker } from '../hooks/useShowAcker'
+import { isSmallParcel, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import AckerToggle from '../components/AckerToggle'
 
 const CURRENT_YEAR = new Date().getFullYear()
@@ -68,6 +68,7 @@ function NutrientsTab({ seasonYear }: { seasonYear: number }) {
   const [error, setError] = useState<string | null>(null)
   const [farm, setFarm] = useState('')
   const [showAcker] = useShowAcker()
+  const [showSmall] = useShowSmall()
   const [onlyFertilized, setOnlyFertilized] = useState(true)
   const [recomputing, setRecomputing] = useState(false)
   const [recomputeMsg, setRecomputeMsg] = useState<string | null>(null)
@@ -90,9 +91,10 @@ function NutrientsTab({ seasonYear }: { seasonYear: number }) {
         (p) =>
           (!farm || (p.farm_name ?? '–') === farm) &&
           (showAcker || p.category !== 'acker') &&
+          (showSmall || !isSmallParcel(p)) &&
           (!onlyFertilized || p.applications > 0),
       ),
-    [report, farm, showAcker, onlyFertilized],
+    [report, farm, showAcker, showSmall, onlyFertilized],
   )
   const sum = (key: 'area_a' | 'n_kg' | 'n_avail_kg' | 'p2o5_kg' | 'k2o_kg') =>
     rows.reduce((s, p) => s + (p[key] ?? 0), 0)

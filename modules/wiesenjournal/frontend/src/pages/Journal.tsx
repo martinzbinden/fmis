@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { loadJournalRows } from '../lib/journal'
 import type { Parcel } from '../types'
 import AckerToggle from '../components/AckerToggle'
-import { useShowAcker } from '../hooks/useShowAcker'
+import { useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate } from '../lib/format'
 import DayEntryEditor from '../components/DayEntryEditor'
@@ -19,7 +19,8 @@ const KIND_COLOR: Record<JournalRow['kind'], string> = {
 export default function Journal() {
   const [seasonYear, setSeasonYear] = useState(CURRENT_YEAR)
   const [showAcker] = useShowAcker()
-  const { data, loading, refresh } = useQuery((pg) => loadJournalRows(pg, seasonYear, showAcker), [seasonYear, showAcker])
+  const [showSmall] = useShowSmall()
+  const { data, loading, refresh } = useQuery((pg) => loadJournalRows(pg, seasonYear, showAcker, showSmall), [seasonYear, showAcker, showSmall])
   const [kindFilter, setKindFilter] = useState<'' | JournalRow['kind']>('')
   const [search, setSearch] = useState('')
   const [editorTarget, setEditorTarget] = useState<{ parcel: Parcel; date: string } | null>(null)

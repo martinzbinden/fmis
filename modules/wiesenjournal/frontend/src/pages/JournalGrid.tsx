@@ -16,7 +16,7 @@ import GridViewToggle from '../components/GridViewToggle'
 import GridZoomControl from '../components/GridZoomControl'
 import ParcelFilterBar from '../components/ParcelFilterBar'
 import ToggleSwitch from '../components/ToggleSwitch'
-import { categoryFilterSql, useShowAcker } from '../hooks/useShowAcker'
+import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import { useGridView } from '../hooks/useGridView'
 import { useGridZoom, READABLE_CELL_WIDTH } from '../hooks/useGridZoom'
 import { useRestoreScroll } from '../hooks/useRestoreScroll'
@@ -50,10 +50,10 @@ function indexByParcelAndDay<T extends { parcel_id: string; entry_date: string }
   return idx
 }
 
-async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: string, showAcker: boolean) {
+async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: string, showAcker: boolean, showSmall: boolean) {
   const [{ rows: parcels }, { usage, fertilizations }, { rows: dailyLogs }, shares] = await Promise.all([
     pg.query<Parcel>(
-      `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker)}
+      `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker, showSmall)}
        order by farm_name nulls last, category, sort_order, name`,
       [seasonYear],
     ),
@@ -72,6 +72,7 @@ export default function JournalGridPage() {
   const to = days[days.length - 1]
 
   const [showAcker] = useShowAcker()
+  const [showSmall] = useShowSmall()
   const [view] = useGridView()
   const { cellWidth, setCellWidth } = useGridZoom()
   const stickyTop = useStickyTopOffset()
@@ -98,8 +99,8 @@ export default function JournalGridPage() {
   }
 
   const { data, loading, refresh } = useQuery(
-    (pg) => loadGridData(pg, seasonYear, from, to, showAcker),
-    [seasonYear, from, to, showAcker],
+    (pg) => loadGridData(pg, seasonYear, from, to, showAcker, showSmall),
+    [seasonYear, from, to, showAcker, showSmall],
   )
 
   const [editorTarget, setEditorTarget] = useState<{ parcel: Parcel; date: string } | null>(null)

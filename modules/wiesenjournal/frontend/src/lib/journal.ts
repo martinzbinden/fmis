@@ -1,3 +1,4 @@
+import { categoryFilterSql } from '../hooks/useShowAcker'
 import type { PGlite } from '@electric-sql/pglite'
 import type { FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { isoDate, usageDescription } from './format'
@@ -18,9 +19,10 @@ export async function loadJournalRows(
   pg: PGlite,
   seasonYear: number,
   showAcker = true,
+  showSmall = true,
 ): Promise<{ rows: JournalRow[]; parcels: Parcel[] }> {
   const { rows: parcels } = await pg.query<Parcel>(
-    `select * from parcels where season_year = $1 and deleted_at is null${showAcker ? '' : " and category <> 'acker'"}`,
+    `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker, showSmall)}`,
     [seasonYear],
   )
   const parcelById = new Map(parcels.map((p) => [p.id, p]))
