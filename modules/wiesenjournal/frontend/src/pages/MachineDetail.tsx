@@ -18,18 +18,47 @@ async function load(pg: PGlite, id: string) {
   return { machines, files }
 }
 
-/** Datei in neuem Tab öffnen. Das Fenster sofort öffnen (sonst blockiert der
- * Browser das Popup nach dem Laden), dann die geladene Datei hineinsetzen. */
+/** Datei öffnen. Browser mit eigener PDF-Anzeige (Computer): in neuem Tab —
+ * das Fenster sofort öffnen (sonst blockiert der Browser das Popup nach dem
+ * Laden), dann die geladene Datei hineinsetzen. Handy (keine PDF-Anzeige,
+ * App im Vollbild): als Datei übergeben, das Handy öffnet sie dann mit dem
+ * PDF-Betrachter. */
 async function openFile(file: MachineFile) {
-  const win = window.open('', '_blank')
+  const inTab = navigator.pdfViewerEnabled === true
+  const win = inTab ? window.open('', '_blank') : null
   try {
     const url = await machineFileUrl(file.id)
-    if (win) win.location.href = url
-    else window.location.href = url
+    if (win) {
+      win.location.href = url
+      return
+    }
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   } catch (e) {
     win?.close()
     alert(e instanceof Error ? e.message : String(e))
   }
+}
+
+/** Text mit anklickbaren Links (z.B. Online-Anleitungen in der Bemerkung). */
+function Linkified({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(https?:\/\/\S+)/).map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <a key={i} href={part} target="_blank" rel="noreferrer" className="break-all text-brand-700 underline">
+            {part}
+          </a>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  )
 }
 
 function Fact({ label, value }: { label: string; value: string | number | null | undefined }) {
@@ -166,7 +195,11 @@ export default function MachineDetail() {
         )}
         {usedBy.length > 0 && <Fact label="Standard für" value={usedBy.map((x) => x.name).join(', ')} />}
       </dl>
-      {m.notes && <p className="whitespace-pre-line rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">{m.notes}</p>}
+      {m.notes && (
+        <p className="whitespace-pre-line rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">
+          <Linkified text={m.notes} />
+        </p>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Anleitungen &amp; Dokumente</h2>
