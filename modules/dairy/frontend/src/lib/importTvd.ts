@@ -103,7 +103,16 @@ export async function importTierbestand(pg: PGlite, tierbestand: TvdAnimal[]): P
   for (const animal of tierbestand) {
     const key = animalKey(animal.ear_tag) ?? animal.ear_tag
     const prev = byKey.get(key)
-    const row = { id: prev?.id ?? crypto.randomUUID(), ...animal, ear_tag: prev?.ear_tag ?? animal.ear_tag }
+    // Name und Rasse aus dem Herdebuch haben Vorrang (dort "BLÜMLISALP"/
+    // "LAC", in der TVD "Blümlisalp"/"Lacaune") — sonst schrieben sich beide
+    // Importe gegenseitig um. Die TVD füllt hier nur Lücken.
+    const row = {
+      id: prev?.id ?? crypto.randomUUID(),
+      ...animal,
+      ear_tag: prev?.ear_tag ?? animal.ear_tag,
+      name: (prev?.name as string | null) || animal.name,
+      breed_code: (prev?.breed_code as string | null) || animal.breed_code,
+    }
     if (await writeImportRow(pg, 'animals', row, prev)) written++
     // doppelte Zeilen in derselben Liste nicht zweimal anlegen
     byKey.set(key, prev ?? row)

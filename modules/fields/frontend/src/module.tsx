@@ -7,6 +7,8 @@ import { syncClient } from './db/sync'
 import Fields from './pages/Fields'
 import Rotation from './pages/Rotation'
 import History from './pages/History'
+import ImportPanel from './components/ImportPanel'
+import { createFieldsImporter } from './lib/importDetect'
 import './theme.css'
 
 function FieldsDbProvider({ children }: { children: ReactNode }) {
@@ -30,6 +32,7 @@ const fieldsModule: ModuleDescriptor = {
   ],
   DbProvider: FieldsDbProvider,
   sync: syncClient,
+  importer: createFieldsImporter(ImportPanel),
 }
 
 export default fieldsModule

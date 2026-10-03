@@ -496,6 +496,10 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<Import
       ...animal,
       lauf_nr: animal.lauf_nr ?? (prev?.lauf_nr as string | null) ?? null,
       notes: (prev?.notes as string | null) ?? null,
+      // Zugang: die TVD (lib/importTvd.ts) ist massgebend, das Herdebuch
+      // kennt bei Zukäufen ein anderes Datum — sonst schrieben sich beide
+      // Importe gegenseitig um. Das Herdebuch füllt nur Lücken.
+      entry_date: prev?.entry_date ? sqlDate(prev.entry_date) : animal.entry_date,
     }
     await writeImportRow(pg, 'animals', row, prev)
   }

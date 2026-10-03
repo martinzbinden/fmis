@@ -18,6 +18,9 @@ export default function Dashboard({
       <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">
         <span className="text-lg font-bold text-brand-800">FMIS</span>
         <div className="flex items-center gap-1">
+          <Link to="/import" className="rounded px-2 py-1 text-lg active:bg-gray-100" title="Daten importieren">
+            📥
+          </Link>
           {(canManageUsers || canManageModules) && (
             <Link to="/admin" className="rounded px-2 py-1 text-lg active:bg-gray-100">
               ⚙️
@@ -54,6 +57,12 @@ export default function Dashboard({
               </Link>
             ))}
           </div>
+        )}
+        {modules.some((m) => m.importer) && (
+          <Link to="/import" className="mt-4 block rounded-xl bg-white p-4 text-center text-sm shadow-sm active:bg-gray-100">
+            <span className="font-semibold text-brand-700">📥 Daten importieren</span>
+            <span className="block text-xs text-gray-500">Herdebuch, TVD, Leistungsausweise, GELAN-Raumdaten … — Zuordnung automatisch</span>
+          </Link>
         )}
       </main>
     </div>

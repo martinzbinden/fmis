@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useEarTagFilter } from '../hooks/useEarTagFilter'
 import EarTagFilterInput from '../components/EarTagFilterInput'
-import { importAnimalRows, parseIntakeCsv, type SeedRow } from '../lib/importCsv'
-import { parseIntakePdf } from '../lib/parsePdfIntake'
 import { importOwnLambs, loadOwnMastLambs, type OwnLamb } from '../lib/ownLambs'
 import { useDb } from '@fmis/core/DbContext'
 import { fmtKg, fmtAge, num } from '../lib/format'
@@ -62,109 +60,14 @@ const STATUS_COLOR: Record<AnimalStatus, string> = {
 
 const today = () => new Date().toISOString().slice(0, 10)
 
-function ImportForm({ onDone }: { onDone: () => void }) {
-  const fileInput = useRef<HTMLInputElement>(null)
-  const [rows, setRows] = useState<SeedRow[] | null>(null)
-  const [fileName, setFileName] = useState('')
-  const [warnings, setWarnings] = useState<string[]>([])
-  const [groupName, setGroupName] = useState(`Gruppe ${today()}`)
-  const [intakeDate, setIntakeDate] = useState(today())
-  const [parsing, setParsing] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [importError, setImportError] = useState<string | null>(null)
-
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setFileName(file.name)
-    setRows(null)
-    setWarnings([])
-    setImportError(null)
-    setParsing(true)
-    try {
-      if (file.name.toLowerCase().endsWith('.pdf')) {
-        const result = await parseIntakePdf(await file.arrayBuffer())
-        setRows(result.animals)
-        setWarnings(result.warnings)
-      } else {
-        setRows(parseIntakeCsv(await file.text()))
-      }
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Datei konnte nicht gelesen werden')
-    } finally {
-      setParsing(false)
-    }
-  }
-
-  async function handleImport() {
-    if (!rows) return
-    setImporting(true)
-    setImportError(null)
-    try {
-      await importAnimalRows(rows, groupName, intakeDate)
-      onDone()
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
-    } finally {
-      setImporting(false)
-    }
-  }
-
+function ImportLink() {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <p className="mb-3 text-sm text-gray-600">
-        TVD-Begleitdokument (PDF, beliebig viele Seiten/Tiere) oder CSV mit Spalten{' '}
-        <code className="rounded bg-gray-100 px-1">ear_tag,birth_date,sex</code> von deinem Gerät
-        wählen — die Datei bleibt lokal und wird nicht ins Repo übernommen.
-      </p>
-      <input
-        ref={fileInput}
-        type="file"
-        accept=".csv,text/csv,.pdf,application/pdf"
-        onChange={handleFileChange}
-        className="mb-3 block w-full text-sm"
-      />
-      {parsing && <p className="text-sm text-gray-500">Lese {fileName}…</p>}
-      {rows && (
-        <div className="space-y-2">
-          <p className="text-sm text-gray-700">
-            {fileName}: <strong>{rows.length} Tiere</strong> erkannt
-          </p>
-          {warnings.map((w, i) => (
-            <p key={i} className="text-sm text-amber-700">
-              ⚠ {w}
-            </p>
-          ))}
-          <label className="block text-sm">
-            Gruppenname
-            <input
-              type="text"
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 p-2"
-            />
-          </label>
-          <label className="block text-sm">
-            Eingangsdatum
-            <input
-              type="date"
-              value={intakeDate}
-              onChange={(e) => setIntakeDate(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 p-2"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={handleImport}
-            disabled={importing || rows.length === 0}
-            className="w-full rounded-lg bg-brand-700 px-5 py-3 font-semibold text-white active:bg-brand-800 disabled:opacity-50"
-          >
-            {importing ? 'Importiere…' : `${rows.length} Tiere importieren`}
-          </button>
-        </div>
-      )}
-      {importError && <p className="mt-3 text-sm text-red-600">{importError}</p>}
-    </div>
+    <Link to="/import" className="block rounded-lg border border-gray-200 bg-white p-4 text-sm active:bg-gray-50">
+      <span className="font-semibold text-brand-700">📥 Tiere importieren</span>
+      <span className="block text-xs text-gray-500">
+        TVD-Begleitdokument (PDF) oder CSV <code>ear_tag,birth_date,sex</code> — auf der zentralen Upload-Seite.
+      </span>
+    </Link>
   )
 }
 
@@ -300,7 +203,7 @@ export default function Animals() {
     return (
       <div className="mx-auto max-w-md p-6">
         <p className="mb-4 text-center text-gray-500">Noch keine Tiere erfasst.</p>
-        <ImportForm onDone={refresh} />
+        <ImportLink />
         <h2 className="mb-2 mt-6 text-sm font-semibold text-gray-700">Eigene Lämmer aus der Milchschaf-Selektion</h2>
         <OwnLambsForm onDone={refresh} />
       </div>
@@ -340,12 +243,7 @@ export default function Animals() {
       )}
       {showImport && (
         <div className="mb-4">
-          <ImportForm
-            onDone={() => {
-              setShowImport(false)
-              refresh()
-            }}
-          />
+          <ImportLink />
         </div>
       )}
       <div className="mb-3">

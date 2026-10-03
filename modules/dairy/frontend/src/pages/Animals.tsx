@@ -1,17 +1,8 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { useDb } from '@fmis/core/DbContext'
-import { decodeHerdbookFile, parseAdisFiles, importAdisData, type HerdbookSpecies, type ImportSummary } from '../lib/importAdis'
-import { expandImportFiles, type ImportFile } from '../lib/importFiles'
-import { openDairyImport } from '../lib/importSession'
-import type { ImportSession } from '@fmis/core/importSession'
-import { parseTierbestand, importTierbestand } from '../lib/importTvd'
-import { inTransaction } from '../db/transaction'
-import { fmtDate, todayIso } from '../lib/format'
-import { parseSmgCertificate, readPdfText } from '../lib/smgCertificate'
-import { applyCertificatePlan, planCertificateImport, type CertificateImportResult, type CertificatePlan } from '../lib/importCertificate'
+import { fmtDate } from '../lib/format'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
 import { animalKey, animalLabel } from '@fmis/core/earTag'
 import { loadInbreeding } from '../lib/pedigreeData'
@@ -47,7 +38,7 @@ function loadView(key: string): ViewMode {
 }
 
 export default function Animals({ moduleKey }: { moduleKey: string }) {
-  const { data, loading, refresh } = useQuery(loadAnimals)
+  const { data, loading } = useQuery(loadAnimals)
   const viewKey = `${moduleKey}_animals_view`
   const [view, setView] = useState<ViewMode>(() => loadView(viewKey))
   const [filter, setFilter] = useState('')
@@ -68,7 +59,13 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
     <div className={`mx-auto space-y-6 p-4 pb-24 ${view === 'list' ? 'max-w-5xl' : 'max-w-2xl'}`}>
       <h1 className="text-xl font-bold text-gray-800">Tiere</h1>
 
-      <ImportForm onImported={refresh} moduleKey={moduleKey} species={moduleKey === 'dairy' ? 'cattle' : 'sheep'} />
+      <Link to="/import" className="block rounded-lg bg-white p-4 text-sm shadow-sm active:bg-gray-50">
+        <span className="font-semibold text-brand-700">📥 Daten importieren</span>
+        <span className="block text-xs text-gray-500">
+          Herdebuch-Export, TVD-Tierbestand{moduleKey === 'dairy' ? '' : ', SMG-Leistungsausweise'} — auf der zentralen Upload-Seite, die
+          Dateien werden der richtigen Herde automatisch zugeordnet.
+        </span>
+      </Link>
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && allAnimals.length === 0 && (
@@ -140,242 +137,6 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
           </li>
         ))}
       </ul>
-    </div>
-  )
-}
-
-/** Ein Importfeld für alle Quellen (lib/importFiles.ts): Herdebuch-Export,
- * TVD-Tierbestand (Excel; bei den Schafen für Jungtiere und Widder, die im
- * SMG-Export fehlen) und SMG-Leistungsausweise (PDF), einzeln oder als ZIP.
- * Reihenfolge: Export, dann TVD (Abgleich über den Ohrmarken-Schlüssel, Kurz-
- * und Langform werden nicht doppelt angelegt), zuletzt Ausweise — so hat der
- * Export-Stammbaum Vorrang und der Ausweis füllt Lücken. */
-function ImportForm({ onImported, moduleKey, species }: { onImported: () => void; moduleKey: string; species: HerdbookSpecies }) {
-  // Offene Sitzung, solange Leistungsausweise auf einen Entscheid warten.
-  const session = useRef<ImportSession | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [dragging, setDragging] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [found, setFound] = useState<ImportFile[]>([])
-  const [summary, setSummary] = useState<ImportSummary | null>(null)
-  const [tvdCount, setTvdCount] = useState<{ read: number; written: number } | null>(null)
-  const [warnings, setWarnings] = useState<string[]>([])
-  const [certificates, setCertificates] = useState<CertificateImportResult[]>([])
-  const [pending, setPending] = useState<CertificatePlan[]>([])
-
-  async function closeSession() {
-    await session.current?.close().catch(() => {})
-    session.current = null
-  }
-
-  async function decide(plan: CertificatePlan, overwrite: boolean) {
-    const s = session.current
-    if (!s) return
-    setBusy(true)
-    try {
-      const result = await inTransaction(s.pg, (tx) => applyCertificatePlan(tx, plan, overwrite))
-      await s.commit()
-      setCertificates((c) => [...c, result])
-      const rest = pending.filter((x) => x !== plan)
-      setPending(rest)
-      if (rest.length === 0) await closeSession()
-      onImported()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleFiles(fileList: FileList | File[] | null) {
-    if (!fileList || fileList.length === 0) return
-    // Sofort kopieren: das Eingabefeld wird gleich zurückgesetzt, und eine
-    // FileList ist eine Live-Ansicht darauf.
-    const picked = [...fileList]
-    setBusy(true)
-    setError(null)
-    setFound([])
-    setSummary(null)
-    setTvdCount(null)
-    setCertificates([])
-    setPending([])
-    setWarnings([])
-    await closeSession()
-    try {
-      const files = await expandImportFiles(picked)
-      // Alles gegen den Serverstand (core/frontend/src/importSession.ts):
-      // die lokale Datenbank wird erst über den Sync-Pull aktualisiert.
-      const s = await openDairyImport(moduleKey)
-      session.current = s
-      const db = s.pg
-      setFound(files)
-      const of = (kind: ImportFile['kind']) => files.filter((f) => f.kind === kind)
-      const nextWarnings = of('ignored').map((f) => `${f.name}: übergangen (${f.reason})`)
-
-      let herdbookSummary: ImportSummary | null = null
-      const herdbook = of('herdbook')
-      if (herdbook.length > 0) {
-        const parsed = parseAdisFiles(
-          herdbook.map((f) => decodeHerdbookFile(f.name, f.data)),
-          species,
-        )
-        herdbookSummary = await importAdisData(db, parsed)
-        nextWarnings.push(...parsed.warnings)
-      }
-
-      const tvd = { read: 0, written: 0 }
-      for (const f of of('tvd')) {
-        try {
-          const animals = await parseTierbestand(new File([f.data], f.name))
-          if (animals.length === 0) {
-            nextWarnings.push(`${f.name}: keine Tiere erkannt (Spalte «Ohrmarkennummer» fehlt?)`)
-            continue
-          }
-          tvd.read += animals.length
-          tvd.written += await inTransaction(db, (tx) => importTierbestand(tx, animals))
-        } catch (err) {
-          nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
-        }
-      }
-
-      // Ohne Abweichungen direkt speichern, sonst zuerst nachfragen.
-      const results: CertificateImportResult[] = []
-      const toDecide: CertificatePlan[] = []
-      for (const f of of('certificate')) {
-        try {
-          const plan = await planCertificateImport(db, parseSmgCertificate(await readPdfText(f.data), todayIso()))
-          if (plan.conflicts.length) toDecide.push(plan)
-          else results.push(await inTransaction(db, (tx) => applyCertificatePlan(tx, plan, true)))
-        } catch (err) {
-          nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
-        }
-      }
-      await s.commit()
-      if (toDecide.length === 0) await closeSession()
-      setSummary(herdbookSummary)
-      if (of('tvd').length) setTvdCount(tvd)
-      setCertificates(results)
-      setPending(toDecide)
-      setWarnings(nextWarnings)
-      onImported()
-    } catch (err) {
-      await closeSession()
-      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const counts = (['herdbook', 'tvd', 'certificate'] as const)
-    .map((k) => [k, found.filter((f) => f.kind === k).length] as const)
-    .filter(([, n]) => n > 0)
-  const KIND_LABEL = { herdbook: 'Herdebuch-Dateien', tvd: 'TVD-Liste(n)', certificate: 'Leistungsausweis(e)' }
-
-  return (
-    <div className="rounded-lg bg-white p-4 shadow-sm">
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">Daten importieren</h2>
-      <p className="mb-3 text-xs text-gray-500">
-        Herdebuch-Export ({species === 'sheep' ? 'SMG' : 'swissherdbook/Braunvieh'}: <code>b&lt;nr&gt;.Y01</code>, <code>.K04</code>,{' '}
-        <code>.K09</code>–<code>.K11</code>, <code>.K33</code> …), TVD-Tierbestand (Excel)
-        {species === 'sheep' ? ', SMG-Abstammungs- und Leistungsausweise (PDF)' : ''} — einzeln, mehrere zusammen oder als ZIP. Die
-        Dateiart wird automatisch erkannt. Nichts verlässt den Browser.
-      </p>
-      <label
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setDragging(false)
-          void handleFiles(e.dataTransfer.files)
-        }}
-        className={`block cursor-pointer rounded-lg border-2 border-dashed p-4 text-center text-sm ${
-          dragging ? 'border-brand-500 bg-brand-50' : 'border-gray-300 text-gray-600'
-        }`}
-      >
-        {busy ? 'Importiere…' : 'Dateien oder ZIP hierher ziehen oder antippen zum Auswählen'}
-        <input
-          type="file"
-          multiple
-          disabled={busy}
-          onChange={(e) => {
-            void handleFiles(e.target.files)
-            e.target.value = ''
-          }}
-          className="sr-only"
-        />
-      </label>
-      {counts.length > 0 && (
-        <p className="mt-2 text-xs text-gray-500">Erkannt: {counts.map(([k, n]) => `${n} ${KIND_LABEL[k]}`).join(', ')}</p>
-      )}
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      {summary && (
-        <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
-          <p>Herdebuch: {summary.animalsImported} Tiere, {summary.milkTestsImported} Milchproben, {summary.lactationsImported} Laktationsdaten gelesen.</p>
-          <p>
-            Neu oder geändert: {summary.pedigreeWritten} Stammbaum-Einträge, {summary.matingsWritten} Belegungen,{' '}
-            {summary.birthsWritten} Geburten ({summary.offspringWritten} Nachkommen), {summary.breedingValuesWritten} Zuchtwerte.
-          </p>
-          {summary.unmatchedEarTags.length > 0 && (
-            <p className="mt-1 text-amber-700">
-              {summary.unmatchedEarTags.length} Muttertiere nicht (mehr) im Bestand — ihre Einträge wurden
-              übersprungen: {summary.unmatchedEarTags.join(', ')}
-            </p>
-          )}
-        </div>
-      )}
-      {tvdCount != null && (
-        <p className="mt-2 rounded bg-brand-50 p-3 text-sm text-brand-900">TVD-Tierbestand: {tvdCount.read} Tiere gelesen, {tvdCount.written} neu oder ergänzt.</p>
-      )}
-      {pending.map((plan) => (
-        <div key={plan.subject} className="mt-2 space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-semibold">
-            Leistungsausweis {plan.subject}
-            {plan.document_date ? ` (Stand ${fmtDate(plan.document_date)})` : ''} weicht von gespeicherten Angaben ab:
-          </p>
-          {plan.older_than_stored && (
-            <p className="font-semibold text-red-700">Achtung: Dieser Ausweis ist älter als bereits gespeicherte Angaben.</p>
-          )}
-          <ul className="max-h-48 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs">
-            {plan.conflicts.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void decide(plan, true)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${plan.older_than_stored ? 'border border-amber-400 bg-white' : 'bg-amber-600 text-white'}`}
-            >
-              Mit Ausweis überschreiben
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void decide(plan, false)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${plan.older_than_stored ? 'bg-amber-600 text-white' : 'border border-amber-400 bg-white'}`}
-            >
-              Nur Neues ergänzen
-            </button>
-          </div>
-        </div>
-      ))}
-      {certificates.map((c) => (
-        <p key={c.subject} className="mt-2 rounded bg-brand-50 p-3 text-sm text-brand-900">
-          Leistungsausweis {c.subject}: {c.written} Einträge neu oder geändert
-          {c.skipped ? `, ${c.skipped} abweichende Angaben belassen` : ''}.
-        </p>
-      ))}
-      {warnings.length > 0 && (
-        <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
-          {warnings.map((w, i) => (
-            <li key={i}>{w}</li>
-          ))}
-        </ul>
-      )}
     </div>
   )
 }

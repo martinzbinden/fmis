@@ -38,6 +38,9 @@ export default function Layout({
         </div>
         <div className="flex items-center gap-1">
           <SyncStatusDot status={status} error={error} onSync={() => void sync.syncNow()} />
+          <NavLink to="/import" className="rounded px-2 py-1 text-lg active:bg-gray-100" title="Daten importieren">
+            📥
+          </NavLink>
           {canViewHistory && (
             <NavLink to="verlauf" className="rounded px-2 py-1 text-lg active:bg-gray-100">
               📜

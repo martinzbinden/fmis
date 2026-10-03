@@ -18,6 +18,8 @@ import FeedReference from './pages/FeedReference'
 import SlaughterEntry from './pages/SlaughterEntry'
 import Economics from './pages/Economics'
 import History from './pages/History'
+import IntakePanel from './components/IntakePanel'
+import { createLivestockImporter, intakeOf } from './lib/importDetect'
 import './theme.css'
 
 function LivestockDbProvider({ children }: { children: ReactNode }) {
@@ -55,6 +57,7 @@ const livestockModule: ModuleDescriptor = {
   ],
   DbProvider: LivestockDbProvider,
   sync: syncClient,
+  importer: createLivestockImporter(({ claim }) => <IntakePanel rows={intakeOf(claim).rows} warnings={intakeOf(claim).warnings} />),
 }
 
 export default livestockModule

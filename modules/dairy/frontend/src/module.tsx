@@ -18,6 +18,8 @@ import MatingPlanner from './pages/MatingPlanner'
 import Pruefbericht from './pages/Pruefbericht'
 import LambSelection from './pages/LambSelection'
 import PedigreeAnimal from './pages/PedigreeAnimal'
+import ImportPanel from './components/ImportPanel'
+import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
 import './theme.css'
 
 /**
@@ -65,5 +67,6 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     ],
     DbProvider: DairyDbProvider,
     sync: createDairySyncClient(key),
+    importer: createDairyImporter(key, title, ({ claim }) => <ImportPanel moduleKey={key} files={dairyFilesOf(claim)} />),
   }
 }

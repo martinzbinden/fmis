@@ -1,6 +1,7 @@
 import type { ComponentType, ReactNode } from 'react'
 import type { RouteObject } from 'react-router-dom'
 import type { SyncClient } from './sync'
+import type { ModuleImporter } from './upload'
 
 export interface NavItem {
   to: string
@@ -27,4 +28,6 @@ export interface ModuleDescriptor {
   /** Umschliesst die Routen dieses Moduls mit dessen eigener pglite-Instanz. */
   DbProvider: ComponentType<{ children: ReactNode }>
   sync: SyncClient
+  /** Formate, die das Modul über die zentrale Upload-Seite übernimmt (core/frontend/src/upload.ts). */
+  importer?: ModuleImporter
 }

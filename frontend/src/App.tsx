@@ -14,6 +14,7 @@ import { createDairyModule } from '@fmis/dairy/module'
 import fieldsModule from '@fmis/fields/module'
 import wiesenjournalModule from '@fmis/wiesenjournal/module'
 import Dashboard from './pages/Dashboard'
+import Upload from './pages/Upload'
 
 // Statische Registry der im Frontend-Build vorhandenen Module (Pendant zu
 // MODULE_SPECS in core/backend/fmis_core/module_registry.py) — welche davon
@@ -126,6 +127,14 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
     <Routes>
       <Route path="/dashboard" element={<Dashboard modules={enabledModules} onLoggedOut={onLoggedOut} />} />
       <Route
+        path="/import"
+        element={
+          <PageShell title="Import" onLoggedOut={onLoggedOut}>
+            <Upload modules={enabledModules} />
+          </PageShell>
+        }
+      />
+      <Route
         path="/admin"
         element={
           <CoreShell onLoggedOut={onLoggedOut}>
@@ -170,8 +179,7 @@ function ModuleRoute({ mod, onLoggedOut }: { mod: ModuleDescriptor; onLoggedOut:
   )
 }
 
-/** Minimales Chrome für modulübergreifende Seiten (aktuell nur /admin) —
- * keine Modul-Bottom-Nav, nur Zurück-zur-Übersicht + Abmelden. */
+/** /admin nur mit Verwaltungsrechten. */
 function CoreShell({ children, onLoggedOut }: { children: ReactNode; onLoggedOut: () => void }) {
   const canManageUsers = useHasPermission('core:users:manage')
   const canManageModules = useHasPermission('core:modules:manage')
@@ -179,13 +187,22 @@ function CoreShell({ children, onLoggedOut }: { children: ReactNode; onLoggedOut
     return <Navigate to="/dashboard" replace />
   }
   return (
+    <PageShell title="Verwaltung" onLoggedOut={onLoggedOut}>
+      {children}
+    </PageShell>
+  )
+}
+
+/** Kopfzeile ohne Modul-Navigation: Zurück zur Übersicht + Abmelden. */
+function PageShell({ title, children, onLoggedOut }: { title: string; children: ReactNode; onLoggedOut: () => void }) {
+  return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">
         <div className="flex items-center gap-2">
           <Link to="/dashboard" className="rounded px-1 py-1 text-lg active:bg-gray-100" title="Zur Übersicht">
             🏠
           </Link>
-          <span className="text-lg font-bold text-brand-800">Verwaltung</span>
+          <span className="text-lg font-bold text-brand-800">{title}</span>
         </div>
         <button
           type="button"
