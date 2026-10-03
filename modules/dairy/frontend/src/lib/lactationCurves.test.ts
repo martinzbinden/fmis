@@ -81,6 +81,20 @@ describe('lactationCurves', () => {
     expect(Math.abs(curves.get(curveKey('wh0', 2))!.persistence!)).toBeLessThan(0.01)
   })
 
+  it('erste Wägungen weglassen: zählen nicht, bleiben sichtbar', () => {
+    const tests = herdTests()
+    // erste Wägung (Säugezeit) sehr tief, danach wie die Herde
+    const x = tests.filter((t) => t.animal_id === 'h0').map((t, k) => ({ ...t, animal_id: 'x', milk_kg: k === 0 ? t.milk_kg * 0.3 : t.milk_kg }))
+    const all = [...tests, ...x]
+    const model = buildTestDayModel(all, 'milk')
+    const withFirst = analyzeLactations(all, model, 0).get(curveKey('x', 2))!
+    const skipped = analyzeLactations(all, model, 1).get(curveKey('x', 2))!
+    expect(withFirst.level!).toBeLessThan(0.95)
+    expect(skipped.level).toBeCloseTo(1)
+    expect(skipped.points[0].excluded).toBe(true)
+    expect(skipped.points).toHaveLength(7)
+  })
+
   it('Viertel und Steigung', () => {
     const b = quartileBounds([0.8, 0.9, 1.0, 1.1, 1.2])!
     expect(quartileOf(1.2, b)).toBe(4)

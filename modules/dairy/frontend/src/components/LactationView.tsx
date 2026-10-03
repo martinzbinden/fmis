@@ -126,13 +126,15 @@ const n2 = (v: number | null) => (v == null ? '–' : v.toFixed(2))
 interface Settings {
   view: 'tier' | 'alle'
   metric: CurveMetric
+  /** Erste Wägungen je Laktation, die nicht zählen (Säugezeit). */
+  skipFirst: 0 | 1 | 2
   filter: LactationFilter
   animalSort: AnimalSort
   rowSort: RowSort
   rowDesc: boolean
 }
 
-const DEFAULT_SETTINGS: Settings = { view: 'tier', metric: 'fe', filter: DEFAULT_FILTER, animalSort: 'lauf_nr', rowSort: 'fat_protein_kg', rowDesc: true }
+const DEFAULT_SETTINGS: Settings = { view: 'tier', metric: 'fe', skipFirst: 1, filter: DEFAULT_FILTER, animalSort: 'lauf_nr', rowSort: 'fat_protein_kg', rowDesc: true }
 
 function loadSettings(key: string): Settings {
   try {
@@ -299,7 +301,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
   const { data, loading } = useQuery(loadLactations)
   const [settings, setSettingsState] = useState<Settings>(() => loadSettings(storageKey))
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const { view, metric, filter, animalSort, rowSort, rowDesc } = settings
+  const { view, metric, skipFirst, filter, animalSort, rowSort, rowDesc } = settings
 
   function setSettings(patch: Partial<Settings>) {
     const next = { ...settings, ...patch }
@@ -317,7 +319,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
     const tests = data?.tests ?? []
     const ref = buildHerdReference(tests, metric)
     const model = buildTestDayModel(tests, metric)
-    const curves = analyzeLactations(tests, model)
+    const curves = analyzeLactations(tests, model, skipFirst)
     const bounds = quartileBounds([...curves.values()].map((c) => c.level).filter((v): v is number => v != null))
     // Typische Melkdauer abgeschlossener Laktationen je Gruppe — für die
     // Hochrechnung laufender (Niveau × Herdenkurve des Jahrgangs über diese Dauer).
@@ -328,7 +330,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
       2: Math.round(quantile([...days[2]].sort((a, b) => a - b), 0.5)) || 220,
     }
     return { ref, model, curves, bounds, typicalDays }
-  }, [data, metric])
+  }, [data, metric, skipFirst])
 
   const all = useMemo(
     () =>
@@ -481,6 +483,16 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
               </button>
             ))}
           </div>
+          <select
+            className={select}
+            value={skipFirst}
+            onChange={(e) => setSettings({ skipFirst: Number(e.target.value) as Settings['skipFirst'] })}
+            title="Um Tag 30 saugen oft noch die Lämmer — diese Wägungen zählen nicht für Niveau und Persistenz (bleiben in der Kurve sichtbar, hohl)"
+          >
+            <option value={0}>Alle Wägungen zählen</option>
+            <option value={1}>Erste Wägung weglassen</option>
+            <option value={2}>Erste zwei weglassen</option>
+          </select>
           <label className="flex items-center gap-1.5 text-sm text-gray-700">
             <input type="checkbox" checked={filter.activeOnly} onChange={(e) => setFilter({ activeOnly: e.target.checked })} />
             nur aktive {terms.plural}
@@ -526,7 +538,9 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
               Herdengenossinnen <b>am gleichen Wägungstag</b> verglichen und um Laktationstag und Alter bereinigt (Erstlinge getrennt) —
               Jahr, Saison und Futter fallen so heraus. <b>Niveau</b> = diese Vergleiche im Mittel (100 % = wie die Herde).{' '}
               <b>Persistenz</b> = wie sich der Vergleich je 100 Tage verändert: 0 = Kurve verläuft wie die Herde, negativ = fällt nach dem
-              Höhepunkt stärker ab. Viertel (Q1–Q4) nach Niveau über alle Laktationen. Grundlage: {metricUnit}. Antippen öffnet das Tier.
+              Höhepunkt stärker ab. Viertel (Q1–Q4) nach Niveau über alle Laktationen. Grundlage: {metricUnit}
+              {skipFirst ? `, ohne die ${skipFirst === 1 ? 'erste Wägung' : 'ersten zwei Wägungen'} jeder Laktation (Säugezeit)` : ''}. Antippen öffnet
+              das Tier.
             </p>
           </div>
         </details>

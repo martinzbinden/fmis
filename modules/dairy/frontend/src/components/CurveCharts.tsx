@@ -58,7 +58,16 @@ export function MiniCurve({ curve, band, color = '#334155' }: { curve: Lactation
       )}
       <polyline points={curve.points.map((p) => `${x(p.dim)},${y(p.rel)}`).join(' ')} fill="none" stroke={color} strokeWidth="1.8" />
       {curve.points.map((p) => (
-        <circle key={p.test_date} cx={x(p.dim)} cy={y(p.rel)} r="1.6" fill={color} />
+        <circle
+          key={p.test_date}
+          cx={x(p.dim)}
+          cy={y(p.rel)}
+          r="1.6"
+          fill={p.excluded ? 'white' : color}
+          stroke={color}
+          strokeWidth={p.excluded ? 0.8 : 0}
+          opacity={p.excluded ? 0.6 : 1}
+        />
       ))}
     </svg>
   )
@@ -93,7 +102,20 @@ export function LactationCurveChart({
   const bandData = rel
     ? relBand.filter((b) => Number.isFinite(b.median)).map((b) => ({ dim: b.mid, range: [b.q1 * 100, b.q3 * 100] as [number, number], median: 100 }))
     : band.filter((b) => Number.isFinite(b.median)).map((b) => ({ dim: b.mid, range: [b.q1, b.q3] as [number, number], median: b.median }))
-  const lineData = (c: LactationCurve) => c.points.map((p) => ({ dim: p.dim, value: rel ? p.rel * 100 : p.value }))
+  const lineData = (c: LactationCurve) => c.points.map((p) => ({ dim: p.dim, value: rel ? p.rel * 100 : p.value, excluded: p.excluded }))
+  // Weggelassene Wägungen hohl zeichnen
+  const dotFor = (color: string, r: number) => (props: { cx?: number; cy?: number; payload?: { excluded?: boolean }; index?: number }) => (
+    <circle
+      key={props.index}
+      cx={props.cx}
+      cy={props.cy}
+      r={r}
+      fill={props.payload?.excluded ? 'white' : color}
+      stroke={color}
+      strokeWidth={props.payload?.excluded ? 1.2 : 0}
+      opacity={props.payload?.excluded ? 0.7 : 1}
+    />
+  )
   return (
     <div>
       <div className="flex justify-end gap-1 px-2 pt-2 text-xs">
@@ -142,7 +164,7 @@ export function LactationCurveChart({
                 name={`${c.lactation_number}. Laktation${c.lactation_number === runningNumber ? ' (laufend)' : ''}`}
                 stroke={i === 0 ? '#0f766e' : LINE_GREYS[Math.min(i - 1, LINE_GREYS.length - 1)]}
                 strokeWidth={i === 0 ? 2.5 : 1.3}
-                dot={{ r: i === 0 ? 3 : 2 }}
+                dot={dotFor(i === 0 ? '#0f766e' : LINE_GREYS[Math.min(i - 1, LINE_GREYS.length - 1)], i === 0 ? 3 : 2)}
                 isAnimationActive={false}
               />
             ))}
@@ -153,7 +175,7 @@ export function LactationCurveChart({
         {rel
           ? `Jede Wägung in % der Herde: verglichen mit den Herdengenossinnen am gleichen Wägungstag und bereinigt um Laktationstag und Alter (${PARITY_GROUP_LABEL[group]}) — Jahr, Saison und Futter fallen so heraus. Grau: mittlere Hälfte der Herde, gestrichelt 100 %.`
           : `${unit(metric)} je Wägung. Grau: mittlere Hälfte der Herde (${PARITY_GROUP_LABEL[group]}${year ? `, Jahrgang ${year}` : ''}), gestrichelt der Median.`}{' '}
-        Grün: neueste Laktation, grau abgestuft die früheren.
+        Grün: neueste Laktation, grau abgestuft die früheren. Hohle Punkte zählen nicht für die Bewertung.
       </p>
     </div>
   )

@@ -160,6 +160,8 @@ export interface CurvePoint {
   value: number
   /** Tieranteil: Wert / (Testtag × Kurvenform), 1 = wie die Herde. */
   rel: number
+  /** Zählt nicht für Niveau und Persistenz (erste Wägungen, Säugezeit). */
+  excluded: boolean
 }
 
 export interface LactationCurve {
@@ -277,7 +279,10 @@ export function slope(xs: number[], ys: number[]): number | null {
   return den === 0 ? null : num / den
 }
 
-export function analyzeLactations(tests: TestPoint[], model: TestDayModel): Map<string, LactationCurve> {
+/** skipFirst: so viele erste Wägungen je Laktation zählen nicht für Niveau
+ * und Persistenz — um Tag 30 saugen oft noch die Lämmer, die Wägung sagt
+ * dann wenig über das Tier (bleiben in der Kurve sichtbar). */
+export function analyzeLactations(tests: TestPoint[], model: TestDayModel, skipFirst = 0): Map<string, LactationCurve> {
   const byLactation = new Map<string, TestPoint[]>()
   for (const t of tests) {
     const key = curveKey(t.animal_id, t.lactation_number)
@@ -293,11 +298,12 @@ export function analyzeLactations(tests: TestPoint[], model: TestDayModel): Map<
       const value = metricValue(t, model.metric)
       const td = testDayFactor(model, t.test_date)
       if (value == null || value <= 0 || dim < 0 || dim > MAX_DIM || td == null) continue
-      points.push({ dim, test_date: t.test_date, value, rel: value / (td * model.shape[group][blockOf(dim)]) })
+      points.push({ dim, test_date: t.test_date, value, rel: value / (td * model.shape[group][blockOf(dim)]), excluded: points.length < skipFirst })
     }
-    const level = points.length >= 2 ? points.reduce((s, p) => s + p.rel, 0) / points.length : null
-    const span = points.length ? points[points.length - 1].dim - points[0].dim : 0
-    const raw = points.length >= 3 && span >= 60 ? slope(points.map((p) => p.dim), points.map((p) => p.rel)) : null
+    const used = points.filter((p) => !p.excluded)
+    const level = used.length >= 2 ? used.reduce((s, p) => s + p.rel, 0) / used.length : null
+    const span = used.length ? used[used.length - 1].dim - used[0].dim : 0
+    const raw = used.length >= 3 && span >= 60 ? slope(used.map((p) => p.dim), used.map((p) => p.rel)) : null
     out.set(key, {
       animal_id: first.animal_id,
       lactation_number: first.lactation_number,
