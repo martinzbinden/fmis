@@ -3,6 +3,8 @@ from pathlib import Path
 
 from psycopg_pool import AsyncConnectionPool
 
+from .sync_stamps import ensure_sync_stamps
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://fmis:fmis@localhost:5432/fmis")
 
 # core/backend/fmis_core/schema — die geteilten, serverseitigen Core-Tabellen
@@ -81,6 +83,9 @@ async def run_migrations() -> None:
         if server_dir.is_dir():
             migration_files += sorted(server_dir.glob("*.sql"))
         await _apply_migrations(spec.key, migration_files, get_pool(spec.key))
+        # Server-Zeitstempel für den Pull (sync_stamps.py) — auch für
+        # Tabellen, die eine Migration eben neu angelegt hat
+        await ensure_sync_stamps(get_pool(spec.key), spec.key)
 
 
 async def _apply_migrations(module: str, files: list[Path], pool: AsyncConnectionPool) -> None:

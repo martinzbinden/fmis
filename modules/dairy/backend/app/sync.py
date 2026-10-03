@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
+from core.backend.fmis_core.sync_stamps import pull_cursor
 from .tables import SYNC_TABLES, table_area
 
 
@@ -89,8 +90,8 @@ def build_router(key: str) -> APIRouter:
     async def pull(since: str | None = None, user: CurrentUser = Depends(require_auth)) -> PullResponse:
         tables: dict[str, list[dict[str, Any]]] = {}
         async with pool.connection() as conn:
-            server_time_row = await (await conn.execute("select now()")).fetchone()
-            server_time = server_time_row[0].isoformat()
+            # Server-Ankunftszeit statt Gerätezeit (fmis_core/sync_stamps.py)
+            server_time = await pull_cursor(conn)
             for table, columns in SYNC_TABLES.items():
                 if table == "data_history":
                     # Nur-Schreiben-Tabelle: der Verlauf wird zwar vom Client
@@ -108,7 +109,7 @@ def build_router(key: str) -> APIRouter:
                     continue
                 col_list = ", ".join(f'"{c}"' for c in columns)
                 if since:
-                    sql = f'select {col_list} from "{table}" where updated_at > %s'
+                    sql = f'select {col_list} from "{table}" where synced_at > %s'
                     rows = await (await conn.execute(sql, (since,))).fetchall()
                 else:
                     sql = f'select {col_list} from "{table}"'

@@ -74,8 +74,12 @@ export function createSyncClient(
   // schon synchronisierte Daten sofort wieder da sind (nicht erst nach der
   // nächsten inhaltlichen Schema-Änderung). Noch nicht hochgeladene lokale
   // Änderungen holt getModuleDb() separat aus der alten Datenbank.
+  // "synced-at-v2" (2026-10-03): der Pull filtert seither auf die
+  // Server-Ankunftszeit (core/backend/fmis_core/sync_stamps.py) statt auf
+  // die Gerätezeit — Zeilen, die vorher wegen eines schon weitergerückten
+  // `since` verpasst wurden (K03-Import), holt dieser eine Voll-Pull nach.
   const schemaSignature =
-    'shared-db-v1:' + JSON.stringify(Object.entries(syncTables).map(([t, cols]) => [t, [...cols]]))
+    'shared-db-v1:synced-at-v2:' + JSON.stringify(Object.entries(syncTables).map(([t, cols]) => [t, [...cols]]))
   try {
     if (localStorage.getItem(schemaKey) !== schemaSignature) {
       localStorage.removeItem(sinceKey)
