@@ -173,6 +173,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
     lactationNumber: ctx.lactationNumber,
     recentOffspring: ctx.births.slice(-2).flatMap((b) => b.offspring),
     healthEvents12m: ctx.healthEvents12m,
+    trend: ctx.trend,
   }, thresholds) : []
   const ageYears = a.birth_date ? ((Date.now() - Date.parse(a.birth_date)) / (365.25 * 86_400_000)).toFixed(1) : null
   const offspringKey = animalKey(a.ear_tag) ?? a.ear_tag

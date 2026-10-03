@@ -8,6 +8,8 @@ import type { PGlite } from '@electric-sql/pglite'
 import { computeFertility, type FertilityStatus, type MatingEvent, type Species } from './fertility'
 import { computeHerdPerformance, type PerformanceMetrics } from './herdPerformance'
 import { isoDate, num } from './format'
+import { analyzeLactations, buildTestDayModel, type TestPoint } from './lactationCurves'
+import { trendsByAnimal, type LactationTrend } from './lactationTrend'
 import type { Animal } from '../types'
 
 export interface BreedingValueEntry {
@@ -56,6 +58,8 @@ export interface AnimalContext {
   lactationNumber: number | null
   /** Tage mit Krankheit/Behandlung im Journal der letzten 12 Monate. */
   healthEvents12m: { date: string; diagnosis: string | null }[]
+  /** Tendenz über die Laktationen (lib/lactationTrend.ts; F+E, ohne erste Wägung). */
+  trend: LactationTrend | undefined
 }
 
 export async function loadHerdContext(pg: PGlite, species: Species, today: string): Promise<Map<string, AnimalContext>> {
@@ -65,8 +69,9 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
     pg.query<Record<string, unknown>>(
       'select animal_id, lactation_number, closure_type, milk_kg, fat_kg, protein_kg, days_in_milk, calving_date from lactations where deleted_at is null',
     ),
-    pg.query<{ animal_id: string; test_date: unknown; cell_count: unknown }>(
-      'select animal_id, test_date, cell_count from milk_tests where deleted_at is null order by test_date',
+    pg.query<Record<string, unknown> & { animal_id: string; test_date: unknown; cell_count: unknown }>(
+      `select animal_id, test_date, cell_count, calving_date, lactation_number, milk_kg, fat_pct, protein_pct
+       from milk_tests where deleted_at is null order by test_date`,
     ),
     pg.query<Record<string, unknown>>('select * from births where deleted_at is null'),
     pg.query<Record<string, unknown>>('select * from birth_offspring where deleted_at is null'),
@@ -160,6 +165,31 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
     today,
   )
 
+  // Tendenz über die Laktationen: Testtag-Vergleich wie in der
+  // Laktationsauswertung (F+E, erste Wägung weggelassen — Säugezeit).
+  const curveTests: TestPoint[] = tests.rows
+    .filter((t) => t.calving_date != null && t.lactation_number != null)
+    .map((t) => ({
+      animal_id: t.animal_id,
+      lactation_number: num(t.lactation_number)!,
+      calving_date: isoDate(t.calving_date)!,
+      test_date: isoDate(t.test_date)!,
+      milk_kg: num(t.milk_kg) ?? 0,
+      fat_pct: num(t.fat_pct),
+      protein_pct: num(t.protein_pct),
+    }))
+  const curves = analyzeLactations(curveTests, buildTestDayModel(curveTests, 'fe'), 1)
+  // läuft = alle Abschlussarten dieser Laktation sind "laufend/Prognose" (≥ 7)
+  const closures = new Map<string, number[]>()
+  for (const l of lactations.rows) {
+    const key = `${l.animal_id}|${num(l.lactation_number)}`
+    closures.set(key, [...(closures.get(key) ?? []), num(l.closure_type) ?? 0])
+  }
+  const trends = trendsByAnimal(curves.values(), (id, nr) => {
+    const c = closures.get(`${id}|${nr}`)
+    return c == null || c.every((x) => x >= 7)
+  })
+
   const out = new Map<string, AnimalContext>()
   for (const a of animals.rows) {
     const animal = { ...a, birth_date: isoDate(a.birth_date), entry_date: isoDate(a.entry_date), exit_date: isoDate(a.exit_date) }
@@ -187,6 +217,7 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
       breedingValues: bvByAnimal.get(a.id) ?? {},
       lactationNumber: maxLact || null,
       healthEvents12m: (healthByAnimal.get(a.id) ?? []).map((h) => ({ date: isoDate(h.entry_date)!, diagnosis: h.diagnosis })),
+      trend: trends.get(a.id),
     })
   }
   return out

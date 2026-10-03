@@ -45,6 +45,8 @@ import {
   type TestPoint,
 } from '../lib/lactationCurves'
 import { CLASS_COLOR, HerdScatter, LactationCurveChart, MiniCurve, type ScatterPoint } from './CurveCharts'
+import TrendBadge from './TrendBadge'
+import { trendsByAnimal } from '../lib/lactationTrend'
 
 /** Lebenstagleistung je aktivem weiblichem Tier — dieselbe Rechnung wie
  * Ausmerzliste und Lämmer-Selektion (lib/herdPerformance.ts, Herdenvergleich
@@ -194,19 +196,23 @@ function ClassChip({ klass }: { klass: CurveClass | null | undefined }) {
   )
 }
 
-/** F+E je Laktation als kleine Säulen (älteste links), gemeinsamer Massstab
- * über alle angezeigten Tiere; laufende Laktation heller. */
-function FeBars({ animal, scale }: { animal: AnimalLactations; scale: number }) {
+/** Niveau je Laktation (älteste links) im Herdenvergleich — fair über die
+ * Jahre, zeigt die Tendenz auf einen Blick. Linie = 100 % (wie die Herde);
+ * laufende Laktation heller, ohne Bewertung nur ein Strich. */
+function LevelBars({ animal }: { animal: AnimalLactations }) {
   const ordered = [...animal.lactations].reverse()
+  const H = 40
+  const MAX = 1.6
   return (
-    <div className="flex h-10 items-end gap-0.5" aria-hidden>
+    <div className="relative flex h-10 items-end gap-0.5" aria-hidden>
+      <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-gray-400" style={{ bottom: `${(1 / MAX) * H}px` }} />
       {ordered.map((l) => {
-        const h = l.fat_protein_kg != null && scale > 0 ? Math.max(2, (l.fat_protein_kg / scale) * 40) : 2
+        const h = l.level != null ? Math.max(3, Math.min(MAX, l.level) / MAX * H) : 2
         return (
           <div
             key={l.lactation_id}
-            title={`${l.lactation_number}. Laktation: ${n0(l.fat_protein_kg)} kg F+E (${CLOSURE_LABEL[l.closure_type] ?? ''})`}
-            className={`w-2.5 rounded-sm ${isRunning(l) ? 'bg-brand-300' : 'bg-brand-600'}`}
+            title={`${l.lactation_number}. Laktation: ${l.level != null ? `${Math.round(l.level * 100)} % der Herde` : 'keine Bewertung'} · ${n0(l.fat_protein_kg)} kg F+E (${CLOSURE_LABEL[l.closure_type] ?? ''})`}
+            className={`w-2.5 rounded-sm ${l.level == null ? 'bg-gray-200' : l.level >= 1 ? 'bg-teal-600' : 'bg-slate-400'} ${isRunning(l) ? 'opacity-50' : ''}`}
             style={{ height: `${h}px` }}
           />
         )
@@ -329,7 +335,9 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
       1: Math.round(quantile([...days[1]].sort((a, b) => a - b), 0.5)) || 220,
       2: Math.round(quantile([...days[2]].sort((a, b) => a - b), 0.5)) || 220,
     }
-    return { ref, model, curves, bounds, typicalDays }
+    const running = new Set((data?.rows ?? []).filter(isRunning).map((r) => curveKey(r.animal_id, r.lactation_number)))
+    const trends = trendsByAnimal(curves.values(), (id, nr) => running.has(curveKey(id, nr)))
+    return { ref, model, curves, bounds, typicalDays, trends }
   }, [data, metric, skipFirst])
 
   const all = useMemo(
@@ -349,18 +357,24 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
   )
   const years = useMemo(() => calvingYears(all), [all])
   const rows = useMemo(
-    () => all.filter((l) => matchesLactation(l, filter) && (view === 'tier' || matchesCurve(l, filter.curve))),
-    [all, filter, view],
+    () =>
+      all.filter(
+        (l) =>
+          matchesLactation(l, filter) &&
+          (view === 'tier' || matchesCurve(l, filter.curve)) &&
+          (filter.curve !== 'fallend' || curveData.trends.get(l.animal_id)?.direction === 'fallend'),
+      ),
+    [all, filter, view, curveData],
   )
   const animals = useMemo(
     () =>
       sortAnimals(
         groupByAnimal(rows)
-          .map((a) => ({ ...a, ltl: data?.ltl.get(a.animal_id) }))
+          .map((a) => ({ ...a, ltl: data?.ltl.get(a.animal_id), trend: curveData.trends.get(a.animal_id) }))
           .filter((a) => matchesCurve(a.rated, filter.curve)),
         animalSort,
       ),
-    [rows, animalSort, data, filter.curve],
+    [rows, animalSort, data, filter.curve, curveData],
   )
   const sortedRows = useMemo(() => sortRows(rows, rowSort, rowDesc), [rows, rowSort, rowDesc])
   const scatter = useMemo<ScatterPoint[]>(
@@ -389,7 +403,6 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
     if (view !== 'tier') setSettings({ view: 'tier' })
     setTimeout(() => document.getElementById(`lact-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
-  const scale = useMemo(() => Math.max(0, ...rows.map((r) => r.fat_protein_kg ?? 0)), [rows])
 
   if (loading && !data) return <p className="text-center text-gray-400">Lädt…</p>
   if (data && all.length === 0) return <p className="text-center text-gray-500">Keine Laktationsdaten. {terms.importHint}</p>
@@ -460,6 +473,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
             <option value="">Alle Kurven</option>
             <option value="q4">oberstes Viertel (Q4)</option>
             <option value="q1">unterstes Viertel (Q1)</option>
+            <option value="fallend">Tendenz fallend</option>
             {(Object.keys(CURVE_CLASS_LABEL) as CurveClass[]).map((k) => (
               <option key={k} value={k}>
                 {CURVE_CLASS_LABEL[k]}
@@ -600,6 +614,29 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                         </span>
                       )}
                     </div>
+                    {(a.trend?.direction || a.trend?.running) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600">
+                        <TrendBadge trend={a.trend} />
+                        {a.trend?.running && a.trend.running.ownMean != null && (
+                          <span title="Niveau der laufenden Laktation im Vergleich zum Mittel ihrer früheren Laktationen (beides in % der Herde)">
+                            laufende {Math.round(a.trend.running.level * 100)} % · eigenes Mittel {Math.round(a.trend.running.ownMean * 100)} %{' '}
+                            <b
+                              className={
+                                a.trend.running.level - a.trend.running.ownMean <= -0.1
+                                  ? 'text-red-700'
+                                  : a.trend.running.level - a.trend.running.ownMean >= 0.1
+                                    ? 'text-green-700'
+                                    : 'text-gray-700'
+                              }
+                            >
+                              {a.trend.running.level >= a.trend.running.ownMean ? '+' : ''}
+                              {Math.round((a.trend.running.level - a.trend.running.ownMean) * 100)}
+                            </b>
+                            {a.trend.running.tests < 3 ? ' (vorläufig)' : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {rated && (
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600">
                         <QuartileChip q={rated.quartile} />
@@ -632,7 +669,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                     <MiniCurve curve={ratedCurve} band={curveData.model.relBand[ratedCurve.group]} color={rated?.klass ? CLASS_COLOR[rated.klass] : undefined} />
                   )}
                   <span className="hidden sm:block">
-                    <FeBars animal={a} scale={scale} />
+                    <LevelBars animal={a} />
                   </span>
                   <span className="text-gray-300">{isOpen ? '▴' : '▾'}</span>
                 </button>

@@ -4,6 +4,7 @@
 import { animalLabel } from '@fmis/core/earTag'
 import type { AnimalStatus, LactationSummary } from '../types'
 import type { CurveClass } from './lactationCurves'
+import type { LactationTrend } from './lactationTrend'
 
 export interface LactationRow extends LactationSummary {
   lauf_nr: string | null
@@ -58,13 +59,13 @@ export interface LactationFilter {
   year: string
   activeOnly: boolean
   /** Kurvenklasse oder Viertel; gilt in der Tieransicht für die bewertete Laktation. */
-  curve: '' | CurveClass | 'q4' | 'q1'
+  curve: '' | CurveClass | 'q4' | 'q1' | 'fallend'
 }
 
 export const DEFAULT_FILTER: LactationFilter = { search: '', status: 'alle', parity: 'alle', year: '', activeOnly: true, curve: '' }
 
 export function matchesCurve(l: LactationRow | undefined, curve: LactationFilter['curve']): boolean {
-  if (!curve) return true
+  if (!curve || curve === 'fallend') return true // Tendenz: je Tier, siehe Komponente
   if (!l) return false
   if (curve === 'q4') return l.quartile === 4
   if (curve === 'q1') return l.quartile === 1
@@ -108,6 +109,8 @@ export interface AnimalLactations {
   rated: LactationRow | undefined
   /** Lebenstagleistung (lib/herdPerformance.ts), nur aktive weibliche Tiere. */
   ltl?: LifetimeYield
+  /** Tendenz über die Laktationen (lib/lactationTrend.ts) */
+  trend?: LactationTrend
 }
 
 export interface LifetimeYield {
@@ -143,12 +146,13 @@ export function groupByAnimal(rows: LactationRow[]): AnimalLactations[] {
   })
 }
 
-export type AnimalSort = 'lauf_nr' | 'level' | 'persistence' | 'latest_fe' | 'avg_fe' | 'total_fe' | 'ltl_fe' | 'ltl_rel' | 'count'
+export type AnimalSort = 'lauf_nr' | 'level' | 'persistence' | 'trend' | 'latest_fe' | 'avg_fe' | 'total_fe' | 'ltl_fe' | 'ltl_rel' | 'count'
 
 export const ANIMAL_SORT_LABEL: Record<AnimalSort, string> = {
   lauf_nr: 'Laufnummer / Name',
   level: 'Niveau der Kurve',
   persistence: 'Persistenz der Kurve',
+  trend: 'Tendenz über die Laktationen',
   latest_fe: 'F+E letzte Laktation',
   avg_fe: 'Ø F+E abgeschlossen',
   total_fe: 'F+E Lebensleistung',
@@ -173,6 +177,8 @@ export function sortAnimals(list: AnimalLactations[], sort: AnimalSort): AnimalL
       ? (a.rated?.level ?? null)
       : sort === 'persistence'
         ? (a.rated?.persistence ?? null)
+        : sort === 'trend'
+          ? (a.trend?.slope ?? null)
         : sort === 'latest_fe'
       ? a.latest.fat_protein_kg
       : sort === 'avg_fe'

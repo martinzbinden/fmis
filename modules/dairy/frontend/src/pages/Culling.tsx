@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '../hooks/useQuery'
 import { loadHerdContext, latestValues } from '../lib/herdContext'
+import TrendBadge from '../components/TrendBadge'
+import type { LactationTrend } from '../lib/lactationTrend'
 import { cullingReasons, fmtCells, reasonScore, type CullingReason, type CullingThresholds } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { todayIso } from '../lib/format'
@@ -22,6 +24,8 @@ const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: nu
   { key: 'lactationNumber', label: 'Hinweis ab Laktation' },
   { key: 'offspringLossShare', label: 'Anteil tote Nachkommen ab (0 = aus)', step: 0.05 },
   { key: 'healthEvents12m', label: 'Krankheits-/Behandlungstage in 12 Mt. ab (0 = aus)' },
+  { key: 'trendFalling', label: 'Leistung fällt seit … Laktationen in Folge (0 = aus)' },
+  { key: 'runningBelowOwn', label: 'Laufende Laktation Punkte unter eigenem Mittel ab (0 = aus)' },
 ]
 
 interface Row {
@@ -35,6 +39,7 @@ interface Row {
   sccGeo12m: number | null
   performanceRel: number | null
   totalBv: number | null
+  trend: LactationTrend | undefined
 }
 
 function csvEscape(v: unknown): string {
@@ -66,6 +71,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
             lactationNumber: c.lactationNumber,
             recentOffspring: c.births.slice(-2).flatMap((b) => b.offspring),
             healthEvents12m: c.healthEvents12m,
+            trend: c.trend,
           },
           thresholds,
         )
@@ -80,6 +86,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           sccGeo12m: c.performance?.scc_geo_12m ?? null,
           performanceRel: c.performance?.performance_rel ?? null,
           totalBv: species === 'sheep' ? (bv.gzw ?? null) : (bv.iset ?? null),
+          trend: c.trend,
         }
       })
       .sort((a, b) => b.score - a.score || b.reasons.length - a.reasons.length || a.label.localeCompare(b.label))
@@ -89,9 +96,20 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   const visible = showAll ? rows : flagged
 
   function exportCsv() {
-    const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Gründe']
+    const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Tendenz je Lakt.', 'Gründe']
     const lines = visible.map((r) =>
-      [r.laufNr, r.label, r.earTag, r.lactation, r.score, r.sccGeo12m, r.performanceRel, r.totalBv, r.reasons.map((x) => x.text).join(' | ')]
+      [
+        r.laufNr,
+        r.label,
+        r.earTag,
+        r.lactation,
+        r.score,
+        r.sccGeo12m,
+        r.performanceRel,
+        r.totalBv,
+        r.trend?.slope != null ? Math.round(r.trend.slope * 100) : null,
+        r.reasons.map((x) => x.text).join(' | '),
+      ]
         .map(csvEscape)
         .join(';'),
     )
@@ -123,7 +141,9 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
       <p className="text-xs text-gray-500">
         {terms.plural} mit Hinweisen auf Fruchtbarkeit, Eutergesundheit, Leistung oder Zuchtwert — nach Gewicht der
         Gründe sortiert. Leistung im Vergleich mit Gleichaltrigen (gleiche Laktationszahl), Zellzahl als geometrisches
-        Mittel. Die Liste entscheidet nichts; sie zeigt, wo sich ein genauer Blick lohnt.
+        Mittel. Tendenz: Niveau je Laktation im Vergleich mit den Herdengenossinnen am gleichen Wägungstag (wie unter
+        Leistung → Laktationsleistung), ↘ = fällt über die letzten Laktationen. Die Liste entscheidet nichts; sie zeigt,
+        wo sich ein genauer Blick lohnt.
       </p>
 
       {showSettings && (
@@ -173,7 +193,8 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
               {r.lactation ? `${r.lactation}. Laktation` : ''}
               {r.sccGeo12m != null ? ` · Zellzahl Ø ${fmtCells(r.sccGeo12m)}` : ''}
               {r.performanceRel != null ? ` · Leistung ${Math.round(r.performanceRel * 100)} %` : ''}
-              {r.totalBv != null ? ` · ${species === 'sheep' ? 'GZW' : 'ISET'} ${r.totalBv}` : ''}
+              {r.totalBv != null ? ` · ${species === 'sheep' ? 'GZW' : 'ISET'} ${r.totalBv}` : ''}{' '}
+              <TrendBadge trend={r.trend} />
             </div>
             {r.reasons.length > 0 && (
               <div className="mt-2">

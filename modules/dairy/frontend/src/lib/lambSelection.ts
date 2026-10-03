@@ -15,6 +15,7 @@
 // Index genau `gesamtindex()` des Originals.
 
 import type { PerformanceMetrics } from './herdPerformance'
+import type { LactationTrend } from './lactationTrend'
 
 export type Purpose = 'zucht' | 'mast'
 
@@ -38,6 +39,8 @@ export interface DamInfo {
   name: string | null
   lauf_nr: string | null
   performance: PerformanceMetrics | undefined
+  /** Tendenz der Mutter über ihre Laktationen (lib/lactationTrend.ts) — nur Anzeige, nicht im Index. */
+  trend?: LactationTrend
 }
 
 export interface SelectionSettings {

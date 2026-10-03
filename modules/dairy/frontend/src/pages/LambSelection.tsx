@@ -1,3 +1,4 @@
+import TrendBadge from '../components/TrendBadge'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { animalLabel, shortEarTag } from '@fmis/core/earTag'
@@ -95,7 +96,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
   }
 
   function exportCsv() {
-    const header = ['Rang', youngWord, 'Geburt', 'Geschlecht', 'Wurf', 'Mutter', 'Leistung rel.', 'Basis', `Zellzahl ('000)`, 'Datenbasis', 'Vater', sireTrait.label, 'Inzucht %', 'Index', 'Entscheid']
+    const header = ['Rang', youngWord, 'Geburt', 'Geschlecht', 'Wurf', 'Mutter', 'Leistung rel.', 'Basis', 'Tendenz Mutter je Lakt.', `Zellzahl ('000)`, 'Datenbasis', 'Vater', sireTrait.label, 'Inzucht %', 'Index', 'Entscheid']
     const lines = visible.map((r) =>
       [
         r.rank,
@@ -106,6 +107,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
         r.dam ? `${r.dam.lauf_nr ?? ''} ${animalLabel(r.dam)}`.trim() : shortEarTag(r.dam_key),
         r.dam?.performance?.performance_rel,
         r.dam?.performance?.performance_basis,
+        r.dam?.trend?.slope != null ? Math.round(r.dam.trend.slope * 100) : null,
         settings.scc12m ? r.dam?.performance?.scc_geo_12m : r.dam?.performance?.scc_geo,
         r.dam?.performance?.data_basis,
         shortEarTag(r.sire_key),
@@ -274,6 +276,11 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     <td className="whitespace-nowrap px-2 py-2 text-right">
                       {p?.performance_rel != null ? `${Math.round(p.performance_rel * 100)} %` : '–'}
                       <div className="text-xs text-gray-500">{p?.performance_basis === 'Standardlaktation' ? 'Std.-Lakt.' : p?.performance_basis ? 'LTL' : ''}</div>
+                      {r.dam?.trend && (
+                        <div className="mt-0.5">
+                          <TrendBadge trend={r.dam.trend} compact />
+                        </div>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 text-right">{scc != null ? fmtCells(scc) : '–'}</td>
                     <td className="whitespace-nowrap px-2 py-2">

@@ -48,7 +48,7 @@ export async function loadLambSelection(pg: PGlite, species: Species, today: str
     const key = animalKey(ctx.animal.ear_tag)
     if (!key) continue
     animalsByKey.set(key, ctx.animal)
-    dams.set(key, { id: ctx.animal.id, ear_tag: ctx.animal.ear_tag, name: ctx.animal.name, lauf_nr: ctx.animal.lauf_nr, performance: ctx.performance })
+    dams.set(key, { id: ctx.animal.id, ear_tag: ctx.animal.ear_tag, name: ctx.animal.name, lauf_nr: ctx.animal.lauf_nr, performance: ctx.performance, trend: ctx.trend })
     const bv = ctx.breedingValues[SIRE_TRAIT[species].trait]
     if (bv) sireValues.set(key, bv.value)
   }

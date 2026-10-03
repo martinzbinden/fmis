@@ -5,6 +5,7 @@
 
 import type { FertilityStatus, Species } from './fertility'
 import type { PerformanceMetrics } from './herdPerformance'
+import { levelSeries, type LactationTrend } from './lactationTrend'
 
 export interface CullingThresholds {
   /** ZKZ/ZLZ des letzten abgeschlossenen Zyklus über … Tage */
@@ -31,6 +32,10 @@ export interface CullingThresholds {
   offspringLossShare: number
   /** Krankheits-/Behandlungstage im Journal der letzten 12 Monate ab … (0 = aus) */
   healthEvents12m: number
+  /** Leistung (Niveau im Herdenvergleich) fällt seit … Laktationen in Folge (0 = aus) */
+  trendFalling: number
+  /** laufende Laktation mindestens … Prozentpunkte unter dem eigenen Mittel (0 = aus) */
+  runningBelowOwn: number
 }
 
 export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
@@ -47,6 +52,8 @@ export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
     lactationNumber: 8,
     offspringLossShare: 0,
     healthEvents12m: 3,
+    trendFalling: 2,
+    runningBelowOwn: 15,
   },
   sheep: {
     intervalDays: 400,
@@ -61,6 +68,8 @@ export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
     lactationNumber: 7,
     offspringLossShare: 0.5,
     healthEvents12m: 2,
+    trendFalling: 2,
+    runningBelowOwn: 15,
   },
 }
 
@@ -86,6 +95,8 @@ export interface CullingInput {
   /** Tage mit Krankheits-/Behandlungseinträgen in den letzten 12 Monaten,
    * mit den Diagnosen (für den Klartext). */
   healthEvents12m?: { date: string; diagnosis: string | null }[]
+  /** Tendenz über die Laktationen (lib/lactationTrend.ts). */
+  trend?: LactationTrend
 }
 
 /** Zellzahl in 1000/ml als ausgeschriebene Zahl mit Schweizer Tausender-
@@ -140,6 +151,25 @@ export function cullingReasons(input: CullingInput, t: CullingThresholds): Culli
     const pct = Math.round((1 - p.performance_rel) * 100)
     const basis = p.performance_basis === 'Standardlaktation' ? 'Standardlaktation' : 'Lebenstagleistung'
     reasons.push({ area: 'leistung', weight: 1, text: `${basis} ${pct} % unter Gleichaltrigen` })
+  }
+
+  const tr = input.trend
+  if (tr && t.trendFalling > 0 && tr.fallingStreak >= t.trendFalling) {
+    reasons.push({
+      area: 'leistung',
+      weight: tr.fallingStreak >= t.trendFalling + 1 ? 2 : 1,
+      text: `Leistung fällt seit ${tr.fallingStreak} Laktationen (${levelSeries(tr, tr.fallingStreak + 1)} der Herde)`,
+    })
+  }
+  if (tr?.running && tr.running.ownMean != null && t.runningBelowOwn > 0 && tr.running.tests >= 2) {
+    const below = Math.round((tr.running.ownMean - tr.running.level) * 100)
+    if (below >= t.runningBelowOwn) {
+      reasons.push({
+        area: 'leistung',
+        weight: 1,
+        text: `laufende Laktation ${Math.round(tr.running.level * 100)} % der Herde, ${below} Punkte unter dem eigenen Mittel (${Math.round(tr.running.ownMean * 100)} %)`,
+      })
+    }
   }
 
   const total = input.species === 'sheep' ? input.breedingValues.gzw : input.breedingValues.iset
