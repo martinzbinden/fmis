@@ -112,7 +112,7 @@ export function createDairyImporter(moduleKey: string, title: string, Panel: Mod
       claimed.push(...group)
       containersWithHerdbook.add(group[0].container)
       for (const f of group) taken.push({ name: f.name, data: f.data, kind: 'herdbook' })
-      formats.push(`Herdebuch-Export Betrieb ${stem(group[0].name).replace(/^b/, '')} (${group.length} Dateien)`)
+      formats.push(`Herdebuch-Export Betrieb ${stem(group[0].name).replace(/^b/, '')} (${group.length} ${group.length === 1 ? 'Datei' : 'Dateien'})`)
     }
     for (const f of codeTables) {
       if (!containersWithHerdbook.has(f.container)) continue

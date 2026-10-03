@@ -5,8 +5,10 @@
 // beide Instanzen: der SMG-Export der Milchschafe folgt derselben Spec, nur
 // K09 (Zuchtwerte) weicht ab, siehe lib/herdbookRecords.ts.
 // Gelesen werden K01 (Tier-Stammdaten + Eltern), K02 (drei Generationen),
-// K33 (Milchproben), K04 (Laktationen), K09 (Zuchtwerte), K10 (Belegungen)
-// und K11 (Geburten); übrige Satzarten (K03/K05/K07/K08/K44/K45/K16,
+// K33 (Milchproben) und K03 (Probemelkung der laufenden Laktation, gleicher
+// Satzaufbau wie K33 — kommt auch einzeln als b<nr>.K03 nach jeder Wägung),
+// K04 (Laktationen), K09 (Zuchtwerte), K10 (Belegungen)
+// und K11 (Geburten); übrige Satzarten (K05/K07/K08/K44/K45/K16,
 // B01/B04, CODE.C01) werden übersprungen. Spaltenoffsets 1:1 aus der
 // offiziellen Spec übernommen und gegen echte Exportdateien verifiziert.
 
@@ -239,10 +241,12 @@ export function parseAdisFiles(files: { name: string; text: string }[], species:
         const parsed = parseK11(line)
         if (parsed) births.push(parsed)
         else warnings.push(`${file.name}: K11-Zeile ohne Muttertier oder Datum übersprungen`)
-      } else if (tag === 'K33') {
+      } else if (tag === 'K33' || tag === 'K03') {
+        // K03 und K33 überschneiden sich (gleiche Probe in beiden) — der
+        // Import dedupliziert über (Tier, Probedatum).
         const parsed = parseK33Line(line)
         if (parsed) milkTests.push(parsed)
-        else warnings.push(`${file.name}: K33-Zeile mit fehlenden Pflichtwerten übersprungen`)
+        else warnings.push(`${file.name}: ${tag}-Zeile mit fehlenden Pflichtwerten übersprungen`)
       } else if (tag === 'K04') {
         const parsed = parseK04Line(line)
         if (parsed) lactations.push(parsed)

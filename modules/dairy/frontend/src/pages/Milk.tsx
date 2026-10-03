@@ -5,7 +5,8 @@ import { useQuery } from '../hooks/useQuery'
 import { fmtDate, fmtKg, fmtPct, num } from '../lib/format'
 import { selectYogurtCows, TARGET_PROTEIN_PCT, type YogurtSelectionResult } from '../lib/yogurtSelection'
 import { speciesTerms } from '../lib/species'
-import type { AnimalMilkCurrent, LactationSummary } from '../types'
+import type { AnimalMilkCurrent } from '../types'
+import LactationView from '../components/LactationView'
 import { animalLabel } from '@fmis/core/earTag'
 
 type SortKey =
@@ -17,18 +18,6 @@ type SortKey =
   | 'fat_protein_kg'
   | 'ecm_kg'
   | 'protein_pct'
-
-const CLOSURE_TYPE_LABEL: Record<number, string> = {
-  1: 'Teilabschluss',
-  2: 'Standardabschluss (305 Tage)',
-  3: 'Vollabschluss',
-  4: '100-Tage-Abschluss',
-  5: '200-Tage-Abschluss',
-  6: '305-Tage-Abschluss',
-  7: '305-Tage-Abschluss (laufend)',
-  8: 'laufend',
-  9: 'prognostiziert',
-}
 
 // pglite liefert numeric-Spalten als string (siehe lib/format.ts) — hier auf
 // echte number normalisieren, damit Sortierung und die Joghurt-Auswahl
@@ -59,28 +48,11 @@ function loadCurrentMilk(analysedOnly: boolean) {
   }
 }
 
-async function loadLactationSummary(pg: PGlite): Promise<LactationSummary[]> {
-  const { rows } = await pg.query<LactationSummary>(
-    `select * from v_lactation_summary order by name, ear_tag, lactation_number desc`,
-  )
-  return rows.map((r) => ({
-    ...r,
-    milk_kg: num(r.milk_kg),
-    fat_kg: num(r.fat_kg),
-    fat_pct: num(r.fat_pct),
-    protein_kg: num(r.protein_kg),
-    protein_pct: num(r.protein_pct),
-    fat_protein_kg: num(r.fat_protein_kg),
-  }))
-}
-
 export default function Milk({ moduleKey }: { moduleKey: string }) {
   const terms = speciesTerms(moduleKey)
   const [analysedOnly, setAnalysedOnly] = useState(false)
   const { data, loading } = useQuery(loadCurrentMilk(analysedOnly), [analysedOnly])
-  const { data: lactationData, loading: lactationLoading } = useQuery(loadLactationSummary)
   const cows = data ?? []
-  const lactations = lactationData ?? []
   const [sortKey, setSortKey] = useState<SortKey>('protein_pct')
   // Zwei Tabs: Laktationsleistung (Abschlüsse) und letzte Milchwägung.
   const [tab, setTab] = useState<'laktation' | 'waegung'>('laktation')
@@ -120,7 +92,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
   const withoutAnalysis = cows.filter((c) => !c.has_analysis).length
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
+    <div className="mx-auto max-w-4xl space-y-4 p-4 pb-24">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Leistung</h1>
         <Link to="pruefbericht" className="text-sm text-brand-700">
@@ -295,48 +267,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
         </>
       )}
 
-      {tab === 'laktation' && lactationLoading && !lactationData && <p className="text-center text-gray-400">Lädt…</p>}
-      {tab === 'laktation' && lactationData && lactations.length === 0 && (
-        <p className="text-center text-gray-500">
-          Keine Laktationsdaten. {terms.importHint}
-        </p>
-      )}
-      {tab === 'laktation' && lactations.length > 0 && (
-        <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs text-gray-500">
-                <th className="px-3 py-2 font-medium">{terms.singular}</th>
-                <th className="px-3 py-2 font-medium">Lakt.-Nr.</th>
-                <th className="px-3 py-2 font-medium">Kalbedatum</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Tage</th>
-                <th className="px-3 py-2 font-medium">Milch kg</th>
-                <th className="px-3 py-2 font-medium">kg Fett</th>
-                <th className="px-3 py-2 font-medium">kg Eiweiss</th>
-                <th className="px-3 py-2 font-medium">kg F+E</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lactations.map((l) => (
-                <tr key={l.lactation_id} className="border-b last:border-0">
-                  <td className="px-3 py-2 font-medium text-gray-800">{animalLabel(l)}</td>
-                  <td className="px-3 py-2 text-gray-600">{l.lactation_number}</td>
-                  <td className="px-3 py-2 text-gray-600">{fmtDate(l.calving_date)}</td>
-                  <td className="px-3 py-2 text-gray-600">
-                    {CLOSURE_TYPE_LABEL[l.closure_type] ?? l.closure_type}
-                  </td>
-                  <td className="px-3 py-2 text-gray-600">{l.days_in_milk ?? '–'}</td>
-                  <td className="px-3 py-2 text-gray-600">{fmtKg(l.milk_kg)}</td>
-                  <td className="px-3 py-2 text-gray-600">{fmtKg(l.fat_kg)}</td>
-                  <td className="px-3 py-2 text-gray-600">{fmtKg(l.protein_kg)}</td>
-                  <td className="px-3 py-2 font-semibold text-gray-800">{fmtKg(l.fat_protein_kg)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {tab === 'laktation' && <LactationView moduleKey={moduleKey} />}
     </div>
   )
 }
