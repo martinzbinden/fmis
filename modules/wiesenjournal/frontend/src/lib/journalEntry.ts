@@ -62,8 +62,13 @@ export async function loadEntriesInRange(
       [from, to],
     ),
   ])
-  // Weide aus Herdengruppen (lib/herdModel.ts) — abgeleitet, nicht gespeichert
+  return { usage: [...normalize(usage.rows), ...(await loadDerivedWeide(pg, from, to))], fertilizations: normalize(fert.rows) }
+}
+
+/** Weide aus Herdengruppen (lib/herdModel.ts) je Tag, Parzelle und
+ * Kategorie — abgeleitet, nicht gespeichert; bis heute. Für alle Ansichten,
+ * die sonst nur usage_entries lesen (Raster, Karte). */
+export async function loadDerivedWeide(pg: PGlite, from: string, to: string): Promise<UsageEntry[]> {
   const herd = await loadHerdData(pg)
-  const derived = derivedWeideEntries(herd.groups, herd.stays, herd.members, herd.counts, from, to, todayIso())
-  return { usage: [...normalize(usage.rows), ...derived], fertilizations: normalize(fert.rows) }
+  return derivedWeideEntries(herd.groups, herd.stays, herd.members, herd.counts, from, to, todayIso())
 }

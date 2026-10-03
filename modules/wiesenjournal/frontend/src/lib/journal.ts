@@ -1,7 +1,9 @@
 import { categoryFilterSql } from '../hooks/useShowAcker'
 import type { PGlite } from '@electric-sql/pglite'
-import type { FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { isoDate, usageDescription } from './format'
+import type { FertilizationEntry, HerdStay, Parcel, UsageEntry } from '../types'
+import { fmtDate, isoDate, todayIso, usageDescription } from './format'
+import { loadHerdData } from './herds'
+import { compositionText, herdWeidePeriods } from './herdModel'
 
 export interface JournalRow {
   id: string
@@ -12,7 +14,10 @@ export interface JournalRow {
   parcel: Parcel
   summary: string
   detail: string | null
-  source: UsageEntry | FertilizationEntry
+  source: UsageEntry | FertilizationEntry | HerdStay
+  /** Weide aus einer Herdengruppe (Wiesenjournal → Herden): ein Aufenthalt
+   * als eine Zeile; `date` ist dann der letzte Tag (laufende zuoberst). */
+  herd?: { groupId: string; from: string; to: string | null }
 }
 
 export async function loadJournalRows(
@@ -30,7 +35,7 @@ export async function loadJournalRows(
   const parcelIds = parcels.map((p) => p.id)
   if (parcelIds.length === 0) return { rows: [], parcels }
 
-  const [{ rows: usage }, { rows: fert }] = await Promise.all([
+  const [{ rows: usage }, { rows: fert }, herd] = await Promise.all([
     pg.query<UsageEntry>(
       `select * from usage_entries where deleted_at is null and parcel_id = any($1)`,
       [parcelIds],
@@ -39,7 +44,9 @@ export async function loadJournalRows(
       `select * from fertilization_entries where deleted_at is null and parcel_id = any($1)`,
       [parcelIds],
     ),
+    loadHerdData(pg),
   ])
+  const herdPeriods = herdWeidePeriods(herd.groups, herd.stays, herd.members, herd.counts, todayIso(), new Set(parcelIds))
 
   const rows: JournalRow[] = [
     ...usage.map((u): JournalRow => ({
@@ -72,6 +79,24 @@ export async function loadJournalRows(
           .filter(Boolean)
           .join(' · ') || null,
       source: f,
+    })),
+    ...herdPeriods.map((h): JournalRow => ({
+      id: h.stay.id,
+      kind: 'nutzung',
+      date: h.last,
+      parcelId: h.parcelId,
+      parcelName: parcelName.get(h.parcelId) ?? '?',
+      parcel: parcelById.get(h.parcelId)!,
+      summary: `${h.stay.day_only ? 'Tagweide' : 'Weide'} · Herde «${h.group.name}» · ${h.comp.total} Tiere`,
+      detail:
+        [
+          compositionText(h.comp),
+          h.changed ? `Bestand am ${fmtDate(h.last)}, dazwischen gewechselt` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || null,
+      source: h.stay,
+      herd: { groupId: h.group.id, from: h.from, to: h.to },
     })),
   ]
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { loadJournalRows } from '../lib/journal'
 import type { Parcel } from '../types'
 import AckerToggle from '../components/AckerToggle'
@@ -24,6 +25,7 @@ export default function Journal() {
   const [kindFilter, setKindFilter] = useState<'' | JournalRow['kind']>('')
   const [search, setSearch] = useState('')
   const [editorTarget, setEditorTarget] = useState<{ parcel: Parcel; date: string } | null>(null)
+  const navigate = useNavigate()
 
   const rows = data?.rows ?? []
   const parcels = data?.parcels ?? []
@@ -80,12 +82,18 @@ export default function Journal() {
           <li
             key={`${row.kind}-${row.id}`}
             className="cursor-pointer rounded-lg bg-white p-3 shadow-sm"
-            onClick={() => setEditorTarget({ parcel: row.parcel, date: row.date })}
+            // Weide aus einer Herde ändert man unter Herden, nicht als Tageseintrag
+            onClick={() => (row.herd ? navigate('../herden') : setEditorTarget({ parcel: row.parcel, date: row.date }))}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-gray-500">{fmtDate(row.date)}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${KIND_COLOR[row.kind]}`}>
-                {KIND_LABEL[row.kind]}
+              <span className="text-xs font-medium text-gray-500">
+                {row.herd ? `${fmtDate(row.herd.from)}–${row.herd.to ? fmtDate(row.herd.to) : 'heute'}` : fmtDate(row.date)}
+              </span>
+              <span className="flex gap-1">
+                {row.herd && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">aus Herden</span>}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${KIND_COLOR[row.kind]}`}>
+                  {KIND_LABEL[row.kind]}
+                </span>
               </span>
             </div>
             <div className="mt-1 font-semibold text-gray-800">

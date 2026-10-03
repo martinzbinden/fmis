@@ -147,6 +147,49 @@ export function derivedWeideEntries(
   return out
 }
 
+/** Ein Weide-Aufenthalt einer Gruppe als eine Zeile (Journal-Liste),
+ * statt einer Zeile je Tag. Bestand am letzten Tag (bis heute). */
+export interface HerdWeidePeriod {
+  stay: HerdStay
+  group: HerdGroup
+  parcelId: string
+  from: string
+  /** null = läuft noch */
+  to: string | null
+  /** letzter gezählter Tag (Ende oder heute) */
+  last: string
+  comp: Composition
+  /** Bestand hat sich während des Aufenthalts geändert */
+  changed: boolean
+}
+
+export function herdWeidePeriods(
+  groups: HerdGroup[],
+  stays: HerdStay[],
+  members: HerdMember[],
+  counts: HerdCount[],
+  today: string,
+  parcelIds?: Set<string>,
+): HerdWeidePeriod[] {
+  const byId = new Map(groups.map((g) => [g.id, g]))
+  const out: HerdWeidePeriod[] = []
+  for (const s of stays) {
+    if (s.deleted_at || s.slot !== 'weide' || !s.parcel_id || s.from_date > today) continue
+    if (parcelIds && !parcelIds.has(s.parcel_id)) continue
+    const group = byId.get(s.group_id)
+    if (!group || group.deleted_at) continue
+    const last = s.to_date != null && s.to_date < today ? s.to_date : today
+    const comp = compositionAt(group.id, members, counts, last)
+    // Bestand gewechselt: Einzeltiere oder Anzahlen beginnen/enden innerhalb
+    const inside = (d: string | null) => d != null && d > s.from_date && d <= last
+    const changed = [...members, ...counts].some(
+      (r) => r.group_id === group.id && !r.deleted_at && (inside(r.from_date) || inside(r.to_date == null ? null : addDaysIso(r.to_date, 1))),
+    )
+    out.push({ stay: s, group, parcelId: s.parcel_id, from: s.from_date, to: s.to_date, last, comp, changed })
+  }
+  return out
+}
+
 // --- Standort eines Einzeltiers (für das Tierdetail der Tiermodule) ---
 
 export interface LocateInput {

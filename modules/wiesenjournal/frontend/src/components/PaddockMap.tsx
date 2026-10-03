@@ -7,6 +7,7 @@ import { colorForKultur } from '@fmis/fields/lib/kulturColor'
 import 'leaflet-draw/dist/leaflet.draw.css'
 import LocateControl from '@fmis/core/LocateControl'
 import { getDb } from '../db/pglite'
+import { loadDerivedWeide } from '../lib/journalEntry'
 import { loadFieldsBackground, type FieldsBackgroundFeature } from '../lib/fieldsBackground'
 import {
   ANIMAL_CATEGORY_ICON,
@@ -15,6 +16,7 @@ import {
   WEED_TYPE_COLOR,
   WEED_TYPE_LABEL,
   addDaysIso,
+  isoDate,
   todayIso,
 } from '../lib/format'
 import { fetchFertilizationMap, type FertilizationMapProps } from '../lib/report'
@@ -202,19 +204,30 @@ function FocusHighlightLayer({ parcel }: { parcel: Parcel | undefined }) {
  * jedem Eintrag verlässlich vorhanden. */
 function AnimalGroupMarkersLayer({ parcels, today }: { parcels: Parcel[]; today: string }) {
   const map = useMap()
-  const [rows, setRows] = useState<{ parcel_id: string; animal_category: string }[]>([])
+  const [rows, setRows] = useState<{ parcel_id: string; animal_category: string; group?: string }[]>([])
 
   useEffect(() => {
     let active = true
     getDb()
-      .then((pg) =>
-        pg.query<{ parcel_id: string; animal_category: string }>(
-          `select distinct parcel_id, animal_category from usage_entries
-           where usage_type = 'weide' and animal_category is not null and entry_date = $1 and deleted_at is null`,
-          [today],
-        ),
-      )
-      .then(({ rows }) => {
+      .then(async (pg) => {
+        const [stored, derived] = await Promise.all([
+          pg.query<{ parcel_id: string; animal_category: string }>(
+            `select distinct parcel_id, animal_category from usage_entries
+             where usage_type = 'weide' and animal_category is not null and entry_date = $1 and deleted_at is null`,
+            [today],
+          ),
+          // Weide aus Herdengruppen — sonst fehlten Herden, die nur über
+          // Wiesenjournal → Herden geführt werden
+          loadDerivedWeide(pg, today, today),
+        ])
+        const out: { parcel_id: string; animal_category: string; group?: string }[] = [...stored.rows]
+        for (const d of derived) {
+          if (!d.animal_category || out.some((r) => r.parcel_id === d.parcel_id && r.animal_category === d.animal_category)) continue
+          out.push({ parcel_id: d.parcel_id, animal_category: d.animal_category, group: d.animal_group ?? undefined })
+        }
+        return out
+      })
+      .then((rows) => {
         if (active) setRows(rows)
       })
     return () => {
@@ -248,7 +261,7 @@ function AnimalGroupMarkersLayer({ parcels, today }: { parcels: Parcel[]; today:
         iconAnchor: [12, 12],
       })
       L.marker([lat, center.lng], { icon })
-        .bindTooltip(`${ANIMAL_CATEGORY_LABEL[r.animal_category] ?? r.animal_category} · ${parcel.name}`)
+        .bindTooltip(`${ANIMAL_CATEGORY_LABEL[r.animal_category] ?? r.animal_category}${r.group ? ` (Herde «${r.group}»)` : ''} · ${parcel.name}`)
         .addTo(group)
     }
     group.addTo(map)
@@ -297,21 +310,30 @@ function SheepPressureLayer({
     let active = true
     onInfo(null)
     getDb()
-      .then((pg) =>
-        pg.query<{ parcel_id: string; days: unknown }>(
-          `select parcel_id, count(distinct entry_date) as days from usage_entries
-           where usage_type = 'weide' and animal_category = 'schafe' and deleted_at is null
-             and entry_date between $1 and $2
-           group by parcel_id`,
-          [from, to],
-        ),
-      )
-      .then(({ rows }) => {
+      .then(async (pg) => {
+        const [stored, derived] = await Promise.all([
+          pg.query<{ parcel_id: string; entry_date: unknown }>(
+            `select distinct parcel_id, entry_date from usage_entries
+             where usage_type = 'weide' and animal_category = 'schafe' and deleted_at is null
+               and entry_date between $1 and $2`,
+            [from, to],
+          ),
+          loadDerivedWeide(pg, from, to),
+        ])
+        // Tage je Parzelle: gespeicherte Einträge und Weide aus Herden zusammen,
+        // ein Tag zählt einmal
+        const days = new Map<string, Set<string>>()
+        const add = (parcel: string, date: string) => days.set(parcel, (days.get(parcel) ?? new Set()).add(date))
+        for (const r of stored.rows) add(r.parcel_id, isoDate(r.entry_date))
+        for (const d of derived) if (d.animal_category === 'schafe') add(d.parcel_id, d.entry_date)
+        return days
+      })
+      .then((days) => {
         if (!active) return
         const next: Record<string, number> = {}
-        for (const r of rows) next[r.parcel_id] = Number(r.days)
+        for (const [parcel, set] of days) next[parcel] = set.size
         setCounts(next)
-        if (rows.length === 0) onInfo('Keine Schafweide-Einträge im gewählten Zeitraum.')
+        if (days.size === 0) onInfo('Keine Schafweide-Einträge im gewählten Zeitraum.')
       })
     return () => {
       active = false

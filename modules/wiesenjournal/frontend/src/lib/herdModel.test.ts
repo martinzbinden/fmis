@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AnimalRef } from '@fmis/core/animals'
-import { compositionAt, compositionText, defaultCategory, derivedWeideEntries, locateAnimal, matchNumber } from './herdModel'
+import { compositionAt, compositionText, defaultCategory, derivedWeideEntries, herdWeidePeriods, locateAnimal, matchNumber } from './herdModel'
 import type { HerdCount, HerdGroup, HerdMember, HerdStay } from '../types'
 
 const base = { updated_at: '2026-10-03T00:00:00Z', deleted_at: null }
@@ -97,5 +97,16 @@ describe('matchNumber', () => {
     expect(matchNumber(list, '112222')).toBe(list[2])
     expect(matchNumber(list, '2222')).toBe('mehrdeutig')
     expect(matchNumber(list, '9999')).toBeNull()
+  })
+
+  it('Weide-Aufenthalt als eine Zeile, Bestand am letzten Tag, Wechsel erkannt', () => {
+    const [p] = herdWeidePeriods([group], stays, members, counts, '2026-10-05')
+    expect(p).toMatchObject({ parcelId: 'wyden', from: '2026-09-20', to: null, last: '2026-10-05', changed: true })
+    expect(p.comp.total).toBe(23)
+    // vor dem Zuzug am 3.10.: kein Wechsel
+    const [q] = herdWeidePeriods([group], stays, members, counts, '2026-10-02')
+    expect(q).toMatchObject({ changed: false })
+    expect(q.comp.total).toBe(17)
+    expect(herdWeidePeriods([group], stays, members, counts, '2026-10-05', new Set(['andere']))).toHaveLength(0)
   })
 })
