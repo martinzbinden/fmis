@@ -15,6 +15,7 @@ import WorkPlan from './pages/WorkPlan'
 import Machines from './pages/Machines'
 import MachineDetail from './pages/MachineDetail'
 import Herds from './pages/Herds'
+import OutdoorJournal from './pages/OutdoorJournal'
 import { wiesenjournalHerdLocator } from './lib/herds'
 import './theme.css'
 
@@ -47,6 +48,8 @@ const wiesenjournalModule: ModuleDescriptor = {
     { path: 'duengerarten', element: <FertilizerTypes /> },
     { path: 'arbeitsplan', element: <WorkPlan /> },
     { path: 'herden', element: <Herds /> },
+    // Kein Nav-Eintrag — verlinkt von Herden und der Tagesmeldung.
+    { path: 'auslauf', element: <OutdoorJournal /> },
     { path: 'maschinen', element: <Machines /> },
     { path: 'maschinen/:id', element: <MachineDetail /> },
     { path: '*', element: <Navigate to="." replace /> },

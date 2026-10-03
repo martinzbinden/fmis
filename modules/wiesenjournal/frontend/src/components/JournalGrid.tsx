@@ -1,4 +1,5 @@
-import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
+import type { AnimalCategory, DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
+import { categoryMark, categoryTitle, type CategoryDay } from '../lib/outdoorAccess'
 import { PARCEL_CATEGORY_COLOR, todayIso, usageDescription, usageLegend } from '../lib/format'
 import type { SortField, SortState } from '../lib/parcelSort'
 import type { ParcelSummary } from '../lib/parcelSummary'
@@ -51,6 +52,8 @@ interface Props {
   usageByDay: DayIndex<UsageEntry>
   fertByDay: DayIndex<FertilizationEntry>
   dailyLogByDate: Record<string, DailyFarmLog>
+  /** Auslauf je Kategorie aus den Herdengruppen (lib/outdoorAccess.ts) */
+  herdAccessByDate?: Record<string, Map<AnimalCategory, CategoryDay>>
   onCellClick: (parcel: Parcel, date: string) => void
   onFarmCellClick: (date: string) => void
   onOpenParcelSheet: (parcel: Parcel) => void
@@ -70,6 +73,7 @@ export default function JournalGrid({
   usageByDay,
   fertByDay,
   dailyLogByDate,
+  herdAccessByDate = {},
   onCellClick,
   onFarmCellClick,
   onOpenParcelSheet,
@@ -240,6 +244,10 @@ export default function JournalGrid({
                   if (row.key.startsWith('laufhof_')) content = v ? '✓' : null
                   else if (v != null) content = String(v)
                 }
+                // Laufhof ohne Häkchen: aus den Herdengruppen (✓ alle, ◐ ein Teil)
+                const herdCat = row.key.startsWith('laufhof_') ? herdAccessByDate[d]?.get(row.key.slice(8) as AnimalCategory) : undefined
+                const herdMark = content == null ? categoryMark(herdCat) : null
+                if (herdMark) content = herdMark
                 // Automatisch vom (künftigen) Geodatenserver übernommene
                 // Werte kursiv andeuten — lokale Eingabe (Standard) bleibt
                 // normal; siehe DailyLogEditor.tsx.
@@ -249,8 +257,8 @@ export default function JournalGrid({
                     key={d}
                     type="button"
                     onClick={() => onFarmCellClick(d)}
-                    title={fromGeodata ? 'Automatisch vom Geodatenserver' : undefined}
-                    className={`shrink-0 border-l border-gray-100 text-center text-[9px] text-gray-600 hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
+                    title={fromGeodata ? 'Automatisch vom Geodatenserver' : herdMark && herdCat ? `Aus den Herden:\n${categoryTitle(herdCat)}` : undefined}
+                    className={`shrink-0 border-l border-gray-100 text-center text-[9px] ${herdMark ? 'font-semibold text-emerald-700' : 'text-gray-600'} hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
                     style={{ width: CELL_WIDTH, height: FARM_ROW_HEIGHT }}
                   >
                     {content}

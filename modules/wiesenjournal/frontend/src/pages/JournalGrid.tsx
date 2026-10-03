@@ -4,6 +4,8 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { loadEntriesInRange } from '../lib/journalEntry'
 import { loadSharesInRange } from '../lib/fertilization'
+import { loadHerdData } from '../lib/herds'
+import { accessIndex, categoryDay, type CategoryDay } from '../lib/outdoorAccess'
 import JournalGridComponent, { type DayIndex, LABEL_COL_WIDTH as LABEL_COL_WIDTH_NEU } from '../components/JournalGrid'
 import JournalGridClassic, { LABEL_COL_WIDTH as LABEL_COL_WIDTH_KLASSISCH } from '../components/JournalGridClassic'
 import DayEntryEditor from '../components/DayEntryEditor'
@@ -25,7 +27,7 @@ import { useViewportWidth, MOBILE_BREAKPOINT } from '../hooks/useViewportWidth'
 import { sortParcels, nextSortState, type SortState } from '../lib/parcelSort'
 import { matchesVirtualCategory, parcelMatchesChip, type FilterChip } from '../lib/parcelFilter'
 import { summarizeParcels } from '../lib/parcelSummary'
-import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
+import type { AnimalCategory, DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { isoDate, num, todayIso } from '../lib/format'
 
 const CURRENT_YEAR = new Date().getFullYear()
@@ -51,7 +53,7 @@ function indexByParcelAndDay<T extends { parcel_id: string; entry_date: string }
 }
 
 async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: string, showAcker: boolean, showSmall: boolean) {
-  const [{ rows: parcels }, { usage, fertilizations }, { rows: dailyLogs }, shares] = await Promise.all([
+  const [{ rows: parcels }, { usage, fertilizations }, { rows: dailyLogs }, shares, herd] = await Promise.all([
     pg.query<Parcel>(
       `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker, showSmall)}
        order by farm_name nulls last, category, sort_order, name`,
@@ -60,8 +62,9 @@ async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: st
     loadEntriesInRange(pg, from, to),
     pg.query<DailyFarmLog>('select * from daily_farm_log where entry_date between $1 and $2 and deleted_at is null', [from, to]),
     loadSharesInRange(pg, from, to),
+    loadHerdData(pg),
   ])
-  return { parcels, usage, fertilizations, dailyLogs, shares }
+  return { parcels, usage, fertilizations, dailyLogs, shares, herd }
 }
 
 export default function JournalGridPage() {
@@ -171,6 +174,16 @@ export default function JournalGridPage() {
     for (const log of data?.dailyLogs ?? []) idx[isoDate(log.entry_date)] = log
     return idx
   }, [data])
+  // Auslauf je Kategorie aus den Herdengruppen (lib/outdoorAccess.ts) —
+  // ergänzt die Laufhof-Zeilen der Tagesmeldung, bis heute.
+  const herdAccessByDate = useMemo(() => {
+    const out: Record<string, Map<AnimalCategory, CategoryDay>> = {}
+    if (!data?.herd) return out
+    const idx = accessIndex(data.herd)
+    const today = todayIso()
+    for (const d of days) if (d <= today) out[d] = categoryDay(idx, data.herd, d)
+    return out
+  }, [data, days])
   const summaryByParcel = useMemo(
     () => (summaryOpen ? summarizeParcels(parcels, usageByDay, fertByDay) : undefined),
     [summaryOpen, parcels, usageByDay, fertByDay],
@@ -262,6 +275,7 @@ export default function JournalGridPage() {
           usageByDay={usageByDay}
           fertByDay={fertByDay}
           dailyLogByDate={dailyLogByDate}
+          herdAccessByDate={herdAccessByDate}
           cellWidth={cellWidth}
           scrollRef={scroll.ref}
           stickyTop={stickyTop}
@@ -283,6 +297,7 @@ export default function JournalGridPage() {
           usageByDay={usageByDay}
           fertByDay={fertByDay}
           dailyLogByDate={dailyLogByDate}
+          herdAccessByDate={herdAccessByDate}
           cellWidth={cellWidth}
           scrollRef={scroll.ref}
           stickyTop={stickyTop}

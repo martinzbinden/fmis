@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
-import type { DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
+import type { AnimalCategory, DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
+import { categoryMark, categoryTitle, type CategoryDay } from '../lib/outdoorAccess'
 import {
   USAGE_COLOR,
   USAGE_COLOR_FAMILY,
@@ -324,6 +325,8 @@ interface Props {
   usageByDay: DayIndex<UsageEntry>
   fertByDay: DayIndex<FertilizationEntry>
   dailyLogByDate: Record<string, DailyFarmLog>
+  /** Auslauf je Kategorie aus den Herdengruppen (lib/outdoorAccess.ts) */
+  herdAccessByDate?: Record<string, Map<AnimalCategory, CategoryDay>>
   onDayOpen: (parcel: Parcel, date: string) => void
   onFarmCellClick: (date: string) => void
   onFocusMap: (parcel: Parcel) => void
@@ -343,6 +346,7 @@ export default function JournalGridClassic({
   usageByDay,
   fertByDay,
   dailyLogByDate,
+  herdAccessByDate = {},
   onDayOpen,
   onFarmCellClick,
   onFocusMap,
@@ -494,6 +498,7 @@ export default function JournalGridClassic({
           [
             { key: 'laufhof_kuehe', label: 'Laufhof Kühe' },
             { key: 'laufhof_rinder', label: 'Laufhof Rinder' },
+            { key: 'laufhof_schafe', label: 'Laufhof Schafe' },
             { key: 'wetter_code', label: 'Wetter' },
             { key: 'niederschlag_mm', label: 'Niederschlag' },
             { key: 'mond_phase', label: 'Mond' },
@@ -515,6 +520,10 @@ export default function JournalGridClassic({
                   if (row.key.startsWith('laufhof_')) content = v ? '✓' : null
                   else if (v != null) content = String(v)
                 }
+                // Laufhof ohne Häkchen: aus den Herdengruppen (✓ alle, ◐ ein Teil)
+                const herdCat = row.key.startsWith('laufhof_') ? herdAccessByDate[d]?.get(row.key.slice(8) as AnimalCategory) : undefined
+                const herdMark = content == null ? categoryMark(herdCat) : null
+                if (herdMark) content = herdMark
                 // Automatisch vom (künftigen) Geodatenserver übernommene
                 // Werte kursiv andeuten — lokale Eingabe (Standard) bleibt
                 // normal; siehe DailyLogEditor.tsx.
@@ -524,8 +533,8 @@ export default function JournalGridClassic({
                     key={d}
                     type="button"
                     onClick={() => onFarmCellClick(d)}
-                    title={fromGeodata ? 'Automatisch vom Geodatenserver' : undefined}
-                    className={`shrink-0 border-l border-gray-100 text-center text-[8px] text-gray-600 hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
+                    title={fromGeodata ? 'Automatisch vom Geodatenserver' : herdMark && herdCat ? `Aus den Herden:\n${categoryTitle(herdCat)}` : undefined}
+                    className={`shrink-0 border-l border-gray-100 text-center text-[8px] ${herdMark ? 'font-semibold text-emerald-700' : 'text-gray-600'} hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
                     style={{ width: cellWidth, height: FARM_ROW_HEIGHT }}
                   >
                     {content}

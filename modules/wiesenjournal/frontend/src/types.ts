@@ -320,6 +320,9 @@ export interface DataHistory {
 
 export type HerdSpecies = 'schafe' | 'rinder'
 export type LocationKind = 'stall' | 'weide' | 'alp' | 'andere'
+/** Laufhof beim Ort (schema/0018): ständig zugänglich, zeitweise (Gänge
+ * täglich erfassen) oder keiner. */
+export type LaufhofMode = 'keiner' | 'staendig' | 'zeitweise'
 
 export interface HerdLocation {
   id: string
@@ -328,6 +331,17 @@ export interface HerdLocation {
   kind: LocationKind
   sort_order: number
   active: boolean
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+  laufhof: LaufhofMode
+}
+
+/** Gruppe war an diesem Tag im Laufhof (schema/0018). */
+export interface HerdLaufhof {
+  id: string
+  group_id: string
+  entry_date: string
   notes: string | null
   updated_at: string
   deleted_at: string | null

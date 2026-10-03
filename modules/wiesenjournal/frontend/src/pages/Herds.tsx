@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { animalProviders, listAllAnimals, type AnimalRef } from '@fmis/core/animals'
 import { useQuery } from '../hooks/useQuery'
 import Modal from '../components/Modal'
-import { fmtDate, todayIso } from '../lib/format'
+import { addDaysIso, fmtDate, todayIso } from '../lib/format'
 import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, HERD_CATEGORIES, matchNumber, numberTokens } from '../lib/herdModel'
-import { changeStay, countAt, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, saveGroup, saveLocation, setCount, type HerdData } from '../lib/herds'
-import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LocationKind, StaySlot } from '../types'
+import { changeStay, countAt, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, saveGroup, saveLocation, setCount, setLaufhof, type HerdData } from '../lib/herds'
+import { accessIndex, ACCESS_LABEL, monthCounter, type AccessIndex } from '../lib/outdoorAccess'
+import CounterBadge from '../components/CounterBadge'
+import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LaufhofMode, LocationKind, StaySlot } from '../types'
 
 const SPECIES_ICON: Record<HerdSpecies, string> = { schafe: '🐑', rinder: '🐄' }
 const SPECIES_LABEL: Record<HerdSpecies, string> = { schafe: 'Schafe', rinder: 'Rinder' }
@@ -21,6 +24,74 @@ function stayName(data: HerdData, s: HerdStay | undefined): string | null {
 
 const currentStay = (data: HerdData, groupId: string, slot: StaySlot, date: string) =>
   data.stays.find((s) => s.group_id === groupId && s.slot === slot && activeAt(s, date))
+
+const LAUFHOF_LABEL: Record<LaufhofMode, string> = { keiner: 'kein Laufhof', staendig: 'Laufhof ständig zugänglich', zeitweise: 'Laufhof zeitweise' }
+
+/** Laufhofgänge am Tag `date` für alle Gruppen in Ställen mit zeitweisem
+ * Laufhof — ein Tipp je Gruppe, oder alles wie am Vortag. */
+function LaufhofToday({ data, idx, groups, date, canWrite, onChanged }: { data: HerdData; idx: AccessIndex; groups: HerdGroup[]; date: string; canWrite: boolean; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const rows = groups
+    .map((g) => ({ g, day: idx.groupDay(g.id, date), prev: idx.groupDay(g.id, addDaysIso(date, -1)) }))
+    .filter((r) => r.day.animals > 0 && r.day.stallLaufhof === 'zeitweise')
+  if (rows.length === 0) return null
+  const open = rows.filter((r) => r.day.kind == null)
+  const asYesterday = rows.filter((r) => r.day.kind == null && r.prev.laufhofEntry)
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true)
+    try {
+      await fn()
+      onChanged()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="space-y-2 rounded-lg bg-white p-3 shadow-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold text-gray-700">Laufhof {date === todayIso() ? 'heute' : `am ${fmtDate(date)}`}</h2>
+        <Link to="../auslauf" className="text-xs text-brand-700">
+          Auslaufjournal →
+        </Link>
+      </div>
+      <ul className="space-y-1">
+        {rows.map(({ g, day }) => (
+          <li key={g.id} className="flex items-center justify-between gap-2 text-sm">
+            <span>
+              {SPECIES_ICON[g.species]} {g.name} <span className="text-xs text-gray-500">({day.animals})</span>
+            </span>
+            {day.kind === 'weide' ? (
+              <span className="rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-800">auf der Weide</span>
+            ) : (
+              <button
+                type="button"
+                disabled={!canWrite || busy}
+                onClick={() => void run(() => setLaufhof(data, g.id, date, !day.laufhofEntry))}
+                className={`rounded-lg px-3 py-1 text-xs font-medium ${day.laufhofEntry ? 'bg-sky-600 text-white' : 'border border-gray-300 bg-white text-gray-600'}`}
+              >
+                {day.laufhofEntry ? '✓ im Laufhof' : 'im Laufhof?'}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {canWrite && open.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={busy} className={btn} onClick={() => void run(async () => { for (const r of open) await setLaufhof(data, r.g.id, date, true) })}>
+            alle {open.length} im Laufhof
+          </button>
+          {asYesterday.length > 0 && asYesterday.length < open.length && (
+            <button type="button" disabled={busy} className={btn} onClick={() => void run(async () => { for (const r of asYesterday) await setLaufhof(data, r.g.id, date, true) })}>
+              wie gestern ({asYesterday.length})
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
 
 /** Stall oder Weide wechseln. */
 function StayDialog({
@@ -613,6 +684,7 @@ function LocationsDialog({ data, onClose }: { data: HerdData; onClose: () => voi
     notes: null,
     updated_at: '',
     deleted_at: null,
+    laufhof: 'keiner',
   })
   return (
     <Modal title="Orte" onClose={onClose}>
@@ -627,6 +699,13 @@ function LocationsDialog({ data, onClose }: { data: HerdData; onClose: () => voi
               <option value="weide">Weide (ohne Parzelle)</option>
               <option value="andere">andere</option>
             </select>
+            {edit.kind !== 'weide' && (
+              <select className={field} value={edit.laufhof} onChange={(e) => setEdit({ ...edit, laufhof: e.target.value as LaufhofMode })}>
+                <option value="keiner">kein Laufhof</option>
+                <option value="staendig">Laufhof ständig zugänglich (jeder Tag zählt)</option>
+                <option value="zeitweise">Laufhof zeitweise (Gänge täglich erfassen)</option>
+              </select>
+            )}
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> aktiv
             </label>
@@ -651,6 +730,7 @@ function LocationsDialog({ data, onClose }: { data: HerdData; onClose: () => voi
                 <li key={l.id} className={`flex items-center justify-between py-1.5 ${l.active ? '' : 'opacity-50'}`}>
                   <span>
                     {l.name} <span className="text-xs text-gray-500">{l.site ?? ''}</span>
+                    {l.laufhof !== 'keiner' && <span className="block text-xs text-sky-700">{LAUFHOF_LABEL[l.laufhof]}</span>}
                   </span>
                   <button type="button" onClick={() => setEdit(l)} className={btn}>
                     Bearbeiten
@@ -665,6 +745,21 @@ function LocationsDialog({ data, onClose }: { data: HerdData; onClose: () => voi
         )}
       </div>
     </Modal>
+  )
+}
+
+/** Auslauf der Gruppe am Tag und Monatszähler (RAUS). */
+function GroupAccessLine({ idx, groupId, date }: { idx: AccessIndex; groupId: string; date: string }) {
+  const day = idx.groupDay(groupId, date)
+  const today = todayIso()
+  const counter = monthCounter(idx, groupId, date.slice(0, 7), date < today ? date : today)
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+      <span>
+        Auslauf: {day.kind ? <b className="text-gray-800">{ACCESS_LABEL[day.kind]}</b> : <span className="text-gray-400">{day.stallLaufhof === 'zeitweise' ? 'noch kein Laufhof erfasst' : 'keiner'}</span>}
+      </span>
+      {counter && <CounterBadge c={counter} />}
+    </div>
   )
 }
 
@@ -709,6 +804,7 @@ export default function Herds() {
   }, [data, allActive, date])
 
   const groups = useMemo(() => (data?.groups ?? []).filter((g) => g.active), [data])
+  const idx = useMemo(() => (data ? accessIndex(data) : null), [data])
   const close = () => {
     setDialog(null)
     setPick(new Set())
@@ -740,6 +836,8 @@ export default function Herds() {
           </button>
         </div>
       )}
+
+      {idx && <LaufhofToday data={data} idx={idx} groups={groups} date={date} canWrite={canWrite} onChanged={refresh} />}
 
       {groups.length === 0 && (
         <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
@@ -954,6 +1052,9 @@ export default function Herds() {
                   )}
                 </button>
               </div>
+              {idx && comp.total > 0 && (
+                <GroupAccessLine idx={idx} groupId={g.id} date={date} />
+              )}
               <div className="flex flex-wrap gap-2">
                 {canWrite && (
                   <>

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { getDb } from '../db/pglite'
 import { upsertRow } from '../db/write'
 import { ANIMAL_CATEGORIES, ANIMAL_CATEGORY_LABEL, fmtDate } from '../lib/format'
+import { loadHerdData } from '../lib/herds'
+import { accessIndex, categoryDay, categoryMark, categoryTitle, type CategoryDay } from '../lib/outdoorAccess'
 import Modal from './Modal'
-import type { DailyFarmLog } from '../types'
+import type { AnimalCategory, DailyFarmLog } from '../types'
 
 export default function DailyLogEditor({
   date,
@@ -24,6 +27,8 @@ export default function DailyLogEditor({
   const [mondPhase, setMondPhase] = useState('')
   const [wetterQuelle, setWetterQuelle] = useState<'geodaten' | 'manuell'>('manuell')
   const [loading, setLoading] = useState(true)
+  // Aus den Herdengruppen: Tiere und Auslauf je Kategorie (lib/outdoorAccess.ts)
+  const [herd, setHerd] = useState<Map<AnimalCategory, CategoryDay>>(new Map())
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -34,7 +39,9 @@ export default function DailyLogEditor({
         'select * from daily_farm_log where entry_date = $1 and deleted_at is null limit 1',
         [date],
       )
+      const herdData = await loadHerdData(pg)
       if (cancelled) return
+      setHerd(categoryDay(accessIndex(herdData), herdData, date))
       const e = rows[0] ?? null
       setExisting(e)
       const lh: Record<string, boolean> = {}
@@ -100,17 +107,42 @@ export default function DailyLogEditor({
           <div>
             <span className="mb-1 block text-sm font-medium text-gray-700">Laufhof / Auslauf</span>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-              {ANIMAL_CATEGORIES.map((c) => (
-                <label key={c} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={!!laufhof[c]}
-                    onChange={(e) => setLaufhof((s) => ({ ...s, [c]: e.target.checked }))}
-                  />
-                  {ANIMAL_CATEGORY_LABEL[c]}
-                </label>
-              ))}
+              {ANIMAL_CATEGORIES.map((c) => {
+                const h = herd.get(c)
+                const mark = categoryMark(h)
+                return (
+                  <label key={c} className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={!!laufhof[c]}
+                      onChange={(e) => setLaufhof((s) => ({ ...s, [c]: e.target.checked }))}
+                    />
+                    <span>
+                      {ANIMAL_CATEGORY_LABEL[c]}
+                      {h && (
+                        <span title={categoryTitle(h)} className={`block text-xs ${mark === '✓' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          Herden: {h.withAccess} von {h.animals} {mark ?? ''}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                )
+              })}
             </div>
+            {herd.size > 0 && (
+              <p className="mt-1 text-xs text-gray-500">
+                Aus den Herden (Weide, Laufhof, Ställe mit ständigem Laufhof) — gilt ohne Häkchen. Laufhofgänge je Gruppe unter{' '}
+                <Link to="../herden" className="text-brand-700 underline">
+                  Herden
+                </Link>{' '}
+                oder im{' '}
+                <Link to="../auslauf" className="text-brand-700 underline">
+                  Auslaufjournal
+                </Link>
+                .
+              </p>
+            )}
           </div>
           {wetterQuelle === 'geodaten' && (wetterCode || niederschlag) && (
             <p className="rounded bg-sky-50 px-2 py-1 text-xs text-sky-700">
@@ -148,13 +180,14 @@ export default function DailyLogEditor({
             />
           </label>
           <div>
-            <span className="mb-1 block text-sm font-medium text-gray-700">Anzahl Tiere (optional)</span>
+            <span className="mb-1 block text-sm font-medium text-gray-700">Anzahl Tiere (optional{herd.size > 0 ? ', leer = aus den Herden' : ''})</span>
             <div className="grid grid-cols-3 gap-2">
               {ANIMAL_CATEGORIES.map((c) => (
                 <label key={c} className="text-xs text-gray-600">
                   {ANIMAL_CATEGORY_LABEL[c]}
                   <input
                     type="number"
+                    placeholder={herd.get(c) ? String(herd.get(c)!.animals) : undefined}
                     value={animalCounts[c] ?? ''}
                     onChange={(e) => setAnimalCounts((s) => ({ ...s, [c]: e.target.value }))}
                     className="mt-0.5 w-full rounded border border-gray-300 px-2 py-1 text-sm"

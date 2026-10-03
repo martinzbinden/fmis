@@ -10,7 +10,7 @@ import { getDb } from '../db/pglite'
 import { softDeleteRow, upsertRow } from '../db/write'
 import { addDaysIso, isoDate } from './format'
 import { activeAt, defaultCategory, locateAnimal } from './herdModel'
-import type { HerdCount, HerdGroup, HerdLocation, HerdMember, HerdStay, StaySlot } from '../types'
+import type { HerdCount, HerdGroup, HerdLaufhof, HerdLocation, HerdMember, HerdStay, StaySlot } from '../types'
 
 const dates = <T extends { from_date: unknown; to_date: unknown }>(r: T) => ({
   ...r,
@@ -24,16 +24,19 @@ export interface HerdData {
   stays: HerdStay[]
   members: HerdMember[]
   counts: HerdCount[]
+  /** Laufhofgänge (schema/0018) */
+  laufhof: HerdLaufhof[]
   parcels: { id: string; name: string; season_year: number }[]
 }
 
 export async function loadHerdData(pg: PGlite, seasonYear?: number): Promise<HerdData> {
-  const [locations, groups, stays, members, counts, parcels] = await Promise.all([
+  const [locations, groups, stays, members, counts, laufhof, parcels] = await Promise.all([
     pg.query<HerdLocation>('select * from locations where deleted_at is null order by sort_order, name'),
     pg.query<HerdGroup>('select * from herd_groups where deleted_at is null order by sort_order, name'),
     pg.query<HerdStay>('select * from herd_stays where deleted_at is null order by from_date'),
     pg.query<HerdMember>('select * from herd_members where deleted_at is null order by from_date'),
     pg.query<HerdCount>('select * from herd_counts where deleted_at is null order by from_date'),
+    pg.query<HerdLaufhof>('select * from herd_laufhof where deleted_at is null order by entry_date'),
     pg.query<{ id: string; name: string; season_year: number }>(
       `select id, name, season_year from parcels where deleted_at is null ${seasonYear ? 'and season_year = $1' : ''} order by name`,
       seasonYear ? [seasonYear] : [],
@@ -45,6 +48,7 @@ export async function loadHerdData(pg: PGlite, seasonYear?: number): Promise<Her
     stays: stays.rows.map(dates),
     members: members.rows.map(dates),
     counts: counts.rows.map((c) => ({ ...dates(c), count: Number(c.count) })),
+    laufhof: laufhof.rows.map((l) => ({ ...l, entry_date: isoDate(l.entry_date) })),
     parcels: parcels.rows,
   }
 }
@@ -167,6 +171,15 @@ export async function moveAnimals(data: HerdData, input: MoveInput): Promise<voi
 /** Einzeltiere aus der Gruppe nehmen (Abgang, Verkauf …) ab `date`. */
 export async function removeMembers(data: HerdData, memberIds: string[], date: string): Promise<void> {
   for (const m of data.members.filter((x) => memberIds.includes(x.id))) await closeFrom('herd_members', m, date)
+}
+
+/** Laufhofgang einer Gruppe an `date` setzen oder entfernen. */
+export async function setLaufhof(data: HerdData, groupId: string, date: string, on: boolean): Promise<void> {
+  const existing = data.laufhof.filter((l) => l.group_id === groupId && l.entry_date === date)
+  if (on && existing.length === 0) {
+    await upsertRow('herd_laufhof', { id: crypto.randomUUID(), group_id: groupId, entry_date: date, notes: null })
+  }
+  if (!on) for (const l of existing) await softDeleteRow('herd_laufhof', l.id)
 }
 
 export async function saveLocation(loc: HerdLocation): Promise<void> {

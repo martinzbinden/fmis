@@ -73,6 +73,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "locations": [
         "id", "name", "site", "kind", "sort_order", "active", "notes", "updated_at", "deleted_at",
+        "laufhof",
     ],
     "herd_groups": [
         "id", "name", "species", "milking", "active", "sort_order", "notes", "updated_at", "deleted_at",
@@ -88,6 +89,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     "herd_counts": [
         "id", "group_id", "category", "count", "from_date", "to_date", "notes", "updated_at", "deleted_at",
     ],
+    "herd_laufhof": ["id", "group_id", "entry_date", "notes", "updated_at", "deleted_at"],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
@@ -119,6 +121,7 @@ TABLE_AREA: dict[str, str] = {
     "herd_stays": "wiesenjournal:weide",
     "herd_members": "wiesenjournal:weide",
     "herd_counts": "wiesenjournal:weide",
+    "herd_laufhof": "wiesenjournal:weide",
     "data_history": "wiesenjournal:history",
 }
 
