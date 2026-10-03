@@ -51,15 +51,54 @@ export interface ModuleImporter {
    * übernimmt den Puffer, darum immer `data.slice(0)` weitergeben. */
   detect(files: UploadFile[]): Promise<ImportDetection>
   /** Führt den Import einer Zuordnung aus und zeigt das Ergebnis samt
-   * allfälliger Rückfragen. Wird erst nach "Importieren" angezeigt. */
-  Panel: ComponentType<{ claim: ImportClaim }>
+   * allfälliger Rückfragen. Startet erst, wenn `active` true wird — die
+   * Upload-Seite lässt Importe nacheinander laufen (zwei gleichzeitige
+   * Sitzungen derselben Herde könnten dieselbe Zeile doppelt anlegen). */
+  Panel: ComponentType<ImportPanelProps>
+}
+
+export type ImportPhase = 'queued' | 'running' | 'input' | 'done' | 'error'
+
+export interface ImportStatus {
+  phase: ImportPhase
+  /** Aktueller Schritt, z.B. "Serverstand laden". */
+  step?: string
+  /** Gesamtfortschritt 0..1. */
+  fraction?: number
+}
+
+export interface ImportPanelProps {
+  claim: ImportClaim
+  active: boolean
+  /** 'input' = wartet auf eine Entscheidung; blockiert die Warteschlange nicht. */
+  onStatus: (status: ImportStatus) => void
+}
+
+/** Fortschritt über gewichtete Schritte; Zwischenmeldungen höchstens alle
+ * 150 ms, damit tausende Datensätze nicht tausende Neuzeichnungen auslösen. */
+export function stagedProgress(stages: { key: string; label: string; weight: number }[], onStatus: (s: ImportStatus) => void) {
+  const total = stages.reduce((sum, st) => sum + st.weight, 0) || 1
+  let last = 0
+  return (key: string, fraction = 0, label?: string) => {
+    const i = Math.max(0, stages.findIndex((st) => st.key === key))
+    const now = performance.now()
+    if (fraction > 0 && fraction < 1 && now - last < 150) return
+    last = now
+    const before = stages.slice(0, i).reduce((sum, st) => sum + st.weight, 0)
+    const f = Math.min(1, Math.max(0, fraction))
+    onStatus({ phase: 'running', step: label ?? stages[i]?.label, fraction: (before + (stages[i]?.weight ?? 0) * f) / total })
+  }
 }
 
 const SYSTEM_FILE = /(^|\/)(__MACOSX\/|\.DS_Store$|Thumbs\.db$|desktop\.ini$|\._)/i
 
 /** ZIPs (auch verschachtelt, bis 4 Ebenen) auspacken; Systemdateien und
  * Verzeichnisse fallen weg. */
-export async function expandUploads(picked: File[]): Promise<{ files: UploadFile[]; ignored: { path: string; reason: string }[] }> {
+export async function expandUploads(
+  picked: File[],
+  /** Nach jeder ausgepackten Datei: Anzahl bisher und aktueller Pfad. */
+  onFile?: (count: number, path: string) => void,
+): Promise<{ files: UploadFile[]; ignored: { path: string; reason: string }[] }> {
   const files: UploadFile[] = []
   const ignored: { path: string; reason: string }[] = []
 
@@ -86,6 +125,7 @@ export async function expandUploads(picked: File[]): Promise<{ files: UploadFile
     }
     const head = new TextDecoder('windows-1252').decode(data.slice(0, 4096))
     files.push({ path, name, container, inner, data, head })
+    onFile?.(files.length, path)
   }
 
   for (const f of picked) await add(f.name, '', f.name, await f.arrayBuffer(), 0)

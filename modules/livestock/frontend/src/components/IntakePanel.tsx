@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { ImportPanelProps } from '@fmis/core/upload'
 import { importAnimalRows, type SeedRow } from '../lib/importCsv'
 import { syncClient } from '../db/sync'
 
@@ -8,12 +9,23 @@ const today = () => new Date().toISOString().slice(0, 10)
  * (ear_tag,birth_date,sex) — von der zentralen Upload-Seite
  * (lib/importDetect.ts). Gruppenname und Eingangsdatum bestätigt der
  * Benutzer, darum startet dieser Import nicht von selbst. */
-export default function IntakePanel({ rows, warnings }: { rows: SeedRow[]; warnings: string[] }) {
+export default function IntakePanel({
+  rows,
+  warnings,
+  active,
+  onStatus,
+}: { rows: SeedRow[]; warnings: string[] } & Omit<ImportPanelProps, 'claim'>) {
   const [groupName, setGroupName] = useState(`Gruppe ${today()}`)
   const [intakeDate, setIntakeDate] = useState(today())
   const [importing, setImporting] = useState(false)
   const [done, setDone] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Wartet auf Gruppenname und Datum — hält die übrigen Importe nicht auf.
+  useEffect(() => {
+    if (active && done == null) onStatus({ phase: 'input', step: 'Gruppenname und Eingangsdatum bestätigen', fraction: 0 })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active])
 
   async function handleImport() {
     setImporting(true)
@@ -21,6 +33,7 @@ export default function IntakePanel({ rows, warnings }: { rows: SeedRow[]; warni
     try {
       const { count } = await importAnimalRows(rows, groupName, intakeDate)
       setDone(count)
+      onStatus({ phase: 'done', fraction: 1 })
       void syncClient.syncNow()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
@@ -29,6 +42,7 @@ export default function IntakePanel({ rows, warnings }: { rows: SeedRow[]; warni
     }
   }
 
+  if (!active) return null
   if (done != null) {
     return (
       <p className="rounded bg-brand-50 p-3 text-sm text-brand-900">

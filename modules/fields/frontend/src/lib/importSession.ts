@@ -7,7 +7,9 @@ import { syncClient } from '../db/sync'
 import { DATE_ONLY_COLUMNS, SYNC_TABLES } from '../db/tables'
 import { ensureOutbox } from '../db/write'
 
-export function openFieldsImport(): Promise<ImportSession> {
+export function openFieldsImport(
+  onProgress?: (step: string, fraction: number) => void,
+): Promise<ImportSession> {
   return openImportSession({
     moduleKey: 'fields',
     migrations,
@@ -16,5 +18,6 @@ export function openFieldsImport(): Promise<ImportSession> {
     ensureOutbox,
     sync: syncClient,
     localDb: getDb,
+    onProgress,
   })
 }

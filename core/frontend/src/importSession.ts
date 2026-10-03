@@ -48,11 +48,14 @@ export async function openImportSession(opts: {
   sync: SyncClient
   /** Lokale Datenbank des Moduls — nur um ungesendete Änderungen zu erkennen. */
   localDb: () => Promise<PGlite>
+  /** Fortschritt beim Laden des Serverstands (0..1), für die Upload-Seite. */
+  onProgress?: (step: string, fraction: number) => void
 }): Promise<ImportSession> {
   const base = `${API_URL}/${opts.moduleKey}/sync`
 
   // 1. Ungesendete lokale Änderungen zuerst hochladen — sonst könnte der
   //    Import auf einem älteren Stand derselben Zeilen aufsetzen.
+  opts.onProgress?.('Lokale Änderungen hochladen', 0)
   await opts.sync.syncNow()
   const local = await opts.localDb()
   await opts.ensureOutbox(local)
@@ -64,6 +67,7 @@ export async function openImportSession(opts: {
   }
 
   // 2. Serverstand holen.
+  opts.onProgress?.('Serverstand laden', 0.1)
   let res: Response
   try {
     res = await fetch(new URL(`${base}/pull`, window.location.origin).toString(), { headers: authHeaders() })
@@ -74,6 +78,9 @@ export async function openImportSession(opts: {
   const data = (await res.json()) as { tables: Record<string, Record<string, unknown>[]> }
 
   // 3. Flüchtige Datenbank: Schema wie lokal, Serverstand ohne Outbox laden.
+  opts.onProgress?.('Serverstand übernehmen', 0.4)
+  const total = Object.keys(opts.syncTables).reduce((s, t) => s + (data.tables[t]?.length ?? 0), 0)
+  let loaded = 0
   const pg = new PGlite()
   for (const m of opts.migrations) await pg.exec(m.sql)
   await opts.ensureOutbox(pg)
@@ -91,9 +98,11 @@ export async function openImportSession(opts: {
           `insert into "${table}" (${colList}) values (${placeholders}) on conflict (id) do nothing`,
           columns.map((c) => row[c] ?? null),
         )
+        if (++loaded % 200 === 0) opts.onProgress?.('Serverstand übernehmen', 0.4 + (0.6 * loaded) / total)
       }
     }
   })
+  opts.onProgress?.('Serverstand übernehmen', 1)
 
   async function commit(): Promise<number> {
     const { rows: outbox } = await pg.query<{ table_name: string; row_id: string }>('select table_name, row_id from sync_outbox')

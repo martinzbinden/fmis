@@ -1,28 +1,39 @@
 import { useEffect, useRef, useState } from 'react'
-import { rezip, type ImportClaim } from '@fmis/core/upload'
+import { rezip, stagedProgress, type ImportPanelProps } from '@fmis/core/upload'
 import type { ImportSession } from '@fmis/core/importSession'
 import { importFieldsZips, type ImportSummary } from '../lib/importFields'
 import { openFieldsImport } from '../lib/importSession'
 
 /** GELAN-Import von der zentralen Upload-Seite (lib/importDetect.ts): gegen
  * den Serverstand und in einem Stück gespeichert (lib/importSession.ts) —
- * das Gerät holt die Änderungen per Sync. Läuft beim Anzeigen los. */
-export default function ImportPanel({ claim }: { claim: ImportClaim }) {
+ * das Gerät holt die Änderungen per Sync. Startet, sobald `active`. */
+export default function ImportPanel({ claim, active, onStatus }: ImportPanelProps) {
   const started = useRef(false)
   const [summary, setSummary] = useState<ImportSummary | null>(null)
 
   useEffect(() => {
-    if (started.current) return
+    if (!active || started.current) return
     started.current = true
+    const progress = stagedProgress(
+      [
+        { key: 'session', label: 'Serverstand laden', weight: 4 },
+        { key: 'import', label: 'Raumdaten abgleichen', weight: 3 },
+        { key: 'commit', label: 'Speichern', weight: 1 },
+      ],
+      onStatus,
+    )
     void (async () => {
       let session: ImportSession | null = null
       try {
         const name = claim.files[0].container.split('/').pop() || 'raumdaten.zip'
         const zip = await rezip(name, claim.files)
-        session = await openFieldsImport()
+        session = await openFieldsImport((step, f) => progress('session', f, step))
+        progress('import', 0)
         const result = await importFieldsZips([zip], session.pg)
+        progress('commit', 0)
         result.changed = await session.commit()
         setSummary(result)
+        onStatus({ phase: 'done', fraction: 1 })
       } catch (err) {
         setSummary({
           farmsImported: 0,
@@ -30,13 +41,14 @@ export default function ImportPanel({ claim }: { claim: ImportClaim }) {
           fieldDeclarationsImported: 0,
           warnings: [err instanceof Error ? err.message : 'Import fehlgeschlagen'],
         })
+        onStatus({ phase: 'error' })
       } finally {
         await session?.close().catch(() => {})
       }
     })()
-  }, [claim])
+  }, [active, claim, onStatus])
 
-  if (!summary) return <p className="text-sm text-gray-500">Importiere…</p>
+  if (!summary) return null
   return (
     <div className="rounded bg-brand-50 p-3 text-sm text-brand-900">
       <p>

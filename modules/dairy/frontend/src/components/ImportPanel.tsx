@@ -3,6 +3,7 @@ import { decodeHerdbookFile, parseAdisFiles, importAdisData, type ImportSummary 
 import type { ImportFile } from '../lib/importFiles'
 import { openDairyImport } from '../lib/importSession'
 import type { ImportSession } from '@fmis/core/importSession'
+import { stagedProgress, type ImportPanelProps } from '@fmis/core/upload'
 import { parseTierbestand, importTierbestand } from '../lib/importTvd'
 import { inTransaction } from '../db/transaction'
 import { fmtDate, todayIso } from '../lib/format'
@@ -17,7 +18,12 @@ import { applyCertificatePlan, planCertificateImport, type CertificateImportResu
  * den Ohrmarken-Schlüssel, Kurz- und Langform werden nicht doppelt
  * angelegt), zuletzt Ausweise — so hat der Export-Stammbaum Vorrang und der
  * Ausweis füllt Lücken. Läuft beim Anzeigen los. */
-export default function ImportPanel({ moduleKey, files }: { moduleKey: string; files: ImportFile[] }) {
+export default function ImportPanel({
+  moduleKey,
+  files,
+  active,
+  onStatus,
+}: { moduleKey: string; files: ImportFile[] } & Omit<ImportPanelProps, 'claim'>) {
   // Offene Sitzung, solange Leistungsausweise auf einen Entscheid warten.
   const session = useRef<ImportSession | null>(null)
   const started = useRef(false)
@@ -44,7 +50,10 @@ export default function ImportPanel({ moduleKey, files }: { moduleKey: string; f
       setCertificates((c) => [...c, result])
       const rest = pending.filter((x) => x !== plan)
       setPending(rest)
-      if (rest.length === 0) await closeSession()
+      if (rest.length === 0) {
+        await closeSession()
+        onStatus({ phase: 'done', fraction: 1 })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
     } finally {
@@ -53,28 +62,43 @@ export default function ImportPanel({ moduleKey, files }: { moduleKey: string; f
   }
 
   async function run() {
+    const of = (kind: ImportFile['kind']) => files.filter((f) => f.kind === kind)
+    const herdbook = of('herdbook')
+    const certs = of('certificate')
+    const progress = stagedProgress(
+      [
+        { key: 'session', label: 'Serverstand laden', weight: 4 },
+        { key: 'herdbook', label: 'Herdebuch', weight: herdbook.length ? 5 : 0 },
+        { key: 'tvd', label: 'TVD-Tierbestand', weight: of('tvd').length ? 1 : 0 },
+        { key: 'cert', label: 'Leistungsausweise', weight: certs.length ? 1 + certs.length / 4 : 0 },
+        { key: 'commit', label: 'Speichern', weight: 1 },
+      ],
+      onStatus,
+    )
     try {
       // Alles gegen den Serverstand (core/frontend/src/importSession.ts):
       // die lokale Datenbank wird erst über den Sync-Pull aktualisiert.
-      const s = await openDairyImport(moduleKey)
+      const s = await openDairyImport(moduleKey, (step, f) => progress('session', f, step))
       session.current = s
       const db = s.pg
-      const of = (kind: ImportFile['kind']) => files.filter((f) => f.kind === kind)
       const nextWarnings: string[] = []
 
       let herdbookSummary: ImportSummary | null = null
-      const herdbook = of('herdbook')
       if (herdbook.length > 0) {
+        progress('herdbook', 0, 'Herdebuch lesen')
         const parsed = parseAdisFiles(
           herdbook.map((f) => decodeHerdbookFile(f.name, f.data)),
           speciesOf(moduleKey),
         )
-        herdbookSummary = await importAdisData(db, parsed)
+        herdbookSummary = await importAdisData(db, parsed, (done, total) =>
+          progress('herdbook', done / total, `Herdebuch: ${done.toLocaleString('de-CH')} von ${total.toLocaleString('de-CH')} Datensätzen`),
+        )
         nextWarnings.push(...parsed.warnings)
       }
 
       const tvd = { read: 0, written: 0 }
       for (const f of of('tvd')) {
+        progress('tvd', 0)
         try {
           const animals = await parseTierbestand(new File([f.data], f.name))
           if (animals.length === 0) {
@@ -91,7 +115,8 @@ export default function ImportPanel({ moduleKey, files }: { moduleKey: string; f
       // Ohne Abweichungen direkt speichern, sonst zuerst nachfragen.
       const results: CertificateImportResult[] = []
       const toDecide: CertificatePlan[] = []
-      for (const f of of('certificate')) {
+      for (const [i, f] of certs.entries()) {
+        progress('cert', i / certs.length, `Leistungsausweis ${i + 1} von ${certs.length}`)
         try {
           const plan = await planCertificateImport(db, parseSmgCertificate(await readPdfText(f.data.slice(0)), todayIso()))
           if (plan.conflicts.length) toDecide.push(plan)
@@ -100,8 +125,10 @@ export default function ImportPanel({ moduleKey, files }: { moduleKey: string; f
           nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
         }
       }
+      progress('commit', 0)
       await s.commit()
       if (toDecide.length === 0) await closeSession()
+      onStatus(toDecide.length ? { phase: 'input', step: 'Rückfrage zu Leistungsausweisen', fraction: 1 } : { phase: 'done', fraction: 1 })
       setSummary(herdbookSummary)
       if (of('tvd').length) setTvdCount(tvd)
       setCertificates(results)
@@ -110,21 +137,22 @@ export default function ImportPanel({ moduleKey, files }: { moduleKey: string; f
     } catch (err) {
       await closeSession()
       setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+      onStatus({ phase: 'error' })
     } finally {
       setBusy(false)
     }
   }
 
   useEffect(() => {
-    if (started.current) return
+    if (!active || started.current) return
     started.current = true
     void run()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [active])
 
   return (
     <div className="space-y-2 text-sm">
-      {busy && pending.length === 0 && <p className="text-gray-500">Importiere…</p>}
+
       {error && <p className="text-red-600">{error}</p>}
       {summary && (
         <div className="rounded bg-brand-50 p-3 text-brand-900">

@@ -7,7 +7,10 @@ import { getDairySyncClient } from '../db/sync'
 import { DATE_ONLY_COLUMNS, SYNC_TABLES } from '../db/tables'
 import { ensureOutbox } from '../db/write'
 
-export function openDairyImport(moduleKey: string): Promise<ImportSession> {
+export function openDairyImport(
+  moduleKey: string,
+  onProgress?: (step: string, fraction: number) => void,
+): Promise<ImportSession> {
   return openImportSession({
     moduleKey,
     migrations,
@@ -16,5 +19,6 @@ export function openDairyImport(moduleKey: string): Promise<ImportSession> {
     ensureOutbox,
     sync: getDairySyncClient(moduleKey),
     localDb: () => getDb(moduleKey),
+    onProgress,
   })
 }

@@ -57,7 +57,9 @@ const livestockModule: ModuleDescriptor = {
   ],
   DbProvider: LivestockDbProvider,
   sync: syncClient,
-  importer: createLivestockImporter(({ claim }) => <IntakePanel rows={intakeOf(claim).rows} warnings={intakeOf(claim).warnings} />),
+  importer: createLivestockImporter(({ claim, ...run }) => (
+    <IntakePanel rows={intakeOf(claim).rows} warnings={intakeOf(claim).warnings} {...run} />
+  )),
 }
 
 export default livestockModule

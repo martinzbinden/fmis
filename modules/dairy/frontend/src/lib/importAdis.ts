@@ -321,10 +321,12 @@ async function importBreedingData(
   parsed: ParseResult,
   animalIdByKey: Map<string, string>,
   unmatched: Set<string>,
+  tick: () => void,
 ) {
   let pedigreeWritten = 0
   const pedigreeByKey = await loadByKey(pg, 'pedigree', 'animal_key')
   for (const e of parsed.pedigree) {
+    tick()
     const prev = pedigreeByKey.get(e.key)
     if (prev?.deleted_at) continue
     const base = {
@@ -345,6 +347,7 @@ async function importBreedingData(
   let matingsWritten = 0
   const matingsByKey = await loadByKey(pg, 'matings', 'import_key')
   for (const m of parsed.matings) {
+    tick()
     const damKey = animalKey(m.ear_tag)
     const animalId = damKey ? animalIdByKey.get(damKey) : undefined
     if (!animalId || !damKey) {
@@ -376,6 +379,7 @@ async function importBreedingData(
   // Geburten: K11 hat eine Zeile je Nachkomme — Ereignis = Muttertier + Datum.
   const events = new Map<string, ParsedBirthLine[]>()
   for (const b of parsed.births) {
+    tick()
     const damKey = animalKey(b.dam_ear_tag)
     if (!damKey) continue
     const k = `${damKey}|${b.birth_date}`
@@ -436,6 +440,7 @@ async function importBreedingData(
   let breedingValuesWritten = 0
   const bvByKey = await loadByKey(pg, 'breeding_values', 'import_key')
   for (const bv of parsed.breedingValues) {
+    tick()
     const key = animalKey(bv.ear_tag)
     const animalId = key ? animalIdByKey.get(key) : undefined
     if (!animalId || !key) {
@@ -470,13 +475,23 @@ async function importBreedingData(
  * lactation_number, closure_type): mehrere Zeilen pro Laktation mit
  * unterschiedlicher Abschlussart sind gewollt (siehe schema/0003_lactations.sql).
  */
-export async function importAdisData(pg: PGlite, parsed: ParseResult): Promise<ImportSummary> {
+export async function importAdisData(
+  pg: PGlite,
+  parsed: ParseResult,
+  /** Fortschritt je geschriebenem Datensatz (für die Upload-Seite). */
+  onProgress?: (done: number, total: number) => void,
+): Promise<ImportSummary> {
+  const total =
+    parsed.animals.length + parsed.milkTests.length + parsed.lactations.length + parsed.pedigree.length +
+    parsed.matings.length + parsed.births.length + parsed.breedingValues.length
+  let done = 0
+  const tick = () => onProgress?.(++done, total)
   // Eine Transaktion für den ganzen Import (siehe db/transaction.ts) — beim
   // vollständigen Schaf-Export (~3000 Zeilen) Sekunden statt Minuten.
-  return inTransaction(pg, (tx) => importAdisDataIn(tx, parsed))
+  return inTransaction(pg, (tx) => importAdisDataIn(tx, parsed, tick))
 }
 
-async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<ImportSummary> {
+async function importAdisDataIn(pg: PGlite, parsed: ParseResult, tick: () => void): Promise<ImportSummary> {
   const { rows: existingAnimals } = await pg.query<Record<string, unknown> & { id: string; ear_tag: string }>(
     'select * from animals',
   )
@@ -488,6 +503,7 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<Import
   const earTagToId = new Map(existingAnimals.map((a) => [a.ear_tag, a.id]))
 
   for (const animal of parsed.animals) {
+    tick()
     const key = animalKey(animal.ear_tag) ?? animal.ear_tag
     const prev = existingByKey.get(key)
     const id = prev?.id ?? crypto.randomUUID()
@@ -516,6 +532,7 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<Import
   const unmatchedEarTags = new Set<string>()
   let milkTestsImported = 0
   for (const test of parsed.milkTests) {
+    tick()
     const animalId = idFor(test.ear_tag)
     if (!animalId) {
       unmatchedEarTags.add(test.ear_tag)
@@ -537,6 +554,7 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<Import
 
   let lactationsImported = 0
   for (const lactation of parsed.lactations) {
+    tick()
     const animalId = idFor(lactation.ear_tag)
     if (!animalId) {
       unmatchedEarTags.add(lactation.ear_tag)
@@ -551,7 +569,7 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult): Promise<Import
     lactationsImported++
   }
 
-  const breeding = await importBreedingData(pg, parsed, animalIdByKey, unmatchedEarTags)
+  const breeding = await importBreedingData(pg, parsed, animalIdByKey, unmatchedEarTags, tick)
 
   return {
     animalsImported: parsed.animals.length,

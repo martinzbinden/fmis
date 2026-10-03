@@ -67,6 +67,6 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     ],
     DbProvider: DairyDbProvider,
     sync: createDairySyncClient(key),
-    importer: createDairyImporter(key, title, ({ claim }) => <ImportPanel moduleKey={key} files={dairyFilesOf(claim)} />),
+    importer: createDairyImporter(key, title, ({ claim, ...run }) => <ImportPanel moduleKey={key} files={dairyFilesOf(claim)} {...run} />),
   }
 }
