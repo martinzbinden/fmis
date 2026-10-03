@@ -1,3 +1,4 @@
+import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
 import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
@@ -211,6 +212,8 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
           {meatUntil && <div>⚠ Fleisch-Absetzfrist bis {fmtDate(meatUntil)}</div>}
         </div>
       )}
+
+      <AnimalLocationCard moduleKey={moduleKey} animalId={a.id} active={a.status === 'aktiv'} />
 
       {reasons.length > 0 && (
         <Section title="Hinweise (Ausmerzliste)">

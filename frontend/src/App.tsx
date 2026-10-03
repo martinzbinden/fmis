@@ -15,7 +15,7 @@ import fieldsModule from '@fmis/fields/module'
 import wiesenjournalModule from '@fmis/wiesenjournal/module'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
-import { registerAnimalProviders } from '@fmis/core/animals'
+import { registerAnimalProviders, registerHerdLocator } from '@fmis/core/animals'
 
 // Statische Registry der im Frontend-Build vorhandenen Module (Pendant zu
 // MODULE_SPECS in core/backend/fmis_core/module_registry.py) — welche davon
@@ -124,6 +124,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
   const enabledKeys = new Set(moduleInfo.filter((m) => m.enabled).map((m) => m.key))
   const enabledModules = AVAILABLE_MODULES.filter((m) => enabledKeys.has(m.key))
   registerAnimalProviders(enabledModules)
+  registerHerdLocator(enabledModules)
 
   return (
     <Routes>

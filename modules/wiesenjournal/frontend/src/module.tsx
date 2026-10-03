@@ -15,6 +15,7 @@ import WorkPlan from './pages/WorkPlan'
 import Machines from './pages/Machines'
 import MachineDetail from './pages/MachineDetail'
 import Herds from './pages/Herds'
+import { wiesenjournalHerdLocator } from './lib/herds'
 import './theme.css'
 
 function WiesenjournalDbProvider({ children }: { children: ReactNode }) {
@@ -52,6 +53,7 @@ const wiesenjournalModule: ModuleDescriptor = {
   ],
   DbProvider: WiesenjournalDbProvider,
   sync: syncClient,
+  herdLocator: wiesenjournalHerdLocator,
 }
 
 export default wiesenjournalModule

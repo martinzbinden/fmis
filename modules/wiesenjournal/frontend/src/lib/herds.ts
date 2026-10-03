@@ -5,10 +5,11 @@
 
 import type { PGlite } from '@electric-sql/pglite'
 import type { AnimalRef } from '@fmis/core/animals'
-import { animalProvider } from '@fmis/core/animals'
+import { animalProvider, type HerdLocator } from '@fmis/core/animals'
+import { getDb } from '../db/pglite'
 import { softDeleteRow, upsertRow } from '../db/write'
 import { addDaysIso, isoDate } from './format'
-import { activeAt, defaultCategory } from './herdModel'
+import { activeAt, defaultCategory, locateAnimal } from './herdModel'
 import type { HerdCount, HerdGroup, HerdLocation, HerdMember, HerdStay, StaySlot } from '../types'
 
 const dates = <T extends { from_date: unknown; to_date: unknown }>(r: T) => ({
@@ -170,4 +171,50 @@ export async function removeMembers(data: HerdData, memberIds: string[], date: s
 
 export async function saveLocation(loc: HerdLocation): Promise<void> {
   await upsertRow('locations', loc as never)
+}
+
+/** Standort eines Tiers für das Tierdetail anderer Module (core animals.ts). */
+export const wiesenjournalHerdLocator: HerdLocator = {
+  herdsPath: '/wiesenjournal/herden',
+  async locate(_moduleKey, animalId, date) {
+    const data = await loadHerdData(await getDb())
+    return locateAnimal(data, animalId, date)
+  },
+}
+
+/** Bestand klären: Einzeltiere ab `date` in der Gruppe führen (aus einer
+ * allfälligen anderen Gruppe heraus) und — weil sie dort bisher als Anzahl
+ * ohne Nummer gezählt waren — diese Anzahl je Kategorie entsprechend
+ * verringern. Tiere, die schon in der Gruppe sind, bleiben unverändert. */
+export async function identifyAnimals(
+  data: HerdData,
+  group: HerdGroup,
+  animals: AnimalRef[],
+  categories: Record<string, string>,
+  date: string,
+  reduceCounts: boolean,
+): Promise<void> {
+  const perCategory = new Map<string, number>()
+  for (const a of animals) {
+    const open = data.members.filter((m) => m.animal_id === a.id && (m.to_date == null || m.to_date >= date))
+    if (open.some((m) => m.group_id === group.id && m.from_date <= date)) continue
+    for (const m of open) await closeFrom('herd_members', m, date)
+    const category = categories[a.id] ?? defaultCategory(a, group.milking, date)
+    await upsertRow('herd_members', {
+      id: crypto.randomUUID(),
+      group_id: group.id,
+      module_key: a.moduleKey,
+      animal_id: a.id,
+      label: a.name ? `${a.label} ${a.name}` : a.label,
+      category,
+      from_date: date,
+      to_date: null,
+    })
+    perCategory.set(category, (perCategory.get(category) ?? 0) + 1)
+  }
+  if (!reduceCounts) return
+  for (const [cat, n] of perCategory) {
+    const before = countAt(data, group.id, cat, date)
+    if (before > 0) await setCount(data, group.id, cat, Math.max(0, before - n), date)
+  }
 }

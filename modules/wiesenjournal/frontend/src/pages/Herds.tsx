@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useHasPermission } from '@fmis/core/AuthContext'
-import { listAllAnimals, type AnimalRef } from '@fmis/core/animals'
+import { animalProviders, listAllAnimals, type AnimalRef } from '@fmis/core/animals'
 import { useQuery } from '../hooks/useQuery'
 import Modal from '../components/Modal'
 import { fmtDate, todayIso } from '../lib/format'
-import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, HERD_CATEGORIES } from '../lib/herdModel'
-import { changeStay, countAt, loadHerdData, memberAt, moveAnimals, removeMembers, saveGroup, saveLocation, setCount, type HerdData } from '../lib/herds'
+import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, HERD_CATEGORIES, matchNumber, numberTokens } from '../lib/herdModel'
+import { changeStay, countAt, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, saveGroup, saveLocation, setCount, type HerdData } from '../lib/herds'
 import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LocationKind, StaySlot } from '../types'
 
 const SPECIES_ICON: Record<HerdSpecies, string> = { schafe: '🐑', rinder: '🐄' }
@@ -257,29 +257,18 @@ function MoveDialog({
   }
   const candidates = (animals ?? []).filter((a) => !onlyFrom || !from || groupOf(a)?.id === from.id)
 
-  // Nummer → Tier: zuerst exakte Laufnummer, sonst Ende der Ohrmarke — aber
-  // nur, wenn es genau ein Tier trifft (sonst wäre die Zuordnung Zufall).
-  const findByNumber = (t: string): AnimalRef | 'mehrdeutig' | null => {
-    const list = animals ?? []
-    const exact = list.filter((a) => (a.lauf_nr ?? '').toLowerCase() === t)
-    if (exact.length === 1) return exact[0]
-    if (exact.length > 1) return 'mehrdeutig'
-    const digits = t.replace(/[.\s]/g, '')
-    const suffix = list.filter((a) => a.ear_tag.toLowerCase().replace(/[.\s]/g, '').endsWith(digits))
-    return suffix.length === 1 ? suffix[0] : suffix.length > 1 ? 'mehrdeutig' : null
-  }
-  const tokens = numbers.split(/[\s,;]+/).map((t) => t.trim().toLowerCase()).filter(Boolean)
+  const tokens = numberTokens(numbers)
   function applyNumbers(text: string) {
     setNumbers(text)
     const next = new Set(selected)
-    for (const t of text.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean)) {
-      const hit = findByNumber(t)
+    for (const t of numberTokens(text)) {
+      const hit = matchNumber(animals ?? [], t)
       if (hit && hit !== 'mehrdeutig') next.add(hit.id)
     }
     setSelected(next)
   }
-  const unmatched = tokens.filter((t) => findByNumber(t) == null)
-  const ambiguous = tokens.filter((t) => findByNumber(t) === 'mehrdeutig')
+  const unmatched = tokens.filter((t) => matchNumber(animals ?? [], t) == null)
+  const ambiguous = tokens.filter((t) => matchNumber(animals ?? [], t) === 'mehrdeutig')
 
   const chosen = (animals ?? []).filter((a) => selected.has(a.id))
   const to = data.groups.find((g) => g.id === toId) ?? null
@@ -435,6 +424,182 @@ function MoveDialog({
   )
 }
 
+/** Bestand klären: Einzeltiere per Nummer einer Gruppe zuordnen; die
+ * Anzahl ohne Nummer der Gruppe sinkt entsprechend (lib/herds.ts
+ * identifyAnimals). Aus «Tiere ohne Gruppe» oder aus einer Gruppe heraus. */
+function IdentifyDialog({
+  data,
+  group: initialGroup,
+  preselected,
+  date: initialDate,
+  onClose,
+}: {
+  data: HerdData
+  group: HerdGroup | null
+  preselected?: AnimalRef[]
+  date: string
+  onClose: () => void
+}) {
+  const active = data.groups.filter((g) => g.active)
+  const [groupId, setGroupId] = useState(initialGroup?.id ?? active[0]?.id ?? '')
+  const group = data.groups.find((g) => g.id === groupId) ?? null
+  const species = group?.species ?? 'schafe'
+  const [date, setDate] = useState(initialDate)
+  const [animals, setAnimals] = useState<AnimalRef[] | null>(null)
+  const [numbers, setNumbers] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set((preselected ?? []).map((a) => a.id)))
+  const [categories, setCategories] = useState<Record<string, string>>({})
+  const [onlyUnassigned, setOnlyUnassigned] = useState(true)
+  const [reduce, setReduce] = useState(true)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    void listAllAnimals(species).then(setAnimals)
+  }, [species])
+
+  const list = animals ?? []
+  const groupOf = (a: AnimalRef) => {
+    const m = memberAt(data, a.id, date)
+    return m ? data.groups.find((g) => g.id === m.group_id) : undefined
+  }
+  const candidates = list.filter((a) => selected.has(a.id) || !onlyUnassigned || !groupOf(a))
+  const chosen = list.filter((a) => selected.has(a.id))
+  const tokens = numberTokens(numbers)
+  const unmatched = tokens.filter((t) => matchNumber(list, t) == null)
+  const ambiguous = tokens.filter((t) => matchNumber(list, t) === 'mehrdeutig')
+  const categoryOf = (a: AnimalRef) => categories[a.id] ?? defaultCategory(a, group?.milking ?? false, date)
+
+  function applyNumbers(text: string) {
+    setNumbers(text)
+    const next = new Set(selected)
+    for (const t of numberTokens(text)) {
+      const hit = matchNumber(list, t)
+      if (hit && hit !== 'mehrdeutig') next.add(hit.id)
+    }
+    setSelected(next)
+  }
+
+  // Vorschau: Anzahl ohne Nummer je Kategorie vorher → nachher
+  const perCat = new Map<string, number>()
+  for (const a of chosen) if (groupOf(a)?.id !== group?.id) perCat.set(categoryOf(a), (perCat.get(categoryOf(a)) ?? 0) + 1)
+  const preview = group
+    ? [...perCat].map(([cat, n]) => {
+        const before = countAt(data, group.id, cat, date)
+        return { cat, n, before, after: Math.max(0, before - n) }
+      })
+    : []
+  const moving = chosen.filter((a) => groupOf(a) && groupOf(a)!.id !== group?.id)
+
+  async function save() {
+    if (!group) return
+    setBusy(true)
+    try {
+      await identifyAnimals(data, group, chosen, Object.fromEntries(chosen.map((a) => [a.id, categoryOf(a)])), date, reduce)
+      onClose()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Nummern erfassen" onClose={() => !busy && onClose()}>
+      <div className="space-y-3 text-sm">
+        <p className="text-xs text-gray-500">
+          Tiere, die schon in der Gruppe stehen, aber bisher nur gezählt waren, per Nummer erfassen. Die Anzahl ohne Nummer sinkt
+          entsprechend — der Bestand bleibt gleich.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="mb-1 block font-medium text-gray-700">Gruppe</span>
+            <select className={field} value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+              {active.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {SPECIES_ICON[g.species]} {g.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block font-medium text-gray-700">ab</span>
+            <input type="date" className={field} value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+        </div>
+        <input className={field} value={numbers} onChange={(e) => applyNumbers(e.target.value)} placeholder="Laufnummern oder Ende der Ohrmarke, z.B. 2212 2213" />
+        {unmatched.length > 0 && <p className="text-xs text-amber-700">Nicht gefunden: {unmatched.join(', ')}</p>}
+        {ambiguous.length > 0 && <p className="text-xs text-amber-700">Mehrdeutig, bitte in der Liste wählen: {ambiguous.join(', ')}</p>}
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          <input type="checkbox" checked={onlyUnassigned} onChange={(e) => setOnlyUnassigned(e.target.checked)} />
+          nur Tiere ohne Gruppe anzeigen
+        </label>
+        <div className="max-h-64 overflow-y-auto rounded border border-gray-200">
+          {animals == null && <p className="p-2 text-xs text-gray-400">Lädt…</p>}
+          {candidates.map((a) => {
+            const g = groupOf(a)
+            const isSel = selected.has(a.id)
+            return (
+              <div key={`${a.moduleKey}-${a.id}`} className="flex items-center gap-2 border-b px-2 py-1 last:border-0">
+                <input
+                  type="checkbox"
+                  checked={isSel}
+                  onChange={(e) => {
+                    const next = new Set(selected)
+                    if (e.target.checked) next.add(a.id)
+                    else next.delete(a.id)
+                    setSelected(next)
+                  }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{a.label}</span>
+                  {a.name && <span className="text-gray-500"> {a.name}</span>}
+                  {g && <span className="ml-1 text-xs text-gray-400">({g.name})</span>}
+                </span>
+                {isSel && (
+                  <select
+                    className="rounded border border-gray-300 px-1 py-0.5 text-xs"
+                    value={categoryOf(a)}
+                    onChange={(e) => setCategories({ ...categories, [a.id]: e.target.value })}
+                  >
+                    {HERD_CATEGORIES[species].map((c) => (
+                      <option key={c.key} value={c.key}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <label className="flex items-start gap-2">
+          <input type="checkbox" className="mt-0.5" checked={reduce} onChange={(e) => setReduce(e.target.checked)} />
+          <span>
+            Anzahl ohne Nummer entsprechend verringern
+            {reduce && preview.length > 0 && (
+              <span className="block text-xs text-gray-500">
+                {preview.map((p) => `${categoryLabel(p.cat)}: ${p.before} → ${p.after}${p.n > p.before ? ` (${p.n - p.before} mehr als gezählt)` : ''}`).join(' · ')}
+              </span>
+            )}
+          </span>
+        </label>
+        {moving.length > 0 && (
+          <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">
+            {moving.length} {moving.length === 1 ? 'Tier ist' : 'Tiere sind'} bisher in einer anderen Gruppe und wechseln ab {fmtDate(date)} hierher:{' '}
+            {moving.map((a) => `${a.label} (${groupOf(a)?.name})`).join(', ')}
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={busy || !group || chosen.length === 0}
+          onClick={() => void save()}
+          className="w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50"
+        >
+          {busy ? 'Speichert…' : `${chosen.length} ${chosen.length === 1 ? 'Tier' : 'Tiere'} in «${group?.name ?? '…'}» erfassen`}
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
 /** Feste Orte (Ställe, Alp) verwalten. */
 function LocationsDialog({ data, onClose }: { data: HerdData; onClose: () => void }) {
   const [edit, setEdit] = useState<HerdLocation | null>(null)
@@ -510,6 +675,7 @@ type DialogState = { seq: number } & (
   | { kind: 'stay'; group: HerdGroup; slot: StaySlot }
   | { kind: 'count'; group: HerdGroup }
   | { kind: 'move'; from: HerdGroup | null }
+  | { kind: 'identify'; group: HerdGroup | null; preselected?: AnimalRef[] }
   | { kind: 'locations' }
 )
 type DialogInput = DialogState extends infer D ? (D extends { seq: number } ? Omit<D, 'seq'> : never) : never
@@ -525,16 +691,27 @@ export default function Herds() {
   const [dialog, setDialogState] = useState<DialogState | null>(null)
   const setDialog = (d: DialogInput | null) => setDialogState((prev) => (d ? ({ ...d, seq: (prev?.seq ?? 0) + 1 } as DialogState) : null))
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const [unassigned, setUnassigned] = useState<AnimalRef[] | null>(null)
+  const [allActive, setAllActive] = useState<AnimalRef[] | null>(null)
+  const [pick, setPick] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!data) return
-    void listAllAnimals().then((all) => setUnassigned(all.filter((a) => !memberAt(data, a.id, date))))
-  }, [data, date])
+    void listAllAnimals().then(setAllActive)
+  }, [data])
+
+  // Bestand klären: Tiere ohne Gruppe, Gruppen mit Anzahl ohne Nummer,
+  // Einzeltiere in Gruppen, die im Tiermodul nicht mehr aktiv sind.
+  const unassigned = useMemo(() => (data && allActive ? allActive.filter((a) => !memberAt(data, a.id, date)) : null), [data, allActive, date])
+  const gone = useMemo(() => {
+    if (!data || !allActive) return []
+    const modules = new Set(animalProviders().map(([k]) => k))
+    const activeIds = new Set(allActive.map((a) => a.id))
+    return data.members.filter((m) => activeAt(m, date) && modules.has(m.module_key) && !activeIds.has(m.animal_id))
+  }, [data, allActive, date])
 
   const groups = useMemo(() => (data?.groups ?? []).filter((g) => g.active), [data])
   const close = () => {
     setDialog(null)
+    setPick(new Set())
     refresh()
   }
 
@@ -570,6 +747,150 @@ export default function Herds() {
           Nummer oder als Anzahl ohne Nummer.
         </p>
       )}
+
+      {groups.length > 0 && data && (unassigned?.length || gone.length || groups.some((g) => compositionAt(g.id, data.members, data.counts, date).counts.length)) ? (
+        <details className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+          <summary className="cursor-pointer font-medium text-amber-900">
+            Bestand klären ·{' '}
+            {[
+              (() => {
+                const n = groups.reduce((s, g) => s + compositionAt(g.id, data.members, data.counts, date).counts.reduce((t, c) => t + c.count, 0), 0)
+                return n ? `${n} ohne Nummer` : null
+              })(),
+              unassigned?.length ? `${unassigned.length} ohne Gruppe` : null,
+              gone.length ? `${gone.length} nicht mehr im Bestand` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </summary>
+          <div className="mt-2 space-y-4">
+            {groups.some((g) => compositionAt(g.id, data.members, data.counts, date).counts.length > 0) && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase text-amber-900">Tiere ohne Nummer</h3>
+                <ul className="mt-1 space-y-1">
+                  {groups.map((g) => {
+                    const c = compositionAt(g.id, data.members, data.counts, date).counts
+                    if (!c.length) return null
+                    return (
+                      <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 rounded bg-white p-2">
+                        <span>
+                          <b>{g.name}</b>: {c.map((x) => `${x.count} ${categoryLabel(x.category)}`).join(', ')}
+                        </span>
+                        {canWrite && (
+                          <button type="button" onClick={() => setDialog({ kind: 'identify', group: g })} className={btn}>
+                            Nummern erfassen
+                          </button>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {unassigned && unassigned.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase text-amber-900">Aktive Tiere ohne Gruppe ({unassigned.length})</h3>
+                <p className="text-xs text-amber-900/80">Auswählen und einer Gruppe zuteilen; steht das Tier dort schon als Anzahl ohne Nummer, wird diese verringert.</p>
+                {(['schafe', 'rinder'] as HerdSpecies[]).map((sp) => {
+                  const list = unassigned.filter((a) => a.species === sp)
+                  if (!list.length) return null
+                  return (
+                    <div key={sp} className="mt-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-gray-700">
+                          {SPECIES_ICON[sp]} {SPECIES_LABEL[sp]} ({list.length})
+                        </span>
+                        {canWrite && (
+                          <span className="flex gap-1">
+                            <button
+                              type="button"
+                              className={btn}
+                              onClick={() => {
+                                const next = new Set(pick)
+                                const all = list.every((a) => next.has(a.id))
+                                for (const a of list) {
+                                  if (all) next.delete(a.id)
+                                  else next.add(a.id)
+                                }
+                                setPick(next)
+                              }}
+                            >
+                              alle
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!list.some((a) => pick.has(a.id))}
+                              className={`${btn} disabled:opacity-40`}
+                              onClick={() =>
+                                setDialog({
+                                  kind: 'identify',
+                                  group: groups.find((g) => g.species === sp) ?? null,
+                                  preselected: list.filter((a) => pick.has(a.id)),
+                                })
+                              }
+                            >
+                              {list.filter((a) => pick.has(a.id)).length} zuteilen…
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                      <ul className="mt-1 grid grid-cols-2 gap-x-2 text-xs text-gray-700 sm:grid-cols-3">
+                        {list.map((a) => (
+                          <li key={`${a.moduleKey}-${a.id}`}>
+                            <label className="flex items-center gap-1">
+                              {canWrite && (
+                                <input
+                                  type="checkbox"
+                                  checked={pick.has(a.id)}
+                                  onChange={(e) => {
+                                    const next = new Set(pick)
+                                    if (e.target.checked) next.add(a.id)
+                                    else next.delete(a.id)
+                                    setPick(next)
+                                  }}
+                                />
+                              )}
+                              <span className="truncate">
+                                {a.label} <span className="text-gray-400">{categoryLabel(defaultCategory(a, false, date))}</span>
+                              </span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {gone.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase text-amber-900">Nicht mehr im Bestand ({gone.length})</h3>
+                <p className="text-xs text-amber-900/80">Im Tiermodul abgegangen, verkauft o.ä., aber noch in einer Gruppe.</p>
+                <ul className="mt-1 text-xs text-gray-700">
+                  {gone.map((m) => (
+                    <li key={m.id}>
+                      {m.label ?? m.animal_id.slice(0, 8)} — «{data.groups.find((g) => g.id === m.group_id)?.name}»
+                    </li>
+                  ))}
+                </ul>
+                {canWrite && (
+                  <button
+                    type="button"
+                    className={`${btn} mt-1`}
+                    onClick={() => {
+                      if (confirm(`${gone.length} Tiere ab ${fmtDate(date)} aus ihren Gruppen nehmen?`)) void removeMembers(data, gone.map((m) => m.id), date).then(refresh)
+                    }}
+                  >
+                    Alle ab {fmtDate(date)} aus den Gruppen nehmen
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </details>
+      ) : null}
 
       <ul className="space-y-3">
         {groups.map((g) => {
@@ -642,6 +963,11 @@ export default function Herds() {
                     <button type="button" onClick={() => setDialog({ kind: 'count', group: g })} className={btn}>
                       Anzahl ohne Nr.
                     </button>
+                    {comp.counts.length > 0 && (
+                      <button type="button" onClick={() => setDialog({ kind: 'identify', group: g })} className={btn}>
+                        Nummern erfassen ({comp.counts.reduce((s, c) => s + c.count, 0)} ohne Nr.)
+                      </button>
+                    )}
                   </>
                 )}
                 <button
@@ -702,27 +1028,14 @@ export default function Herds() {
         })}
       </ul>
 
-      {unassigned && unassigned.length > 0 && (
-        <details className="rounded-lg bg-white p-3 text-sm shadow-sm">
-          <summary className="cursor-pointer text-gray-700">
-            <b>{unassigned.length}</b> aktive Tiere ohne Gruppe (am {fmtDate(date)})
-          </summary>
-          <p className="mt-1 text-xs text-gray-500">Mit «Tiere zuteilen» per Nummer einer Gruppe zuordnen — oder vorerst als Anzahl ohne Nummer in der Gruppe führen.</p>
-          <ul className="mt-2 columns-2 text-xs text-gray-600 sm:columns-3">
-            {unassigned.slice(0, 300).map((a) => (
-              <li key={`${a.moduleKey}-${a.id}`}>
-                {a.species === 'schafe' ? '🐑' : '🐄'} {a.label} <span className="text-gray-400">{categoryLabel(defaultCategory(a, false, date))}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
       {dialog?.kind === 'group' && <GroupDialog key={dialog.seq} data={data} group={dialog.group} date={date} onClose={close} />}
       {dialog?.kind === 'stay' && <StayDialog key={dialog.seq} data={data} group={dialog.group} slot={dialog.slot} date={date} onClose={close} />}
       {dialog?.kind === 'count' && <CountDialog key={dialog.seq} data={data} group={dialog.group} date={date} onClose={close} />}
       {dialog?.kind === 'move' && <MoveDialog key={dialog.seq} data={data} from={dialog.from} date={date} onClose={close} />}
       {dialog?.kind === 'locations' && <LocationsDialog key={dialog.seq} data={data} onClose={close} />}
+      {dialog?.kind === 'identify' && (
+        <IdentifyDialog key={dialog.seq} data={data} group={dialog.group} preselected={dialog.preselected} date={date} onClose={close} />
+      )}
     </div>
   )
 }

@@ -58,3 +58,46 @@ export async function listAllAnimals(species?: HerdSpecies): Promise<AnimalRef[]
   )
   return lists.flat()
 }
+
+// --- Standort eines Tiers (Herdengruppen im Wiesenjournal) ---
+
+export interface AnimalPlace {
+  name: string
+  since: string
+  dayOnly?: boolean
+}
+
+export interface AnimalGroupPeriod {
+  groupId: string
+  groupName: string
+  category: string
+  categoryLabel: string
+  from: string
+  /** letzter Tag, null = bis heute */
+  to: string | null
+  /** Stall und Weide der Gruppe in dieser Zeit (auf die Zeit zugeschnitten) */
+  places: { slot: 'stall' | 'weide'; name: string; from: string; to: string | null; dayOnly: boolean }[]
+}
+
+export interface AnimalLocation {
+  current: (AnimalGroupPeriod & { stall: AnimalPlace | null; weide: AnimalPlace | null }) | null
+  /** neueste zuerst */
+  history: AnimalGroupPeriod[]
+}
+
+export interface HerdLocator {
+  /** Pfad zur Herden-Seite, z.B. "/wiesenjournal/herden" */
+  herdsPath: string
+  locate(moduleKey: string, animalId: string, date: string): Promise<AnimalLocation>
+}
+
+let locator: HerdLocator | null = null
+
+export function registerHerdLocator(entries: { herdLocator?: HerdLocator }[]): void {
+  locator = entries.find((e) => e.herdLocator)?.herdLocator ?? null
+}
+
+/** null, wenn kein Modul Herden führt (Wiesenjournal nicht aktiviert). */
+export function herdLocator(): HerdLocator | null {
+  return locator
+}

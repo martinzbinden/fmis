@@ -1,7 +1,7 @@
 // Herdengruppen und Standorte (schema/0017_herds.sql) — reine Funktionen
 // (getestet): Kategorien, Bestand an einem Tag, Weide fürs Journal-Raster.
 
-import type { AnimalRef } from '@fmis/core/animals'
+import type { AnimalGroupPeriod, AnimalLocation, AnimalRef } from '@fmis/core/animals'
 import type { AnimalCategory, HerdCount, HerdGroup, HerdMember, HerdSpecies, HerdStay, UsageEntry } from '../types'
 import { addDaysIso } from './format'
 
@@ -146,3 +146,69 @@ export function derivedWeideEntries(
   }
   return out
 }
+
+// --- Standort eines Einzeltiers (für das Tierdetail der Tiermodule) ---
+
+export interface LocateInput {
+  groups: HerdGroup[]
+  stays: HerdStay[]
+  members: HerdMember[]
+  locations: { id: string; name: string }[]
+  parcels: { id: string; name: string }[]
+}
+
+const minDate = (a: string | null, b: string | null) => (a == null ? b : b == null ? a : a < b ? a : b)
+
+/** Gruppen-Zeiten eines Tiers mit Stall und Weide der Gruppe in dieser
+ * Zeit; aktuelle Zeile am Tag `date`. */
+export function locateAnimal(input: LocateInput, animalId: string, date: string): AnimalLocation {
+  const placeName = (s: HerdStay) =>
+    s.parcel_id ? (input.parcels.find((p) => p.id === s.parcel_id)?.name ?? 'Parzelle?') : (input.locations.find((l) => l.id === s.location_id)?.name ?? 'Ort?')
+  const periods: AnimalGroupPeriod[] = input.members
+    .filter((m) => m.animal_id === animalId && !m.deleted_at)
+    .sort((a, b) => b.from_date.localeCompare(a.from_date))
+    .map((m) => {
+      const group = input.groups.find((g) => g.id === m.group_id)
+      const places = input.stays
+        .filter((s) => s.group_id === m.group_id && !s.deleted_at)
+        .filter((s) => (s.to_date == null || s.to_date >= m.from_date) && (m.to_date == null || s.from_date <= m.to_date))
+        .map((s) => ({
+          slot: s.slot,
+          name: placeName(s),
+          from: s.from_date > m.from_date ? s.from_date : m.from_date,
+          to: minDate(s.to_date, m.to_date),
+          dayOnly: s.day_only,
+        }))
+        .sort((a, b) => b.from.localeCompare(a.from))
+      return {
+        groupId: m.group_id,
+        groupName: group?.name ?? 'Gruppe?',
+        category: m.category,
+        categoryLabel: categoryLabel(m.category),
+        from: m.from_date,
+        to: m.to_date,
+        places,
+      }
+    })
+  const cur = periods.find((p) => p.from <= date && (p.to == null || p.to >= date))
+  const placeAt = (slot: 'stall' | 'weide') => {
+    const s = input.stays.find((x) => x.group_id === cur?.groupId && x.slot === slot && activeAt(x, date))
+    return s ? { name: placeName(s), since: s.from_date, dayOnly: s.day_only } : null
+  }
+  return { current: cur ? { ...cur, stall: placeAt('stall'), weide: placeAt('weide') } : null, history: periods }
+}
+
+/** Nummer → Tier: zuerst exakte Laufnummer, sonst Ende der Ohrmarke — aber
+ * nur, wenn es genau ein Tier trifft (sonst wäre die Zuordnung Zufall). */
+export function matchNumber(animals: AnimalRef[], token: string): AnimalRef | 'mehrdeutig' | null {
+  const t = token.trim().toLowerCase()
+  if (!t) return null
+  const exact = animals.filter((a) => (a.lauf_nr ?? '').toLowerCase() === t)
+  if (exact.length === 1) return exact[0]
+  if (exact.length > 1) return 'mehrdeutig'
+  const digits = t.replace(/[.\s]/g, '')
+  const suffix = animals.filter((a) => a.ear_tag.toLowerCase().replace(/[.\s]/g, '').endsWith(digits))
+  return suffix.length === 1 ? suffix[0] : suffix.length > 1 ? 'mehrdeutig' : null
+}
+
+export const numberTokens = (text: string) => text.split(/[\s,;]+/).map((t) => t.trim().toLowerCase()).filter(Boolean)

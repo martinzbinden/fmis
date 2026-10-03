@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AnimalRef } from '@fmis/core/animals'
-import { compositionAt, compositionText, defaultCategory, derivedWeideEntries } from './herdModel'
+import { compositionAt, compositionText, defaultCategory, derivedWeideEntries, locateAnimal, matchNumber } from './herdModel'
 import type { HerdCount, HerdGroup, HerdMember, HerdStay } from '../types'
 
 const base = { updated_at: '2026-10-03T00:00:00Z', deleted_at: null }
@@ -55,5 +55,47 @@ describe('herdModel', () => {
     expect(defaultCategory({ ...ewe, birth_date: '2026-06-01', parity: 0 }, false, '2026-10-03')).toBe('laemmer')
     const cow = { species: 'rinder', sex: 'w', parity: 2, birth_date: '2020-01-01' } as AnimalRef
     expect(defaultCategory(cow, false, '2026-10-03')).toBe('galtkuehe')
+  })
+})
+
+describe('locateAnimal', () => {
+  it('aktuelle Gruppe mit Stall/Weide und Verlauf', () => {
+    const melk: HerdGroup = { ...group, id: 'g0', name: 'Melkherde Schafe', milking: true }
+    const earlier: HerdMember = { ...members[0], id: 'old', group_id: 'g0', category: 'auen_gemolken', from_date: '2026-03-01', to_date: '2026-10-02' }
+    const melkStall: HerdStay = { ...stays[1], id: 's3', group_id: 'g0', location_id: 'melkstall', from_date: '2026-03-01' }
+    const input = {
+      groups: [group, melk],
+      stays: [...stays, melkStall],
+      members: [members[0], earlier],
+      locations: [
+        { id: 'schopf', name: 'Schopf' },
+        { id: 'melkstall', name: 'Melkstall Schafe' },
+      ],
+      parcels: [{ id: 'wyden', name: 'WY Wydenegg' }],
+    }
+    const loc = locateAnimal(input, 'a0', '2026-10-03')
+    expect(loc.current?.groupName).toBe('Schafe Wyden')
+    expect(loc.current?.weide).toEqual({ name: 'WY Wydenegg', since: '2026-09-20', dayOnly: false })
+    expect(loc.current?.stall?.name).toBe('Schopf')
+    expect(loc.history.map((h) => [h.groupName, h.from, h.to])).toEqual([
+      ['Schafe Wyden', '2026-10-03', null],
+      ['Melkherde Schafe', '2026-03-01', '2026-10-02'],
+    ])
+    // Weide der Gruppe auf die Zeit des Tiers zugeschnitten
+    expect(loc.history[0].places.find((p) => p.slot === 'weide')?.from).toBe('2026-10-03')
+    expect(locateAnimal(input, 'a0', '2026-02-01').current).toBeNull()
+  })
+})
+
+describe('matchNumber', () => {
+  const a = (lauf: string | null, ear: string) => ({ lauf_nr: lauf, ear_tag: ear }) as AnimalRef
+  const list = [a('1906', 'CH113196798000'), a('2212', 'CH113205331906'), a(null, 'CH120111112222'), a(null, 'CH113000002222')]
+  it('Laufnummer vor Ohrmarken-Ende', () => {
+    expect(matchNumber(list, '1906')).toBe(list[0])
+  })
+  it('Ohrmarken-Ende nur eindeutig', () => {
+    expect(matchNumber(list, '112222')).toBe(list[2])
+    expect(matchNumber(list, '2222')).toBe('mehrdeutig')
+    expect(matchNumber(list, '9999')).toBeNull()
   })
 })

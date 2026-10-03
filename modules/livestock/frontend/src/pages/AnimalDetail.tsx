@@ -1,3 +1,4 @@
+import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
@@ -199,6 +200,8 @@ export default function AnimalDetail() {
           ⚠️ Absetzfrist offen bis <strong>{fmtDate(withdrawalUntil)}</strong> — nicht schlachtreif.
         </div>
       )}
+
+      <AnimalLocationCard moduleKey="livestock" animalId={animal.id} active={animal.status === 'aktiv'} />
 
       {editingAnimal ? (
         <section className="space-y-3 rounded-lg bg-white p-4 shadow-sm">
