@@ -86,6 +86,17 @@ export interface AnimalLactations {
   /** Ø F+E der abgeschlossenen Laktationen (ohne laufende). */
   avgFe: number | null
   bestFe: number | null
+  /** Lebenstagleistung (lib/herdPerformance.ts), nur aktive weibliche Tiere. */
+  ltl?: LifetimeYield
+}
+
+export interface LifetimeYield {
+  /** kg Milch je Lebenstag */
+  milk: number | null
+  /** kg F+E je Lebenstag */
+  fe: number | null
+  /** F+E-Lebenstagleistung relativ zu Herdengenossinnen mit gleich vielen Laktationen (1 = Mittel). */
+  feRel: number | null
 }
 
 export function groupByAnimal(rows: LactationRow[]): AnimalLactations[] {
@@ -111,13 +122,15 @@ export function groupByAnimal(rows: LactationRow[]): AnimalLactations[] {
   })
 }
 
-export type AnimalSort = 'lauf_nr' | 'latest_fe' | 'avg_fe' | 'total_fe' | 'count'
+export type AnimalSort = 'lauf_nr' | 'latest_fe' | 'avg_fe' | 'total_fe' | 'ltl_fe' | 'ltl_rel' | 'count'
 
 export const ANIMAL_SORT_LABEL: Record<AnimalSort, string> = {
   lauf_nr: 'Laufnummer / Name',
   latest_fe: 'F+E letzte Laktation',
   avg_fe: 'Ø F+E abgeschlossen',
   total_fe: 'F+E Lebensleistung',
+  ltl_fe: 'Lebenstagleistung F+E',
+  ltl_rel: 'Lebenstagleistung ggü. Gleichaltrigen',
   count: 'Anzahl Laktationen',
 }
 
@@ -133,7 +146,17 @@ function byLabel(a: AnimalLactations, b: AnimalLactations): number {
 /** Zahlen absteigend (bester zuerst), fehlende Werte ans Ende. */
 export function sortAnimals(list: AnimalLactations[], sort: AnimalSort): AnimalLactations[] {
   const value = (a: AnimalLactations): number | null =>
-    sort === 'latest_fe' ? a.latest.fat_protein_kg : sort === 'avg_fe' ? a.avgFe : sort === 'total_fe' ? a.totalFe : a.lactations.length
+    sort === 'latest_fe'
+      ? a.latest.fat_protein_kg
+      : sort === 'avg_fe'
+        ? a.avgFe
+        : sort === 'total_fe'
+          ? a.totalFe
+          : sort === 'ltl_fe'
+            ? (a.ltl?.fe ?? null)
+            : sort === 'ltl_rel'
+              ? (a.ltl?.feRel ?? null)
+              : a.lactations.length
   return [...list].sort((a, b) => {
     if (sort === 'lauf_nr') return byLabel(a, b)
     const av = value(a)

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { fmtDate, num } from '../lib/format'
+import { fmtDate, isoDate, num, todayIso } from '../lib/format'
+import { computeHerdPerformance } from '../lib/herdPerformance'
 import { sqlDate } from '../lib/importMerge'
 import { speciesOf, speciesTerms } from '../lib/species'
 import {
@@ -21,16 +22,54 @@ import {
   type AnimalSort,
   type LactationFilter,
   type LactationRow,
+  type LifetimeYield,
   type RowSort,
 } from '../lib/lactationView'
 import { animalLabel } from '@fmis/core/earTag'
 
-async function loadLactations(pg: PGlite): Promise<LactationRow[]> {
-  const { rows } = await pg.query<LactationRow>(
-    `select s.*, a.lauf_nr, a.status as animal_status
-     from v_lactation_summary s join animals a on a.id = s.animal_id`,
+/** Lebenstagleistung je aktivem weiblichem Tier — dieselbe Rechnung wie
+ * Ausmerzliste und Lämmer-Selektion (lib/herdPerformance.ts, Herdenvergleich
+ * unter Tieren mit gleich vielen Laktationen). */
+async function loadLifetimeYield(pg: PGlite): Promise<Map<string, LifetimeYield>> {
+  const [{ rows: animals }, { rows: lactations }] = await Promise.all([
+    pg.query<{ id: string; birth_date: unknown }>("select id, birth_date from animals where deleted_at is null and status = 'aktiv' and sex is distinct from 'm'"),
+    pg.query<Record<string, unknown>>(
+      'select animal_id, lactation_number, closure_type, milk_kg, fat_kg, protein_kg, days_in_milk, calving_date from lactations where deleted_at is null',
+    ),
+  ])
+  const byAnimal = new Map<string, Record<string, unknown>[]>()
+  for (const l of lactations) byAnimal.set(String(l.animal_id), [...(byAnimal.get(String(l.animal_id)) ?? []), l])
+  const metrics = computeHerdPerformance(
+    animals.map((a) => ({
+      id: a.id,
+      birth_date: isoDate(a.birth_date),
+      lactations: (byAnimal.get(a.id) ?? []).map((l) => ({
+        lactation_number: num(l.lactation_number)!,
+        closure_type: num(l.closure_type)!,
+        milk_kg: num(l.milk_kg),
+        fat_kg: num(l.fat_kg),
+        protein_kg: num(l.protein_kg),
+        days_in_milk: num(l.days_in_milk),
+        calving_date: isoDate(l.calving_date),
+      })),
+      tests: [],
+    })),
+    todayIso(),
   )
-  return rows.map((r) => ({
+  // Vergleich erst ab einer abgeschlossenen Laktation: mitten in der ersten
+  // hängt die LTL vor allem davon ab, wie weit diese schon ist.
+  return new Map([...metrics].map(([id, m]) => [id, { milk: m.ltl_milk, fe: m.ltl_fe, feRel: m.n_lactations > 0 ? m.ltl_fe_rel : null }]))
+}
+
+async function loadLactations(pg: PGlite): Promise<{ rows: LactationRow[]; ltl: Map<string, LifetimeYield> }> {
+  const [{ rows }, ltl] = await Promise.all([
+    pg.query<LactationRow>(
+      `select s.*, a.lauf_nr, a.status as animal_status
+       from v_lactation_summary s join animals a on a.id = s.animal_id`,
+    ),
+    loadLifetimeYield(pg),
+  ])
+  const out = rows.map((r) => ({
     ...r,
     // date-Spalten kommen aus pglite als Date
     calving_date: (r.calving_date as unknown) instanceof Date ? sqlDate(r.calving_date) : r.calving_date,
@@ -42,6 +81,7 @@ async function loadLactations(pg: PGlite): Promise<LactationRow[]> {
     fat_protein_kg: num(r.fat_protein_kg),
     days_in_milk: num(r.days_in_milk),
   }))
+  return { rows: out, ltl }
 }
 
 const n0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleString('de-CH'))
@@ -191,10 +231,13 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
   }
   const setFilter = (patch: Partial<LactationFilter>) => setSettings({ filter: { ...filter, ...patch } })
 
-  const all = data ?? []
+  const all = data?.rows ?? []
   const years = useMemo(() => calvingYears(all), [all])
   const rows = useMemo(() => all.filter((l) => matchesLactation(l, filter)), [all, filter])
-  const animals = useMemo(() => sortAnimals(groupByAnimal(rows), animalSort), [rows, animalSort])
+  const animals = useMemo(
+    () => sortAnimals(groupByAnimal(rows).map((a) => ({ ...a, ltl: data?.ltl.get(a.animal_id) })), animalSort),
+    [rows, animalSort, data],
+  )
   const sortedRows = useMemo(() => sortRows(rows, rowSort, rowDesc), [rows, rowSort, rowDesc])
   const scale = useMemo(() => Math.max(0, ...rows.map((r) => r.fat_protein_kg ?? 0)), [rows])
 
@@ -322,6 +365,17 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                       </span>
                       {a.avgFe != null && <span>Ø {n0(a.avgFe)} kg F+E</span>}
                       <span>total {n0(a.totalMilk)} kg Milch</span>
+                      {a.ltl?.fe != null && (
+                        <span title="Lebenstagleistung: Milch bzw. F+E aller Laktationen je Lebenstag; % = im Vergleich zu Herdengenossinnen mit gleich vielen Laktationen">
+                          LTL {a.ltl.milk?.toFixed(2) ?? '–'} kg Milch · {n0(a.ltl.fe * 1000)} g F+E/Tag
+                          {a.ltl.feRel != null && (
+                            <span className={`ml-1 font-semibold ${a.ltl.feRel >= 1.1 ? 'text-green-700' : a.ltl.feRel < 0.9 ? 'text-red-700' : 'text-gray-700'}`}>
+                              {Math.round(a.ltl.feRel * 100)} %
+                            </span>
+                          )}
+                          {a.ltl.feRel == null && <span className="ml-1 text-gray-400">(1. Laktation läuft, noch kein Vergleich)</span>}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <FeBars animal={a} scale={scale} />

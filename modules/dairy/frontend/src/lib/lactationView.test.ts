@@ -53,6 +53,15 @@ describe('lactationView', () => {
     expect(sortAnimals(animals, 'latest_fe').map((a) => a.animal_id)).toEqual(['2', '1', '3'])
   })
 
+  it('sortiert nach Lebenstagleistung, Tiere ohne Wert zuletzt', () => {
+    const animals = groupByAnimal(rows).map((a) => ({
+      ...a,
+      ltl: a.animal_id === '1' ? { milk: 1.1, fe: 0.07, feRel: 0.95 } : a.animal_id === '2' ? { milk: 1.3, fe: 0.08, feRel: 1.2 } : undefined,
+    }))
+    expect(sortAnimals(animals, 'ltl_fe').map((a) => a.animal_id)).toEqual(['2', '1', '3'])
+    expect(sortAnimals(animals, 'ltl_rel').map((a) => a.animal_id)).toEqual(['2', '1', '3'])
+  })
+
   it('sortiert alle Laktationen nach Spalte', () => {
     expect(sortRows(rows, 'fat_protein_kg', true).map((r) => r.fat_protein_kg)).toEqual([70, 55, 50, 30, null])
     expect(fePerDay(rows[0])).toBe(250)
