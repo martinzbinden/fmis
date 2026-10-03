@@ -127,7 +127,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
     URL.revokeObjectURL(link.href)
   }
 
-  const weightField = (key: 'weightPerformance' | 'weightScc' | 'weightSire', label: string) => (
+  const weightField = (key: 'weightPerformance' | 'weightScc' | 'weightSire' | 'weightTrend', label: string) => (
     <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
       {label}
       <input
@@ -157,7 +157,8 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
       </div>
       <p className="text-xs text-gray-500">
         Bewertet wird die Mutter: Leistung im Vergleich mit Gleichaltrigen (Lebenstagleistung, bei Erstlingen die Standardlaktation)
-        und Zellzahl, je auf Mittel 100 / Streuung 10 gebracht. Optional zählt der {sireTrait.label} des Vaters mit — aus dem
+        und Zellzahl, dazu die Tendenz ihrer Leistung über die Laktationen (fallend = schlechter; Mütter mit nur einer
+        bewerteten Laktation zählen neutral), je auf Mittel 100 / Streuung 10 gebracht. Optional zählt der {sireTrait.label} des Vaters mit — aus dem
         Herdebuch-Export oder einem importierten Leistungsausweis (PDF); fehlt sein eigener Wert, das Mittel seiner Eltern. Geschwister eines Wurfs sind gleich eingestuft; dort entscheiden Exterieur,
         Euteranlage und Entwicklung am Tier.
       </p>
@@ -188,6 +189,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
           {weightField('weightPerformance', 'Gewicht Leistung Mutter')}
           {weightField('weightScc', 'Gewicht Zellzahl Mutter')}
           {weightField('weightSire', `Gewicht ${sireTrait.label} Vater`)}
+          {weightField('weightTrend', 'Gewicht Tendenz Mutter über die Laktationen')}
           <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
             Höchstalter (Monate)
             <input

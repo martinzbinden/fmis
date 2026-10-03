@@ -14,7 +14,7 @@
 // Mit Gewicht Vater = 0 und Zellzahl über alle Kontrollen entspricht der
 // Index genau `gesamtindex()` des Originals.
 
-import type { PerformanceMetrics } from './herdPerformance'
+import { indexScale, type PerformanceMetrics } from './herdPerformance'
 import type { LactationTrend } from './lactationTrend'
 
 export type Purpose = 'zucht' | 'mast'
@@ -39,7 +39,7 @@ export interface DamInfo {
   name: string | null
   lauf_nr: string | null
   performance: PerformanceMetrics | undefined
-  /** Tendenz der Mutter über ihre Laktationen (lib/lactationTrend.ts) — nur Anzeige, nicht im Index. */
+  /** Tendenz der Mutter über ihre Laktationen (lib/lactationTrend.ts), Teil des Index (weightTrend). */
   trend?: LactationTrend
 }
 
@@ -47,6 +47,8 @@ export interface SelectionSettings {
   weightPerformance: number
   weightScc: number
   weightSire: number
+  /** Tendenz der Mutter über ihre Laktationen (fallend = schlechter) */
+  weightTrend: number
   maxAgeMonths: number
   /** Zellzahl nur der letzten 12 Monate statt aller Kontrollen. */
   scc12m: boolean
@@ -56,6 +58,7 @@ export const DEFAULT_SELECTION_SETTINGS: SelectionSettings = {
   weightPerformance: 0.6,
   weightScc: 0.4,
   weightSire: 0,
+  weightTrend: 0.2,
   maxAgeMonths: 8,
   scc12m: false,
 }
@@ -67,6 +70,8 @@ export interface LambRow extends LambCandidate {
   inbreeding: number
   idx_performance: number | null
   idx_scc: number | null
+  /** Tendenz der Mutter, Mittel 100 / Streuung 10 über alle Mütter */
+  idx_trend: number | null
   index: number | null
   /** Anzahl weiblicher Jungtiere derselben Mutter in der Auswahl. */
   dam_daughters: number
@@ -87,13 +92,19 @@ export function lambIndex(
   idxPerformance: number | null,
   idxScc: number | null,
   sireValue: number | null,
-  s: Pick<SelectionSettings, 'weightPerformance' | 'weightScc' | 'weightSire'>,
+  s: Pick<SelectionSettings, 'weightPerformance' | 'weightScc' | 'weightSire'> & { weightTrend?: number },
+  idxTrend: number | null = null,
 ): number | null {
   if (idxPerformance == null && idxScc == null) return null
-  const total = s.weightPerformance + s.weightScc + s.weightSire
+  const wTrend = s.weightTrend ?? 0
+  const total = s.weightPerformance + s.weightScc + s.weightSire + wTrend
   if (total <= 0) return null
   return round1(
-    (s.weightPerformance * (idxPerformance ?? 100) + s.weightScc * (idxScc ?? 100) + s.weightSire * (sireValue ?? 100)) / total,
+    (s.weightPerformance * (idxPerformance ?? 100) +
+      s.weightScc * (idxScc ?? 100) +
+      s.weightSire * (sireValue ?? 100) +
+      wTrend * (idxTrend ?? 100)) /
+      total,
   )
 }
 
@@ -109,6 +120,11 @@ export function rankLambs(input: {
   const { settings: s } = input
   const todayMs = Date.parse(`${input.today}T00:00:00Z`)
   const maxDays = s.maxAgeMonths * DAYS_PER_MONTH
+  // Tendenz über alle Mütter mit mind. 2 bewerteten Laktationen auf 100/10
+  // skalieren (indexScale braucht positive Werte — Steigung verschoben).
+  const trendIdx = indexScale(
+    new Map([...input.dams].map(([key, d]) => [key, d.trend?.slope != null ? 10 + d.trend.slope : null])),
+  )
   const rows: LambRow[] = []
   for (const c of input.candidates) {
     const age = Math.round((todayMs - Date.parse(`${c.birth_date}T00:00:00Z`)) / 86_400_000)
@@ -118,6 +134,7 @@ export function rankLambs(input: {
     const idxPerformance = perf?.idx_performance ?? null
     const idxScc = (s.scc12m ? perf?.idx_scc_12m : perf?.idx_scc) ?? null
     const sireValue = c.sire_key ? (input.sireValues.get(c.sire_key) ?? null) : null
+    const idxTrend = c.dam_key ? (trendIdx.get(c.dam_key) ?? null) : null
     rows.push({
       ...c,
       age_days: age,
@@ -126,7 +143,8 @@ export function rankLambs(input: {
       inbreeding: input.inbreeding(c.dam_key, c.sire_key),
       idx_performance: idxPerformance,
       idx_scc: idxScc,
-      index: perf ? lambIndex(idxPerformance, idxScc, sireValue, s) : null,
+      idx_trend: idxTrend,
+      index: perf ? lambIndex(idxPerformance, idxScc, sireValue, s, idxTrend) : null,
       dam_daughters: 0,
       purpose: input.decisions.get(c.key) ?? null,
       rank: null,
