@@ -5,6 +5,7 @@ import {
   ComposedChart,
   Line,
   ReferenceArea,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Scatter,
@@ -13,7 +14,10 @@ import {
   XAxis,
   YAxis,
   ZAxis,
+  usePlotArea,
+  useXAxisInverseScale,
 } from 'recharts'
+import { meanOf, smoothAt, type Estimate } from '../lib/curveExplorer'
 import {
   BLOCK_DAYS,
   CURVE_CLASS_LABEL,
@@ -74,6 +78,34 @@ export function MiniCurve({ curve, band, color = '#334155' }: { curve: Lactation
 }
 
 const LINE_GREYS = ['#475569', '#64748b', '#94a3b8', '#cbd5e1']
+const NEWEST_COLOR = '#0f766e'
+const lineColor = (i: number) => (i === 0 ? NEWEST_COLOR : LINE_GREYS[Math.min(i - 1, LINE_GREYS.length - 1)])
+
+/** Unsichtbare Fläche über dem Diagramm: Maus/Finger → Laktationstag. Liegt
+ * zuoberst; senkrechtes Wischen scrollt die Seite weiter (touch-action). */
+function HoverCapture({ onDay }: { onDay: (day: number | null) => void }) {
+  const area = usePlotArea()
+  const invert = useXAxisInverseScale()
+  if (!area || !invert) return null
+  const move = (e: React.PointerEvent<SVGRectElement>) => {
+    const svg = e.currentTarget.ownerSVGElement
+    if (!svg) return
+    const day = Number(invert(e.clientX - svg.getBoundingClientRect().left))
+    if (Number.isFinite(day)) onDay(Math.max(0, Math.min(MAX_X, Math.round(day))))
+  }
+  return (
+    <rect
+      x={area.x}
+      y={area.y}
+      width={area.width}
+      height={area.height}
+      fill="transparent"
+      style={{ touchAction: 'pan-y', cursor: 'crosshair' }}
+      onPointerMove={move}
+      onPointerDown={move}
+    />
+  )
+}
 
 /** Alle Laktationen eines Tiers übereinander, vor dem Herdenband seiner
  * aktuellen Laktationsgruppe. Neueste Laktation kräftig, ältere grau. */
@@ -98,11 +130,22 @@ export function LactationCurveChart({
   // so sind Laktationen verschiedener Jahre direkt vergleichbar.
   const [mode, setMode] = useState<'rel' | 'abs'>('rel')
   const rel = mode === 'rel'
+  // Datenexplorer: Laktationstag unter Maus/Finger; bleibt stehen, wenn man
+  // die Grafik verlässt (am Handy sonst gleich wieder weg)
+  const [cursor, setCursor] = useState<number | null>(null)
   const ordered = [...curves].sort((a, b) => b.lactation_number - a.lactation_number)
   const bandData = rel
     ? relBand.filter((b) => Number.isFinite(b.median)).map((b) => ({ dim: b.mid, range: [b.q1 * 100, b.q3 * 100] as [number, number], median: 100 }))
     : band.filter((b) => Number.isFinite(b.median)).map((b) => ({ dim: b.mid, range: [b.q1, b.q3] as [number, number], median: b.median }))
   const lineData = (c: LactationCurve) => c.points.map((p) => ({ dim: p.dim, value: rel ? p.rel * 100 : p.value, excluded: p.excluded }))
+  const fmt = (v: number) => (rel ? `${Math.round(v)} %` : `${v.toFixed(metric === 'fe' ? 2 : 1)} kg`)
+  const estimates: { c: LactationCurve; color: string; est: Estimate | null }[] =
+    cursor == null
+      ? []
+      : ordered.map((c, i) => ({ c, color: lineColor(i), est: smoothAt(lineData(c).map((p) => ({ dim: p.dim, value: p.value })), cursor) }))
+  const herdAt = cursor == null ? undefined : bandData.reduce<(typeof bandData)[number] | undefined>((best, b) => (!best || Math.abs(b.dim - cursor) < Math.abs(best.dim - cursor) ? b : best), undefined)
+  const newest = estimates[0]?.est?.value ?? null
+  const earlier = meanOf(estimates.slice(1).map((e) => e.est?.value))
   // Weggelassene Wägungen hohl zeichnen
   const dotFor = (color: string, r: number) => (props: { cx?: number; cy?: number; payload?: { excluded?: boolean }; index?: number }) => (
     <circle
@@ -148,12 +191,6 @@ export function LactationCurveChart({
               label={{ value: 'Tage nach Geburt', position: 'insideBottomRight', offset: -2, fontSize: 10 }}
             />
             <YAxis tick={{ fontSize: 11 }} width={44} />
-            <Tooltip
-              formatter={(v, name) =>
-                Array.isArray(v) ? [`${Number(v[0]).toFixed(2)}–${Number(v[1]).toFixed(2)}`, name] : [Number(v).toFixed(2), name]
-              }
-              labelFormatter={(d) => `Tag ${d}`}
-            />
             <Area data={bandData} dataKey="range" name="Herde mittlere Hälfte" stroke="none" fill="#e5e7eb" isAnimationActive={false} />
             <Line data={bandData} dataKey="median" name="Herde Median" stroke="#9ca3af" strokeDasharray="4 3" dot={false} isAnimationActive={false} />
             {ordered.map((c, i) => (
@@ -162,20 +199,62 @@ export function LactationCurveChart({
                 data={lineData(c)}
                 dataKey="value"
                 name={`${c.lactation_number}. Laktation${c.lactation_number === runningNumber ? ' (laufend)' : ''}`}
-                stroke={i === 0 ? '#0f766e' : LINE_GREYS[Math.min(i - 1, LINE_GREYS.length - 1)]}
+                stroke={lineColor(i)}
                 strokeWidth={i === 0 ? 2.5 : 1.3}
-                dot={dotFor(i === 0 ? '#0f766e' : LINE_GREYS[Math.min(i - 1, LINE_GREYS.length - 1)], i === 0 ? 3 : 2)}
+                dot={dotFor(lineColor(i), i === 0 ? 3 : 2)}
                 isAnimationActive={false}
               />
             ))}
+            {cursor != null && <ReferenceLine x={cursor} stroke="#0f172a" strokeOpacity={0.35} />}
+            {estimates.map(({ c, color, est }) =>
+              est ? <ReferenceDot key={c.lactation_number} x={cursor!} y={est.value} r={4.5} fill={color} stroke="white" strokeWidth={1.5} /> : null,
+            )}
+            <HoverCapture onDay={setCursor} />
           </ComposedChart>
         </ResponsiveContainer>
+      </div>
+      <div className="mx-2 min-h-[4.5rem] rounded bg-gray-50 px-2 py-1.5 text-xs">
+        {cursor == null ? (
+          <p className="pt-3 text-center text-gray-400">Über die Grafik fahren oder tippen: alle Laktationen am selben Laktationstag vergleichen.</p>
+        ) : (
+          <>
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3">
+              <span className="font-semibold text-gray-700">Tag {cursor}</span>
+              {herdAt && (
+                <span className="text-gray-500">
+                  Herde: {rel ? '100 %' : fmt(herdAt.median)} · mittlere Hälfte {fmt(herdAt.range[0])}–{fmt(herdAt.range[1])}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 sm:grid-cols-3">
+              {estimates.map(({ c, color, est }) => (
+                <span key={c.lactation_number} className="flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+                  <span className="text-gray-600">
+                    {c.lactation_number}.{c.lactation_number === runningNumber ? ' (lfd.)' : ''}
+                  </span>
+                  <span className={est ? 'font-semibold text-gray-800' : 'text-gray-300'}>{est ? fmt(est.value) : '—'}</span>
+                  {est && !est.measured && <span className="text-gray-400">≈</span>}
+                </span>
+              ))}
+            </div>
+            {newest != null && earlier != null && (
+              <p className="mt-1 text-gray-500">
+                Neueste gegenüber Mittel der früheren:{' '}
+                <b className={newest >= earlier ? 'text-emerald-700' : 'text-red-700'}>
+                  {rel ? `${newest - earlier >= 0 ? '+' : ''}${Math.round(newest - earlier)} Prozentpunkte` : `${newest - earlier >= 0 ? '+' : ''}${(newest - earlier).toFixed(metric === 'fe' ? 2 : 1)} kg`}
+                </b>
+              </p>
+            )}
+          </>
+        )}
       </div>
       <p className="px-2 text-xs text-gray-500">
         {rel
           ? `Jede Wägung in % der Herde: verglichen mit den Herdengenossinnen am gleichen Wägungstag und bereinigt um Laktationstag und Alter (${PARITY_GROUP_LABEL[group]}) — Jahr, Saison und Futter fallen so heraus. Grau: mittlere Hälfte der Herde, gestrichelt 100 %.`
           : `${unit(metric)} je Wägung. Grau: mittlere Hälfte der Herde (${PARITY_GROUP_LABEL[group]}${year ? `, Jahrgang ${year}` : ''}), gestrichelt der Median.`}{' '}
-        Grün: neueste Laktation, grau abgestuft die früheren. Hohle Punkte zählen nicht für die Bewertung.
+        Grün: neueste Laktation, grau abgestuft die früheren. Hohle Punkte zählen nicht für die Bewertung. Im Explorer: ≈ = geglättet aus den
+        umliegenden Wägungen, sonst Wägung innert 3 Tagen; — = an diesem Tag nicht gewogen (vor der ersten oder nach der letzten Wägung).
       </p>
     </div>
   )
