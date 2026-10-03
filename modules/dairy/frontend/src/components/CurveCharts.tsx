@@ -18,6 +18,7 @@ import {
   useXAxisInverseScale,
 } from 'recharts'
 import { meanOf, smoothAt, type Estimate } from '../lib/curveExplorer'
+import type { SnapshotPoint, SnapshotPosition } from '../lib/herdSnapshot'
 import {
   BLOCK_DAYS,
   CURVE_CLASS_LABEL,
@@ -339,6 +340,117 @@ export function HerdScatter({ points, onSelect }: { points: ScatterPoint[]; onSe
             />
           ))}
         </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+export const POSITION_COLOR: Record<Exclude<SnapshotPosition, null> | 'none', string> = {
+  hoch: '#15803d',
+  mitte: '#64748b',
+  tief: '#dc2626',
+  none: '#cbd5e1',
+}
+export const POSITION_LABEL: Record<Exclude<SnapshotPosition, null>, string> = {
+  hoch: 'über der mittleren Hälfte',
+  mitte: 'in der mittleren Hälfte',
+  tief: 'unter der mittleren Hälfte',
+}
+
+export type DimPoint = SnapshotPoint & { label: string }
+
+/** Herdenbild Milch × Laktationstag: alle Tiere eines Wägungstags an ihrem
+ * Laktationstag, vor der Herdenkurve (grau ab 2. Laktation, gestrichelt
+ * Median Erstlinge). Farbe = Lage zur eigenen Gruppe, hohl = Erstling. */
+export function HerdDimChart({
+  points,
+  bandOlder,
+  bandFirst,
+  unitLabel,
+  decimals,
+  onSelect,
+}: {
+  points: DimPoint[]
+  bandOlder: BandBlock[]
+  bandFirst: BandBlock[]
+  unitLabel: string
+  decimals: number
+  onSelect: (animalId: string) => void
+}) {
+  const older = bandOlder.filter((b) => Number.isFinite(b.median)).map((b) => ({ dim: b.mid, range: [b.q1, b.q3] as [number, number], median: b.median }))
+  const first = bandFirst.filter((b) => Number.isFinite(b.median)).map((b) => ({ dim: b.mid, firstMedian: b.median }))
+  const xMax = Math.max(MAX_X, Math.ceil((Math.max(0, ...points.map((p) => p.dim)) + 10) / 60) * 60)
+  const ticks = Array.from({ length: xMax / 60 + 1 }, (_, i) => i * 60)
+  const fmt = (v: number) => v.toFixed(decimals)
+  const shape = (props: { cx?: number; cy?: number; payload?: DimPoint }) => {
+    const p = props.payload
+    if (!p || props.cx == null || props.cy == null) return <g />
+    const color = POSITION_COLOR[p.position ?? 'none']
+    const firstLact = p.group === 1
+    return (
+      <circle
+        cx={props.cx}
+        cy={props.cy}
+        r={5}
+        fill={firstLact ? 'white' : color}
+        stroke={color}
+        strokeWidth={firstLact ? 2 : 1}
+        style={{ cursor: 'pointer' }}
+      />
+    )
+  }
+  return (
+    <div className="h-72 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart margin={{ top: 10, right: 10, bottom: 18, left: -6 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis
+            type="number"
+            dataKey="dim"
+            domain={[0, xMax]}
+            ticks={ticks}
+            tick={{ fontSize: 11 }}
+            label={{ value: 'Laktationstag', position: 'insideBottom', offset: -10, fontSize: 10 }}
+          />
+          <YAxis
+            type="number"
+            tick={{ fontSize: 11 }}
+            width={44}
+            label={{ value: unitLabel, angle: -90, position: 'insideLeft', offset: 14, fontSize: 10 }}
+          />
+          <Area data={older} dataKey="range" name="Herde ab 2. Laktation, mittlere Hälfte" stroke="none" fill="#e5e7eb" isAnimationActive={false} />
+          <Line data={older} dataKey="median" name="Median ab 2. Laktation" stroke="#9ca3af" dot={false} isAnimationActive={false} />
+          <Line data={first} dataKey="firstMedian" name="Median Erstlinge" stroke="#9ca3af" strokeDasharray="4 3" dot={false} isAnimationActive={false} />
+          <Scatter
+            data={points}
+            dataKey="value"
+            shape={shape}
+            isAnimationActive={false}
+            onClick={(d: { payload?: DimPoint }) => d?.payload?.animal_id && onSelect(d.payload.animal_id)}
+          />
+          <Tooltip
+            // je Punkt statt je x-Stelle (sonst rastet er an den Herdenlinien ein)
+            shared={false}
+            cursor={false}
+            content={({ payload }) => {
+              const p = payload?.map((x) => x.payload as DimPoint | undefined).find((x) => x?.animal_id)
+              if (!p) return null
+              return (
+                <div className="rounded border bg-white px-2 py-1 text-xs shadow">
+                  <div className="font-semibold">{p.label}</div>
+                  <div>
+                    {p.lactation_number}. Laktation · Tag {p.dim}
+                  </div>
+                  <div>
+                    {fmt(p.value)} {unitLabel}
+                    {p.herdMedian != null ? ` · Herde ${fmt(p.herdMedian)}` : ''}
+                  </div>
+                  {p.position && <div style={{ color: POSITION_COLOR[p.position] }}>{POSITION_LABEL[p.position]}</div>}
+                </div>
+              )
+            }}
+          />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   )

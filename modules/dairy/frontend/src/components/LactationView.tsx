@@ -44,7 +44,8 @@ import {
   type CurveMetric,
   type TestPoint,
 } from '../lib/lactationCurves'
-import { CLASS_COLOR, HerdScatter, LactationCurveChart, MiniCurve, type ScatterPoint } from './CurveCharts'
+import { CLASS_COLOR, HerdDimChart, HerdScatter, LactationCurveChart, MiniCurve, POSITION_COLOR, type DimPoint, type ScatterPoint } from './CurveCharts'
+import { herdSnapshot, weighingDays } from '../lib/herdSnapshot'
 import TrendBadge from './TrendBadge'
 import { trendsByAnimal } from '../lib/lactationTrend'
 
@@ -392,6 +393,25 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
         })),
     [animals],
   )
+  // Herdenbild Milch × Laktationstag (lib/herdSnapshot.ts): eigener
+  // Wägungstag und eigene Grösse (Standard Milch kg)
+  const [dimDate, setDimDate] = useState<string | null>(null)
+  const [dimMetric, setDimMetric] = useState<CurveMetric>('milk')
+  const days = useMemo(() => weighingDays(data?.tests ?? []), [data])
+  const snapshotDate = dimDate ?? days[0]?.date ?? null
+  const dimRef = useMemo(() => (dimMetric === metric ? curveData.ref : buildHerdReference(data?.tests ?? [], dimMetric)), [data, dimMetric, metric, curveData])
+  const dimPoints = useMemo<DimPoint[]>(() => {
+    if (!snapshotDate) return []
+    const shown = new Map(animals.map((a) => [a.animal_id, `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${a.label}`]))
+    return herdSnapshot(data?.tests ?? [], snapshotDate, dimMetric, dimRef)
+      .filter((p) => shown.has(p.animal_id))
+      .map((p) => ({ ...p, label: shown.get(p.animal_id)! }))
+  }, [data, snapshotDate, dimMetric, dimRef, animals])
+  const dimCounts = useMemo(() => {
+    const c = { hoch: 0, mitte: 0, tief: 0 }
+    for (const p of dimPoints) if (p.position) c[p.position]++
+    return c
+  }, [dimPoints])
   const classCounts = useMemo(() => {
     const m = new Map<CurveClass, number>()
     for (const p of scatter) m.set(p.klass, (m.get(p.klass) ?? 0) + 1)
@@ -555,6 +575,70 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
               Höhepunkt stärker ab. Viertel (Q1–Q4) nach Niveau über alle Laktationen. Grundlage: {metricUnit}
               {skipFirst ? `, ohne die ${skipFirst === 1 ? 'erste Wägung' : 'ersten zwei Wägungen'} jeder Laktation (Säugezeit)` : ''}. Antippen öffnet
               das Tier.
+            </p>
+          </div>
+        </details>
+      )}
+
+      {days.length > 0 && (
+        <details className="rounded-lg bg-white shadow-sm">
+          <summary className="cursor-pointer select-none px-3 py-2 text-sm">
+            <span className="font-semibold text-gray-700">Herdenbild: {dimMetric === 'fe' ? 'F+E' : 'Milch'} × Laktationstag</span>
+            {snapshotDate && <span className="ml-2 text-xs text-gray-500">Wägung {fmtDate(snapshotDate)}</span>}
+            <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+              {(['hoch', 'mitte', 'tief'] as const).map((k) => (
+                <span key={k} className="rounded px-1.5 py-0.5 text-xs text-white" style={{ background: POSITION_COLOR[k] }}>
+                  {dimCounts[k]} {k === 'hoch' ? 'über' : k === 'tief' ? 'unter' : 'mittel'}
+                </span>
+              ))}
+            </span>
+          </summary>
+          <div className="space-y-1 border-t px-2 pb-2 pt-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <select className="rounded border border-gray-300 bg-white px-2 py-1" value={snapshotDate ?? ''} onChange={(e) => setDimDate(e.target.value)}>
+                {days.map((d) => (
+                  <option key={d.date} value={d.date}>
+                    Wägung {fmtDate(d.date)} ({d.n})
+                  </option>
+                ))}
+              </select>
+              {(
+                [
+                  ['milk', 'kg Milch'],
+                  ['fe', 'kg F+E'],
+                ] as const
+              ).map(([m, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setDimMetric(m)}
+                  className={`rounded px-2 py-0.5 ${dimMetric === m ? 'bg-brand-700 text-white' : 'border border-gray-300 text-gray-600'}`}
+                >
+                  {label}
+                </button>
+              ))}
+              {dimPoints.length > 0 && (
+                <span className="text-gray-500">
+                  {dimPoints.length} {terms.plural} · ⌀ Tag {Math.round(dimPoints.reduce((s, p) => s + p.dim, 0) / dimPoints.length)} · ⌀{' '}
+                  {(dimPoints.reduce((s, p) => s + p.value, 0) / dimPoints.length).toFixed(dimMetric === 'fe' ? 2 : 1)} kg
+                </span>
+              )}
+            </div>
+            {snapshotDate && snapshotDate === days[0]?.date && (
+              <p className="text-xs text-gray-400">Neueste Wägung; frühere im Auswahlfeld.</p>
+            )}
+            <HerdDimChart
+              points={dimPoints}
+              bandOlder={bandFor(dimRef, snapshotDate, 2)}
+              bandFirst={bandFor(dimRef, snapshotDate, 1)}
+              unitLabel={dimMetric === 'fe' ? 'kg F+E' : 'kg Milch'}
+              decimals={dimMetric === 'fe' ? 2 : 1}
+              onSelect={selectAnimal}
+            />
+            <p className="px-1 text-xs text-gray-500">
+              Je {terms.singular} ein Punkt: Wägung am gewählten Tag, an ihrem Laktationstag. Grau die mittlere Hälfte der Herde ab 2.
+              Laktation mit Median, gestrichelt der Median der Erstlinge (Jahrgang der Wägung). <b>Grün</b> über, <b>rot</b> unter der
+              mittleren Hälfte der eigenen Gruppe, hohl = Erstling. Es gelten die Filter oben. Antippen öffnet das Tier.
             </p>
           </div>
         </details>
