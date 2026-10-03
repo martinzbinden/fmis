@@ -3,10 +3,18 @@
 
 import { animalLabel } from '@fmis/core/earTag'
 import type { AnimalStatus, LactationSummary } from '../types'
+import type { CurveClass } from './lactationCurves'
 
 export interface LactationRow extends LactationSummary {
   lauf_nr: string | null
   animal_status: AnimalStatus
+  // Kurve im Herdenvergleich (lib/lactationCurves.ts), sofern Wägungen da sind
+  level?: number | null
+  persistence?: number | null
+  quartile?: 1 | 2 | 3 | 4 | null
+  klass?: CurveClass | null
+  /** Tag der letzten Wägung */
+  lastDim?: number | null
 }
 
 /** Kurzform für die Tabelle; die lange steht im Tooltip. */
@@ -49,9 +57,19 @@ export interface LactationFilter {
   /** Kalbejahr, '' = alle */
   year: string
   activeOnly: boolean
+  /** Kurvenklasse oder Viertel; gilt in der Tieransicht für die bewertete Laktation. */
+  curve: '' | CurveClass | 'q4' | 'q1'
 }
 
-export const DEFAULT_FILTER: LactationFilter = { search: '', status: 'alle', parity: 'alle', year: '', activeOnly: true }
+export const DEFAULT_FILTER: LactationFilter = { search: '', status: 'alle', parity: 'alle', year: '', activeOnly: true, curve: '' }
+
+export function matchesCurve(l: LactationRow | undefined, curve: LactationFilter['curve']): boolean {
+  if (!curve) return true
+  if (!l) return false
+  if (curve === 'q4') return l.quartile === 4
+  if (curve === 'q1') return l.quartile === 1
+  return l.klass === curve
+}
 
 export function matchesLactation(l: LactationRow, f: LactationFilter): boolean {
   if (f.activeOnly && l.animal_status !== 'aktiv') return false
@@ -86,6 +104,8 @@ export interface AnimalLactations {
   /** Ø F+E der abgeschlossenen Laktationen (ohne laufende). */
   avgFe: number | null
   bestFe: number | null
+  /** Neueste Laktation mit Kurvenbewertung (laufende ab 2 Wägungen). */
+  rated: LactationRow | undefined
   /** Lebenstagleistung (lib/herdPerformance.ts), nur aktive weibliche Tiere. */
   ltl?: LifetimeYield
 }
@@ -118,14 +138,17 @@ export function groupByAnimal(rows: LactationRow[]): AnimalLactations[] {
       totalFe: allFe.reduce((s, v) => s + v, 0),
       avgFe: closedFe.length ? closedFe.reduce((s, v) => s + v, 0) / closedFe.length : null,
       bestFe: allFe.length ? Math.max(...allFe) : null,
+      rated: lactations.find((l) => l.level != null),
     }
   })
 }
 
-export type AnimalSort = 'lauf_nr' | 'latest_fe' | 'avg_fe' | 'total_fe' | 'ltl_fe' | 'ltl_rel' | 'count'
+export type AnimalSort = 'lauf_nr' | 'level' | 'persistence' | 'latest_fe' | 'avg_fe' | 'total_fe' | 'ltl_fe' | 'ltl_rel' | 'count'
 
 export const ANIMAL_SORT_LABEL: Record<AnimalSort, string> = {
   lauf_nr: 'Laufnummer / Name',
+  level: 'Niveau der Kurve',
+  persistence: 'Persistenz der Kurve',
   latest_fe: 'F+E letzte Laktation',
   avg_fe: 'Ø F+E abgeschlossen',
   total_fe: 'F+E Lebensleistung',
@@ -146,7 +169,11 @@ function byLabel(a: AnimalLactations, b: AnimalLactations): number {
 /** Zahlen absteigend (bester zuerst), fehlende Werte ans Ende. */
 export function sortAnimals(list: AnimalLactations[], sort: AnimalSort): AnimalLactations[] {
   const value = (a: AnimalLactations): number | null =>
-    sort === 'latest_fe'
+    sort === 'level'
+      ? (a.rated?.level ?? null)
+      : sort === 'persistence'
+        ? (a.rated?.persistence ?? null)
+        : sort === 'latest_fe'
       ? a.latest.fat_protein_kg
       : sort === 'avg_fe'
         ? a.avgFe
@@ -170,11 +197,30 @@ export function sortAnimals(list: AnimalLactations[], sort: AnimalSort): AnimalL
 
 // --- Ansicht alle Laktationen ---
 
-export type RowSort = 'label' | 'lactation_number' | 'calving_date' | 'days_in_milk' | 'milk_kg' | 'fat_kg' | 'protein_kg' | 'fat_protein_kg' | 'fe_per_day'
+export type RowSort =
+  | 'label'
+  | 'lactation_number'
+  | 'calving_date'
+  | 'days_in_milk'
+  | 'milk_kg'
+  | 'fat_kg'
+  | 'protein_kg'
+  | 'fat_protein_kg'
+  | 'fe_per_day'
+  | 'level'
+  | 'persistence'
 
 export function sortRows(rows: LactationRow[], key: RowSort, desc: boolean): LactationRow[] {
   const value = (r: LactationRow): string | number | null =>
-    key === 'label' ? (r.lauf_nr ? r.lauf_nr.padStart(8, '0') : animalLabel(r)) : key === 'fe_per_day' ? fePerDay(r) : r[key]
+    key === 'label'
+      ? r.lauf_nr
+        ? r.lauf_nr.padStart(8, '0')
+        : animalLabel(r)
+      : key === 'fe_per_day'
+        ? fePerDay(r)
+        : key === 'level' || key === 'persistence'
+          ? (r[key] ?? null)
+          : r[key]
   return [...rows].sort((a, b) => {
     const av = value(a)
     const bv = value(b)

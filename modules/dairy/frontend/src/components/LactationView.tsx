@@ -15,6 +15,7 @@ import {
   fePerDay,
   groupByAnimal,
   isRunning,
+  matchesCurve,
   matchesLactation,
   sortAnimals,
   sortRows,
@@ -26,6 +27,24 @@ import {
   type RowSort,
 } from '../lib/lactationView'
 import { animalLabel } from '@fmis/core/earTag'
+import {
+  analyzeLactations,
+  bandFor,
+  expectedTotal,
+  buildHerdReference,
+  buildTestDayModel,
+  curveClass,
+  curveKey,
+  CURVE_CLASS_LABEL,
+  parityGroup,
+  quantile,
+  quartileBounds,
+  quartileOf,
+  type CurveClass,
+  type CurveMetric,
+  type TestPoint,
+} from '../lib/lactationCurves'
+import { CLASS_COLOR, HerdScatter, LactationCurveChart, MiniCurve, type ScatterPoint } from './CurveCharts'
 
 /** Lebenstagleistung je aktivem weiblichem Tier — dieselbe Rechnung wie
  * Ausmerzliste und Lämmer-Selektion (lib/herdPerformance.ts, Herdenvergleich
@@ -61,13 +80,30 @@ async function loadLifetimeYield(pg: PGlite): Promise<Map<string, LifetimeYield>
   return new Map([...metrics].map(([id, m]) => [id, { milk: m.ltl_milk, fe: m.ltl_fe, feRel: m.n_lactations > 0 ? m.ltl_fe_rel : null }]))
 }
 
-async function loadLactations(pg: PGlite): Promise<{ rows: LactationRow[]; ltl: Map<string, LifetimeYield> }> {
-  const [{ rows }, ltl] = await Promise.all([
+async function loadTests(pg: PGlite): Promise<TestPoint[]> {
+  const { rows } = await pg.query<Record<string, unknown>>(
+    `select animal_id, lactation_number, calving_date, test_date, milk_kg, fat_pct, protein_pct
+     from milk_tests where deleted_at is null and calving_date is not null and lactation_number is not null`,
+  )
+  return rows.map((t) => ({
+    animal_id: String(t.animal_id),
+    lactation_number: num(t.lactation_number)!,
+    calving_date: isoDate(t.calving_date)!,
+    test_date: isoDate(t.test_date)!,
+    milk_kg: num(t.milk_kg) ?? 0,
+    fat_pct: num(t.fat_pct),
+    protein_pct: num(t.protein_pct),
+  }))
+}
+
+async function loadLactations(pg: PGlite): Promise<{ rows: LactationRow[]; ltl: Map<string, LifetimeYield>; tests: TestPoint[] }> {
+  const [{ rows }, ltl, tests] = await Promise.all([
     pg.query<LactationRow>(
       `select s.*, a.lauf_nr, a.status as animal_status
        from v_lactation_summary s join animals a on a.id = s.animal_id`,
     ),
     loadLifetimeYield(pg),
+    loadTests(pg),
   ])
   const out = rows.map((r) => ({
     ...r,
@@ -81,7 +117,7 @@ async function loadLactations(pg: PGlite): Promise<{ rows: LactationRow[]; ltl: 
     fat_protein_kg: num(r.fat_protein_kg),
     days_in_milk: num(r.days_in_milk),
   }))
-  return { rows: out, ltl }
+  return { rows: out, ltl, tests }
 }
 
 const n0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleString('de-CH'))
@@ -89,13 +125,14 @@ const n2 = (v: number | null) => (v == null ? '–' : v.toFixed(2))
 
 interface Settings {
   view: 'tier' | 'alle'
+  metric: CurveMetric
   filter: LactationFilter
   animalSort: AnimalSort
   rowSort: RowSort
   rowDesc: boolean
 }
 
-const DEFAULT_SETTINGS: Settings = { view: 'tier', filter: DEFAULT_FILTER, animalSort: 'lauf_nr', rowSort: 'fat_protein_kg', rowDesc: true }
+const DEFAULT_SETTINGS: Settings = { view: 'tier', metric: 'fe', filter: DEFAULT_FILTER, animalSort: 'lauf_nr', rowSort: 'fat_protein_kg', rowDesc: true }
 
 function loadSettings(key: string): Settings {
   try {
@@ -117,6 +154,40 @@ function StatusBadge({ closure }: { closure: number }) {
       className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${running ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}
     >
       {CLOSURE_SHORT[closure] ?? closure}
+    </span>
+  )
+}
+
+const pct = (v: number | null | undefined) => (v == null ? '–' : `${Math.round(v * 100)} %`)
+const pp = (v: number | null | undefined) => (v == null ? '–' : `${v > 0 ? '+' : ''}${Math.round(v * 100)}`)
+
+const QUARTILE_STYLE: Record<number, string> = {
+  4: 'bg-green-100 text-green-800',
+  3: 'bg-green-50 text-green-700',
+  2: 'bg-amber-50 text-amber-800',
+  1: 'bg-red-100 text-red-800',
+}
+const QUARTILE_TITLE: Record<number, string> = {
+  4: 'oberstes Viertel der Herde',
+  3: 'zweitbestes Viertel',
+  2: 'zweitschwächstes Viertel',
+  1: 'unterstes Viertel der Herde',
+}
+
+function QuartileChip({ q }: { q: number | null | undefined }) {
+  if (q == null) return null
+  return (
+    <span title={QUARTILE_TITLE[q]} className={`rounded px-1.5 py-0.5 text-xs font-semibold ${QUARTILE_STYLE[q]}`}>
+      Q{q}
+    </span>
+  )
+}
+
+function ClassChip({ klass }: { klass: CurveClass | null | undefined }) {
+  if (!klass) return null
+  return (
+    <span className="whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium text-white" style={{ background: CLASS_COLOR[klass] }}>
+      {CURVE_CLASS_LABEL[klass]}
     </span>
   )
 }
@@ -173,6 +244,9 @@ function LactationTable({ rows, showAnimal, calvingLabel, sort }: {
           {head('protein_kg', 'Eiweiss kg / %')}
           {head('fat_protein_kg', 'F+E kg')}
           {head('fe_per_day', 'F+E g/Tag')}
+          {head('level', 'Niveau')}
+          {head('persistence', 'Persistenz')}
+          <th className="px-2 py-1.5 text-left font-medium">Kurve</th>
         </tr>
       </thead>
       <tbody>
@@ -201,6 +275,13 @@ function LactationTable({ rows, showAnimal, calvingLabel, sort }: {
             </td>
             <td className="px-2 py-1.5 text-right font-semibold text-gray-900">{n0(l.fat_protein_kg)}</td>
             <td className="px-2 py-1.5 text-right text-gray-600">{n0(fePerDay(l))}</td>
+            <td className="whitespace-nowrap px-2 py-1.5 text-right text-gray-700">
+              {pct(l.level)} <QuartileChip q={l.quartile} />
+            </td>
+            <td className="px-2 py-1.5 text-right text-gray-700">{pp(l.persistence)}</td>
+            <td className="px-2 py-1.5">
+              <ClassChip klass={l.klass} />
+            </td>
           </tr>
         ))}
       </tbody>
@@ -218,7 +299,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
   const { data, loading } = useQuery(loadLactations)
   const [settings, setSettingsState] = useState<Settings>(() => loadSettings(storageKey))
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const { view, filter, animalSort, rowSort, rowDesc } = settings
+  const { view, metric, filter, animalSort, rowSort, rowDesc } = settings
 
   function setSettings(patch: Partial<Settings>) {
     const next = { ...settings, ...patch }
@@ -231,21 +312,89 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
   }
   const setFilter = (patch: Partial<LactationFilter>) => setSettings({ filter: { ...filter, ...patch } })
 
-  const all = data?.rows ?? []
+  // Kurven im Herdenvergleich (lib/lactationCurves.ts)
+  const curveData = useMemo(() => {
+    const tests = data?.tests ?? []
+    const ref = buildHerdReference(tests, metric)
+    const model = buildTestDayModel(tests, metric)
+    const curves = analyzeLactations(tests, model)
+    const bounds = quartileBounds([...curves.values()].map((c) => c.level).filter((v): v is number => v != null))
+    // Typische Melkdauer abgeschlossener Laktationen je Gruppe — für die
+    // Hochrechnung laufender (Niveau × Herdenkurve des Jahrgangs über diese Dauer).
+    const days = { 1: [] as number[], 2: [] as number[] }
+    for (const r of data?.rows ?? []) if (!isRunning(r) && r.days_in_milk) days[parityGroup(r.lactation_number)].push(r.days_in_milk)
+    const typicalDays = {
+      1: Math.round(quantile([...days[1]].sort((a, b) => a - b), 0.5)) || 220,
+      2: Math.round(quantile([...days[2]].sort((a, b) => a - b), 0.5)) || 220,
+    }
+    return { ref, model, curves, bounds, typicalDays }
+  }, [data, metric])
+
+  const all = useMemo(
+    () =>
+      (data?.rows ?? []).map((r) => {
+        const c = curveData.curves.get(curveKey(r.animal_id, r.lactation_number))
+        return {
+          ...r,
+          level: c?.level ?? null,
+          persistence: c?.persistence ?? null,
+          quartile: quartileOf(c?.level ?? null, curveData.bounds),
+          klass: curveClass(c),
+          lastDim: c?.lastDim ?? null,
+        }
+      }),
+    [data, curveData],
+  )
   const years = useMemo(() => calvingYears(all), [all])
-  const rows = useMemo(() => all.filter((l) => matchesLactation(l, filter)), [all, filter])
+  const rows = useMemo(
+    () => all.filter((l) => matchesLactation(l, filter) && (view === 'tier' || matchesCurve(l, filter.curve))),
+    [all, filter, view],
+  )
   const animals = useMemo(
-    () => sortAnimals(groupByAnimal(rows).map((a) => ({ ...a, ltl: data?.ltl.get(a.animal_id) })), animalSort),
-    [rows, animalSort, data],
+    () =>
+      sortAnimals(
+        groupByAnimal(rows)
+          .map((a) => ({ ...a, ltl: data?.ltl.get(a.animal_id) }))
+          .filter((a) => matchesCurve(a.rated, filter.curve)),
+        animalSort,
+      ),
+    [rows, animalSort, data, filter.curve],
   )
   const sortedRows = useMemo(() => sortRows(rows, rowSort, rowDesc), [rows, rowSort, rowDesc])
+  const scatter = useMemo<ScatterPoint[]>(
+    () =>
+      animals
+        .filter((a) => a.rated?.level != null && a.rated.persistence != null && a.rated.klass)
+        .map((a) => ({
+          animal_id: a.animal_id,
+          label: `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${a.label}`,
+          lactation_number: a.rated!.lactation_number,
+          running: isRunning(a.rated!),
+          level: a.rated!.level!,
+          persistence: a.rated!.persistence!,
+          klass: a.rated!.klass!,
+        })),
+    [animals],
+  )
+  const classCounts = useMemo(() => {
+    const m = new Map<CurveClass, number>()
+    for (const p of scatter) m.set(p.klass, (m.get(p.klass) ?? 0) + 1)
+    return m
+  }, [scatter])
+
+  function selectAnimal(id: string) {
+    setOpen((o) => new Set(o).add(id))
+    if (view !== 'tier') setSettings({ view: 'tier' })
+    setTimeout(() => document.getElementById(`lact-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
   const scale = useMemo(() => Math.max(0, ...rows.map((r) => r.fat_protein_kg ?? 0)), [rows])
 
   if (loading && !data) return <p className="text-center text-gray-400">Lädt…</p>
   if (data && all.length === 0) return <p className="text-center text-gray-500">Keine Laktationsdaten. {terms.importHint}</p>
 
   const select = 'rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
-  const filtered = filter.search || filter.status !== 'alle' || filter.parity !== 'alle' || filter.year || !filter.activeOnly
+  const filtered = filter.search || filter.status !== 'alle' || filter.parity !== 'alle' || filter.year || !filter.activeOnly || filter.curve
+  const metricUnit = metric === 'fe' ? 'kg F+E' : 'kg Milch'
 
   return (
     <div className="space-y-3">
@@ -305,6 +454,33 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
               ))}
             </select>
           )}
+          <select className={select} value={filter.curve} onChange={(e) => setFilter({ curve: e.target.value as LactationFilter['curve'] })}>
+            <option value="">Alle Kurven</option>
+            <option value="q4">oberstes Viertel (Q4)</option>
+            <option value="q1">unterstes Viertel (Q1)</option>
+            {(Object.keys(CURVE_CLASS_LABEL) as CurveClass[]).map((k) => (
+              <option key={k} value={k}>
+                {CURVE_CLASS_LABEL[k]}
+              </option>
+            ))}
+          </select>
+          <div className="flex rounded border border-gray-300 text-xs" title="Grundlage für Kurven, Niveau und Persistenz">
+            {(
+              [
+                ['fe', 'Kurven: F+E'],
+                ['milk', 'Milch'],
+              ] as const
+            ).map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setSettings({ metric: v })}
+                className={`px-2.5 py-1.5 ${metric === v ? 'bg-brand-700 text-white' : 'text-gray-600'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <label className="flex items-center gap-1.5 text-sm text-gray-700">
             <input type="checkbox" checked={filter.activeOnly} onChange={(e) => setFilter({ activeOnly: e.target.checked })} />
             nur aktive {terms.plural}
@@ -331,14 +507,47 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
         </div>
       </div>
 
+      {scatter.length > 0 && (
+        <details className="rounded-lg bg-white shadow-sm">
+          <summary className="cursor-pointer select-none px-3 py-2 text-sm">
+            <span className="font-semibold text-gray-700">Herdenbild: Niveau × Persistenz</span>
+            <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+              {(Object.keys(CURVE_CLASS_LABEL) as CurveClass[]).map((k) => (
+                <span key={k} className="rounded px-1.5 py-0.5 text-xs text-white" style={{ background: CLASS_COLOR[k] }}>
+                  {classCounts.get(k) ?? 0} {CURVE_CLASS_LABEL[k]}
+                </span>
+              ))}
+            </span>
+          </summary>
+          <div className="border-t px-2 pb-2">
+            <HerdScatter points={scatter} onSelect={selectAnimal} />
+            <p className="px-1 text-xs text-gray-500">
+              Je {terms.singular} ein Punkt: die neueste bewertete Laktation (laufende ab 2 Wägungen). Jede Wägung wird mit den
+              Herdengenossinnen <b>am gleichen Wägungstag</b> verglichen und um Laktationstag und Alter bereinigt (Erstlinge getrennt) —
+              Jahr, Saison und Futter fallen so heraus. <b>Niveau</b> = diese Vergleiche im Mittel (100 % = wie die Herde).{' '}
+              <b>Persistenz</b> = wie sich der Vergleich je 100 Tage verändert: 0 = Kurve verläuft wie die Herde, negativ = fällt nach dem
+              Höhepunkt stärker ab. Viertel (Q1–Q4) nach Niveau über alle Laktationen. Grundlage: {metricUnit}. Antippen öffnet das Tier.
+            </p>
+          </div>
+        </details>
+      )}
+
       {rows.length === 0 && <p className="text-center text-sm text-gray-500">Keine Laktationen für diese Filter.</p>}
 
       {view === 'tier' && (
         <ul className="space-y-2">
           {animals.map((a) => {
             const isOpen = open.has(a.animal_id)
+            const rated = a.rated
+            const ratedCurve = rated ? curveData.curves.get(curveKey(a.animal_id, rated.lactation_number)) : undefined
+            const band = ratedCurve ? bandFor(curveData.ref, ratedCurve.calving_date, ratedCurve.group) : []
+            const herdTotal = ratedCurve ? expectedTotal(band, curveData.typicalDays[ratedCurve.group]) : null
+            const projection = rated && isRunning(rated) && rated.level != null && herdTotal != null ? rated.level * herdTotal : null
+            const animalCurves = a.lactations
+              .map((l) => curveData.curves.get(curveKey(a.animal_id, l.lactation_number)))
+              .filter((c): c is NonNullable<typeof c> => !!c && c.points.length > 0)
             return (
-              <li key={a.animal_id} className="rounded-lg bg-white shadow-sm">
+              <li key={a.animal_id} id={`lact-${a.animal_id}`} className="scroll-mt-20 rounded-lg bg-white shadow-sm">
                 <button
                   type="button"
                   onClick={() => {
@@ -377,12 +586,55 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                         </span>
                       )}
                     </div>
+                    {rated && (
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600">
+                        <QuartileChip q={rated.quartile} />
+                        <ClassChip klass={rated.klass} />
+                        <span>
+                          Niveau <b>{pct(rated.level)}</b>
+                          {rated.persistence != null && (
+                            <>
+                              {' '}
+                              · Persistenz <b>{pp(rated.persistence)}</b>
+                            </>
+                          )}
+                        </span>
+                        <span className="text-gray-400">
+                          {rated.lactation_number}. Lakt.{isRunning(rated) ? `, laufend, Tag ${rated.lastDim ?? '?'}` : ''}
+                        </span>
+                        {projection != null && Number.isFinite(projection) && (
+                          <span
+                            title={`Wenn die Kurve weiter wie die Herde verläuft: Niveau × Herdenkurve des Jahrgangs über ${
+                              curveData.typicalDays[ratedCurve!.group]
+                            } Melktage (übliche Dauer)`}
+                          >
+                            Hochrechnung ≈ {n0(projection)} {metricUnit} (Herde {n0(herdTotal)})
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <FeBars animal={a} scale={scale} />
+                  {ratedCurve && (
+                    <MiniCurve curve={ratedCurve} band={curveData.model.relBand[ratedCurve.group]} color={rated?.klass ? CLASS_COLOR[rated.klass] : undefined} />
+                  )}
+                  <span className="hidden sm:block">
+                    <FeBars animal={a} scale={scale} />
+                  </span>
                   <span className="text-gray-300">{isOpen ? '▴' : '▾'}</span>
                 </button>
                 {isOpen && (
                   <div className="overflow-x-auto border-t px-1 pb-2">
+                    {animalCurves.length > 0 && (
+                      <LactationCurveChart
+                        curves={animalCurves}
+                        band={bandFor(curveData.ref, a.latest.calving_date, parityGroup(a.latest.lactation_number))}
+                        relBand={curveData.model.relBand[parityGroup(a.latest.lactation_number)]}
+                        year={a.latest.calving_date?.slice(0, 4) ?? null}
+                        group={parityGroup(a.latest.lactation_number)}
+                        metric={metric}
+                        runningNumber={isRunning(a.latest) ? a.latest.lactation_number : null}
+                      />
+                    )}
                     <LactationTable rows={a.lactations} showAnimal={false} calvingLabel={calvingLabel} />
                     <Link to={`kuehe/${a.animal_id}`} className="ml-2 text-xs text-brand-700">
                       Zum Tier →
