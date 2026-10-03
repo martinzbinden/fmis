@@ -15,6 +15,7 @@ import {
 import { deleteFertilizationEntry, loadFertilizerTypes, saveFertilizationEntry } from '../lib/fertilization'
 import { computeNutrients, kgPerHa, parseDilution } from '../lib/nutrients'
 import Modal from './Modal'
+import HerdUsageNote from './HerdUsageNote'
 import ExtentPicker from './ExtentPicker'
 import type {
   AnimalCategory,
@@ -157,6 +158,7 @@ export default function DayEntryEditor({
   date,
   onClose,
   onSaved,
+  herdUsage = [],
 }: {
   parcel: Parcel
   parcels: Parcel[]
@@ -164,6 +166,8 @@ export default function DayEntryEditor({
   date: string
   onClose: () => void
   onSaved: () => void
+  /** Weide aus Herden (abgeleitet, nur Anzeige) */
+  herdUsage?: UsageEntry[]
 }) {
   const parcelId = parcel.id
   const parcelName = parcel.name
@@ -333,6 +337,7 @@ export default function DayEntryEditor({
 
   return (
     <Modal title={`${parcelName} · ${fmtDate(date)}`} onClose={onClose}>
+      <HerdUsageNote entries={herdUsage} />
       {loading ? (
         <p className="py-4 text-center text-gray-400">Lädt…</p>
       ) : (

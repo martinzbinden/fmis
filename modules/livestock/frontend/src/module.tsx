@@ -20,6 +20,7 @@ import Economics from './pages/Economics'
 import History from './pages/History'
 import IntakePanel from './components/IntakePanel'
 import { createLivestockImporter, intakeOf } from './lib/importDetect'
+import { livestockAnimalProvider } from './lib/animalProvider'
 import './theme.css'
 
 function LivestockDbProvider({ children }: { children: ReactNode }) {
@@ -57,6 +58,7 @@ const livestockModule: ModuleDescriptor = {
   ],
   DbProvider: LivestockDbProvider,
   sync: syncClient,
+  animals: livestockAnimalProvider,
   importer: createLivestockImporter(({ claim, ...run }) => (
     <IntakePanel rows={intakeOf(claim).rows} warnings={intakeOf(claim).warnings} {...run} />
   )),

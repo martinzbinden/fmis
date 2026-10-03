@@ -11,6 +11,8 @@ export interface AnimalRow extends Animal {
   last_journal: string | null
   /** Inzuchtkoeffizient aus dem Stammbaum (lib/inbreeding.ts). */
   inbreeding: number
+  /** trockengestellt (lib/dryOff.ts) */
+  dry?: boolean
 }
 
 // Alle wählbaren Spalten; die Auswahl wird pro Instanz in localStorage

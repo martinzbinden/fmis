@@ -303,6 +303,7 @@ export default function JournalGridPage() {
           parcels={parcels}
           seasonYear={seasonYear}
           date={editorTarget.date}
+          herdUsage={(usageByDay[editorTarget.parcel.id]?.[editorTarget.date] ?? []).filter((e) => e.herd_group_id)}
           onClose={() => setEditorTarget(null)}
           onSaved={refresh}
         />
@@ -312,6 +313,7 @@ export default function JournalGridPage() {
           parcel={editorTarget.parcel}
           seasonYear={seasonYear}
           date={editorTarget.date}
+          herdUsage={(usageByDay[editorTarget.parcel.id]?.[editorTarget.date] ?? []).filter((e) => e.herd_group_id)}
           onClose={() => setEditorTarget(null)}
           onSaved={refresh}
         />

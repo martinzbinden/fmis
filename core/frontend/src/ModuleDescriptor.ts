@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from 'react'
 import type { RouteObject } from 'react-router-dom'
 import type { SyncClient } from './sync'
 import type { ModuleImporter } from './upload'
+import type { AnimalProvider } from './animals'
 
 export interface NavItem {
   to: string
@@ -30,4 +31,6 @@ export interface ModuleDescriptor {
   sync: SyncClient
   /** Formate, die das Modul über die zentrale Upload-Seite übernimmt (core/frontend/src/upload.ts). */
   importer?: ModuleImporter
+  /** Tiere für Herdengruppen und Standorte (core/frontend/src/animals.ts). */
+  animals?: AnimalProvider
 }

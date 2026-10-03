@@ -1,6 +1,8 @@
 import type { PGlite } from '@electric-sql/pglite'
 import type { FertilizationEntry, UsageEntry } from '../types'
-import { isoDate } from './format'
+import { isoDate, todayIso } from './format'
+import { loadHerdData } from './herds'
+import { derivedWeideEntries } from './herdModel'
 
 function normalize<T extends { entry_date: string }>(rows: T[]): T[] {
   return rows.map((r) => ({ ...r, entry_date: isoDate(r.entry_date) }))
@@ -60,5 +62,8 @@ export async function loadEntriesInRange(
       [from, to],
     ),
   ])
-  return { usage: normalize(usage.rows), fertilizations: normalize(fert.rows) }
+  // Weide aus Herdengruppen (lib/herdModel.ts) — abgeleitet, nicht gespeichert
+  const herd = await loadHerdData(pg)
+  const derived = derivedWeideEntries(herd.groups, herd.stays, herd.members, herd.counts, from, to, todayIso())
+  return { usage: [...normalize(usage.rows), ...derived], fertilizations: normalize(fert.rows) }
 }

@@ -255,6 +255,8 @@ const ClassicRow = memo(function ClassicRow({
             man Tag für Tag nachträgt. Nur wenn der Folgetag noch frei ist
             und innerhalb der Saison liegt. */}
         {bars.map((bar) => {
+          // Weide aus Herden verlängert sich von selbst (lib/herdModel.ts)
+          if (bar.entry.herd_group_id) return null
           const endIdx = bar.startIdx + bar.span - 1
           const endDate = days[endIdx]
           if (endDate < extendWindowStart || endDate > today) return null

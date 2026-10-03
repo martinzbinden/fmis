@@ -17,6 +17,7 @@ import {
 } from '../lib/format'
 import { deleteFertilizationEntry, loadFertilizerTypes, saveFertilizationEntry } from '../lib/fertilization'
 import Modal from './Modal'
+import HerdUsageNote from './HerdUsageNote'
 import type {
   AnimalCategory,
   DuengungCode,
@@ -82,12 +83,15 @@ export default function DayEntryEditorClassic({
   date,
   onClose,
   onSaved,
+  herdUsage = [],
 }: {
   parcel: Parcel
   seasonYear: number
   date: string
   onClose: () => void
   onSaved: () => void
+  /** Weide aus Herden (abgeleitet, nur Anzeige) */
+  herdUsage?: UsageEntry[]
 }) {
   const parcelId = parcel.id
   const [loading, setLoading] = useState(true)
@@ -330,6 +334,7 @@ export default function DayEntryEditorClassic({
 
   return (
     <Modal title={`${parcel.name} · ${fmtDate(date)}`} onClose={onClose}>
+      <HerdUsageNote entries={herdUsage} />
       {loading ? (
         <p className="py-4 text-center text-gray-400">Lädt…</p>
       ) : loadError ? (

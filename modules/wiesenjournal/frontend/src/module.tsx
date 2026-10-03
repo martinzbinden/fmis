@@ -14,6 +14,7 @@ import FertilizerTypes from './pages/FertilizerTypes'
 import WorkPlan from './pages/WorkPlan'
 import Machines from './pages/Machines'
 import MachineDetail from './pages/MachineDetail'
+import Herds from './pages/Herds'
 import './theme.css'
 
 function WiesenjournalDbProvider({ children }: { children: ReactNode }) {
@@ -28,6 +29,7 @@ const wiesenjournalModule: ModuleDescriptor = {
     { to: '', label: 'Raster', icon: '📅' },
     { to: 'liste', label: 'Journal', icon: '📋' },
     { to: 'arbeitsplan', label: 'Plan', icon: '🚜' },
+    { to: 'herden', label: 'Herden', icon: '🐑' },
     { to: 'karte', label: 'Karte', icon: '🗺️' },
     { to: 'parzellen', label: 'Parzellen', icon: '🌱' },
     { to: 'auswertung', label: 'Auswertung', icon: '📊' },
@@ -43,6 +45,7 @@ const wiesenjournalModule: ModuleDescriptor = {
     // Kein Nav-Eintrag (Bottom-Bar ist voll) — verlinkt von Parzellen/Auswertung.
     { path: 'duengerarten', element: <FertilizerTypes /> },
     { path: 'arbeitsplan', element: <WorkPlan /> },
+    { path: 'herden', element: <Herds /> },
     { path: 'maschinen', element: <Machines /> },
     { path: 'maschinen/:id', element: <MachineDetail /> },
     { path: '*', element: <Navigate to="." replace /> },

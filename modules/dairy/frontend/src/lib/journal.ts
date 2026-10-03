@@ -7,6 +7,7 @@ export const JOURNAL_CATEGORIES: { key: JournalCategory; label: string; icon: st
   { key: 'behandlung', label: 'Behandlung', icon: '💉' },
   { key: 'brunst', label: 'Brunst', icon: '❤️' },
   { key: 'klauen', label: 'Klauen', icon: '🦶' },
+  { key: 'trocken', label: 'Trockengestellt', icon: '⏸️' },
   { key: 'notiz', label: 'Notiz', icon: '📝' },
 ]
 

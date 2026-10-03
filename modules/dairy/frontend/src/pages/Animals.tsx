@@ -1,3 +1,4 @@
+import { isDrySql } from '../lib/dryOff'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
@@ -13,7 +14,8 @@ async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
       (select count(*) from milk_tests mt where mt.animal_id = a.id and mt.deleted_at is null) as milk_test_count,
       (select count(*) from animal_journal j where j.animal_id = a.id and j.deleted_at is null) as journal_count,
       (select j.text from animal_journal j where j.animal_id = a.id and j.deleted_at is null
-        order by j.entry_date desc, j.updated_at desc limit 1) as last_journal
+        order by j.entry_date desc, j.updated_at desc limit 1) as last_journal,
+      ${isDrySql('a')} as dry
     from animals a
     where a.deleted_at is null
     order by a.status, a.lauf_nr nulls last, a.ear_tag
@@ -24,6 +26,7 @@ async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
     milk_test_count: Number(r.milk_test_count),
     journal_count: Number(r.journal_count),
     inbreeding: inbreeding.inbreeding(animalKey(r.ear_tag) ?? r.ear_tag),
+    dry: Boolean(r.dry),
   }))
 }
 
@@ -118,12 +121,15 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
                 {a.lauf_nr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{a.lauf_nr}</span>}
                 {animalLabel(a)}
               </Link>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                  a.status === 'aktiv' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'
-                }`}
-              >
-                {a.status}
+              <span className="flex shrink-0 gap-1">
+                {a.dry && a.status === 'aktiv' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">trocken</span>}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    a.status === 'aktiv' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  {a.status}
+                </span>
               </span>
             </div>
             <div className="mt-1 text-xs text-gray-500">

@@ -71,6 +71,23 @@ SYNC_TABLES: dict[str, list[str]] = {
         "geometry", "notes", "created_by", "updated_at", "deleted_at",
         "accuracy_m",
     ],
+    "locations": [
+        "id", "name", "site", "kind", "sort_order", "active", "notes", "updated_at", "deleted_at",
+    ],
+    "herd_groups": [
+        "id", "name", "species", "milking", "active", "sort_order", "notes", "updated_at", "deleted_at",
+    ],
+    "herd_stays": [
+        "id", "group_id", "slot", "location_id", "parcel_id", "day_only", "from_date", "to_date",
+        "notes", "updated_at", "deleted_at",
+    ],
+    "herd_members": [
+        "id", "group_id", "module_key", "animal_id", "label", "category", "from_date", "to_date",
+        "updated_at", "deleted_at",
+    ],
+    "herd_counts": [
+        "id", "group_id", "category", "count", "from_date", "to_date", "notes", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
@@ -96,6 +113,12 @@ TABLE_AREA: dict[str, str] = {
     "machine_files": "wiesenjournal:tracking",
     "tracks": "wiesenjournal:tracking",
     "weed_observations": "wiesenjournal:tracking",
+    # Herden und Standorte gehören zum Weidegang
+    "locations": "wiesenjournal:weide",
+    "herd_groups": "wiesenjournal:weide",
+    "herd_stays": "wiesenjournal:weide",
+    "herd_members": "wiesenjournal:weide",
+    "herd_counts": "wiesenjournal:weide",
     "data_history": "wiesenjournal:history",
 }
 

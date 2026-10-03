@@ -20,6 +20,7 @@ import LambSelection from './pages/LambSelection'
 import PedigreeAnimal from './pages/PedigreeAnimal'
 import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
+import { createDairyAnimalProvider } from './lib/animalProvider'
 import './theme.css'
 
 /**
@@ -68,5 +69,6 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     DbProvider: DairyDbProvider,
     sync: createDairySyncClient(key),
     importer: createDairyImporter(key, title, ({ claim, ...run }) => <ImportPanel moduleKey={key} files={dairyFilesOf(claim)} {...run} />),
+    animals: createDairyAnimalProvider(key, title),
   }
 }

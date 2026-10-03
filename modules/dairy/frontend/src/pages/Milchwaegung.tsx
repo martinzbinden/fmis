@@ -1,3 +1,4 @@
+import { isDrySql } from '../lib/dryOff'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getToken } from '@fmis/core/auth'
@@ -147,9 +148,15 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   const [manualInput, setManualInput] = useState('')
   const [suggestIdx, setSuggestIdx] = useState(0)
   const [suggestOpen, setSuggestOpen] = useState(false)
-  // Alle aktiven Tiere für die Vorschlagsliste (Laufnummer / Ohrmarke / Name)
+  // Alle aktiven, nicht trockengestellten Tiere für die Vorschlagsliste
+  // (Laufnummer / Ohrmarke / Name) — siehe lib/dryOff.ts
   const { data: animalsData } = useQuery(
-    (db) => db.query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' order by lauf_nr nulls last, ear_tag").then((r) => r.rows),
+    (db) =>
+      db
+        .query<Animal>(
+          `select * from animals a where a.deleted_at is null and a.status = 'aktiv' and not ${isDrySql('a')} order by a.lauf_nr nulls last, a.ear_tag`,
+        )
+        .then((r) => r.rows),
     [],
   )
   const [openArchived, setOpenArchived] = useState<Record<string, boolean>>({})
