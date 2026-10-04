@@ -244,6 +244,8 @@ export type MachineKind =
   | 'verschlauchung'
   // schema/0020: Autos (Wartung in km)
   | 'auto'
+  // Fahrhilfe: Wiesenstriegel
+  | 'striegel'
   | 'andere'
 
 export interface Machine {
@@ -286,7 +288,10 @@ export interface TankEvent {
   parcel_id: string | null
   event_at: string
   source: 'knopf' | 'auto'
+  /** Menge des Behälters in `unit` (Name aus Güllefass-Zeiten) */
   volume_m3: number
+  /** schema/0022 */
+  unit?: DuengungUnit
   distance_m: number
   spread_s: number
   width_m: number

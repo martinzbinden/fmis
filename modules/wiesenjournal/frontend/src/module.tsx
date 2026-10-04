@@ -19,6 +19,7 @@ import Maintenance from './pages/Maintenance'
 import OutdoorJournal from './pages/OutdoorJournal'
 import { wiesenjournalHerdLocator } from './lib/herds'
 import MaintenanceTile from './components/MaintenanceTile'
+import DriveAssistTile from './components/DriveAssistTile'
 import './theme.css'
 
 function WiesenjournalDbProvider({ children }: { children: ReactNode }) {
@@ -61,7 +62,7 @@ const wiesenjournalModule: ModuleDescriptor = {
   DbProvider: WiesenjournalDbProvider,
   sync: syncClient,
   herdLocator: wiesenjournalHerdLocator,
-  dashboardTiles: [MaintenanceTile],
+  dashboardTiles: [DriveAssistTile, MaintenanceTile],
 }
 
 export default wiesenjournalModule

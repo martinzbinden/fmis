@@ -9,6 +9,7 @@ import { comboName, isTractor, loadMachines, machineSummary, suggestTractor } fr
 // darum hier nur ein <datalist>: Freitext bleibt möglich, Tippen wird schneller.
 const WORK_TYPE_SUGGESTIONS = [
   'Gülle ausbringen',
+  'Gülle verschlauchen',
   'Mist ausbringen',
   'Kunstdünger streuen',
   'Kalk streuen',

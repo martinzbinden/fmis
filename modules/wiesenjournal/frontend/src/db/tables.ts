@@ -93,7 +93,7 @@ export const SYNC_TABLES = {
   ],
   tank_events: [
     'id', 'track_id', 'machine_id', 'parcel_id', 'event_at', 'source', 'volume_m3', 'distance_m',
-    'spread_s', 'width_m', 'lat', 'lng', 'notes', 'updated_at', 'deleted_at',
+    'spread_s', 'width_m', 'lat', 'lng', 'notes', 'updated_at', 'deleted_at', 'unit',
   ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',

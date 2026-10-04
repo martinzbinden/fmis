@@ -32,6 +32,7 @@ export const KIND_CATEGORY: Record<MachineKind, MachineCategory> = {
   maehwerk: 'anbaugeraet',
   aufbereiter: 'anbaugeraet',
   zettwender: 'anbaugeraet',
+  striegel: 'anbaugeraet',
   pflug: 'anbaugeraet',
   kreiselegge: 'anbaugeraet',
   saatkombination: 'anbaugeraet',
@@ -247,6 +248,7 @@ export const TEMPLATES: Record<MachineKind, TaskTemplate[]> = {
   ],
   aufbereiter: [GREASE(10), PTO, GEARBOX, T('zinken', 'Zinken, Bürste und Kamm prüfen', 'verschleiss', undefined, 12), SEASON],
   zettwender: [GREASE(20), PTO, T('zinken', 'Zinken prüfen/ersetzen', 'verschleiss', undefined, 12), GEARBOX, SEASON],
+  striegel: [T('zinken', 'Striegelzinken prüfen/ersetzen, Zinkenspannung einstellen', 'verschleiss', 30, 12), GREASE(30), SEASON],
   pflug: [
     T('verschleiss', 'Schare, Anlagen, Streichbleche prüfen', 'verschleiss', 20, 12),
     GREASE(20),

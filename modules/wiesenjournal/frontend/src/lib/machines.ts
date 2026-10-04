@@ -27,6 +27,7 @@ export const MACHINE_KIND_LABEL: Record<MachineKind, string> = {
   viehanhaenger: 'Viehanhänger',
   verschlauchung: 'Gülle-Verschlauchung',
   auto: 'Auto',
+  striegel: 'Striegel',
   andere: 'andere',
 }
 

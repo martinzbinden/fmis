@@ -28,6 +28,7 @@ import { downloadGpx } from '../lib/gpx'
 import { completePlan, getActivePlan, setActivePlan, visitedParcels, type ActivePlan } from '../lib/workPlan'
 import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
 import SlurryPanel from '../components/SlurryPanel'
+import DriveAssist from '../components/DriveAssist'
 import { loadTrackTanks } from '../lib/slurryData'
 import { fetchCoverage, fieldShapes, localDay, sameJob, timeMs, type CoverageParcel } from '../lib/coverage'
 import AckerToggle from '../components/AckerToggle'
@@ -136,6 +137,8 @@ export default function Map() {
     null,
   )
   const [startingTrack, setStartingTrack] = useState(false)
+  // Vollbild-Fahrhilfe (components/DriveAssist.tsx)
+  const [showAssist, setShowAssist] = useState(false)
   const [dwellCandidate, setDwellCandidate] = useState<{ lat: number; lng: number } | null>(null)
   const currentTrackRef = useRef(currentTrack)
   currentTrackRef.current = currentTrack
@@ -209,6 +212,8 @@ export default function Map() {
     setLivePoints([])
     setDwellCandidate(null)
     setRecording(true)
+    // Mit Arbeitsbreite gleich in die Fahrhilfe (Parallelfahren)
+    if (details.widthM) setShowAssist(true)
     return trackId
   }
 
@@ -236,7 +241,17 @@ export default function Map() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, canTrack])
 
+  // Von der Übersicht («Fahrhilfe»): Startdialog gleich öffnen
+  useEffect(() => {
+    if (searchParams.get('fahrhilfe') !== '1' || !canTrack) return
+    setSearchParams({}, { replace: true })
+    if (recording) setShowAssist(true)
+    else setStartingTrack(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, canTrack])
+
   async function stopRecording() {
+    setShowAssist(false)
     if (currentTrack) {
       await stopTrack(currentTrack, livePoints)
     }
@@ -492,13 +507,18 @@ export default function Map() {
               🚜 Tracking starten
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={stopRecording}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white"
-            >
-              ⏹ Tracking beenden ({livePoints.length} Punkte)
-            </button>
+            <>
+              <button type="button" onClick={() => setShowAssist(true)} className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white">
+                🧭 Fahrhilfe
+              </button>
+              <button
+                type="button"
+                onClick={stopRecording}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white"
+              >
+                ⏹ Tracking beenden ({livePoints.length} Punkte)
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -550,8 +570,19 @@ export default function Map() {
         </div>
       )}
 
-      {recording && currentTrack?.machine_id && (
+      {recording && currentTrack?.machine_id && !showAssist && (
         <SlurryPanel track={currentTrack} points={livePoints} seasonYear={seasonYear} plan={activePlan} accuracyM={currentPosition?.accuracyM ?? null} />
+      )}
+      {recording && currentTrack && showAssist && (
+        <DriveAssist
+          track={currentTrack}
+          points={livePoints}
+          accuracyM={currentPosition?.accuracyM ?? null}
+          seasonYear={seasonYear}
+          plan={activePlan}
+          onClose={() => setShowAssist(false)}
+          onStop={() => void stopRecording()}
+        />
       )}
 
       {completing && activePlan && (

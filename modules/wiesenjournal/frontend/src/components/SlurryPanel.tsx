@@ -28,6 +28,14 @@ import type { TrackPoint } from '../lib/tracking'
 /** Standard-Wunschmenge, wenn kein Plan eine vorgibt. */
 export const DEFAULT_RATE_M3_HA = 25
 
+/** Geräte mit Behälter, deren Menge/ha vom Tempo abhängt. */
+const LOAD_KINDS = ['guellefass', 'duengerstreuer', 'miststreuer']
+const LOAD_LABEL: Record<'m3' | 't' | 'kg', { item: string; empty: string; unit: string; icon: string; defaultRate: number }> = {
+  m3: { item: 'Fass', empty: 'Fass leer', unit: 'm³', icon: '🛢', defaultRate: DEFAULT_RATE_M3_HA },
+  kg: { item: 'Streuer', empty: 'Streuer leer', unit: 'kg', icon: '🧂', defaultRate: 1000 },
+  t: { item: 'Fuder', empty: 'Fuder leer', unit: 't', icon: '🚛', defaultRate: 25 },
+}
+
 async function load(pg: PGlite, track: Track, seasonYear: number, plan: ActivePlan | null) {
   const [machines, types, parcels, tankEvents, trackTanks, planEntries] = await Promise.all([
     loadMachines(pg, false),
@@ -74,7 +82,10 @@ export default function SlurryPanel({
   const { data, refresh } = useQuery((pg) => load(pg, track, seasonYear, plan), [track.id, seasonYear, plan?.started_at])
   const machine = data?.machines.find((m) => m.id === track.machine_id) ?? null
   const width = track.width_m ?? machine?.width_m ?? 7
-  const tankM3 = machine?.capacity_unit === 'm3' ? (machine.capacity ?? 6.5) : 6.5
+  // Behälter: Güllefass m³, Dünger-/Kalkstreuer kg, Miststreuer t
+  const unit = machine?.capacity_unit ?? 'm3'
+  const tankM3 = machine?.capacity ?? (unit === 'm3' ? 6.5 : 0)
+  const L = LOAD_LABEL[unit]
   const calib = useMemo(() => calibrate(data?.tankEvents ?? [], machine?.flow_m3_min ?? null), [data, machine])
   const flow = calib.flowM3Min
 
@@ -98,7 +109,17 @@ export default function SlurryPanel({
       return emptyTank()
     }
   })
-  const processed = useRef(0)
+  // Bereits verarbeitete Punkte mitmerken — sonst zählte ein neu aufgebautes
+  // Panel (Karte ↔ Fahrhilfe) die Strecke doppelt
+  const processed = useRef<number>(
+    (() => {
+      try {
+        return Number(localStorage.getItem(`${STATE_KEY(track.id)}_n`) ?? 0) || 0
+      } catch {
+        return 0
+      }
+    })(),
+  )
   const [message, setMessage] = useState<string | null>(null)
   const [targetOverride, setTargetOverride] = useState<number | null>(null)
 
@@ -111,6 +132,7 @@ export default function SlurryPanel({
       event_at: new Date().toISOString(),
       source,
       volume_m3: tankM3,
+      unit,
       distance_m: Math.round(state.distM * 10) / 10,
       spread_s: Math.round(state.spreadS * 10) / 10,
       width_m: width,
@@ -136,7 +158,7 @@ export default function SlurryPanel({
       if (r.autoEmpty) {
         const auto = r.autoEmpty
         void recordTank(auto, 'auto', p)
-        setMessage(`Fass automatisch gezählt (Feld verlassen): ${fmt0(auto.distM)} m`)
+        setMessage(`${L.item} automatisch gezählt (Feld verlassen): ${fmt0(auto.distM)} m`)
       }
     }
     processed.current = points.length
@@ -144,6 +166,7 @@ export default function SlurryPanel({
       setTank(s)
       try {
         localStorage.setItem(STATE_KEY(track.id), JSON.stringify(s))
+        localStorage.setItem(`${STATE_KEY(track.id)}_n`, String(points.length))
       } catch {
         // ohne localStorage: nur bis zum Neuladen
       }
@@ -159,9 +182,9 @@ export default function SlurryPanel({
   // Soll-Menge: aus dem Plan für diese Parzelle, sonst Standard
   const planItem = plan?.task.items.find((i) => i.parcel_id === field?.id)
   const planRate = planItem?.amount && planItem.area_a ? planItem.amount / (planItem.area_a / 100) : null
-  const target = targetOverride ?? planRate ?? DEFAULT_RATE_M3_HA
+  const target = targetOverride ?? planRate ?? L.defaultRate
   const planEntry = data?.planEntries.find((e) => planItem?.fertilization_ids.includes(e.id))
-  const type = data?.types.find((t) => t.id === planEntry?.fertilizer_type_id) ?? data?.types.find((t) => t.unit === 'm3') ?? null
+  const type = data?.types.find((t) => t.id === planEntry?.fertilizer_type_id) ?? (unit === 'm3' ? data?.types.find((t) => t.unit === 'm3') : null) ?? null
   const nutrients = type ? computeNutrients(target, type, num(planEntry?.dilution_factor)) : null
 
   const targetKmh = flow ? speedFor(flow, target, width) : null
@@ -179,7 +202,7 @@ export default function SlurryPanel({
     const s = tank
     await recordTank(s, 'knopf', at)
     const rate = s.distM > 0 ? (tankM3 / (s.distM * width)) * 10000 : null
-    setMessage(`Fass ${tankNo} gespeichert: ${fmt0(s.distM)} m in ${mmss(s.spreadS)}${rate ? ` → ${fmt0(rate)} m³/ha` : ''}`)
+    setMessage(`${L.item} ${tankNo} gespeichert: ${fmt0(s.distM)} m in ${mmss(s.spreadS)}${rate ? ` → ${fmt0(rate)} ${L.unit}/ha` : ''}`)
     const next = { ...emptyTank(), last: s.last }
     setTank(next)
     try {
@@ -189,12 +212,12 @@ export default function SlurryPanel({
     }
   }
 
-  if (!data || machine?.kind !== 'guellefass') return null
+  if (!data || !machine || !LOAD_KINDS.includes(machine.kind) || !tankM3) return null
   return (
     <div className="space-y-2 rounded-lg border-2 border-amber-300 bg-amber-50 p-3 text-sm text-gray-800">
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-semibold">
-          🛢 Fass {tankNo} · {field ? field.name : 'ausserhalb der Parzellen'}
+          {L.icon} {L.item} {tankNo} · {field ? field.name : 'ausserhalb der Parzellen'}
         </span>
         <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${tank.spreading ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
           {tank.spreading ? 'Ausbringen' : here ? 'Wenden / Stillstand' : 'Transport'}
@@ -214,12 +237,12 @@ export default function SlurryPanel({
           <div className="text-xs text-gray-500">Menge jetzt</div>
           <div className="text-3xl font-bold">{actualRate ? fmt0(actualRate) : '–'}</div>
           <div className="text-xs text-gray-500">
-            m³/ha · Soll{' '}
+            {L.unit}/ha · Soll{' '}
             <button
               type="button"
               className="font-semibold text-brand-700 underline"
               onClick={() => {
-                const v = prompt('Soll-Menge m³/ha', String(Math.round(target)))
+                const v = prompt(`Soll-Menge ${L.unit}/ha`, String(Math.round(target)))
                 if (v && Number(v) > 0) setTargetOverride(Number(v))
               }}
             >
@@ -240,11 +263,11 @@ export default function SlurryPanel({
       </div>
       {advice && advice.options.length > 0 && field?.lengthM && (
         <p className="text-xs text-gray-700">
-          Feld {fmt0(field.lengthM)} m, Fass reicht {fmt0(advice.distPerTankM)} m:{' '}
+          Feld {fmt0(field.lengthM)} m, {L.item} reicht {fmt0(advice.distPerTankM)} m:{' '}
           {advice.options.map((o, i) => (
             <span key={o.lanes} className={i === 0 ? 'font-semibold' : ''}>
               {i > 0 ? ' · oder ' : ''}
-              {o.lanes} {o.lanes === 1 ? 'Bahn' : 'Bahnen'}/Fass → {fmt0(o.rateM3Ha)} m³/ha{o.speedKmh ? ` bei ${fmt1(o.speedKmh)} km/h` : ''} ({o.deviationPct >= 0 ? '+' : ''}
+              {o.lanes} {o.lanes === 1 ? 'Bahn' : 'Bahnen'}/{L.item} → {fmt0(o.rateM3Ha)} {L.unit}/ha{o.speedKmh ? ` bei ${fmt1(o.speedKmh)} km/h` : ''} ({o.deviationPct >= 0 ? '+' : ''}
               {fmt0(o.deviationPct)} %)
             </span>
           ))}
@@ -252,19 +275,19 @@ export default function SlurryPanel({
       )}
       {nutrients && type && (
         <p className="text-xs text-gray-500">
-          {type.name}, {fmt0(target)} m³/ha ≈ {fmt0(nutrients.n_kg ?? 0)} kg N ({fmt0(nutrients.n_avail_kg ?? 0)} verfügbar) · {fmt0(nutrients.p2o5_kg ?? 0)} P₂O₅ ·{' '}
+          {type.name}, {fmt0(target)} {L.unit}/ha ≈ {fmt0(nutrients.n_kg ?? 0)} kg N ({fmt0(nutrients.n_avail_kg ?? 0)} verfügbar) · {fmt0(nutrients.p2o5_kg ?? 0)} P₂O₅ ·{' '}
           {fmt0(nutrients.k2o_kg ?? 0)} K₂O je ha
         </p>
       )}
 
       <button type="button" onClick={() => void tankEmpty()} className="w-full rounded-xl bg-red-600 py-4 text-lg font-bold text-white active:bg-red-700">
-        Fass leer
+        {L.empty}
       </button>
       {message && <p className="text-center text-xs font-medium text-emerald-800">{message}</p>}
       <p className="text-[11px] text-gray-500">
-        Ausfluss {flow ? `${fmt1(flow)} m³/min` : 'unbekannt'} —{' '}
-        {calib.n ? `geeicht aus ${calib.n} ${calib.n === 1 ? 'Fass' : 'Fässern'}${calib.rateM3Ha ? ` (zuletzt ⌀ ${fmt0(calib.rateM3Ha)} m³/ha)` : ''}` : 'Startwert, wird mit «Fass leer» geeicht'}
-        . Ausbringen zählt automatisch bei Fahrt in Feldrichtung; ein vergessenes Fass zählt, wenn das Feld 2 Minuten verlassen wird.
+        Ausfluss {flow ? `${fmt1(flow)} ${L.unit}/min` : 'unbekannt — nach dem ersten Knopfdruck geeicht'}
+        {flow ? ` — ${calib.n ? `geeicht aus ${calib.n}× «${L.empty}»${calib.rateM3Ha ? ` (zuletzt ⌀ ${fmt0(calib.rateM3Ha)} ${L.unit}/ha)` : ''}` : `Startwert, wird mit «${L.empty}» geeicht`}` : ''}
+        . Ausbringen zählt automatisch bei Fahrt in Feldrichtung; ein vergessener Knopf zählt, wenn das Feld 2 Minuten verlassen wird.
         {accuracyM != null && accuracyM > 10 ? ` GPS ungenau (±${fmt0(accuracyM)} m).` : ''}
       </p>
     </div>

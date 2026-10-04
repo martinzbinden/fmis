@@ -76,7 +76,7 @@ function fertWork(unit: DuengungUnit, code: string | null): { work: string; kind
 
 function usageWork(type: string): { work: string; kinds: MachineKind[] } {
   if (MOW.has(type)) return { work: 'Mähen', kinds: ['maehwerk', 'motormaeher'] }
-  if (type === 'striegeln') return { work: 'Striegeln', kinds: ['andere'] }
+  if (type === 'striegeln') return { work: 'Striegeln', kinds: ['striegel', 'andere'] }
   if (type === 'pflug') return { work: 'Pflügen', kinds: ['pflug'] }
   if (type === 'saat' || type === 'uebersaat') return { work: 'Säen', kinds: ['saatkombination', 'saemaschine'] }
   return { work: USAGE_TYPE_LABEL[type] ?? type, kinds: [] }
