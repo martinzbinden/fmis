@@ -25,6 +25,7 @@ export function machineFacts(m: Machine, machines: Machine[]): string[] {
   if (m.year_built != null) facts.push(`Baujahr ${m.year_built}`)
   const tractor = m.tractor_id ? machines.find((t) => t.id === m.tractor_id) : null
   if (tractor) facts.push(`mit ${tractor.name}`)
+  if (m.owner) facts.push(`gehört ${m.owner}`)
   if (!m.active) facts.push('nicht aktiv')
   return facts
 }
@@ -60,8 +61,16 @@ export default function Machines() {
   const navigate = useNavigate()
   const machines = data?.machines ?? []
   const files = data?.files ?? []
-  const tractors = machines.filter(isTractor)
-  const implements_ = machines.filter((m) => !isTractor(m))
+  // Eigene Maschinen nach Art, fremde (Nachbar, Lohnunternehmer) je
+  // Eigentümer — deren Stunden und Kosten werden getrennt ausgewertet
+  const own = machines.filter((m) => !m.owner)
+  const owners = [...new Set(machines.map((m) => m.owner).filter((o): o is string => !!o))].sort((a, b) => a.localeCompare(b, 'de'))
+  const sections: { title: string; list: Machine[] }[] = [
+    { title: 'Traktoren & Hoflader', list: own.filter(isTractor) },
+    { title: 'Anbaugeräte Hoflader', list: own.filter((m) => m.kind === 'ladergeraet') },
+    { title: 'Geräte', list: own.filter((m) => !isTractor(m) && m.kind !== 'ladergeraet') },
+    ...owners.map((o) => ({ title: `Gehört ${o}`, list: machines.filter((m) => m.owner === o) })),
+  ]
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
@@ -90,26 +99,18 @@ export default function Machines() {
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && machines.length === 0 && <p className="text-center text-sm text-gray-500">Noch keine Maschinen erfasst.</p>}
 
-      {tractors.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Traktoren</h2>
-          <ul className="space-y-2">
-            {tractors.map((m) => (
-              <MachineRow key={m.id} m={m} machines={machines} files={files} />
-            ))}
-          </ul>
-        </section>
-      )}
-      {implements_.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Geräte</h2>
-          <ul className="space-y-2">
-            {implements_.map((m) => (
-              <MachineRow key={m.id} m={m} machines={machines} files={files} />
-            ))}
-          </ul>
-        </section>
-      )}
+      {sections
+        .filter((s) => s.list.length > 0)
+        .map((s) => (
+          <section key={s.title} className="space-y-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">{s.title}</h2>
+            <ul className="space-y-2">
+              {s.list.map((m) => (
+                <MachineRow key={m.id} m={m} machines={machines} files={files} />
+              ))}
+            </ul>
+          </section>
+        ))}
 
       {adding && (
         <MachineForm

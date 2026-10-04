@@ -9,6 +9,8 @@ import type { DuengungUnit, Machine, MachineKind } from '../types'
 
 export const MACHINE_KIND_LABEL: Record<MachineKind, string> = {
   traktor: 'Traktor',
+  hoflader: 'Hoflader',
+  ladergeraet: 'Anbaugerät Hoflader',
   guellefass: 'Güllefass',
   miststreuer: 'Miststreuer',
   duengerstreuer: 'Düngerstreuer',
@@ -20,6 +22,10 @@ export const MACHINE_KIND_LABEL: Record<MachineKind, string> = {
   zettwender: 'Zettwender',
   schwader: 'Schwader',
   ladewagen: 'Ladewagen',
+  aufbereiter: 'Aufbereiter',
+  motormaeher: 'Motormäher',
+  viehanhaenger: 'Viehanhänger',
+  verschlauchung: 'Gülle-Verschlauchung',
   andere: 'andere',
 }
 
@@ -55,14 +61,19 @@ export function loadsFor(amount: number | null, unit: DuengungUnit | null, machi
   return Math.ceil(amount / machine.capacity - 1e-9)
 }
 
-export const isTractor = (m: Machine) => m.kind === 'traktor'
+/** Träger, an die Geräte angehängt/angebaut werden: Traktoren und Hoflader. */
+export const isTractor = (m: Pick<Machine, 'kind'>) => m.kind === 'traktor' || m.kind === 'hoflader'
+/** Fährt selbst, braucht keinen Träger. */
+export const isSelfPropelled = (m: Pick<Machine, 'kind'>) => m.kind === 'motormaeher'
 
-/** Traktor-Vorschlag für ein Anbaugerät: der hinterlegte Standard-Traktor,
- * sonst der erste Traktor der Liste. Ohne Anbaugerät: kein Vorschlag. */
+/** Träger-Vorschlag für ein Gerät: der hinterlegte Standard-Träger, sonst
+ * der erste passende der Liste (Hoflader-Anbaugeräte → Hoflader, alles
+ * andere → Traktor). Ohne Gerät oder selbstfahrend: kein Vorschlag. */
 export function suggestTractor(implement: Machine | null | undefined, machines: Machine[]): Machine | null {
-  if (!implement || isTractor(implement)) return null
-  const tractors = machines.filter((m) => isTractor(m) && m.active)
-  return tractors.find((t) => t.id === implement.tractor_id) ?? tractors[0] ?? null
+  if (!implement || isTractor(implement) || isSelfPropelled(implement)) return null
+  const carriers = machines.filter((m) => isTractor(m) && m.active)
+  const wanted = implement.kind === 'ladergeraet' ? 'hoflader' : 'traktor'
+  return carriers.find((t) => t.id === implement.tractor_id) ?? carriers.find((t) => t.kind === wanted) ?? null
 }
 
 /** Anzeigename einer Kombination für tracks.machine: "Güllefass … + John Deere 5100R". */

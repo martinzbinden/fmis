@@ -4,7 +4,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import { softDeleteRow } from '../db/write'
-import { isTractor, loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
+import { isSelfPropelled, isTractor, loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
 import { fmtBytes, loadMachineFiles, MACHINE_FILE_KIND_LABEL, machineFileUrl, uploadMachineFile } from '../lib/machineFiles'
 import MachineForm from '../components/MachineForm'
 import MachineImage from '../components/MachineImage'
@@ -170,7 +170,8 @@ export default function MachineDetail() {
 
       <dl className="divide-y rounded-lg bg-white px-4 py-2 text-sm shadow-sm">
         <Fact label="Leistung" value={m.power_hp != null ? `${m.power_hp} PS` : null} />
-        <Fact label="Frontzapfwelle" value={isTractor(m) ? (m.front_pto ? 'ja' : 'nein') : null} />
+        <Fact label="Frontzapfwelle" value={m.kind === 'traktor' ? (m.front_pto ? 'ja' : 'nein') : null} />
+        <Fact label="Eigentümer" value={m.owner ?? 'eigener Betrieb'} />
         <Fact label="Fass / Ladevolumen" value={m.capacity != null && m.capacity_unit ? `${m.capacity} ${UNIT_LABEL[m.capacity_unit]}` : null} />
         <Fact label="Arbeitsbreite" value={m.width_m != null ? `${m.width_m} m` : null} />
         <Fact label="Hersteller" value={m.manufacturer} />
@@ -179,9 +180,9 @@ export default function MachineDetail() {
         <Fact label="Fabrikations-/Serie-Nr." value={m.serial_no} />
         <Fact label="Baujahr" value={m.year_built} />
         <Fact label="Gewicht" value={m.weight_kg != null ? `${m.weight_kg.toLocaleString('de-CH')} kg` : null} />
-        {!isTractor(m) && (
+        {!isTractor(m) && !isSelfPropelled(m) && (
           <div className="flex justify-between gap-3 py-1">
-            <dt className="text-gray-500">Standard-Traktor</dt>
+            <dt className="text-gray-500">{m.kind === 'ladergeraet' ? 'Standard-Hoflader' : 'Standard-Traktor'}</dt>
             <dd className="text-right font-medium text-gray-800">
               {tractor ? (
                 <Link to={`../maschinen/${tractor.id}`} className="text-brand-700">

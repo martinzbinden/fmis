@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Modal from './Modal'
 import { upsertRow } from '../db/write'
-import { isTractor, MACHINE_KIND_LABEL } from '../lib/machines'
+import { isSelfPropelled, isTractor, MACHINE_KIND_LABEL } from '../lib/machines'
 import type { DuengungUnit, Machine, MachineKind } from '../types'
 
 const s = (v: string | number | null | undefined) => (v == null ? '' : String(v))
@@ -37,10 +37,14 @@ export default function MachineForm({
     tractor_id: machine?.tractor_id ?? '',
     notes: s(machine?.notes),
     active: machine?.active ?? true,
+    owner: s(machine?.owner),
   })
   const [saving, setSaving] = useState(false)
   const set = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }))
-  const tractor = f.kind === 'traktor'
+  // Träger (Traktor, Hoflader): Leistung statt Fass/Breite; selbstfahrend
+  // (Motormäher): Breite, aber kein Träger
+  const tractor = isTractor({ kind: f.kind })
+  const selfPropelled = isSelfPropelled({ kind: f.kind })
   const tractors = machines.filter((m) => isTractor(m) && m.id !== machine?.id)
 
   async function save() {
@@ -60,13 +64,14 @@ export default function MachineForm({
         year_built: n(f.year_built),
         weight_kg: n(f.weight_kg),
         power_hp: tractor ? n(f.power_hp) : null,
-        front_pto: tractor ? f.front_pto : false,
+        front_pto: f.kind === 'traktor' ? f.front_pto : false,
         capacity: tractor ? null : n(f.capacity),
         capacity_unit: tractor || n(f.capacity) == null ? null : f.capacity_unit || null,
         width_m: tractor ? null : n(f.width_m),
-        tractor_id: tractor ? null : f.tractor_id || null,
+        tractor_id: tractor || selfPropelled ? null : f.tractor_id || null,
         active: f.active,
         notes: f.notes.trim() || null,
+        owner: f.owner.trim() || null,
       } as never)
       onSaved(id)
     } finally {
@@ -101,10 +106,12 @@ export default function MachineForm({
               <span className={label}>Leistung (PS)</span>
               <input className={field} inputMode="decimal" value={f.power_hp} onChange={(e) => set({ power_hp: e.target.value })} />
             </label>
-            <label className="flex items-center gap-2 pb-2">
-              <input type="checkbox" checked={f.front_pto} onChange={(e) => set({ front_pto: e.target.checked })} />
-              Frontzapfwelle
-            </label>
+            {f.kind === 'traktor' && (
+              <label className="flex items-center gap-2 pb-2">
+                <input type="checkbox" checked={f.front_pto} onChange={(e) => set({ front_pto: e.target.checked })} />
+                Frontzapfwelle
+              </label>
+            )}
           </div>
         ) : (
           <>
@@ -128,20 +135,41 @@ export default function MachineForm({
                 <span className={label}>Arbeitsbreite (m)</span>
                 <input className={field} inputMode="decimal" value={f.width_m} onChange={(e) => set({ width_m: e.target.value })} />
               </label>
-              <label className="block">
-                <span className={label}>Standard-Traktor</span>
-                <select className={field} value={f.tractor_id} onChange={(e) => set({ tractor_id: e.target.value })}>
-                  <option value="">— erster in der Liste —</option>
-                  {tractors.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {!selfPropelled && (
+                <label className="block">
+                  <span className={label}>{f.kind === 'ladergeraet' ? 'Standard-Hoflader' : 'Standard-Traktor'}</span>
+                  <select className={field} value={f.tractor_id} onChange={(e) => set({ tractor_id: e.target.value })}>
+                    <option value="">— erster in der Liste —</option>
+                    {tractors
+                      .filter((t) => (f.kind === 'ladergeraet') === (t.kind === 'hoflader') || t.id === f.tractor_id)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
             </div>
           </>
         )}
+
+        <label className="block">
+          <span className={label}>Eigentümer</span>
+          <input
+            className={field}
+            list="machine-owners"
+            value={f.owner}
+            onChange={(e) => set({ owner: e.target.value })}
+            placeholder="leer = eigener Betrieb"
+          />
+          <datalist id="machine-owners">
+            {[...new Set(machines.map((m) => m.owner).filter((o): o is string => !!o))].map((o) => (
+              <option key={o} value={o} />
+            ))}
+          </datalist>
+          <span className="mt-0.5 block text-xs text-gray-500">Fremde Maschinen (Nachbar, Lohnunternehmer) — Stunden und Kosten getrennt auswerten.</span>
+        </label>
 
         <fieldset className="space-y-2 rounded border border-gray-200 p-2">
           <legend className="px-1 text-xs font-medium text-gray-500">Typenschild</legend>

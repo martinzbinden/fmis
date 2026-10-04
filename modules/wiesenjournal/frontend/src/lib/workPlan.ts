@@ -67,13 +67,13 @@ export interface PlannedUsage {
 const MOW = new Set(['silage', 'eingrasen', 'duerrfutter_bel', 'duerrfutter_unbel', 'saeuberungsschnitt'])
 
 function fertWork(unit: DuengungUnit, code: string | null): { work: string; kinds: MachineKind[] } {
-  if (unit === 'm3') return { work: 'Gülle ausbringen', kinds: ['guellefass'] }
+  if (unit === 'm3') return { work: 'Gülle ausbringen', kinds: ['guellefass', 'verschlauchung'] }
   if (unit === 't') return { work: 'Mist ausbringen', kinds: ['miststreuer'] }
   return { work: code === 'K' ? 'Kalk streuen' : 'Kunstdünger streuen', kinds: ['duengerstreuer'] }
 }
 
 function usageWork(type: string): { work: string; kinds: MachineKind[] } {
-  if (MOW.has(type)) return { work: 'Mähen', kinds: ['maehwerk'] }
+  if (MOW.has(type)) return { work: 'Mähen', kinds: ['maehwerk', 'motormaeher'] }
   if (type === 'striegeln') return { work: 'Striegeln', kinds: ['andere'] }
   if (type === 'pflug') return { work: 'Pflügen', kinds: ['pflug'] }
   if (type === 'saat' || type === 'uebersaat') return { work: 'Säen', kinds: ['saatkombination', 'saemaschine'] }

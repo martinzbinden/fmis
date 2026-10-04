@@ -53,7 +53,7 @@ export const SYNC_TABLES = {
     'id', 'name', 'kind', 'capacity', 'capacity_unit', 'width_m', 'notes',
     'active', 'sort_order', 'updated_at', 'deleted_at',
     'manufacturer', 'model', 'type_no', 'serial_no', 'year_built', 'weight_kg',
-    'power_hp', 'front_pto', 'tractor_id',
+    'power_hp', 'front_pto', 'tractor_id', 'owner',
   ],
   machine_files: [
     'id', 'machine_id', 'kind', 'title', 'filename', 'content_type',

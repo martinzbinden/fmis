@@ -235,6 +235,13 @@ export type MachineKind =
   | 'kreiselegge'
   | 'pflug'
   | 'traktor'
+  // schema/0019: Hoflader als Träger, seine Anbaugeräte, weitere Arten
+  | 'hoflader'
+  | 'ladergeraet'
+  | 'aufbereiter'
+  | 'motormaeher'
+  | 'viehanhaenger'
+  | 'verschlauchung'
   | 'andere'
 
 export interface Machine {
@@ -258,6 +265,8 @@ export interface Machine {
   weight_kg: number | null
   /** Nur Traktoren. */
   power_hp: number | null
+  /** schema/0019: Eigentümer, null = eigener Betrieb */
+  owner?: string | null
   front_pto: boolean | null
   /** Anbaugeräte: Standard-Traktor (Vorschlag in Arbeitsplan und Tracking). */
   tractor_id: string | null

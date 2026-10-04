@@ -39,7 +39,7 @@ describe('buildPlan', () => {
       ['A', 13],
       ['B', 20],
     ])
-    expect(tasks[0].machine_kinds).toEqual(['guellefass'])
+    expect(tasks[0].machine_kinds).toEqual(['guellefass', 'verschlauchung'])
     expect(tasks[1].items[0].usage_ids).toEqual(['u1'])
   })
 
