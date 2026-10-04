@@ -261,3 +261,100 @@ async def recompute_shares(year: int, user: CurrentUser = Depends(require_auth))
         await conn.commit()
 
     return RecomputeResult(year=year, entries=len(touched_entries), shares=len(touched_shares), without_type=without_type)
+
+
+# --- Abdeckung: Überlappung und Lücken (GPS-Spuren) ---
+
+class CoverageRequest(BaseModel):
+    season_year: int
+    width_m: float
+    # Arbeitsabschnitte als Koordinatenlisten [lng, lat] (Client:
+    # lib/slurry.ts coverageRuns — in Parzelle, Arbeitstempo, geradeaus)
+    runs: list[list[list[float]]]
+
+
+class CoverageParcel(BaseModel):
+    parcel_id: str
+    name: str
+    area_m2: float
+    covered_m2: float
+    overlap_m2: float
+    gap_m2: float
+    overlap_geojson: str | None
+    gap_geojson: str | None
+
+
+class CoverageResponse(BaseModel):
+    parcels: list[CoverageParcel]
+
+
+# Streifen schmaler als 2 × OPEN_M (GPS-Rauschen zwischen benachbarten Bahnen)
+# werden weggefiltert: erst nach innen, dann wieder nach aussen puffern.
+# 2 m: bei 7 m Arbeitsbreite ist eine 2-m-Überlappung schon mehr als Rauschen.
+OPEN_M = 1.0
+
+_COVERAGE_SQL = """
+with runs as (
+  select r.i, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(r.g), 4326), 2056) as line
+  from unnest(%(runs)s::text[]) with ordinality as r(g, i)
+),
+strips as (select i, ST_Buffer(line, %(half)s, 'endcap=flat join=round') as geom from runs),
+covered as (select ST_Union(geom) as geom from strips),
+pairs as (
+  select ST_Intersection(a.geom, b.geom) as geom
+  from strips a join strips b on a.i < b.i and ST_Intersects(a.geom, b.geom)
+),
+overlap as (
+  select ST_Buffer(ST_Buffer(ST_Union(geom), -%(open)s), %(open)s) as geom from pairs
+),
+fields as (
+  select p.id, p.name, ST_Transform(p.base_geometry, 2056) as geom
+  from parcels p, covered c
+  where p.season_year = %(year)s and p.deleted_at is null and p.base_geometry is not null
+    and ST_Intersects(ST_Transform(p.base_geometry, 2056), c.geom)
+),
+per_field as (
+  select f.id, f.name, ST_Area(f.geom) as area,
+         coalesce(ST_Area(ST_Intersection(f.geom, c.geom)), 0) as covered,
+         ST_Intersection(f.geom, o.geom) as ov,
+         ST_Buffer(ST_Buffer(ST_Difference(f.geom, c.geom), -%(open)s), %(open)s) as gaps
+  from fields f cross join covered c left join overlap o on true
+)
+select id, name, area, covered, coalesce(ST_Area(ov), 0), coalesce(ST_Area(gaps), 0),
+       case when ov is null or ST_IsEmpty(ov) then null else ST_AsGeoJSON(ST_Transform(ov, 4326), 7) end,
+       case when gaps is null or ST_IsEmpty(gaps) then null else ST_AsGeoJSON(ST_Transform(gaps, 4326), 7) end
+from per_field
+where covered > 0.05 * area
+order by covered desc
+"""
+
+
+@router.post("/fertilization/coverage", response_model=CoverageResponse)
+async def coverage(body: CoverageRequest, user: CurrentUser = Depends(require_auth)) -> CoverageResponse:
+    """Überlappung (zwischen verschiedenen Durchgängen doppelt befahren) und
+    Lücken (in der Parzelle nicht befahren) je befahrener Parzelle — reine
+    Berechnung, nichts wird gespeichert."""
+    if f"{TABLE_AREA['tracks']}:read" not in user.permissions:
+        raise HTTPException(status_code=403, detail="Keine Leserechte für Tracking")
+    runs = [r for r in body.runs if len(r) >= 2]
+    if not runs or body.width_m <= 0:
+        return CoverageResponse(parcels=[])
+    if len(runs) > 2000:
+        raise HTTPException(status_code=422, detail="Zu viele Abschnitte")
+    params = {
+        "runs": [json.dumps({"type": "LineString", "coordinates": r}) for r in runs],
+        "half": body.width_m / 2.0,
+        "open": OPEN_M,
+        "year": body.season_year,
+    }
+    async with pool.connection() as conn:
+        rows = await (await conn.execute(_COVERAGE_SQL, params)).fetchall()
+    return CoverageResponse(
+        parcels=[
+            CoverageParcel(
+                parcel_id=str(r[0]), name=r[1], area_m2=round(float(r[2]), 1), covered_m2=round(float(r[3]), 1),
+                overlap_m2=round(float(r[4]), 1), gap_m2=round(float(r[5]), 1), overlap_geojson=r[6], gap_geojson=r[7],
+            )
+            for r in rows
+        ]
+    )

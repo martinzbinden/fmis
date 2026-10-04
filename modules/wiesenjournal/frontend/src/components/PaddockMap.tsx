@@ -21,6 +21,7 @@ import {
 } from '../lib/format'
 import { fetchFertilizationMap, type FertilizationMapProps } from '../lib/report'
 import type { TrackPoint } from '../lib/tracking'
+import type { CoverageParcel } from '../lib/coverage'
 import type { Paddock, Parcel, Track, WeedObservation } from '../types'
 
 const BACKGROUND_LAYERS = {
@@ -526,6 +527,32 @@ function FertilizationLayer({ features }: { features: FertilizationFeature[] }) 
   return null
 }
 
+/** Überlappung (rot) und Lücken (gelb) einer Arbeit (lib/coverage.ts);
+ * zoomt beim ersten Anzeigen darauf. */
+function CoverageLayer({ parcels }: { parcels: CoverageParcel[] }) {
+  const map = useMap()
+  useEffect(() => {
+    const features = parcels.flatMap((p) => [
+      ...(p.overlap_geojson ? [{ type: 'Feature', properties: { kind: 'overlap', label: `${p.name}: Überlappung ${Math.round(p.overlap_m2)} m²` }, geometry: JSON.parse(p.overlap_geojson) }] : []),
+      ...(p.gap_geojson ? [{ type: 'Feature', properties: { kind: 'gap', label: `${p.name}: Lücke ${Math.round(p.gap_m2)} m²` }, geometry: JSON.parse(p.gap_geojson) }] : []),
+    ])
+    const layer = L.geoJSON({ type: 'FeatureCollection', features } as never, {
+      style: (f) =>
+        f?.properties.kind === 'overlap'
+          ? { color: '#b91c1c', weight: 1, fillColor: '#ef4444', fillOpacity: 0.55 }
+          : { color: '#a16207', weight: 1, fillColor: '#facc15', fillOpacity: 0.6 },
+      onEachFeature: (feature, l) => l.bindTooltip(feature.properties.label, { sticky: true }),
+    })
+    layer.addTo(map)
+    const b = layer.getBounds()
+    if (b.isValid()) map.fitBounds(b.pad(0.2))
+    return () => {
+      map.removeLayer(layer)
+    }
+  }, [map, parcels])
+  return null
+}
+
 // Farbrampe kg N/ha für die Düngungskarte (Verschnitt) — 6 Stufen.
 const N_RAMP: [number, string][] = [
   [0, '#fef3c7'],
@@ -600,6 +627,7 @@ export default function PaddockMap({
   paddocks,
   parcels,
   fertilization = [],
+  coverage,
   seasonYear,
   tracks,
   livePoints,
@@ -619,6 +647,8 @@ export default function PaddockMap({
   parcels: Parcel[]
   /** Düngungsmassnahmen für den Layer „Düngung" (optional). */
   fertilization?: FertilizationFeature[]
+  /** Überlappung und Lücken einer Arbeit (pages/Map.tsx) */
+  coverage?: CoverageParcel[] | null
   /** Saison für die Düngungskarte (Verschnitt, server-berechnet). */
   seasonYear: number
   tracks: Track[]
@@ -805,6 +835,7 @@ export default function PaddockMap({
         <BaseGeometryLayer parcels={parcels} />
         {focusParcelId && <FocusHighlightLayer parcel={focusParcel} />}
         {showFertilization && <FertilizationLayer features={fertilization} />}
+        {coverage && coverage.length > 0 && <CoverageLayer parcels={coverage} />}
         {showHeat && <FertilizationHeatLayer seasonYear={seasonYear} onError={setHeatError} />}
         {showAnimals && <AnimalGroupMarkersLayer parcels={parcels} today={today} />}
         {showSheep && <SheepPressureLayer parcels={parcels} from={sheepFrom} to={sheepTo} onInfo={setSheepInfo} />}

@@ -29,6 +29,7 @@ import { completePlan, getActivePlan, setActivePlan, visitedParcels, type Active
 import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
 import SlurryPanel from '../components/SlurryPanel'
 import { loadTrackTanks } from '../lib/slurryData'
+import { fetchCoverage, fieldShapes, localDay, sameJob, timeMs, type CoverageParcel } from '../lib/coverage'
 import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import type { Paddock, Parcel, Track, WeedObservation } from '../types'
@@ -150,7 +151,7 @@ export default function Map() {
   // Befahrene Parzellen: alle Spuren seit Planstart plus laufende Aufzeichnung.
   const visited = useMemo(() => {
     if (!activePlan) return new Set<string>()
-    const earlier = tracks.filter((t) => t.started_at >= activePlan.started_at).flatMap(trackPoints)
+    const earlier = tracks.filter((t) => timeMs(t.started_at) >= timeMs(activePlan.started_at)).flatMap(trackPoints)
     return visitedParcels(activePlan.task.items, [...earlier, ...(recording ? livePoints : [])])
   }, [activePlan, tracks, livePoints, recording])
 
@@ -249,7 +250,7 @@ export default function Map() {
 
   // Gezählte Fässer der Plan-Ausführung je Parzelle (components/SlurryPanel.tsx)
   const planTrackIds = useMemo(
-    () => (activePlan ? tracks.filter((t) => t.started_at >= activePlan.started_at).map((t) => t.id) : []),
+    () => (activePlan ? tracks.filter((t) => timeMs(t.started_at) >= timeMs(activePlan.started_at)).map((t) => t.id) : []),
     [activePlan, tracks],
   )
   const { data: planTanks } = useQuery((pg) => loadTrackTanks(pg, planTrackIds), [planTrackIds.join(','), completing])
@@ -271,6 +272,29 @@ export default function Map() {
     updateActivePlan(null)
     setCompleting(false)
     refresh()
+  }
+
+  // --- Abdeckung: Überlappung und Lücken einer Arbeit (lib/coverage.ts) ---
+  const [coverage, setCoverage] = useState<{ title: string; widthM: number; tracks: number; parcels: CoverageParcel[] } | null>(null)
+  const [coverageBusy, setCoverageBusy] = useState<string | null>(null)
+  async function showCoverage(track: Track) {
+    const width = track.width_m
+    if (!width) return
+    setCoverageBusy(track.id)
+    try {
+      const job = sameJob(track, tracks)
+      const { rows } = await db.query<{ id: string; base_geometry: string | null }>(
+        'select id, base_geometry from parcels where season_year = $1 and deleted_at is null and base_geometry is not null',
+        [seasonYear],
+      )
+      const parcelsResult = await fetchCoverage(job, fieldShapes(rows), width, seasonYear)
+      setCoverage({ title: `${track.work_type ?? 'Arbeit'} ${fmtDate(localDay(track.started_at))}${track.machine ? ` · ${track.machine}` : ''}`, widthM: width, tracks: job.length, parcels: parcelsResult })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e))
+    } finally {
+      setCoverageBusy(null)
+    }
   }
 
   async function handleDeleteTrack(track: Track) {
@@ -558,7 +582,10 @@ export default function Map() {
         </div>
       )}
 
+      {coverage && <CoveragePanel coverage={coverage} onClose={() => setCoverage(null)} />}
+
       <PaddockMap
+        coverage={coverage?.parcels ?? null}
         paddocks={paddocks}
         parcels={parcels}
         fertilization={data?.fertilization ?? []}
@@ -593,6 +620,11 @@ export default function Map() {
                   {!t.ended_at && <span className="ml-1 font-medium text-red-600">(läuft)</span>}
                 </span>
                 <div className="flex gap-2">
+                  {t.width_m != null && t.ended_at && (
+                    <button type="button" disabled={coverageBusy != null} onClick={() => void showCoverage(t)} className="text-brand-700 disabled:opacity-50">
+                      {coverageBusy === t.id ? 'rechnet…' : 'Abdeckung'}
+                    </button>
+                  )}
                   <button type="button" onClick={() => downloadGpx(t)} className="text-brand-700">
                     GPX
                   </button>
@@ -848,3 +880,73 @@ function CompletePlanModal({
     </Modal>
   )
 }
+
+const m2 = (v: number) => (v >= 10000 ? `${(v / 10000).toLocaleString('de-CH', { maximumFractionDigits: 2 })} ha` : `${Math.round(v).toLocaleString('de-CH')} m²`)
+
+/** Ergebnis der Abdeckung: je Parzelle befahren, Überlappung (zu viel) und
+ * Lücken (zu wenig); die Karte zeigt sie rot bzw. gelb. */
+function CoveragePanel({
+  coverage,
+  onClose,
+}: {
+  coverage: { title: string; widthM: number; tracks: number; parcels: CoverageParcel[] }
+  onClose: () => void
+}) {
+  const sum = (k: 'area_m2' | 'covered_m2' | 'overlap_m2' | 'gap_m2') => coverage.parcels.reduce((s, p) => s + p[k], 0)
+  return (
+    <div className="space-y-2 rounded-lg bg-white p-3 text-sm shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="font-semibold text-gray-800">Abdeckung: {coverage.title}</div>
+          <div className="text-xs text-gray-500">
+            {coverage.tracks} {coverage.tracks === 1 ? 'Spur' : 'Spuren'} · Arbeitsbreite {Number(coverage.widthM)} m ·{' '}
+            <span className="font-medium text-red-700">rot = doppelt</span> · <span className="font-medium text-yellow-700">gelb = Lücke</span>
+          </div>
+        </div>
+        <button type="button" onClick={onClose} className="text-gray-400" aria-label="Schliessen">
+          ×
+        </button>
+      </div>
+      {coverage.parcels.length === 0 ? (
+        <p className="text-xs text-gray-500">Keine Arbeitsabschnitte in Parzellen gefunden (Spur ohne Zeiten/zu kurz oder ausserhalb).</p>
+      ) : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-gray-500">
+              <th className="py-1 font-medium">Parzelle</th>
+              <th className="py-1 text-right font-medium">befahren</th>
+              <th className="py-1 text-right font-medium">doppelt</th>
+              <th className="py-1 text-right font-medium">Lücken</th>
+            </tr>
+          </thead>
+          <tbody>
+            {coverage.parcels.map((p) => (
+              <tr key={p.parcel_id} className="border-t">
+                <td className="py-1">{p.name}</td>
+                <td className="py-1 text-right">{Math.round((p.covered_m2 / p.area_m2) * 100)} %</td>
+                <td className="py-1 text-right text-red-700">
+                  {p.overlap_m2 > 0 ? `${m2(p.overlap_m2)} (${Math.round((p.overlap_m2 / Math.max(1, p.covered_m2)) * 100)} %)` : '–'}
+                </td>
+                <td className="py-1 text-right text-yellow-700">{p.gap_m2 > 0 ? `${m2(p.gap_m2)} (${Math.round((p.gap_m2 / p.area_m2) * 100)} %)` : '–'}</td>
+              </tr>
+            ))}
+            {coverage.parcels.length > 1 && (
+              <tr className="border-t font-semibold">
+                <td className="py-1">Total</td>
+                <td className="py-1 text-right">{Math.round((sum('covered_m2') / sum('area_m2')) * 100)} %</td>
+                <td className="py-1 text-right text-red-700">{m2(sum('overlap_m2'))}</td>
+                <td className="py-1 text-right text-yellow-700">{m2(sum('gap_m2'))}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+      <p className="text-[11px] text-gray-500">
+        Gezählt wird gerade Fahrt in der Parzelle mit Arbeitstempo; Wendebögen nicht. «Doppelt» = von zwei Durchgängen überfahren (zu viel
+        ausgebracht), «Lücke» = in der Parzelle nicht befahren. Streifen unter 2 m Breite gelten als GPS-Ungenauigkeit und werden
+        weggelassen (Handy-GPS ±3–5 m — einzelne Flecken mit Vorsicht deuten, ausgelassene oder doppelte Bahnen sind verlässlich).
+      </p>
+    </div>
+  )
+}
+

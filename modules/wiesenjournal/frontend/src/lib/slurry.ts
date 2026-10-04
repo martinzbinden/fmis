@@ -270,3 +270,47 @@ export function planSpreading(p: { tankM3: number; widthM: number; flowM3Min: nu
   }
   return { distPerTankM: dist, speedKmh: speed, tanks: p.areaHa ? (p.areaHa * p.targetM3Ha) / p.tankM3 : null, options }
 }
+
+// --- Abdeckung: Arbeitsabschnitte aus einer gespeicherten Spur ---
+
+/** Höchstens so viel Richtungsänderung je Punkt gilt als "geradeaus";
+ * Wendebögen fallen weg, gerade Vorgewende-Durchgänge zählen. */
+export const STRAIGHT_DEG = 15
+/** Kürzere Abschnitte sind Rauschen. */
+export const MIN_RUN_M = 15
+
+/** Zusammenhängende Arbeitsabschnitte (in einer Parzelle, Arbeitstempo,
+ * geradeaus) als Koordinatenlisten [lng, lat] — für die Überlappungs- und
+ * Lückenberechnung auf dem Server. Ohne Zeiten zählt das Tempo nicht. */
+export function coverageRuns(points: (LatLng & { t: number | null })[], fields: FieldShape[]): [number, number][][] {
+  const runs: [number, number][][] = []
+  let run: (LatLng & { t: number | null })[] = []
+  let runLen = 0
+  let prevHeading: number | null = null
+  const close = () => {
+    if (run.length >= 2 && runLen >= MIN_RUN_M) runs.push(run.map((p) => [p.lng, p.lat]))
+    run = []
+    runLen = 0
+  }
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]
+    const b = points[i]
+    const d = haversineMeters(a, b)
+    if (d < 0.3) continue
+    const heading = bearingDeg(a, b)
+    const dt = a.t != null && b.t != null ? (b.t - a.t) / 1000 : null
+    const speedOk = dt == null || (dt > 0 && dt <= 30 && d / dt >= MIN_SPEED_MS && d / dt <= MAX_SPEED_MS)
+    const turn = prevHeading == null ? 0 : Math.abs(((heading - prevHeading + 540) % 360) - 180)
+    const inField = fieldAt(fields, a) != null && fieldAt(fields, b) != null
+    prevHeading = heading
+    if (inField && speedOk && turn <= STRAIGHT_DEG) {
+      if (!run.length) run.push(a)
+      run.push(b)
+      runLen += d
+    } else {
+      close()
+    }
+  }
+  close()
+  return runs
+}

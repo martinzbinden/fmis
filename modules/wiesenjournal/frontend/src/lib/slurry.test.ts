@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { axisDiff, bearingDeg, calibrate, emptyTank, fieldAxis, fieldShape, mainField, planSpreading, rateAt, recentSpeed, speedFor, step, type TankState } from './slurry'
+import { axisDiff, bearingDeg, calibrate, coverageRuns, emptyTank, fieldAxis, fieldShape, mainField, planSpreading, rateAt, recentSpeed, speedFor, step, type TankState } from './slurry'
 
 // Rechteck 200 m (Ost-West) × 50 m bei 47° N
 const LAT = 47
@@ -88,5 +88,23 @@ describe('slurry', () => {
     expect(c.flowM3Min).toBeCloseTo(6.5 / 3.5, 2)
     expect(c.rateM3Ha).toBeCloseTo(51.6, 0)
     expect(calibrate([], 1.9)).toEqual({ flowM3Min: 1.9, rateM3Ha: null, n: 0 })
+  })
+})
+
+describe('coverageRuns', () => {
+  it('Bahnen als Abschnitte, Wendebogen und Fahrt ausserhalb fallen weg', () => {
+    const field = fieldShape('p1', rect)!
+    const pts: { lat: number; lng: number; t: number }[] = []
+    let t = 0
+    const add = (e: number, n: number) => pts.push({ ...at(e, n), t: (t += 2000) })
+    for (let e = 5; e <= 195; e += 5) add(e, 10) // Bahn 1 nach Ost
+    add(198, 13) // Wendebogen
+    add(199, 17)
+    add(198, 21)
+    for (let e = 195; e >= 5; e -= 5) add(e, 24) // Bahn 2 nach West
+    for (let e = 0; e >= -100; e -= 5) add(e, 24) // hinaus
+    const runs = coverageRuns(pts, [field])
+    expect(runs).toHaveLength(2)
+    expect(runs[0].length).toBeGreaterThan(30)
   })
 })
