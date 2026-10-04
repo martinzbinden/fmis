@@ -140,6 +140,9 @@ export default function Map() {
   // Vollbild-Fahrhilfe (components/DriveAssist.tsx)
   const [showAssist, setShowAssist] = useState(false)
   const [dwellCandidate, setDwellCandidate] = useState<{ lat: number; lng: number } | null>(null)
+  // Zwischenspeichern nicht stapeln: läuft noch eines, wird übersprungen
+  // (langsames Gerät oder viele Punkte — sonst wartet «Stop» dahinter)
+  const savingRef = useRef(false)
   const currentTrackRef = useRef(currentTrack)
   currentTrackRef.current = currentTrack
   useWakeLock(recording)
@@ -171,8 +174,11 @@ export default function Map() {
         setCurrentPosition({ lat: point.lat, lng: point.lng, accuracyM: pos.coords.accuracy })
         setLivePoints((prev) => {
           const next = [...prev, point]
-          if (next.length % 10 === 0 && currentTrackRef.current) {
-            void saveTrackProgress(currentTrackRef.current, next)
+          if (next.length % 10 === 0 && currentTrackRef.current && !savingRef.current) {
+            savingRef.current = true
+            void saveTrackProgress(currentTrackRef.current, next).finally(() => {
+              savingRef.current = false
+            })
           }
           const dwell = detectDwell(next)
           setDwellCandidate((prevCandidate) => dwell ?? (prevCandidate && !dwell ? null : prevCandidate))
@@ -251,14 +257,22 @@ export default function Map() {
   }, [searchParams, canTrack])
 
   async function stopRecording() {
+    // Sofort beenden (GPS aus), dann speichern — schlägt das Speichern fehl,
+    // ist die Aufzeichnung trotzdem beendet und der Fehler sichtbar
+    const track = currentTrack
+    const points = livePoints
     setShowAssist(false)
-    if (currentTrack) {
-      await stopTrack(currentTrack, livePoints)
-    }
     setRecording(false)
     setCurrentTrack(null)
     setLivePoints([])
     setDwellCandidate(null)
+    if (track) {
+      try {
+        await stopTrack(track, points)
+      } catch (e) {
+        alert(`Spur konnte nicht gespeichert werden: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
     refresh()
     if (activePlan) setCompleting(true)
   }
@@ -513,7 +527,9 @@ export default function Map() {
               </button>
               <button
                 type="button"
-                onClick={stopRecording}
+                onClick={() => {
+                  if (confirm('Aufzeichnung beenden?')) void stopRecording()
+                }}
                 className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white"
               >
                 ⏹ Tracking beenden ({livePoints.length} Punkte)

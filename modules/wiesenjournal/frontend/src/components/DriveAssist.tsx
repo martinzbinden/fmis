@@ -7,26 +7,29 @@ import { currentRunStart, laneOf, nextFreeLane, refFromField, refFromRecent, ste
 import { bearingDeg, emptyTank, fieldAt, fieldShape, rateAt, recentSpeed, speedFor, step, type FieldShape, type TankState } from '../lib/slurry'
 import { haversineMeters } from '../lib/geo'
 import SlurryPanel from './SlurryPanel'
+import MowPanel from './MowPanel'
+import { matchesVirtualCategory } from '../lib/parcelFilter'
 import type { ActivePlan } from '../lib/workPlan'
 import type { TrackPoint } from '../lib/tracking'
-import type { Machine, Track } from '../types'
+import type { Machine, Parcel, Track } from '../types'
 
 /** Welche Hilfe zur Arbeit passt. */
-export type AssistMode = 'load' | 'hose' | 'seed' | 'area'
+export type AssistMode = 'load' | 'hose' | 'seed' | 'mow' | 'area'
 
 export function assistMode(workType: string | null, machine: Machine | null): AssistMode {
   const w = (workType ?? '').toLowerCase()
   if (machine?.kind === 'verschlauchung' || w.includes('verschlauch')) return 'hose'
   if (machine && ['guellefass', 'duengerstreuer', 'miststreuer'].includes(machine.kind) && machine.capacity) return 'load'
   if (w.includes('säen') || w.includes('saat') || (machine && ['saemaschine', 'saatkombination'].includes(machine.kind))) return 'seed'
+  if (w.includes('mäh') || (machine && ['maehwerk', 'motormaeher'].includes(machine.kind))) return 'mow'
   return 'area'
 }
 
 async function load(pg: PGlite, seasonYear: number) {
   const [machines, parcels] = await Promise.all([
     loadMachines(pg, false),
-    pg.query<{ id: string; name: string; area_a: unknown; base_geometry: string | null }>(
-      'select id, name, area_a, base_geometry from parcels where season_year = $1 and deleted_at is null and base_geometry is not null',
+    pg.query<{ id: string; name: string; area_a: unknown; base_geometry: string | null; kultur_name_de: string | null; category: string; farm_name: string | null }>(
+      'select id, name, area_a, base_geometry, kultur_name_de, category, farm_name from parcels where season_year = $1 and deleted_at is null and base_geometry is not null',
       [seasonYear],
     ),
   ])
@@ -114,6 +117,19 @@ export default function DriveAssist({
     [data],
   )
 
+  const mowParcels = useMemo(
+    () =>
+      (data?.parcels ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        base_geometry: p.base_geometry,
+        area_a: num(p.area_a),
+        farm_name: p.farm_name,
+        kultur_name_de: p.kultur_name_de,
+        bff: matchesVirtualCategory(p as unknown as Parcel, 'bff'),
+      })),
+    [data],
+  )
   const pts = useMemo(() => points.map((p) => ({ lat: p.lat, lng: p.lng, t: p.timestamp })), [points])
   const last = pts[pts.length - 1] ?? null
   const here = last ? fieldAt(fields, last) : null
@@ -371,6 +387,17 @@ export default function DriveAssist({
               — bodenangetriebene Sämaschinen säen unabhängig vom Tempo, zu schnell leidet aber die Ablage.
             </p>
           </section>
+        )}
+
+        {mode === 'mow' && width && (
+          <MowPanel
+            storageKey={key}
+            parcels={mowParcels}
+            hereId={here?.id ?? null}
+            settledId={here && inFieldSince != null && last && last.t - inFieldSince >= 20_000 ? here.id : null}
+            points={pts}
+            widthM={width}
+          />
         )}
 
         {mode === 'area' && (
