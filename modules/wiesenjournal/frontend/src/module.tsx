@@ -18,6 +18,7 @@ import Herds from './pages/Herds'
 import Maintenance from './pages/Maintenance'
 import OutdoorJournal from './pages/OutdoorJournal'
 import { wiesenjournalHerdLocator } from './lib/herds'
+import MaintenanceTile from './components/MaintenanceTile'
 import './theme.css'
 
 function WiesenjournalDbProvider({ children }: { children: ReactNode }) {
@@ -60,6 +61,7 @@ const wiesenjournalModule: ModuleDescriptor = {
   DbProvider: WiesenjournalDbProvider,
   sync: syncClient,
   herdLocator: wiesenjournalHerdLocator,
+  dashboardTiles: [MaintenanceTile],
 }
 
 export default wiesenjournalModule

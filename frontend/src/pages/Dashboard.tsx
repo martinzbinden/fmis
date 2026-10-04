@@ -58,6 +58,7 @@ export default function Dashboard({
             ))}
           </div>
         )}
+        {modules.flatMap((m) => (m.dashboardTiles ?? []).map((Tile, i) => <Tile key={`${m.key}-${i}`} />))}
         {modules.some((m) => m.importer) && (
           <Link to="/import" className="mt-4 block rounded-xl bg-white p-4 text-center text-sm shadow-sm active:bg-gray-100">
             <span className="font-semibold text-brand-700">📥 Daten importieren</span>

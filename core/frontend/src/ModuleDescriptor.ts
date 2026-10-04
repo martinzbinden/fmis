@@ -35,4 +35,7 @@ export interface ModuleDescriptor {
   animals?: AnimalProvider
   /** Standort von Tieren in Herdengruppen (Wiesenjournal). */
   herdLocator?: HerdLocator
+  /** Zusätzliche Kacheln auf der Übersicht (frontend/src/pages/Dashboard.tsx),
+   * z.B. Maschinen & Wartung — prüfen ihre Rechte selbst. */
+  dashboardTiles?: ComponentType[]
 }
