@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
-import { addDaysIso, fmtArea, fmtDate, todayIso } from '../lib/format'
+import { addDaysIso, fmtArea, fmtDate, num, todayIso } from '../lib/format'
+import { calibrate, fieldAxis, planSpreading } from '../lib/slurry'
 import { isTractor, loadMachines, loadsFor, machineSummary, suggestTractor } from '../lib/machines'
 import { getActivePlan, loadPlan, setActivePlan, type PlanTask } from '../lib/workPlan'
 import type { Machine } from '../types'
@@ -12,8 +13,20 @@ const UNIT: Record<string, string> = { m3: 'm³', t: 't', kg: 'kg' }
 
 async function load(pg: PGlite) {
   // Überfällige Planungen der letzten zwei Wochen mit anzeigen.
-  const [tasks, machines] = await Promise.all([loadPlan(pg, addDaysIso(todayIso(), -14)), loadMachines(pg)])
-  return { tasks, machines }
+  const [tasks, machines, tanks] = await Promise.all([
+    loadPlan(pg, addDaysIso(todayIso(), -14)),
+    loadMachines(pg),
+    pg.query<Record<string, unknown>>('select * from tank_events where deleted_at is null order by event_at'),
+  ])
+  // Ausfluss je Güllefass, geeicht aus "Fass leer" (lib/slurry.ts)
+  const flow = new Map<string, number | null>()
+  for (const m of machines.filter((x) => x.kind === 'guellefass')) {
+    const ev = tanks.rows
+      .filter((t) => t.machine_id === m.id)
+      .map((t) => ({ source: t.source as 'knopf' | 'auto', volume_m3: num(t.volume_m3) ?? 0, distance_m: num(t.distance_m) ?? 0, spread_s: num(t.spread_s) ?? 0, width_m: num(t.width_m) ?? 0 }))
+    flow.set(m.id, calibrate(ev, m.flow_m3_min ?? null).flowM3Min)
+  }
+  return { tasks, machines, flow }
 }
 
 function weekday(iso: string): string {
@@ -23,11 +36,13 @@ function weekday(iso: string): string {
 function TaskCard({
   task,
   machines: all,
+  flow,
   canTrack,
   onStart,
 }: {
   task: PlanTask
   machines: Machine[]
+  flow: Map<string, number | null>
   canTrack: boolean
   onStart: (machine: Machine | null, tractor: Machine | null) => void
 }) {
@@ -64,12 +79,36 @@ function TaskCard({
       <ul className="divide-y text-sm">
         {task.items.map((it) => {
           const itemLoads = loadsFor(it.amount, it.unit, machine)
+          // Güllefass: Bahnen je Fass und Geschwindigkeit, damit das Fass am
+          // Bahnende leer ist (lib/slurry.ts)
+          const axis = fieldAxis(it.geometry)
+          const slurry =
+            machine?.kind === 'guellefass' && it.unit === 'm3' && it.amount && it.area_a && machine.capacity && machine.width_m
+              ? planSpreading({
+                  tankM3: machine.capacity,
+                  widthM: machine.width_m,
+                  flowM3Min: flow.get(machine.id) ?? null,
+                  targetM3Ha: it.amount / (it.area_a / 100),
+                  fieldLengthM: axis?.lengthM ?? null,
+                  areaHa: it.area_a / 100,
+                })
+              : null
+          const best = slurry?.options[0]
           return (
             <li key={it.parcel_id} className="flex items-baseline justify-between gap-2 py-1.5">
               <span className="min-w-0">
                 <span className="font-medium text-gray-800">{it.parcel_name}</span>
                 <span className="ml-1 text-xs text-gray-500">{fmtArea(it.area_a)}</span>
                 {it.notes && <span className="block text-xs text-gray-500">{it.notes}</span>}
+                {slurry && it.amount && it.area_a && (
+                  <span className="block text-xs text-amber-800">
+                    {Math.round(it.amount / (it.area_a / 100))} m³/ha
+                    {slurry.speedKmh ? ` bei ${slurry.speedKmh.toFixed(1)} km/h` : ''} · {Math.round(slurry.distPerTankM)} m je Fass
+                    {best && axis
+                      ? ` · Feld ${axis.lengthM} m: ${best.lanes} ${best.lanes === 1 ? 'Bahn' : 'Bahnen'}/Fass → ${Math.round(best.rateM3Ha)} m³/ha${best.speedKmh ? ` bei ${best.speedKmh.toFixed(1)} km/h` : ''}`
+                      : ''}
+                  </span>
+                )}
               </span>
               {it.amount != null && it.unit && (
                 <span className="shrink-0 tabular-nums text-gray-700">
@@ -206,7 +245,7 @@ export default function WorkPlan() {
       )}
 
       {tasks.map((t) => (
-        <TaskCard key={t.key} task={t} machines={data?.machines ?? []} canTrack={canTrack && !active} onStart={(m, tr) => start(t, m, tr)} />
+        <TaskCard flow={data?.flow ?? new Map()} key={t.key} task={t} machines={data?.machines ?? []} canTrack={canTrack && !active} onStart={(m, tr) => start(t, m, tr)} />
       ))}
     </div>
   )

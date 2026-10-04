@@ -42,6 +42,7 @@ export async function loadMachines(pg: PGlite, activeOnly = true): Promise<Machi
     weight_kg: num(r.weight_kg),
     power_hp: num(r.power_hp),
     year_built: num(r.year_built),
+    flow_m3_min: num(r.flow_m3_min),
   }))
 }
 

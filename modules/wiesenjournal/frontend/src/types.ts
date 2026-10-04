@@ -271,9 +271,30 @@ export interface Machine {
   owner?: string | null
   /** schema/0020: Kategorie-Knopf, null = automatisch nach Art */
   category?: MachineCategory | null
+  /** schema/0021: Güllefass-Ausfluss m³/min (Startwert, geeicht über tank_events) */
+  flow_m3_min?: number | null
   front_pto: boolean | null
   /** Anbaugeräte: Standard-Traktor (Vorschlag in Arbeitsplan und Tracking). */
   tractor_id: string | null
+}
+
+/** Ein Güllefass während des Trackings (schema/0021). */
+export interface TankEvent {
+  id: string
+  track_id: string | null
+  machine_id: string | null
+  parcel_id: string | null
+  event_at: string
+  source: 'knopf' | 'auto'
+  volume_m3: number
+  distance_m: number
+  spread_s: number
+  width_m: number
+  lat: number | null
+  lng: number | null
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
 }
 
 export type MachineCategory = 'zugfahrzeug' | 'anbaugeraet' | 'anhaenger' | 'auto' | 'uebrige'

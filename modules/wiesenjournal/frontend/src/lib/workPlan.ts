@@ -8,6 +8,8 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
 import { USAGE_TYPE_LABEL, isoDate, num } from './format'
+import { loadFertilizerTypes } from './fertilization'
+import { computeNutrients } from './nutrients'
 import type { DuengungUnit, MachineKind } from '../types'
 
 export interface PlanItem {
@@ -294,7 +296,15 @@ export function visitedParcels(items: PlanItem[], points: { lat: number; lng: nu
 
 /** Erledigte Parzellen als ausgeführt übernehmen: geplante Einträge werden
  * zu definitiven mit dem Ausführungsdatum; nicht erledigte bleiben geplant. */
-export async function completePlan(pg: PGlite, plan: ActivePlan, doneParcelIds: Set<string>, executedOn: string): Promise<number> {
+export async function completePlan(
+  pg: PGlite,
+  plan: ActivePlan,
+  doneParcelIds: Set<string>,
+  executedOn: string,
+  /** gezählte Fässer je Parzelle (Güllefass): Menge und Anzahl übernehmen */
+  measured?: Map<string, { m3: number; count: number }>,
+): Promise<number> {
+  const types = measured?.size ? await loadFertilizerTypes(pg, false) : []
   // Ein Eintrag über mehrere Parzellen gilt erst als ausgeführt, wenn alle
   // seine Parzellen erledigt sind.
   const fertIds = new Set<string>()
@@ -319,7 +329,17 @@ export async function completePlan(pg: PGlite, plan: ActivePlan, doneParcelIds: 
     if (!ids.size) continue
     const { rows } = await pg.query<Record<string, unknown>>(`select * from ${table} where id = any($1) and is_planned`, [[...ids]])
     for (const row of rows) {
-      await upsertRow(table, { ...row, id: String(row.id), entry_date: executedOn, is_planned: false } as never)
+      const m = table === 'fertilization_entries' && row.extent_type === 'parcel' ? measured?.get(String(row.parcel_id)) : undefined
+      if (m) {
+        // Menge aus den gezählten Fässern — Nährstoffe neu, auch im Anteil
+        const type = types.find((t) => t.id === row.fertilizer_type_id) ?? null
+        const nutrients = computeNutrients(m.m3, type, num(row.dilution_factor))
+        await upsertRow(table, { ...row, id: String(row.id), entry_date: executedOn, is_planned: false, amount: m.m3, container_count: m.count, ...nutrients } as never)
+        const { rows: shares } = await pg.query<Record<string, unknown>>('select * from fertilization_shares where entry_id = $1 and deleted_at is null', [row.id])
+        for (const s of shares) await upsertRow('fertilization_shares', { ...s, id: String(s.id), ...nutrients } as never)
+      } else {
+        await upsertRow(table, { ...row, id: String(row.id), entry_date: executedOn, is_planned: false } as never)
+      }
       n++
     }
   }

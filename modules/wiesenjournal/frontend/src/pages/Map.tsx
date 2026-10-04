@@ -27,6 +27,8 @@ import type { NearbyObservation } from '../components/MiniLocationMap'
 import { downloadGpx } from '../lib/gpx'
 import { completePlan, getActivePlan, setActivePlan, visitedParcels, type ActivePlan } from '../lib/workPlan'
 import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
+import SlurryPanel from '../components/SlurryPanel'
+import { loadTrackTanks } from '../lib/slurryData'
 import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import type { Paddock, Parcel, Track, WeedObservation } from '../types'
@@ -245,9 +247,27 @@ export default function Map() {
     if (activePlan) setCompleting(true)
   }
 
-  async function finishPlan(done: Set<string>) {
+  // Gezählte Fässer der Plan-Ausführung je Parzelle (components/SlurryPanel.tsx)
+  const planTrackIds = useMemo(
+    () => (activePlan ? tracks.filter((t) => t.started_at >= activePlan.started_at).map((t) => t.id) : []),
+    [activePlan, tracks],
+  )
+  const { data: planTanks } = useQuery((pg) => loadTrackTanks(pg, planTrackIds), [planTrackIds.join(','), completing])
+  const tanksByParcel = useMemo(() => {
+    const m = new globalThis.Map<string, { m3: number; count: number }>()
+    for (const t of planTanks ?? []) {
+      if (!t.parcel_id) continue
+      const e = m.get(t.parcel_id) ?? { m3: 0, count: 0 }
+      e.m3 = Math.round((e.m3 + t.volume_m3) * 10) / 10
+      e.count++
+      m.set(t.parcel_id, e)
+    }
+    return m
+  }, [planTanks])
+
+  async function finishPlan(done: Set<string>, useTanks: boolean) {
     if (!activePlan) return
-    await completePlan(db, activePlan, done, todayIso())
+    await completePlan(db, activePlan, done, todayIso(), useTanks ? tanksByParcel : undefined)
     updateActivePlan(null)
     setCompleting(false)
     refresh()
@@ -506,6 +526,10 @@ export default function Map() {
         </div>
       )}
 
+      {recording && currentTrack?.machine_id && (
+        <SlurryPanel track={currentTrack} points={livePoints} seasonYear={seasonYear} plan={activePlan} accuracyM={currentPosition?.accuracyM ?? null} />
+      )}
+
       {completing && activePlan && (
         <CompletePlanModal
           plan={activePlan}
@@ -515,6 +539,7 @@ export default function Map() {
             updateActivePlan(null)
             setCompleting(false)
           }}
+          tanks={tanksByParcel}
           onDone={finishPlan}
         />
       )}
@@ -734,17 +759,20 @@ function PaddockDetailsModal({
 function CompletePlanModal({
   plan,
   visited,
+  tanks,
   onClose,
   onCancelPlan,
   onDone,
 }: {
   plan: ActivePlan
   visited: Set<string>
+  tanks: globalThis.Map<string, { m3: number; count: number }>
   onClose: () => void
   onCancelPlan: () => void
-  onDone: (done: Set<string>) => Promise<void>
+  onDone: (done: Set<string>, useTanks: boolean) => Promise<void>
 }) {
   const [done, setDone] = useState<Set<string>>(() => new Set(visited))
+  const [useTanks, setUseTanks] = useState(true)
   const [saving, setSaving] = useState(false)
   const toggle = (id: string) =>
     setDone((d) => {
@@ -773,16 +801,27 @@ function CompletePlanModal({
                 )}
                 {visited.has(it.parcel_id) && <span className="text-xs text-green-700">befahren</span>}
               </label>
+              {tanks.get(it.parcel_id) && (
+                <div className="pb-1 pl-6 text-xs text-amber-800">
+                  gezählt: {tanks.get(it.parcel_id)!.count} {tanks.get(it.parcel_id)!.count === 1 ? 'Fass' : 'Fässer'} = {tanks.get(it.parcel_id)!.m3} m³
+                </div>
+              )}
             </li>
           ))}
         </ul>
+        {tanks.size > 0 && (
+          <label className="flex items-start gap-2 rounded bg-amber-50 p-2 text-xs text-amber-900">
+            <input type="checkbox" className="mt-0.5" checked={useTanks} onChange={(e) => setUseTanks(e.target.checked)} />
+            Menge aus den gezählten Fässern übernehmen (statt der geplanten), Nährstoffe neu berechnen
+          </label>
+        )}
         <button
           type="button"
           disabled={saving}
           onClick={async () => {
             setSaving(true)
             try {
-              await onDone(done)
+              await onDone(done, useTanks)
             } finally {
               setSaving(false)
             }

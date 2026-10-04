@@ -53,7 +53,7 @@ export const SYNC_TABLES = {
     'id', 'name', 'kind', 'capacity', 'capacity_unit', 'width_m', 'notes',
     'active', 'sort_order', 'updated_at', 'deleted_at',
     'manufacturer', 'model', 'type_no', 'serial_no', 'year_built', 'weight_kg',
-    'power_hp', 'front_pto', 'tractor_id', 'owner', 'category',
+    'power_hp', 'front_pto', 'tractor_id', 'owner', 'category', 'flow_m3_min',
   ],
   machine_files: [
     'id', 'machine_id', 'kind', 'title', 'filename', 'content_type',
@@ -91,6 +91,10 @@ export const SYNC_TABLES = {
     'id', 'machine_id', 'done_date', 'entry_type', 'title', 'task_ids', 'counter', 'cost_chf',
     'material', 'done_by', 'notes', 'updated_at', 'deleted_at',
   ],
+  tank_events: [
+    'id', 'track_id', 'machine_id', 'parcel_id', 'event_at', 'source', 'volume_m3', 'distance_m',
+    'spread_s', 'width_m', 'lat', 'lng', 'notes', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -123,5 +127,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   herd_laufhof: new Set(['entry_date']),
   maintenance_tasks: new Set(),
   maintenance_log: new Set(['done_date']),
+  tank_events: new Set(),
   data_history: new Set(),
 }

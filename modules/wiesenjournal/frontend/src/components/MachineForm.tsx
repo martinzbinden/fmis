@@ -40,6 +40,7 @@ export default function MachineForm({
     active: machine?.active ?? true,
     owner: s(machine?.owner),
     category: (machine?.category ?? '') as MachineCategory | '',
+    flow_m3_min: s(machine?.flow_m3_min),
   })
   const [saving, setSaving] = useState(false)
   const set = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }))
@@ -75,6 +76,7 @@ export default function MachineForm({
         notes: f.notes.trim() || null,
         owner: f.owner.trim() || null,
         category: f.category || null,
+        flow_m3_min: f.kind === 'guellefass' ? n(f.flow_m3_min) : null,
       } as never)
       onSaved(id)
     } finally {
@@ -167,6 +169,16 @@ export default function MachineForm({
               )}
             </div>
           </>
+        )}
+
+        {f.kind === 'guellefass' && (
+          <label className="block">
+            <span className={label}>Ausfluss m³/min (Startwert)</span>
+            <input className={field} inputMode="decimal" value={f.flow_m3_min} onChange={(e) => set({ flow_m3_min: e.target.value })} />
+            <span className="mt-0.5 block text-xs text-gray-500">
+              Fassinhalt ÷ Minuten bis leer. Wird beim Tracking mit «Fass leer» automatisch geeicht.
+            </span>
+          </label>
         )}
 
         <label className="block">

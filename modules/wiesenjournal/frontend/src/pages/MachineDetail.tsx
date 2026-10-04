@@ -176,6 +176,7 @@ export default function MachineDetail() {
         <Fact label="Eigentümer" value={m.owner ?? 'eigener Betrieb'} />
         <Fact label="Fass / Ladevolumen" value={m.capacity != null && m.capacity_unit ? `${m.capacity} ${UNIT_LABEL[m.capacity_unit]}` : null} />
         <Fact label="Arbeitsbreite" value={m.width_m != null ? `${m.width_m} m` : null} />
+        <Fact label="Ausfluss (Startwert)" value={m.kind === 'guellefass' && m.flow_m3_min != null ? `${m.flow_m3_min} m³/min` : null} />
         <Fact label="Hersteller" value={m.manufacturer} />
         <Fact label="Modell" value={m.model} />
         <Fact label="Typen-Nr." value={m.type_no} />
