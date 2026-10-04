@@ -61,6 +61,8 @@ async function ready(): Promise<PGlite> {
 }
 
 type HistoryAction = 'insert' | 'update' | 'delete'
+/** PGlite oder eine laufende Transaktion — beide haben query(). */
+type Queryable = Pick<PGlite, 'query'>
 
 /**
  * Schreibt einen Eintrag in data_history direkt per SQL (NICHT über
@@ -69,7 +71,7 @@ type HistoryAction = 'insert' | 'update' | 'delete'
  * aufgerufen, siehe schema/0002_history.sql.
  */
 async function recordHistory(
-  pg: PGlite,
+  pg: Queryable,
   table: SyncTable,
   rowId: string,
   action: HistoryAction,
@@ -103,10 +105,35 @@ export async function upsertRow<T extends SyncTable>(
   options?: { action?: HistoryAction },
 ): Promise<void> {
   const pg = await ready()
+  await writeRow(pg, table, row, options?.action)
+  notifyDataChanged()
+}
+
+/** Mehrere Zeilen in EINER Transaktion — ausserhalb einer Transaktion
+ * schreibt pglite jede Query einzeln nach IndexedDB (rund 1 s je Zeile mit
+ * Outbox und Verlauf, z.B. beim Übernehmen ganzer Wartungspläne). */
+export async function upsertRows<T extends SyncTable>(
+  table: T,
+  rows: (Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string })[],
+): Promise<void> {
+  if (rows.length === 0) return
+  const pg = await ready()
+  await pg.transaction(async (tx) => {
+    for (const row of rows) await writeRow(tx, table, row)
+  })
+  notifyDataChanged()
+}
+
+async function writeRow<T extends SyncTable>(
+  pg: Queryable,
+  table: T,
+  row: Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string },
+  forcedAction?: HistoryAction,
+): Promise<void> {
   const columns = SYNC_TABLES[table] as readonly string[]
   const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
 
-  let action = options?.action
+  let action = forcedAction
   if (!action) {
     const { rows: existing } = await pg.query(`select 1 from "${table}" where id = $1`, [row.id])
     action = existing.length > 0 ? 'update' : 'insert'
@@ -137,8 +164,6 @@ export async function upsertRow<T extends SyncTable>(
   if (table !== 'data_history') {
     await recordHistory(pg, table, row.id, action, stamped)
   }
-
-  notifyDataChanged()
 }
 
 /** Soft-Delete: setzt deleted_at und stösst die Zeile via upsertRow erneut in die Outbox. */

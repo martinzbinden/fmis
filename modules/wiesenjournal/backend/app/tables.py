@@ -52,7 +52,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "name", "kind", "capacity", "capacity_unit", "width_m", "notes",
         "active", "sort_order", "updated_at", "deleted_at",
         "manufacturer", "model", "type_no", "serial_no", "year_built", "weight_kg",
-        "power_hp", "front_pto", "tractor_id", "owner",
+        "power_hp", "front_pto", "tractor_id", "owner", "category",
     ],
     # Nur die Angaben; der Inhalt liegt in machine_file_data (nur Server).
     "machine_files": [
@@ -90,6 +90,14 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "group_id", "category", "count", "from_date", "to_date", "notes", "updated_at", "deleted_at",
     ],
     "herd_laufhof": ["id", "group_id", "entry_date", "notes", "updated_at", "deleted_at"],
+    "maintenance_tasks": [
+        "id", "machine_id", "title", "task_type", "interval_count", "interval_months", "notes",
+        "active", "sort_order", "template_key", "updated_at", "deleted_at",
+    ],
+    "maintenance_log": [
+        "id", "machine_id", "done_date", "entry_type", "title", "task_ids", "counter", "cost_chf",
+        "material", "done_by", "notes", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
@@ -113,6 +121,9 @@ TABLE_AREA: dict[str, str] = {
     "daily_farm_log": "wiesenjournal:tagesmeldung",
     "machines": "wiesenjournal:tracking",
     "machine_files": "wiesenjournal:tracking",
+    # Wartungsjournal gehört zu den Maschinen
+    "maintenance_tasks": "wiesenjournal:tracking",
+    "maintenance_log": "wiesenjournal:tracking",
     "tracks": "wiesenjournal:tracking",
     "weed_observations": "wiesenjournal:tracking",
     # Herden und Standorte gehören zum Weidegang

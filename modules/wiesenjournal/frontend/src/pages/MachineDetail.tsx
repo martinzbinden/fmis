@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
+import MachineMaintenance from '../components/MachineMaintenance'
+import { loadMaintenanceData } from '../lib/maintenanceData'
 import { softDeleteRow } from '../db/write'
 import { isSelfPropelled, isTractor, loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
 import { fmtBytes, loadMachineFiles, MACHINE_FILE_KIND_LABEL, machineFileUrl, uploadMachineFile } from '../lib/machineFiles'
@@ -14,8 +16,8 @@ import type { MachineFile, MachineFileKind } from '../types'
 const UNIT_LABEL = { m3: 'm³', t: 't', kg: 'kg' } as const
 
 async function load(pg: PGlite, id: string) {
-  const [machines, files] = await Promise.all([loadMachines(pg, false), loadMachineFiles(pg, id)])
-  return { machines, files }
+  const [machines, files, maintenance] = await Promise.all([loadMachines(pg, false), loadMachineFiles(pg, id), loadMaintenanceData(pg)])
+  return { machines, files, maintenance }
 }
 
 /** Datei öffnen. Browser mit eigener PDF-Anzeige (Computer): in neuem Tab —
@@ -200,6 +202,27 @@ export default function MachineDetail() {
         <p className="whitespace-pre-line rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">
           <Linkified text={m.notes} />
         </p>
+      )}
+
+      {data?.maintenance && (
+        <section className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Wartung</h2>
+            <Link to="../wartung" className="text-xs text-brand-700">
+              Wartungsjournal →
+            </Link>
+          </div>
+          <div className="rounded-lg bg-white p-3 shadow-sm">
+            <MachineMaintenance
+              machine={m}
+              tasks={data.maintenance.tasks}
+              log={data.maintenance.log}
+              tracks={data.maintenance.tracksByMachine.get(m.id) ?? []}
+              canWrite={canWrite}
+              onChanged={refresh}
+            />
+          </div>
+        </section>
       )}
 
       <section className="space-y-2">

@@ -15,6 +15,7 @@ import WorkPlan from './pages/WorkPlan'
 import Machines from './pages/Machines'
 import MachineDetail from './pages/MachineDetail'
 import Herds from './pages/Herds'
+import Maintenance from './pages/Maintenance'
 import OutdoorJournal from './pages/OutdoorJournal'
 import { wiesenjournalHerdLocator } from './lib/herds'
 import './theme.css'
@@ -52,6 +53,8 @@ const wiesenjournalModule: ModuleDescriptor = {
     { path: 'auslauf', element: <OutdoorJournal /> },
     { path: 'maschinen', element: <Machines /> },
     { path: 'maschinen/:id', element: <MachineDetail /> },
+    // Kein Nav-Eintrag — verlinkt von Maschinen
+    { path: 'wartung', element: <Maintenance /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],
   DbProvider: WiesenjournalDbProvider,

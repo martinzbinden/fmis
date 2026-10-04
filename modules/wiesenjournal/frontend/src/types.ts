@@ -242,6 +242,8 @@ export type MachineKind =
   | 'motormaeher'
   | 'viehanhaenger'
   | 'verschlauchung'
+  // schema/0020: Autos (Wartung in km)
+  | 'auto'
   | 'andere'
 
 export interface Machine {
@@ -267,9 +269,51 @@ export interface Machine {
   power_hp: number | null
   /** schema/0019: Eigentümer, null = eigener Betrieb */
   owner?: string | null
+  /** schema/0020: Kategorie-Knopf, null = automatisch nach Art */
+  category?: MachineCategory | null
   front_pto: boolean | null
   /** Anbaugeräte: Standard-Traktor (Vorschlag in Arbeitsplan und Tracking). */
   tractor_id: string | null
+}
+
+export type MachineCategory = 'zugfahrzeug' | 'anbaugeraet' | 'anhaenger' | 'auto' | 'uebrige'
+
+export type MaintenanceTaskType = 'oel' | 'filter' | 'schmieren' | 'kontrolle' | 'verschleiss' | 'service' | 'andere'
+
+/** Wartungsplan-Position (schema/0020). Intervall in Zählereinheit der
+ * Maschine (Betriebsstunden, bei Autos km) und/oder Monaten. */
+export interface MaintenanceTask {
+  id: string
+  machine_id: string
+  title: string
+  task_type: MaintenanceTaskType
+  interval_count: number | null
+  interval_months: number | null
+  notes: string | null
+  active: boolean
+  sort_order: number
+  template_key: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type MaintenanceEntryType = 'wartung' | 'reparatur' | 'kontrolle' | 'zaehlerstand'
+
+/** Wartungsjournal-Eintrag (schema/0020); task_ids = JSON-Array als Text. */
+export interface MaintenanceLog {
+  id: string
+  machine_id: string
+  done_date: string
+  entry_type: MaintenanceEntryType
+  title: string | null
+  task_ids: string | null
+  counter: number | null
+  cost_chf: number | null
+  material: string | null
+  done_by: string | null
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
 }
 
 export type MachineFileKind = 'bild' | 'anleitung' | 'dokument'

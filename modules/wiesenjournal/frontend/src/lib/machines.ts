@@ -26,6 +26,7 @@ export const MACHINE_KIND_LABEL: Record<MachineKind, string> = {
   motormaeher: 'Motormäher',
   viehanhaenger: 'Viehanhänger',
   verschlauchung: 'Gülle-Verschlauchung',
+  auto: 'Auto',
   andere: 'andere',
 }
 
@@ -64,7 +65,7 @@ export function loadsFor(amount: number | null, unit: DuengungUnit | null, machi
 /** Träger, an die Geräte angehängt/angebaut werden: Traktoren und Hoflader. */
 export const isTractor = (m: Pick<Machine, 'kind'>) => m.kind === 'traktor' || m.kind === 'hoflader'
 /** Fährt selbst, braucht keinen Träger. */
-export const isSelfPropelled = (m: Pick<Machine, 'kind'>) => m.kind === 'motormaeher'
+export const isSelfPropelled = (m: Pick<Machine, 'kind'>) => m.kind === 'motormaeher' || m.kind === 'auto'
 
 /** Träger-Vorschlag für ein Gerät: der hinterlegte Standard-Träger, sonst
  * der erste passende der Liste (Hoflader-Anbaugeräte → Hoflader, alles

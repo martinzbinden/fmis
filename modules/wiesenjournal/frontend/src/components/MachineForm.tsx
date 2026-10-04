@@ -2,7 +2,8 @@ import { useState } from 'react'
 import Modal from './Modal'
 import { upsertRow } from '../db/write'
 import { isSelfPropelled, isTractor, MACHINE_KIND_LABEL } from '../lib/machines'
-import type { DuengungUnit, Machine, MachineKind } from '../types'
+import { CATEGORY_LABEL, KIND_CATEGORY } from '../lib/maintenance'
+import type { DuengungUnit, Machine, MachineCategory, MachineKind } from '../types'
 
 const s = (v: string | number | null | undefined) => (v == null ? '' : String(v))
 const n = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
@@ -38,6 +39,7 @@ export default function MachineForm({
     notes: s(machine?.notes),
     active: machine?.active ?? true,
     owner: s(machine?.owner),
+    category: (machine?.category ?? '') as MachineCategory | '',
   })
   const [saving, setSaving] = useState(false)
   const set = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }))
@@ -72,6 +74,7 @@ export default function MachineForm({
         active: f.active,
         notes: f.notes.trim() || null,
         owner: f.owner.trim() || null,
+        category: f.category || null,
       } as never)
       onSaved(id)
     } finally {
@@ -100,7 +103,19 @@ export default function MachineForm({
           </select>
         </label>
 
-        {tractor ? (
+        <label className="block">
+          <span className={label}>Kategorie (Wartung, Liste)</span>
+          <select className={field} value={f.category} onChange={(e) => set({ category: e.target.value as MachineCategory | '' })}>
+            <option value="">automatisch: {CATEGORY_LABEL[KIND_CATEGORY[f.kind] ?? 'uebrige']}</option>
+            {(Object.keys(CATEGORY_LABEL) as MachineCategory[]).map((c) => (
+              <option key={c} value={c}>
+                {CATEGORY_LABEL[c]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {f.kind === 'auto' ? null : tractor ? (
           <div className="grid grid-cols-2 items-end gap-2">
             <label className="block">
               <span className={label}>Leistung (PS)</span>

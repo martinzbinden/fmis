@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
-import { isTractor, loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
+import { loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
+import { CATEGORY_ICON, CATEGORY_LABEL, categoryOf } from '../lib/maintenance'
 import { loadMachineFiles } from '../lib/machineFiles'
 import MachineForm from '../components/MachineForm'
 import MachineImage from '../components/MachineImage'
@@ -39,7 +40,7 @@ function MachineRow({ m, machines, files }: { m: Machine; machines: Machine[]; f
         {image ? (
           <MachineImage fileId={image.id} alt={m.name} className="h-16 w-16 shrink-0 rounded" />
         ) : (
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-gray-100 text-2xl">{isTractor(m) ? '🚜' : '⚙️'}</div>
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-gray-100 text-2xl">{CATEGORY_ICON[categoryOf(m)]}</div>
         )}
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-gray-800">{m.name}</div>
@@ -66,9 +67,10 @@ export default function Machines() {
   const own = machines.filter((m) => !m.owner)
   const owners = [...new Set(machines.map((m) => m.owner).filter((o): o is string => !!o))].sort((a, b) => a.localeCompare(b, 'de'))
   const sections: { title: string; list: Machine[] }[] = [
-    { title: 'Traktoren & Hoflader', list: own.filter(isTractor) },
-    { title: 'Anbaugeräte Hoflader', list: own.filter((m) => m.kind === 'ladergeraet') },
-    { title: 'Geräte', list: own.filter((m) => !isTractor(m) && m.kind !== 'ladergeraet') },
+    ...(['zugfahrzeug', 'anbaugeraet', 'anhaenger', 'auto', 'uebrige'] as const).map((c) => ({
+      title: CATEGORY_LABEL[c],
+      list: own.filter((m) => categoryOf(m) === c),
+    })),
     ...owners.map((o) => ({ title: `Gehört ${o}`, list: machines.filter((m) => m.owner === o) })),
   ]
 
@@ -85,15 +87,20 @@ export default function Machines() {
             vorgeschlagen wird.
           </p>
         </div>
-        {canWrite && (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white active:bg-brand-700"
-          >
-            + Maschine
-          </button>
-        )}
+        <span className="flex gap-2">
+          <Link to="../wartung" className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700">
+            🔧 Wartung
+          </Link>
+          {canWrite && (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white active:bg-brand-700"
+            >
+              + Maschine
+            </button>
+          )}
+        </span>
       </div>
 
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
