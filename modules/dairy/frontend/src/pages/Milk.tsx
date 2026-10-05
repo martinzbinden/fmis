@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate, fmtKg, fmtPct, num } from '../lib/format'
-import { selectYogurtCows, TARGET_PROTEIN_PCT, type YogurtSelectionResult } from '../lib/yogurtSelection'
+import YogurtPlanner from '../components/YogurtPlanner'
 import { speciesTerms } from '../lib/species'
 import type { AnimalMilkCurrent } from '../types'
 import LactationView from '../components/LactationView'
@@ -55,12 +55,11 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
   const cows = data ?? []
   const [sortKey, setSortKey] = useState<SortKey>('protein_pct')
   // Zwei Tabs: Laktationsleistung (Abschlüsse) und letzte Milchwägung.
-  const [tab, setTab] = useState<'laktation' | 'waegung'>('laktation')
+  const [tab, setTab] = useState<'laktation' | 'waegung' | 'joghurt'>('laktation')
   // Joghurt-Auswahl nur für Milchkühe — Nebengeleise, deshalb eingeklappt
   // unter "Benutzerdefinierte Filter und Aktionen".
   const showYogurt = moduleKey === 'dairy'
   const [sortDesc, setSortDesc] = useState(true)
-  const [selection, setSelection] = useState<YogurtSelectionResult | null>(null)
 
   const sorted = useMemo(() => {
     const copy = [...cows]
@@ -85,10 +84,6 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
     }
   }
 
-  const selectedIds = useMemo(
-    () => new Set(selection?.selected.map((c) => c.animal_id) ?? []),
-    [selection],
-  )
   const withoutAnalysis = cows.filter((c) => !c.has_analysis).length
 
   return (
@@ -105,6 +100,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
           [
             ['laktation', 'Laktationsleistung'],
             ['waegung', 'Letzte Milchwägung'],
+            ...(showYogurt ? ([['joghurt', 'Joghurt']] as const) : []),
           ] as const
         ).map(([key, label]) => (
           <button
@@ -119,6 +115,8 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
           </button>
         ))}
       </div>
+
+      {tab === 'joghurt' && showYogurt && <YogurtPlanner />}
 
       {tab === 'waegung' && loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {tab === 'waegung' && data && cows.length === 0 && !analysedOnly && (
@@ -148,43 +146,6 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
               </span>
             )}
           </label>
-          {showYogurt && cows.length > 0 && (
-          <div className="rounded-lg bg-gray-50 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-700">Joghurt-Auswahl ({terms.plural})</h2>
-                <p className="text-xs text-gray-500">
-                  Grösstmögliche Milchmenge mit gewichtetem Ø-Eiweiss ≥ {TARGET_PROTEIN_PCT}%.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelection(selectYogurtCows(cows))}
-                className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-semibold text-white active:bg-brand-800"
-              >
-                Joghurt-{terms.plural} vorschlagen
-              </button>
-            </div>
-            {selection && (
-              <div className="mt-3 rounded bg-brand-50 p-3 text-sm text-brand-900">
-                {selection.selected.length === 0 ? (
-                  <p>Keine {terms.singular} erreicht allein {TARGET_PROTEIN_PCT}% Eiweiss — keine Auswahl möglich.</p>
-                ) : (
-                  <p>
-                    {selection.selected.length} {terms.plural} ausgewählt · {fmtKg(selection.totalMilkKg)} Milch ·
-                    gewichteter Ø-Eiweiss {fmtPct(selection.weightedProteinPct)}
-                  </p>
-                )}
-                {selection.skippedWithoutAnalysis > 0 && (
-                  <p className="mt-1 text-xs text-amber-700">
-                    {selection.skippedWithoutAnalysis} {terms.plural} ohne Laboranalyse nicht berücksichtigt
-                    (kein %Eiweiss bekannt).
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-          )}
           </div>
           </details>
           {analysedOnly && cows.length === 0 && (
@@ -237,9 +198,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
                 {sorted.map((c) => (
                   <tr
                     key={c.animal_id}
-                    className={`border-b last:border-0 ${
-                      selectedIds.has(c.animal_id) ? 'bg-brand-50' : ''
-                    }`}
+                    className="border-b last:border-0"
                   >
                     <td className="px-3 py-2 font-medium text-gray-800">{animalLabel(c)}</td>
                     <td className="px-3 py-2 text-gray-600">
