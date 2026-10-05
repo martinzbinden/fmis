@@ -6,6 +6,7 @@
 export interface YogurtCow {
   animal_id: string
   label: string
+  ear_tag?: string
   /** Wägung, aus der die Milchmenge stammt */
   test_date: string
   /** Tagesmilch kg (Wägung) */

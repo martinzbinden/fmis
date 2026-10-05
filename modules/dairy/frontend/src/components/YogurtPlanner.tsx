@@ -3,6 +3,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate, isoDate, num, todayIso } from '../lib/format'
 import { isDrySql } from '../lib/dryOff'
+import { YogurtPaper, YogurtPrintPortal, YOGURT_PRINT_CSS } from './YogurtPrint'
 import { CRITERION_LABEL, exclusion, suggestYogurt, yogurtMix, type YogurtCow, type YogurtCriterion, type YogurtOptions } from '../lib/yogurtPlan'
 
 /** Letzte Wägung je aktivem Tier; fehlt dort die Laboranalyse, die Gehalte
@@ -32,6 +33,7 @@ async function loadCows(pg: PGlite): Promise<YogurtCow[]> {
     return {
       animal_id: String(r.animal_id),
       label: `${r.lauf_nr ?? String(r.ear_tag).slice(-4)}${name}`,
+      ear_tag: String(r.ear_tag),
       test_date: isoDate(r.test_date)!,
       milk_kg: num(r.milk_kg) ?? 0,
       fat_pct: num(hasLab ? r.fat_pct : l?.fat_pct),
@@ -110,6 +112,10 @@ export default function YogurtPlanner() {
     setPicked(next)
   }
 
+  // Für die Druckansicht: abgelieferte Milch (ohne gesperrte) und gesperrte
+  const delivered = rows.filter((r) => !r.ex?.blocked).map((r) => r.c)
+  const blocked = rows.filter((r) => r.ex?.blocked).map((r) => r.c)
+
   if (loading && !data) return <p className="text-sm text-gray-400">Lädt…</p>
 
   return (
@@ -182,7 +188,26 @@ export default function YogurtPlanner() {
             {manual ? ' · von Hand angepasst' : ''}
             {mix.unknownKg > 0 ? ` · ${f1(mix.unknownKg)} kg ohne Laboranalyse (in den Gehalten nicht enthalten)` : ''}
           </p>
+          {selected.length > 0 && (
+            <div className="mt-2 flex flex-wrap justify-center gap-2">
+              <button type="button" onClick={() => window.print()} className="rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-gray-800 shadow-sm">
+                🖨 Melkliste drucken / PDF
+              </button>
+            </div>
+          )}
         </div>
+      )}
+      {picked && selected.length > 0 && (
+        <>
+          <YogurtPrintPortal selected={selected} delivered={delivered} blocked={blocked} opts={opts} />
+          <details className="rounded-lg bg-white shadow-sm">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-gray-700">Vorschau Melkliste</summary>
+            <div className="overflow-x-auto bg-gray-200 p-2">
+              <style>{YOGURT_PRINT_CSS}</style>
+              <YogurtPaper selected={selected} delivered={delivered} blocked={blocked} opts={opts} />
+            </div>
+          </details>
+        </>
       )}
 
       <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
