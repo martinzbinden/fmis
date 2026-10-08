@@ -10,7 +10,7 @@ import { inTransaction } from '../db/transaction'
 import TreatmentItems, { emptyItem } from '../components/TreatmentItems'
 import { addDays, fmtDate, isoDate, localTodayIso } from '../lib/format'
 import { deleteTemplate, importTreatments, loadTreatmentContext, saveTemplate, type TreatmentContext } from '../lib/treatmentData'
-import { parseCownect, parseItems, suggestTemplates, withdrawalUntil, type TemplateSuggestion } from '../lib/treatments'
+import { DEFAULT_WITHDRAWAL_FACTOR, parseCownect, parseItems, suggestTemplates, withdrawalUntil, type TemplateSuggestion } from '../lib/treatments'
 import type { AnimalJournalEntry, TemplateItem, TreatmentTemplate } from '../types'
 
 type Row = AnimalJournalEntry & { a_name: string | null; a_lauf_nr: string | null; a_ear_tag: string | null }
@@ -195,7 +195,7 @@ function TemplateEditor({ template, ctx, onDone }: { template: Partial<Treatment
           <input value={t.body_system ?? ''} onChange={(e) => setT({ ...t, body_system: e.target.value })} className={input} />
         </label>
       </div>
-      <TreatmentItems items={items} onChange={setItems} known={ctx.medications} factor={ctx.usualFactor} compact />
+      <TreatmentItems items={items} onChange={setItems} known={ctx.medications} factor={DEFAULT_WITHDRAWAL_FACTOR} compact />
       <label className="block text-gray-600">
         Hinweis
         <input value={t.notes ?? ''} onChange={(e) => setT({ ...t, notes: e.target.value })} className={input} />

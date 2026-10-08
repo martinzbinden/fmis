@@ -4,10 +4,10 @@ import { useQuery } from '../hooks/useQuery'
 import TreatmentItems, { emptyItem } from './TreatmentItems'
 import { localTodayIso } from '../lib/format'
 import { loadTreatmentContext, saveTemplate, saveTreatment } from '../lib/treatmentData'
-import { parseItems } from '../lib/treatments'
+import { DEFAULT_WITHDRAWAL_FACTOR, parseItems } from '../lib/treatments'
 import type { TemplateItem, TreatmentTemplate } from '../types'
 
-const LS = { by: 'dairy_journal_last_administered_by', supplier: 'dairy_treatment_supplier', factor: 'dairy_treatment_factor' }
+const LS = { by: 'dairy_journal_last_administered_by', supplier: 'dairy_treatment_supplier' }
 const load = (k: string) => {
   try {
     return localStorage.getItem(k)
@@ -37,13 +37,14 @@ export default function TreatmentForm({ animalIds, onSaved }: { animalIds: strin
   const [items, setItems] = useState<TemplateItem[]>([emptyItem()])
   const [by, setBy] = useState(() => load(LS.by) ?? '')
   const [supplier, setSupplier] = useState(() => load(LS.supplier) ?? '')
-  const [factor, setFactor] = useState<number | null>(() => (load(LS.factor) ? Number(load(LS.factor)) : null))
+  // Bio: immer verdoppelt vorbelegt, je Behandlung abwählbar (bewusst nicht gemerkt)
+  const [factor, setFactor] = useState(DEFAULT_WITHDRAWAL_FACTOR)
   const [notes, setNotes] = useState('')
   const [favorite, setFavorite] = useState<{ on: boolean; title: string }>({ on: false, title: '' })
   const [templateId, setTemplateId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const f = factor ?? ctx?.usualFactor ?? 1
+  const f = factor
 
   useEffect(() => {
     if (!by && ctx?.persons[0]) setBy(ctx.persons[0])
@@ -98,7 +99,7 @@ export default function TreatmentForm({ animalIds, onSaved }: { animalIds: strin
         })
       store(LS.by, by.trim())
       if (supplier.trim()) store(LS.supplier, supplier.trim())
-      store(LS.factor, String(f))
+      setFactor(DEFAULT_WITHDRAWAL_FACTOR)
       setDiagnosis('')
       setBodySystem('')
       setItems([emptyItem()])

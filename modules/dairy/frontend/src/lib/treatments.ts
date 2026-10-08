@@ -5,6 +5,10 @@
 import { addDays } from './format'
 import type { AnimalJournalEntry, TemplateItem } from '../types'
 
+/** Bio-Betrieb: gesetzliche Absetzfristen verdoppeln — Voreinstellung beim
+ * Erfassen und Einfügen; je Behandlung abwählbar. */
+export const DEFAULT_WITHDRAWAL_FACTOR = 2
+
 /** Erster Tag, an dem wieder geliefert werden darf: letzte Anwendung +
  * Frist × Faktor + 1. Ohne Frist (0/leer) null. */
 export function releaseDate(lastDate: string, days: number | null, factor = 1): string | null {

@@ -49,7 +49,7 @@ describe('checkTreatments', () => {
   })
   it('Werte', () => {
     const v = rows[0].value as TreatmentValue
-    expect(v).toMatchObject({ animal_id: 'a1', ear_tag: 'CH120123456789', entry_date: '2026-04-20', release_meat_date: '2026-04-22', release_milk_date: null, withdrawal_factor: 1 })
+    expect(v).toMatchObject({ animal_id: 'a1', ear_tag: 'CH120123456789', entry_date: '2026-04-20', release_meat_date: '2026-04-23', release_milk_date: null, withdrawal_factor: 2 })
     const k = rows[5].value as TreatmentValue
     expect(k).toMatchObject({ animal_id: null, ear_tag: 'CH999000000001', animal_name: 'KALB' })
     const s = rows[8].value as TreatmentValue

@@ -142,12 +142,10 @@ export interface TreatmentContext {
   medications: { medication: string; dose: string | null; applications: number | null; milk_days: number | null; meat_days: number | null }[]
   suppliers: string[]
   persons: string[]
-  /** häufigster Faktor der letzten 12 Monate (2 = Bio) */
-  usualFactor: number
 }
 
 export async function loadTreatmentContext(db: PGlite): Promise<TreatmentContext> {
-  const [templates, meds, suppliers, persons, factors] = await Promise.all([
+  const [templates, meds, suppliers, persons] = await Promise.all([
     db.query<TreatmentTemplate>('select * from treatment_templates where deleted_at is null order by sort_order, title'),
     db.query<{ medication: string; dose: string | null; applications: number | null; milk_days: number | null; meat_days: number | null }>(
       `select distinct on (medication) medication, dose, applications, withdrawal_milk_days as milk_days, withdrawal_meat_days as meat_days
@@ -156,16 +154,11 @@ export async function loadTreatmentContext(db: PGlite): Promise<TreatmentContext
     ),
     db.query<{ v: string }>(`select supplier as v from animal_journal where supplier is not null and deleted_at is null group by supplier order by count(*) desc`),
     db.query<{ v: string }>(`select administered_by as v from animal_journal where administered_by is not null and deleted_at is null group by administered_by order by max(entry_date) desc`),
-    db.query<{ f: number; n: number }>(
-      `select coalesce(withdrawal_factor, 1) as f, count(*)::int as n from animal_journal
-       where category = 'behandlung' and deleted_at is null and entry_date > current_date - 365 group by 1 order by n desc`,
-    ),
   ])
   return {
     templates: templates.rows,
     medications: meds.rows.map((m) => ({ ...m, applications: m.applications == null ? null : Number(m.applications) })),
     suppliers: suppliers.rows.map((r) => r.v),
     persons: persons.rows.map((r) => r.v),
-    usualFactor: Number(factors.rows[0]?.f ?? 1),
   }
 }

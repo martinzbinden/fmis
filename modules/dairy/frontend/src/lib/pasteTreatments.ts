@@ -11,7 +11,7 @@ import { upsertRow } from '../db/write'
 import { inTransaction } from '../db/transaction'
 import { addDays, fmtDate, isoDate, localTodayIso } from './format'
 import { JOURNAL_CATEGORIES, journalSummary } from './journal'
-import { normalizeEarTag, releaseDate, stableUuid } from './treatments'
+import { DEFAULT_WITHDRAWAL_FACTOR, normalizeEarTag, releaseDate, stableUuid } from './treatments'
 import type { JournalCategory } from '../types'
 
 export const TREATMENT_FIELDS: PasteField[] = [
@@ -29,7 +29,7 @@ export const TREATMENT_FIELDS: PasteField[] = [
   { name: 'anwendungen', type: 'Zahl', description: 'Anzahl Anwendungen' },
   { name: 'frist_milch', type: 'Zahl (Tage)', description: 'Absetzfrist Milch laut Packungsbeilage, 0 = keine' },
   { name: 'frist_fleisch', type: 'Zahl (Tage)', description: 'Absetzfrist Fleisch/essbare Gewebe, 0 = keine' },
-  { name: 'faktor', type: '1 oder 2', description: '2 = Fristen verdoppelt (Bio)' },
+  { name: 'faktor', type: '1 oder 2', description: '2 = Fristen verdoppelt (Bio, Standard wenn leer), 1 = einfach' },
   { name: 'freigabe_milch', type: 'Datum JJJJ-MM-TT', description: 'erster Tag, an dem die Milch wieder geliefert werden darf (sonst gerechnet)' },
   { name: 'freigabe_fleisch', type: 'Datum JJJJ-MM-TT', description: 'erster Tag für Fleisch (sonst gerechnet)' },
   { name: 'behandelt_durch', type: 'Text', description: 'wer angewendet hat (Pflicht im Behandlungsjournal)' },
@@ -176,7 +176,7 @@ export function checkTreatments(rows: Record<string, unknown>[], animals: Animal
       if (r.error) problems.push(`${k}: ${r.error}`)
       else if (r.value != null && r.value < 0) problems.push(`${k} negativ`)
     }
-    const factor = nums.faktor.value ?? 1
+    const factor = nums.faktor.value ?? DEFAULT_WITHDRAWAL_FACTOR
     if (![1, 2].includes(factor)) problems.push('faktor muss 1 oder 2 sein')
     const milk = nums.frist_milch.value
     const meat = nums.frist_fleisch.value
