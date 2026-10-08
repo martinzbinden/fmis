@@ -52,9 +52,10 @@ export type JournalCategory = 'notiz' | 'beobachtung' | 'krankheit' | 'behandlun
 
 export interface AnimalJournalEntry {
   id: string
-  animal_id: string
+  /** leer bei importierten Behandlungen von Tieren ausserhalb der Herde (ear_tag/animal_name) */
+  animal_id: string | null
   entry_date: string
-  source: 'manual' | 'milchwaegung'
+  source: 'manual' | 'milchwaegung' | 'import'
   text: string
   ref_id: string | null
   updated_at: string
@@ -67,6 +68,56 @@ export interface AnimalJournalEntry {
   withdrawal_milk_days: number | null
   withdrawal_meat_days: number | null
   administered_by: string | null
+  // schema/0013_treatment_journal.sql — Behandlungsjournal (TAMV)
+  ear_tag: string | null
+  animal_name: string | null
+  /** HH:MM der ersten Anwendung */
+  treatment_time: string | null
+  /** letzte Anwendung (leer = entry_date) */
+  last_date: string | null
+  applications: number | null
+  /** Abgabestelle / Herkunft des Tierarzneimittels */
+  supplier: string | null
+  /** Organsystem, Position (cownect "OS, Position") */
+  body_system: string | null
+  /** 2 = doppelte Absetzfrist (Bio) */
+  withdrawal_factor: number | null
+  /** erster Tag, an dem Milch/Fleisch wieder geliefert werden darf */
+  release_milk_date: string | null
+  release_meat_date: string | null
+  critical_antibiotic: boolean | null
+  antibiogram: boolean | null
+  /** Präparate desselben Falls */
+  case_id: string | null
+  import_key: string | null
+}
+
+/** Favorit: typische Behandlung mit einem oder mehreren Präparaten. */
+export interface TreatmentTemplate {
+  id: string
+  title: string
+  body_system: string | null
+  diagnosis: string | null
+  /** JSON TemplateItem[] */
+  items: string
+  supplier: string | null
+  notes: string | null
+  sort_order: number
+  updated_at: string
+  deleted_at: string | null
+}
+
+export interface TemplateItem {
+  medication: string
+  dose: string
+  /** Anzahl Anwendungen */
+  applications: number | null
+  /** Behandlungsdauer in Tagen (1 = nur heute) */
+  days: number | null
+  milk_days: number | null
+  meat_days: number | null
+  /** Hinweis, z.B. "Präparat gemäss Tierarzt wählen" */
+  hint?: string
 }
 
 export interface MilkTest {

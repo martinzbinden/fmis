@@ -5,6 +5,7 @@ import { fmtDate, isoDate, num, todayIso } from '../lib/format'
 import { isDrySql } from '../lib/dryOff'
 import { YogurtPaper, YogurtPrintPortal, YOGURT_PRINT_CSS } from './YogurtPrint'
 import { CRITERION_LABEL, exclusion, suggestYogurt, yogurtMix, type YogurtCow, type YogurtCriterion, type YogurtOptions } from '../lib/yogurtPlan'
+import { MILK_UNTIL_SQL } from '../lib/treatments'
 
 /** Letzte Wägung je aktivem Tier; fehlt dort die Laboranalyse, die Gehalte
  * der letzten analysierten Wägung. */
@@ -13,8 +14,8 @@ async function loadCows(pg: PGlite): Promise<YogurtCow[]> {
     pg.query<Record<string, unknown>>(
       `select distinct on (a.id) a.id as animal_id, a.ear_tag, a.name, a.lauf_nr, t.test_date, t.milk_kg, t.fat_pct, t.protein_pct, t.cell_count,
               (${isDrySql('a')}) as dry,
-              (select max(j.entry_date + j.withdrawal_milk_days) from animal_journal j
-                where j.animal_id = a.id and j.deleted_at is null and j.withdrawal_milk_days > 0) as withdrawal_until
+              (select max(${MILK_UNTIL_SQL}) from animal_journal j
+                where j.animal_id = a.id and j.deleted_at is null) as withdrawal_until
        from animals a join milk_tests t on t.animal_id = a.id and t.deleted_at is null
        where a.deleted_at is null and a.status = 'aktiv'
        order by a.id, t.test_date desc`,

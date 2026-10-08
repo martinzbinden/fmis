@@ -14,6 +14,7 @@ import Erfassen from './pages/Erfassen'
 import BirthEntry from './pages/BirthEntry'
 import MatingEntry from './pages/MatingEntry'
 import JournalEntry from './pages/JournalEntry'
+import TreatmentJournal from './pages/TreatmentJournal'
 import MatingPlanner from './pages/MatingPlanner'
 import Pruefbericht from './pages/Pruefbericht'
 import LambSelection from './pages/LambSelection'
@@ -57,6 +58,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'geburt', element: <BirthEntry moduleKey={key} /> },
       { path: 'belegung', element: <MatingEntry moduleKey={key} /> },
       { path: 'journal', element: <JournalEntry moduleKey={key} /> },
+      { path: 'behandlungen', element: <TreatmentJournal moduleKey={key} /> },
       { path: 'anpaarung', element: <MatingPlanner moduleKey={key} /> },
       { path: 'stammbaum/:key', element: <PedigreeAnimal moduleKey={key} /> },
       { path: 'selektion', element: <LambSelection moduleKey={key} /> },

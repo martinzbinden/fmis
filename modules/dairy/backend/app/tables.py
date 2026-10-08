@@ -29,6 +29,13 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "animal_id", "entry_date", "source", "text", "ref_id", "updated_at", "deleted_at",
         "category", "diagnosis", "medication", "dose", "withdrawal_milk_days",
         "withdrawal_meat_days", "administered_by",
+        "ear_tag", "animal_name", "treatment_time", "last_date", "applications", "supplier",
+        "body_system", "withdrawal_factor", "release_milk_date", "release_meat_date",
+        "critical_antibiotic", "antibiogram", "case_id", "import_key",
+    ],
+    "treatment_templates": [
+        "id", "title", "body_system", "diagnosis", "items", "supplier", "notes", "sort_order",
+        "updated_at", "deleted_at",
     ],
     "pedigree": [
         "id", "animal_key", "ear_tag", "sire_key", "dam_key", "breed_code", "name",
@@ -93,6 +100,7 @@ def table_area(key: str) -> dict[str, str]:
         "milking_banks": f"{key}:milk",
         "milking_slots": f"{key}:milk",
         "animal_journal": f"{key}:animals",
+        "treatment_templates": f"{key}:animals",
         "pedigree": f"{key}:animals",
         "matings": f"{key}:animals",
         "births": f"{key}:animals",

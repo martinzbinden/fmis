@@ -5,7 +5,8 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
 import { softDeleteRow } from '../db/write'
 import JournalForm from '../components/JournalForm'
-import { categoryIcon, categoryLabel, journalSummary, withdrawalEnd } from '../lib/journal'
+import { categoryIcon, categoryLabel, journalSummary } from '../lib/journal'
+import { withdrawalUntil } from '../lib/treatments'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useQuery } from '../hooks/useQuery'
 import { loadHerdContext, latestValues, type AnimalContext } from '../lib/herdContext'
@@ -47,7 +48,16 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
     certificate,
     lactations: lactations.rows,
     tests: tests.rows.map((t) => ({ date: isoDate(t.test_date)!, milk: num(t.milk_kg), scc: num(t.cell_count) })),
-    journal: journal.rows.map((j) => ({ ...j, entry_date: isoDate(j.entry_date)! })),
+    journal: journal.rows.map((j) => ({
+      ...j,
+      entry_date: isoDate(j.entry_date)!,
+      last_date: isoDate(j.last_date),
+      release_milk_date: isoDate(j.release_milk_date),
+      release_meat_date: isoDate(j.release_meat_date),
+      withdrawal_milk_days: num(j.withdrawal_milk_days),
+      withdrawal_meat_days: num(j.withdrawal_meat_days),
+      withdrawal_factor: num(j.withdrawal_factor),
+    })),
   }
 }
 
@@ -180,14 +190,14 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const offspringKey = animalKey(a.ear_tag) ?? a.ear_tag
   const sccLimit = thresholds.sccHighTest
   const today = localTodayIso()
-  const openUntil = (field: 'withdrawal_milk_days' | 'withdrawal_meat_days') =>
+  const openUntil = (kind: 'milk' | 'meat') =>
     journal
-      .map((j) => withdrawalEnd(j.entry_date, num(j[field])))
+      .map((j) => withdrawalUntil(j, kind))
       .filter((d): d is string => d != null && d >= today)
       .sort()
       .at(-1) ?? null
-  const milkUntil = openUntil('withdrawal_milk_days')
-  const meatUntil = openUntil('withdrawal_meat_days')
+  const milkUntil = openUntil('milk')
+  const meatUntil = openUntil('meat')
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
@@ -441,14 +451,16 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
       ) : (
         <ul className="divide-y text-sm">
           {journal.map((j) => {
-            const milk = withdrawalEnd(j.entry_date, num(j.withdrawal_milk_days))
-            const meat = withdrawalEnd(j.entry_date, num(j.withdrawal_meat_days))
+            const milk = withdrawalUntil(j, 'milk')
+            const meat = withdrawalUntil(j, 'meat')
             return (
               <li key={j.id} className="py-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <span className="text-xs text-gray-500">
-                      {fmtDate(j.entry_date)} · {categoryIcon(j.category)} {categoryLabel(j.category)}
+                      {fmtDate(j.entry_date)}
+                      {j.treatment_time ? ` ${j.treatment_time}` : ''} · {categoryIcon(j.category)} {categoryLabel(j.category)}
+                      {j.source === 'import' ? ' · cownect' : ''}
                     </span>
                     <div className="break-words text-gray-800">{j.text}</div>
                     {(() => {
@@ -457,7 +469,9 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
                       const details = [
                         own && j.diagnosis,
                         own && [j.medication, j.dose].filter(Boolean).join(' '),
+                        j.applications && j.applications > 1 && `${j.applications}×${j.last_date ? ` bis ${fmtDate(j.last_date)}` : ''}`,
                         j.administered_by && `durch ${j.administered_by}`,
+                        j.supplier && `Abgabe ${j.supplier}`,
                       ].filter(Boolean)
                       return details.length > 0 && <div className="text-xs text-gray-600">{details.join(' · ')}</div>
                     })()}

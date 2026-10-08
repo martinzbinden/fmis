@@ -19,7 +19,12 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
 
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4 pb-24">
-      <h1 className="text-xl font-bold text-gray-800">Beobachtung / Behandlung</h1>
+      <div className="flex items-baseline justify-between gap-2">
+        <h1 className="text-xl font-bold text-gray-800">Beobachtung / Behandlung</h1>
+        <Link to="../behandlungen" relative="path" className="text-sm text-brand-700">
+          Behandlungsjournal →
+        </Link>
+      </div>
       {saved && (
         <div className="rounded-lg bg-green-50 p-3 text-sm text-green-900">
           Gespeichert.{' '}

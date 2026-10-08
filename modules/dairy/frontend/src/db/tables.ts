@@ -30,6 +30,13 @@ export const SYNC_TABLES = {
     'id', 'animal_id', 'entry_date', 'source', 'text', 'ref_id', 'updated_at', 'deleted_at',
     'category', 'diagnosis', 'medication', 'dose', 'withdrawal_milk_days',
     'withdrawal_meat_days', 'administered_by',
+    'ear_tag', 'animal_name', 'treatment_time', 'last_date', 'applications', 'supplier',
+    'body_system', 'withdrawal_factor', 'release_milk_date', 'release_meat_date',
+    'critical_antibiotic', 'antibiogram', 'case_id', 'import_key',
+  ],
+  treatment_templates: [
+    'id', 'title', 'body_system', 'diagnosis', 'items', 'supplier', 'notes', 'sort_order',
+    'updated_at', 'deleted_at',
   ],
   pedigree: [
     'id', 'animal_key', 'ear_tag', 'sire_key', 'dam_key', 'breed_code', 'name',
@@ -83,7 +90,8 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   lactations: new Set(['calving_date']),
   milking_banks: new Set(['session_date']),
   milking_slots: new Set(),
-  animal_journal: new Set(['entry_date']),
+  animal_journal: new Set(['entry_date', 'last_date', 'release_milk_date', 'release_meat_date']),
+  treatment_templates: new Set(),
   pedigree: new Set(['birth_date']),
   matings: new Set(['service_date', 'service_to']),
   births: new Set(['birth_date', 'conception_date']),
