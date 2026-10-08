@@ -98,6 +98,10 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "machine_id", "done_date", "entry_type", "title", "task_ids", "counter", "cost_chf",
         "material", "done_by", "notes", "updated_at", "deleted_at",
     ],
+    "machine_todos": [
+        "id", "machine_id", "title", "notes", "priority", "due_date", "status", "done_date",
+        "log_id", "done_log_id", "created_by", "updated_at", "deleted_at",
+    ],
     "tank_events": [
         "id", "track_id", "machine_id", "parcel_id", "event_at", "source", "volume_m3", "distance_m",
         "spread_s", "width_m", "lat", "lng", "notes", "updated_at", "deleted_at", "unit",
@@ -129,6 +133,7 @@ TABLE_AREA: dict[str, str] = {
     "maintenance_tasks": "wiesenjournal:tracking",
     "maintenance_log": "wiesenjournal:tracking",
     "tank_events": "wiesenjournal:tracking",
+    "machine_todos": "wiesenjournal:tracking",
     "tracks": "wiesenjournal:tracking",
     "weed_observations": "wiesenjournal:tracking",
     # Herden und Standorte gehören zum Weidegang

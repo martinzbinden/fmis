@@ -2,9 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
-import MachineMaintenance, { machineStatuses, STATE_LABEL, STATE_STYLE } from '../components/MachineMaintenance'
-import { fmtDate } from '../lib/format'
-import { CATEGORY_ICON, CATEGORY_LABEL, categoryOf, counterUnit, parseTaskIds, TEMPLATES, type DueState } from '../lib/maintenance'
+import MachineMaintenance, { ENTRY_LABEL, machineStatuses, STATE_LABEL, STATE_STYLE, TodoLine } from '../components/MachineMaintenance'
+import { fmtDate, todayIso } from '../lib/format'
+import { CATEGORY_ICON, CATEGORY_LABEL, categoryOf, counterUnit, openTodos, parseTaskIds, TEMPLATES, todoOverdue, type DueState } from '../lib/maintenance'
 import { applyTemplates, loadMaintenanceData } from '../lib/maintenanceData'
 import type { Machine, MachineCategory } from '../types'
 
@@ -38,6 +38,7 @@ export default function Maintenance() {
     }
   }
   const [open, setOpen] = useState<Set<string>>(new Set())
+  const today = todayIso()
   const [busy, setBusy] = useState(false)
 
   const rows = useMemo(() => {
@@ -48,12 +49,17 @@ export default function Maintenance() {
         const statuses = machineStatuses(m, data.tasks, data.log, data.tracksByMachine.get(m.id) ?? [])
         const counts: Record<DueState, number> = { faellig: 0, bald: 0, offen: 0, ok: 0 }
         for (const s of statuses) counts[s.state]++
-        return { m, category: categoryOf(m), statuses, counts }
+        return { m, category: categoryOf(m), statuses, counts, todos: openTodos(data.todos, today, m.id) }
       })
-  }, [data])
+  }, [data, today])
 
   const inCategory = rows.filter((r) => view.category === 'alle' || r.category === view.category)
-  const shown = inCategory.filter((r) => !view.onlyDue || r.counts.faellig + r.counts.bald > 0)
+  const shown = inCategory.filter((r) => !view.onlyDue || r.counts.faellig + r.counts.bald + r.todos.length > 0)
+  const todosInCategory = inCategory.flatMap((r) => r.todos.map((t) => ({ t, m: r.m })))
+  const sortedTodos = openTodos(
+    todosInCategory.map((x) => x.t),
+    today,
+  ).map((t) => todosInCategory.find((x) => x.t === t)!)
   const withoutPlan = rows.filter((r) => r.statuses.length === 0 && (TEMPLATES[r.m.kind] ?? []).length > 0)
   const total = (s: DueState) => inCategory.reduce((sum, r) => sum + r.counts[s], 0)
 
@@ -104,7 +110,7 @@ export default function Maintenance() {
         {(['alle', ...CATEGORIES] as const).map((c) => {
           const n = c === 'alle' ? rows.length : rows.filter((r) => r.category === c).length
           if (c !== 'alle' && n === 0) return null
-          const due = rows.filter((r) => (c === 'alle' || r.category === c) && r.counts.faellig > 0).length
+          const due = rows.filter((r) => (c === 'alle' || r.category === c) && (r.counts.faellig > 0 || r.todos.some((t) => todoOverdue(t, today)))).length
           return (
             <button
               key={c}
@@ -134,9 +140,14 @@ export default function Maintenance() {
           <>
             <label className="flex items-center gap-1 text-xs text-gray-600">
               <input type="checkbox" checked={view.onlyDue} onChange={(e) => setView({ onlyDue: e.target.checked })} />
-              nur fällige und bald fällige
+              nur fällige, bald fällige und Pendenzen
             </label>
             <span className="flex gap-1 text-xs">
+              {todosInCategory.length > 0 && (
+                <span className="rounded bg-violet-100 px-1.5 py-0.5 text-violet-800">
+                  {todosInCategory.length} {todosInCategory.length === 1 ? 'Pendenz' : 'Pendenzen'}
+                </span>
+              )}
               {(['faellig', 'bald', 'offen'] as const).map((s) =>
                 total(s) ? (
                   <span key={s} className={`rounded px-1.5 py-0.5 ${STATE_STYLE[s]}`}>
@@ -163,12 +174,34 @@ export default function Maintenance() {
         </div>
       )}
 
+      {view.tab === 'plan' && sortedTodos.length > 0 && (
+        <div className="rounded-lg border border-violet-200 bg-white p-3 text-sm shadow-sm">
+          <h2 className="mb-1 text-xs font-semibold uppercase text-violet-800">Offene Pendenzen</h2>
+          <ul className="divide-y">
+            {sortedTodos.map(({ t, m }) => (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(new Set(open).add(m.id))
+                    setTimeout(() => document.getElementById(`wartung-${m.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+                  }}
+                  className="w-full py-1.5 text-left"
+                >
+                  <TodoLine todo={t} machineName={m.name} today={today} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {view.tab === 'plan' && (
         <ul className="space-y-2">
-          {shown.map(({ m, counts, statuses }) => {
+          {shown.map(({ m, counts, statuses, todos }) => {
             const isOpen = open.has(m.id)
             return (
-              <li key={m.id} className="rounded-lg bg-white shadow-sm">
+              <li key={m.id} id={`wartung-${m.id}`} className="scroll-mt-16 rounded-lg bg-white shadow-sm">
                 <button type="button" onClick={() => toggle(m.id)} className="flex w-full items-center gap-2 p-3 text-left">
                   <span className="text-lg">{CATEGORY_ICON[categoryOf(m)]}</span>
                   <span className="min-w-0 flex-1">
@@ -179,7 +212,12 @@ export default function Maintenance() {
                       {statuses[0] && statuses[0].state !== 'ok' && statuses[0].state !== 'offen' ? ` · ${statuses[0].task.title}` : ''}
                     </span>
                   </span>
-                  <span className="flex shrink-0 gap-1 text-[10px]">
+                  <span className="flex shrink-0 flex-wrap justify-end gap-1 text-[10px]">
+                    {todos.length > 0 && (
+                      <span className={`rounded px-1.5 py-0.5 font-medium ${todos.some((t) => todoOverdue(t, today)) ? 'bg-red-100 text-red-800' : 'bg-violet-100 text-violet-800'}`}>
+                        {todos.length} {todos.length === 1 ? 'Pendenz' : 'Pendenzen'}
+                      </span>
+                    )}
                     {(['faellig', 'bald', 'offen'] as const).map((s) =>
                       counts[s] ? (
                         <span key={s} className={`rounded px-1.5 py-0.5 font-medium ${STATE_STYLE[s]}`}>
@@ -199,6 +237,7 @@ export default function Maintenance() {
                       machine={m}
                       tasks={data.tasks}
                       log={data.log}
+                      todos={data.todos}
                       tracks={data.tracksByMachine.get(m.id) ?? []}
                       canWrite={canWrite}
                       onChanged={refresh}
@@ -246,7 +285,7 @@ export default function Maintenance() {
                   <li key={l.id} className="px-3 py-2 text-sm">
                     <div className="flex justify-between gap-2">
                       <span className="text-gray-800">
-                        {fmtDate(l.done_date)} · <b>{m.name}</b>
+                        {fmtDate(l.done_date)} · <b>{m.name}</b> · {ENTRY_LABEL[l.entry_type]}
                         {l.counter != null ? ` · ${l.counter.toLocaleString('de-CH')} ${counterUnit(m)}` : ''}
                       </span>
                       {l.cost_chf != null && <span className="shrink-0">{chf(l.cost_chf)}</span>}
@@ -254,7 +293,7 @@ export default function Maintenance() {
                     <div className="text-xs text-gray-500">
                       {[l.title, ...parseTaskIds(l.task_ids).map((id) => taskName.get(id) ?? 'gelöschte Aufgabe'), l.material, l.done_by, m.owner ? `gehört ${m.owner}` : null]
                         .filter(Boolean)
-                        .join(' · ') || (l.entry_type === 'zaehlerstand' ? 'Zählerstand' : '')}
+                        .join(' · ')}
                     </div>
                   </li>
                 )

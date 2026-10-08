@@ -2,7 +2,7 @@
 // einer Maschine, Zähler (Betriebsstunden bzw. km), Fälligkeit je Aufgabe,
 // Standard-Wartungspläne je Art.
 
-import type { Machine, MachineCategory, MachineKind, MaintenanceLog, MaintenanceTask, MaintenanceTaskType } from '../types'
+import type { Machine, MachineCategory, MachineKind, MachineTodo, MaintenanceLog, MaintenanceTask, MaintenanceTaskType } from '../types'
 
 // --- Kategorien ---
 
@@ -351,4 +351,25 @@ export function intervalText(t: Pick<MaintenanceTask, 'interval_count' | 'interv
   if (t.interval_count) parts.push(`alle ${t.interval_count.toLocaleString('de-CH')} ${unit}`)
   if (t.interval_months) parts.push(t.interval_months === 12 ? 'jährlich' : `alle ${t.interval_months} Monate`)
   return parts.length ? parts.join(' oder ') : 'nach Bedarf'
+}
+
+// --- Pendenzen (schema/0024) ---
+
+export const PRIORITY_LABEL: Record<MachineTodo['priority'], string> = { hoch: 'dringend', normal: 'normal', tief: 'bei Gelegenheit' }
+const PRIORITY_ORDER: Record<MachineTodo['priority'], number> = { hoch: 0, normal: 1, tief: 2 }
+
+/** Offene Pendenz überfällig? (fällig-bis vor heute) */
+export const todoOverdue = (t: MachineTodo, today: string) => t.status === 'offen' && t.due_date != null && t.due_date < today
+
+/** Offene Pendenzen: überfällig, dann dringend, dann nach Termin. */
+export function openTodos(todos: MachineTodo[], today: string, machineId?: string): MachineTodo[] {
+  return todos
+    .filter((t) => t.status === 'offen' && !t.deleted_at && (!machineId || t.machine_id === machineId))
+    .sort(
+      (a, b) =>
+        Number(todoOverdue(b, today)) - Number(todoOverdue(a, today)) ||
+        PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] ||
+        (a.due_date ?? '9999').localeCompare(b.due_date ?? '9999') ||
+        a.title.localeCompare(b.title, 'de-CH'),
+    )
 }

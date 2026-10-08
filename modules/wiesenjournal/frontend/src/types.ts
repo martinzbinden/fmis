@@ -323,7 +323,24 @@ export interface MaintenanceTask {
   deleted_at: string | null
 }
 
-export type MaintenanceEntryType = 'wartung' | 'reparatur' | 'kontrolle' | 'zaehlerstand'
+export type MaintenanceEntryType = 'wartung' | 'reparatur' | 'kontrolle' | 'zaehlerstand' | 'beobachtung' | 'schaden'
+
+/** Pendenz (offene Aufgabe) an einer Maschine, schema/0024. */
+export interface MachineTodo {
+  id: string
+  machine_id: string
+  title: string
+  notes: string | null
+  priority: 'hoch' | 'normal' | 'tief'
+  due_date: string | null
+  status: 'offen' | 'erledigt'
+  done_date: string | null
+  log_id: string | null
+  done_log_id: string | null
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
 
 /** Wartungsjournal-Eintrag (schema/0020); task_ids = JSON-Array als Text. */
 export interface MaintenanceLog {

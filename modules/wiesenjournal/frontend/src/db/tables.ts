@@ -91,6 +91,10 @@ export const SYNC_TABLES = {
     'id', 'machine_id', 'done_date', 'entry_type', 'title', 'task_ids', 'counter', 'cost_chf',
     'material', 'done_by', 'notes', 'updated_at', 'deleted_at',
   ],
+  machine_todos: [
+    'id', 'machine_id', 'title', 'notes', 'priority', 'due_date', 'status', 'done_date',
+    'log_id', 'done_log_id', 'created_by', 'updated_at', 'deleted_at',
+  ],
   tank_events: [
     'id', 'track_id', 'machine_id', 'parcel_id', 'event_at', 'source', 'volume_m3', 'distance_m',
     'spread_s', 'width_m', 'lat', 'lng', 'notes', 'updated_at', 'deleted_at', 'unit',
@@ -128,5 +132,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   maintenance_tasks: new Set(),
   maintenance_log: new Set(['done_date']),
   tank_events: new Set(),
+  machine_todos: new Set(['due_date', 'done_date']),
   data_history: new Set(),
 }

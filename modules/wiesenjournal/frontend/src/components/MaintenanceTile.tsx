@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { getDb } from '../db/pglite'
+import { todayIso } from '../lib/format'
+import { openTodos, todoOverdue } from '../lib/maintenance'
 import { loadMaintenanceData } from '../lib/maintenanceData'
 import { machineStatuses } from './MachineMaintenance'
 
@@ -9,7 +11,7 @@ import { machineStatuses } from './MachineMaintenance'
  * Aufgaben (Stand der Daten auf diesem Gerät). */
 export default function MaintenanceTile() {
   const canRead = useHasPermission('wiesenjournal:tracking:read')
-  const [due, setDue] = useState<{ faellig: number; bald: number; machines: number; noStart: number } | null>(null)
+  const [due, setDue] = useState<{ faellig: number; bald: number; machines: number; noStart: number; todos: number; todosLate: number } | null>(null)
 
   useEffect(() => {
     if (!canRead) return
@@ -17,7 +19,10 @@ export default function MaintenanceTile() {
     getDb()
       .then(loadMaintenanceData)
       .then((d) => {
-        const c = { faellig: 0, bald: 0, machines: 0, noStart: 0 }
+        const today = todayIso()
+        const active = new Set(d.machines.filter((x) => x.active).map((x) => x.id))
+        const todos = openTodos(d.todos, today).filter((t) => active.has(t.machine_id))
+        const c = { faellig: 0, bald: 0, machines: 0, noStart: 0, todos: todos.length, todosLate: todos.filter((t) => todoOverdue(t, today)).length }
         for (const m of d.machines.filter((x) => x.active)) {
           c.machines++
           const statuses = machineStatuses(m, d.tasks, d.log, d.tracksByMachine.get(m.id) ?? [])
@@ -47,10 +52,15 @@ export default function MaintenanceTile() {
         <span className="block text-2xl">🔧</span>
         <span className="font-semibold text-gray-800">Wartung</span>
         {due && (
-          <span className="mt-0.5 flex justify-center gap-1 text-xs">
+          <span className="mt-0.5 flex flex-wrap justify-center gap-1 text-xs">
             {due.faellig > 0 && <span className="rounded bg-red-100 px-1.5 text-red-800">{due.faellig} fällig</span>}
             {due.bald > 0 && <span className="rounded bg-amber-100 px-1.5 text-amber-900">{due.bald} bald</span>}
-            {due.faellig + due.bald === 0 && due.noStart === 0 && <span className="text-gray-500">nichts fällig</span>}
+            {due.todos > 0 && (
+              <span className={`rounded px-1.5 ${due.todosLate ? 'bg-red-100 text-red-800' : 'bg-violet-100 text-violet-800'}`}>
+                {due.todos} {due.todos === 1 ? 'Pendenz' : 'Pendenzen'}
+              </span>
+            )}
+            {due.faellig + due.bald + due.todos === 0 && due.noStart === 0 && <span className="text-gray-500">nichts fällig</span>}
             {due.faellig + due.bald === 0 && due.noStart > 0 && <span className="rounded bg-sky-100 px-1.5 text-sky-800">Ausgangslage fehlt ({due.noStart})</span>}
           </span>
         )}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { categoryOf, counterUnit, intervalText, latestCounter, taskStatus, tasksFromTemplate, trackedHoursSince, TEMPLATES } from './maintenance'
-import type { MaintenanceLog, MaintenanceTask } from '../types'
+import { categoryOf, counterUnit, intervalText, latestCounter, openTodos, taskStatus, tasksFromTemplate, trackedHoursSince, TEMPLATES, todoOverdue } from './maintenance'
+import type { MachineTodo, MaintenanceLog, MaintenanceTask } from '../types'
 
 const base = { updated_at: '', deleted_at: null }
 const task = (id: string, count: number | null, months: number | null): MaintenanceTask => ({
@@ -81,5 +81,25 @@ describe('maintenance', () => {
     expect(tasksFromTemplate({ id: 'm', kind: 'traktor' }, first, () => 'x')).toHaveLength(0)
     expect(intervalText(first[0], 'h')).toBe('alle 500 h oder jährlich')
     expect(intervalText({ interval_count: 15000, interval_months: null }, 'km')).toBe("alle 15’000 km")
+  })
+})
+
+describe('openTodos', () => {
+  const todo = (id: string, patch: Partial<MachineTodo>): MachineTodo => ({
+    id, machine_id: 'm1', title: id, notes: null, priority: 'normal', due_date: null, status: 'offen',
+    done_date: null, log_id: null, done_log_id: null, created_by: null, updated_at: '', deleted_at: null, ...patch,
+  })
+  it('überfällig zuerst, dann dringend, dann nach Termin; erledigte weg', () => {
+    const list = [
+      todo('ohne', {}),
+      todo('spaeter', { due_date: '2026-11-01' }),
+      todo('dringend', { priority: 'hoch' }),
+      todo('ueberfaellig', { due_date: '2026-10-01', priority: 'tief' }),
+      todo('erledigt', { status: 'erledigt', due_date: '2026-09-01' }),
+      todo('andere', { machine_id: 'm2' }),
+    ]
+    expect(openTodos(list, '2026-10-08', 'm1').map((t) => t.id)).toEqual(['ueberfaellig', 'dringend', 'spaeter', 'ohne'])
+    expect(todoOverdue(list[3], '2026-10-08')).toBe(true)
+    expect(todoOverdue(list[4], '2026-10-08')).toBe(false)
   })
 })

@@ -218,6 +218,7 @@ export default function MachineDetail() {
               machine={m}
               tasks={data.maintenance.tasks}
               log={data.maintenance.log}
+              todos={data.maintenance.todos}
               tracks={data.maintenance.tracksByMachine.get(m.id) ?? []}
               canWrite={canWrite}
               onChanged={refresh}

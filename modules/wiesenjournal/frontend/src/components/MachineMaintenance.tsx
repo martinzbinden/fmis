@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import Modal from './Modal'
-import { fmtDate, todayIso } from '../lib/format'
+import { addDaysIso, fmtDate, todayIso } from '../lib/format'
 import {
   counterUnit,
   hasCounter,
   intervalText,
   latestCounter,
+  openTodos,
+  PRIORITY_LABEL,
+  todoOverdue,
   parseTaskIds,
   STATE_ORDER,
   taskStatus,
@@ -14,8 +17,8 @@ import {
   type TaskStatus,
   type TrackSpan,
 } from '../lib/maintenance'
-import { applyTemplate, deleteEntry, deleteTask, saveEntry, saveTask } from '../lib/maintenanceData'
-import type { Machine, MaintenanceEntryType, MaintenanceLog, MaintenanceTask, MaintenanceTaskType } from '../types'
+import { applyTemplate, deleteEntry, deleteTask, deleteTodo, saveEntry, saveTask, saveTodo, setTodoDone } from '../lib/maintenanceData'
+import type { Machine, MachineTodo, MaintenanceEntryType, MaintenanceLog, MaintenanceTask, MaintenanceTaskType } from '../types'
 
 export const STATE_STYLE: Record<DueState, string> = {
   faellig: 'bg-red-100 text-red-800',
@@ -25,11 +28,25 @@ export const STATE_STYLE: Record<DueState, string> = {
 }
 export const STATE_LABEL: Record<DueState, string> = { faellig: 'fällig', bald: 'bald', offen: 'noch nie erfasst', ok: 'ok' }
 
-const ENTRY_LABEL: Record<MaintenanceEntryType, string> = {
+export const ENTRY_LABEL: Record<MaintenanceEntryType, string> = {
   wartung: 'Wartung',
   reparatur: 'Reparatur',
   kontrolle: 'Kontrolle',
+  beobachtung: 'Beobachtung',
+  schaden: 'Schaden',
   zaehlerstand: 'Zählerstand',
+}
+/** Beobachtung/Schaden: Befund, keine Arbeit (keine Aufgaben, Kosten, Material) */
+const isFinding = (t: MaintenanceEntryType) => t === 'beobachtung' || t === 'schaden'
+const TITLE_LABEL: Partial<Record<MaintenanceEntryType, [string, string]>> = {
+  reparatur: ['Was wurde repariert?', 'z.B. Hydraulikschlauch Hubwerk ersetzt'],
+  beobachtung: ['Was ist aufgefallen?', 'z.B. Ölspuren am Getriebe, Geräusch Zapfwelle'],
+  schaden: ['Was ist beschädigt?', 'z.B. Zinken abgebrochen, Reifen rechts hinten Riss'],
+}
+export const PRIORITY_STYLE: Record<MachineTodo['priority'], string> = {
+  hoch: 'bg-red-100 text-red-800',
+  normal: 'bg-violet-100 text-violet-800',
+  tief: 'bg-gray-100 text-gray-600',
 }
 const TYPE_LABEL: Record<MaintenanceTaskType, string> = {
   oel: 'Öl',
@@ -65,6 +82,8 @@ function EntryDialog({
   preselect,
   type: initialType,
   title: initialTitle,
+  todo,
+  linkedTodos,
   onClose,
 }: {
   machine: Machine
@@ -73,6 +92,10 @@ function EntryDialog({
   preselect?: string[]
   type?: MaintenanceEntryType
   title?: string
+  /** Pendenz, die mit diesem Eintrag erledigt wird */
+  todo?: MachineTodo
+  /** Pendenzen, die aus diesem Eintrag entstanden sind */
+  linkedTodos: MachineTodo[]
   onClose: (changed: boolean) => void
 }) {
   const unit = counterUnit(machine)
@@ -87,29 +110,53 @@ function EntryDialog({
     notes: entry?.notes ?? '',
   })
   const [selected, setSelected] = useState<Set<string>>(new Set(entry ? parseTaskIds(entry.task_ids) : (preselect ?? [])))
+  // Pendenz aus dem Eintrag: bei Schaden vorgeschlagen
+  const [todoOn, setTodoOn] = useState<boolean | null>(null)
+  const [td, setTd] = useState({ title: '', priority: 'normal' as MachineTodo['priority'], due_date: '' })
   const [busy, setBusy] = useState(false)
   const set = (patch: Partial<typeof f>) => setF((p) => ({ ...p, ...patch }))
   const counterOnly = f.entry_type === 'zaehlerstand'
-  const valid = counterOnly ? n(f.counter) != null : selected.size > 0 || f.title.trim() !== ''
+  const finding = isFinding(f.entry_type)
+  const canTodo = !todo && !counterOnly && linkedTodos.length === 0
+  const makeTodo = canTodo && (todoOn ?? (!entry && f.entry_type === 'schaden'))
+  const valid = (counterOnly ? n(f.counter) != null : selected.size > 0 || f.title.trim() !== '') && (!makeTodo || (td.title.trim() || f.title.trim()) !== '')
 
   async function save() {
     setBusy(true)
     try {
+      const id = entry?.id ?? crypto.randomUUID()
       await saveEntry({
-        id: entry?.id ?? crypto.randomUUID(),
+        id,
         machine_id: machine.id,
         done_date: f.done_date,
         entry_type: f.entry_type,
         title: f.title.trim() || null,
-        task_ids: counterOnly || selected.size === 0 ? null : JSON.stringify([...selected]),
+        task_ids: counterOnly || finding || selected.size === 0 ? null : JSON.stringify([...selected]),
         counter: n(f.counter),
-        cost_chf: counterOnly ? null : n(f.cost),
-        material: counterOnly ? null : f.material.trim() || null,
+        cost_chf: counterOnly || finding ? null : n(f.cost),
+        material: counterOnly || finding ? null : f.material.trim() || null,
         done_by: f.done_by.trim() || null,
         notes: f.notes.trim() || null,
         updated_at: '',
         deleted_at: null,
       })
+      if (todo) await setTodoDone(todo, { date: f.done_date, logId: id })
+      if (makeTodo)
+        await saveTodo({
+          id: crypto.randomUUID(),
+          machine_id: machine.id,
+          title: td.title.trim() || f.title.trim(),
+          notes: f.notes.trim() || null,
+          priority: td.priority,
+          due_date: td.due_date || null,
+          status: 'offen',
+          done_date: null,
+          log_id: id,
+          done_log_id: null,
+          created_by: null,
+          updated_at: '',
+          deleted_at: null,
+        })
       onClose(true)
     } finally {
       setBusy(false)
@@ -117,8 +164,13 @@ function EntryDialog({
   }
 
   return (
-    <Modal title={`${entry ? 'Eintrag bearbeiten' : 'Neuer Eintrag'} — ${machine.name}`} onClose={() => !busy && onClose(false)}>
+    <Modal title={`${todo ? 'Pendenz erledigen' : entry ? 'Eintrag bearbeiten' : 'Neuer Eintrag'} — ${machine.name}`} onClose={() => !busy && onClose(false)}>
       <div className="space-y-3 text-sm">
+        {todo && (
+          <p className="rounded bg-violet-50 px-2 py-1.5 text-violet-900">
+            Pendenz «{todo.title}» wird mit diesem Eintrag erledigt. Kosten und Material hier erfassen.
+          </p>
+        )}
         <div className="flex flex-wrap gap-1">
           {(Object.keys(ENTRY_LABEL) as MaintenanceEntryType[]).map((t) => (
             <button
@@ -143,7 +195,7 @@ function EntryDialog({
         </div>
         {!counterOnly && (
           <>
-            {tasks.length > 0 && (
+            {tasks.length > 0 && !finding && (
               <div>
                 <span className="mb-1 block font-medium text-gray-700">Erledigt aus dem Wartungsplan</span>
                 <div className="max-h-48 space-y-0.5 overflow-y-auto rounded border border-gray-200 p-1.5">
@@ -167,36 +219,76 @@ function EntryDialog({
               </div>
             )}
             <label className="block">
-              <span className="mb-1 block font-medium text-gray-700">{f.entry_type === 'reparatur' ? 'Was wurde repariert?' : 'Beschreibung (optional)'}</span>
-              <input className={field} value={f.title} onChange={(e) => set({ title: e.target.value })} placeholder={f.entry_type === 'reparatur' ? 'z.B. Hydraulikschlauch Hubwerk ersetzt' : ''} />
+              <span className="mb-1 block font-medium text-gray-700">{TITLE_LABEL[f.entry_type]?.[0] ?? 'Beschreibung (optional)'}</span>
+              <input className={field} value={f.title} onChange={(e) => set({ title: e.target.value })} placeholder={TITLE_LABEL[f.entry_type]?.[1] ?? ''} />
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            {finding ? (
               <label className="block">
-                <span className="mb-1 block font-medium text-gray-700">Kosten CHF</span>
-                <input className={field} inputMode="decimal" value={f.cost} onChange={(e) => set({ cost: e.target.value })} />
+                <span className="mb-1 block font-medium text-gray-700">Festgestellt von</span>
+                <input className={field} value={f.done_by} onChange={(e) => set({ done_by: e.target.value })} />
               </label>
-              <label className="block">
-                <span className="mb-1 block font-medium text-gray-700">Erledigt von</span>
-                <input className={field} value={f.done_by} onChange={(e) => set({ done_by: e.target.value })} placeholder="selbst, Werkstatt …" />
-              </label>
-            </div>
-            <label className="block">
-              <span className="mb-1 block font-medium text-gray-700">Material / Ersatzteile</span>
-              <input className={field} value={f.material} onChange={(e) => set({ material: e.target.value })} placeholder="z.B. 12 l 15W-40, Filter RE504836" />
-            </label>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block">
+                    <span className="mb-1 block font-medium text-gray-700">Kosten CHF</span>
+                    <input className={field} inputMode="decimal" value={f.cost} onChange={(e) => set({ cost: e.target.value })} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block font-medium text-gray-700">Erledigt von</span>
+                    <input className={field} value={f.done_by} onChange={(e) => set({ done_by: e.target.value })} placeholder="selbst, Werkstatt …" />
+                  </label>
+                </div>
+                <label className="block">
+                  <span className="mb-1 block font-medium text-gray-700">Material / Ersatzteile</span>
+                  <input className={field} value={f.material} onChange={(e) => set({ material: e.target.value })} placeholder="z.B. 12 l 15W-40, Filter RE504836" />
+                </label>
+              </>
+            )}
           </>
         )}
         <label className="block">
           <span className="mb-1 block font-medium text-gray-700">Notiz</span>
           <input className={field} value={f.notes} onChange={(e) => set({ notes: e.target.value })} />
         </label>
+        {linkedTodos.length > 0 && (
+          <p className="text-xs text-gray-600">
+            Pendenz daraus: {linkedTodos.map((t) => `«${t.title}» (${t.status === 'offen' ? 'offen' : `erledigt ${fmtDate(t.done_date!)}`})`).join(', ')}
+          </p>
+        )}
+        {canTodo && (
+          <div className={`rounded border p-2 ${makeTodo ? 'border-violet-300 bg-violet-50' : 'border-gray-200'}`}>
+            <label className="flex items-center gap-2 font-medium text-gray-800">
+              <input type="checkbox" checked={makeTodo} onChange={(e) => setTodoOn(e.target.checked)} />
+              Pendenz erstellen (muss noch erledigt werden)
+            </label>
+            {makeTodo && (
+              <div className="mt-2 space-y-2">
+                <input className={field} value={td.title} onChange={(e) => setTd({ ...td, title: e.target.value })} placeholder={f.title.trim() || 'Was ist zu tun?'} />
+                <div className="grid grid-cols-2 gap-2">
+                  <select className={field} value={td.priority} onChange={(e) => setTd({ ...td, priority: e.target.value as MachineTodo['priority'] })}>
+                    {(Object.keys(PRIORITY_LABEL) as MachineTodo['priority'][]).map((p) => (
+                      <option key={p} value={p}>
+                        {PRIORITY_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                    bis
+                    <input type="date" className={field} value={td.due_date} onChange={(e) => setTd({ ...td, due_date: e.target.value })} />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex gap-2">
           {entry && (
             <button
               type="button"
               disabled={busy}
               onClick={() => {
-                if (confirm('Eintrag löschen?')) void deleteEntry(entry.id).then(() => onClose(true))
+                if (confirm(linkedTodos.length ? 'Eintrag löschen? Die Pendenz daraus bleibt bestehen.' : 'Eintrag löschen?')) void deleteEntry(entry.id).then(() => onClose(true))
               }}
               className="rounded-lg border border-red-200 px-3 py-2 text-red-700"
             >
@@ -204,11 +296,151 @@ function EntryDialog({
             </button>
           )}
           <button type="button" disabled={busy || !valid} onClick={() => void save()} className="flex-1 rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
+            {busy ? 'Speichert…' : todo ? 'Speichern und Pendenz erledigen' : makeTodo ? 'Speichern + Pendenz' : 'Speichern'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/** Pendenz anlegen/bearbeiten, ohne Journal-Eintrag erledigen oder wieder öffnen. */
+function TodoDialog({ machine, todo, onClose, onComplete }: { machine: Machine; todo: MachineTodo | null; onClose: (changed: boolean) => void; onComplete: (t: MachineTodo) => void }) {
+  const [f, setF] = useState({
+    title: todo?.title ?? '',
+    notes: todo?.notes ?? '',
+    priority: todo?.priority ?? ('normal' as MachineTodo['priority']),
+    due_date: todo?.due_date ?? '',
+  })
+  const [busy, setBusy] = useState(false)
+  const set = (patch: Partial<typeof f>) => setF((p) => ({ ...p, ...patch }))
+  const row = (): MachineTodo => ({
+    id: todo?.id ?? crypto.randomUUID(),
+    machine_id: machine.id,
+    title: f.title.trim(),
+    notes: f.notes.trim() || null,
+    priority: f.priority,
+    due_date: f.due_date || null,
+    status: todo?.status ?? 'offen',
+    done_date: todo?.done_date ?? null,
+    log_id: todo?.log_id ?? null,
+    done_log_id: todo?.done_log_id ?? null,
+    created_by: todo?.created_by ?? null,
+    updated_at: '',
+    deleted_at: null,
+  })
+  const run = (p: Promise<unknown>) => {
+    setBusy(true)
+    void p.then(() => onClose(true)).finally(() => setBusy(false))
+  }
+
+  return (
+    <Modal title={`${todo ? 'Pendenz' : 'Neue Pendenz'} — ${machine.name}`} onClose={() => !busy && onClose(false)}>
+      <div className="space-y-3 text-sm">
+        {todo?.status === 'erledigt' && <p className="rounded bg-emerald-50 px-2 py-1.5 text-emerald-800">Erledigt am {fmtDate(todo.done_date!)}.</p>}
+        <label className="block">
+          <span className="mb-1 block font-medium text-gray-700">Was ist zu tun?</span>
+          <input className={field} value={f.title} onChange={(e) => set({ title: e.target.value })} placeholder="z.B. Messer schleifen, Reifen ersetzen, Ersatzteil bestellen" />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="mb-1 block font-medium text-gray-700">Priorität</span>
+            <select className={field} value={f.priority} onChange={(e) => set({ priority: e.target.value as MachineTodo['priority'] })}>
+              {(Object.keys(PRIORITY_LABEL) as MachineTodo['priority'][]).map((p) => (
+                <option key={p} value={p}>
+                  {PRIORITY_LABEL[p]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block font-medium text-gray-700">erledigen bis</span>
+            <input type="date" className={field} value={f.due_date} onChange={(e) => set({ due_date: e.target.value })} />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {[
+            ['vor dem nächsten Einsatz', null],
+            ['in 1 Woche', 7],
+            ['in 1 Monat', 30],
+            ['vor dem Winter', 'winter'],
+          ].map(([label, d]) => (
+            <button
+              key={label as string}
+              type="button"
+              className={btn}
+              onClick={() =>
+                d === null
+                  ? set({ priority: 'hoch', due_date: '' })
+                  : set({ due_date: d === 'winter' ? `${todayIso().slice(0, 4)}-11-15` : addDaysIso(todayIso(), d as number) })
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label className="block">
+          <span className="mb-1 block font-medium text-gray-700">Notiz</span>
+          <input className={field} value={f.notes} onChange={(e) => set({ notes: e.target.value })} placeholder="z.B. Teilenummer, wer kümmert sich" />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {todo && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (confirm(`Pendenz «${todo.title}» löschen? (Erledigen statt löschen behält die Geschichte.)`)) run(deleteTodo(todo.id))
+              }}
+              className="rounded-lg border border-red-200 px-3 py-2 text-red-700"
+            >
+              Löschen
+            </button>
+          )}
+          {todo?.status === 'offen' && (
+            <>
+              <button type="button" disabled={busy} onClick={() => run(setTodoDone(row(), { date: todayIso(), logId: null }))} className="rounded-lg border border-gray-300 px-3 py-2 text-gray-700">
+                Erledigt (ohne Eintrag)
+              </button>
+              <button type="button" disabled={busy} onClick={() => onComplete(row())} className="rounded-lg border border-emerald-300 px-3 py-2 text-emerald-800">
+                Erledigt + Reparatur erfassen
+              </button>
+            </>
+          )}
+          {todo?.status === 'erledigt' && (
+            <button type="button" disabled={busy} onClick={() => run(setTodoDone(row(), null))} className="rounded-lg border border-gray-300 px-3 py-2 text-gray-700">
+              Wieder öffnen
+            </button>
+          )}
+          <button type="button" disabled={busy || !f.title.trim()} onClick={() => run(saveTodo(row()))} className="flex-1 rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
             Speichern
           </button>
         </div>
       </div>
     </Modal>
+  )
+}
+
+/** Pendenz als Listenzeile (Maschine und Wartungsjournal). */
+export function TodoLine({ todo, machineName, today = todayIso() }: { todo: MachineTodo; machineName?: string; today?: string }) {
+  const overdue = todoOverdue(todo, today)
+  return (
+    <>
+      <span className="flex flex-wrap items-center gap-1">
+        {machineName && <b className="text-gray-800">{machineName}:</b>}
+        <span className={todo.status === 'erledigt' ? 'text-gray-500 line-through' : 'text-gray-800'}>{todo.title}</span>
+        {todo.status === 'offen' && todo.priority !== 'normal' && (
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${PRIORITY_STYLE[todo.priority]}`}>{PRIORITY_LABEL[todo.priority]}</span>
+        )}
+      </span>
+      <span className={`block text-xs ${overdue ? 'text-red-700' : 'text-gray-500'}`}>
+        {todo.status === 'erledigt'
+          ? `erledigt ${fmtDate(todo.done_date!)}`
+          : todo.due_date
+            ? `${overdue ? 'überfällig seit' : 'bis'} ${fmtDate(todo.due_date)}`
+            : 'ohne Termin'}
+        {todo.notes ? ` · ${todo.notes}` : ''}
+      </span>
+    </>
   )
 }
 
@@ -310,8 +542,9 @@ function TaskDialog({ machine, task, count, onClose }: { machine: Machine; task:
 }
 
 type Dialog =
-  | { kind: 'entry'; entry: MaintenanceLog | null; preselect?: string[]; type?: MaintenanceEntryType; title?: string }
+  | { kind: 'entry'; entry: MaintenanceLog | null; preselect?: string[]; type?: MaintenanceEntryType; title?: string; todo?: MachineTodo }
   | { kind: 'task'; task: MaintenanceTask | null }
+  | { kind: 'todo'; todo: MachineTodo | null }
 
 /** Status der Aufgaben einer Maschine, sortiert (fällig zuerst). */
 export function machineStatuses(machine: Machine, tasks: MaintenanceTask[], log: MaintenanceLog[], tracks: TrackSpan[], today = todayIso()): TaskStatus[] {
@@ -327,6 +560,7 @@ export default function MachineMaintenance({
   machine,
   tasks,
   log,
+  todos,
   tracks,
   canWrite,
   onChanged,
@@ -334,6 +568,7 @@ export default function MachineMaintenance({
   machine: Machine
   tasks: MaintenanceTask[]
   log: MaintenanceLog[]
+  todos: MachineTodo[]
   tracks: TrackSpan[]
   canWrite: boolean
   onChanged: () => void
@@ -341,7 +576,11 @@ export default function MachineMaintenance({
   const [dialog, setDialog] = useState<(Dialog & { seq: number }) | null>(null)
   const open = (d: Dialog) => setDialog((p) => ({ ...d, seq: (p?.seq ?? 0) + 1 }))
   const [showAll, setShowAll] = useState(false)
+  const [showDone, setShowDone] = useState(false)
   const [busy, setBusy] = useState(false)
+  const today = todayIso()
+  const openOwn = openTodos(todos, today, machine.id)
+  const doneOwn = todos.filter((t) => t.machine_id === machine.id && t.status === 'erledigt').sort((a, b) => (b.done_date ?? '').localeCompare(a.done_date ?? ''))
   const unit = counterUnit(machine)
   const own = log.filter((l) => l.machine_id === machine.id).sort((a, b) => b.done_date.localeCompare(a.done_date))
   const ownTasks = tasks.filter((t) => t.machine_id === machine.id && !t.deleted_at)
@@ -379,12 +618,64 @@ export default function MachineMaintenance({
                 {unit === 'km' ? 'km-Stand' : 'Stunden'} eintragen
               </button>
             )}
+            <button type="button" className={btn} onClick={() => open({ kind: 'entry', entry: null, type: 'beobachtung' })}>
+              + Beobachtung/Schaden
+            </button>
             <button type="button" className={btn} onClick={() => open({ kind: 'entry', entry: null, type: 'reparatur' })}>
               + Eintrag
             </button>
           </span>
         )}
       </div>
+
+      {(openOwn.length > 0 || doneOwn.length > 0 || canWrite) && (
+        <div>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase text-gray-500">Pendenzen{openOwn.length ? ` (${openOwn.length} offen)` : ''}</h3>
+            {canWrite && (
+              <button type="button" className={btn} onClick={() => open({ kind: 'todo', todo: null })}>
+                + Pendenz
+              </button>
+            )}
+          </div>
+          {openOwn.length === 0 ? (
+            <p className="text-xs text-gray-500">Keine offenen Pendenzen.</p>
+          ) : (
+            <ul className="divide-y rounded border border-violet-100">
+              {openOwn.map((t) => (
+                <li key={t.id} className="flex items-start gap-2 px-2 py-1.5">
+                  <button type="button" disabled={!canWrite} onClick={() => open({ kind: 'todo', todo: t })} className="min-w-0 flex-1 text-left">
+                    <TodoLine todo={t} today={today} />
+                  </button>
+                  {canWrite && (
+                    <button type="button" className={`${btn} shrink-0`} onClick={() => open({ kind: 'entry', entry: null, type: 'reparatur', title: t.title, todo: t })}>
+                      ✓ erledigt
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {doneOwn.length > 0 && (
+            <>
+              <button type="button" onClick={() => setShowDone(!showDone)} className="mt-1 text-xs text-brand-700">
+                {showDone ? 'erledigte ausblenden' : `${doneOwn.length} erledigte`}
+              </button>
+              {showDone && (
+                <ul className="mt-1 divide-y rounded border border-gray-100">
+                  {doneOwn.map((t) => (
+                    <li key={t.id}>
+                      <button type="button" disabled={!canWrite} onClick={() => open({ kind: 'todo', todo: t })} className="w-full px-2 py-1.5 text-left">
+                        <TodoLine todo={t} today={today} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <div>
         <div className="mb-1 flex items-center justify-between gap-2">
@@ -459,8 +750,9 @@ export default function MachineMaintenance({
               <li key={l.id}>
                 <button type="button" disabled={!canWrite} onClick={() => open({ kind: 'entry', entry: l })} className="w-full px-2 py-1.5 text-left">
                   <span className="flex justify-between gap-2">
-                    <span className="text-gray-800">
+                    <span className={isFinding(l.entry_type) ? (l.entry_type === 'schaden' ? 'text-red-800' : 'text-sky-800') : 'text-gray-800'}>
                       {fmtDate(l.done_date)} · {ENTRY_LABEL[l.entry_type]}
+                      {todos.some((t) => t.log_id === l.id) ? ' → Pendenz' : ''}
                       {l.counter != null ? ` · ${fmtNum(l.counter)} ${unit}` : ''}
                     </span>
                     {l.cost_chf != null && <span className="shrink-0 text-gray-700">{chf(l.cost_chf)}</span>}
@@ -489,7 +781,18 @@ export default function MachineMaintenance({
           preselect={dialog.preselect}
           type={dialog.type}
           title={dialog.title}
+          todo={dialog.todo}
+          linkedTodos={dialog.entry ? todos.filter((t) => t.log_id === dialog.entry!.id) : []}
           onClose={close}
+        />
+      )}
+      {dialog?.kind === 'todo' && (
+        <TodoDialog
+          key={dialog.seq}
+          machine={machine}
+          todo={dialog.todo}
+          onClose={close}
+          onComplete={(t) => open({ kind: 'entry', entry: null, type: 'reparatur', title: t.title, todo: t })}
         />
       )}
       {dialog?.kind === 'task' && <TaskDialog key={dialog.seq} machine={machine} task={dialog.task} count={ownTasks.length} onClose={close} />}
