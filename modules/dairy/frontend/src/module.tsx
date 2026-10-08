@@ -15,6 +15,7 @@ import BirthEntry from './pages/BirthEntry'
 import MatingEntry from './pages/MatingEntry'
 import JournalEntry from './pages/JournalEntry'
 import TreatmentJournal from './pages/TreatmentJournal'
+import { treatmentPasteImporter } from './lib/pasteTreatments'
 import MatingPlanner from './pages/MatingPlanner'
 import Pruefbericht from './pages/Pruefbericht'
 import LambSelection from './pages/LambSelection'
@@ -70,6 +71,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     ],
     DbProvider: DairyDbProvider,
     sync: createDairySyncClient(key),
+    pasteImporters: [treatmentPasteImporter(key)],
     importer: createDairyImporter(key, title, ({ claim, ...run }) => <ImportPanel moduleKey={key} files={dairyFilesOf(claim)} {...run} />),
     animals: createDairyAnimalProvider(key, title),
   }

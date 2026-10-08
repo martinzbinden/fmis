@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuthUser } from '@fmis/core/AuthContext'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import { expandUploads, type ImportClaim, type ImportStatus, type UploadFile } from '@fmis/core/upload'
+import PasteImport from './PasteImport'
 
 interface Run {
   id: string
@@ -370,6 +371,8 @@ export default function Upload({ modules }: { modules: ModuleDescriptor[] }) {
       })}
 
       {anyActive && <p className="text-center text-xs text-gray-500">Diese Seite offen lassen, bis die Importe fertig sind.</p>}
+
+      <PasteImport modules={modules} />
 
       <details className="rounded-lg bg-white p-3 text-sm shadow-sm">
         <summary className="cursor-pointer font-medium text-gray-700">Bekannte Formate</summary>

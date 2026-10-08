@@ -3,6 +3,7 @@ import type { RouteObject } from 'react-router-dom'
 import type { SyncClient } from './sync'
 import type { ModuleImporter } from './upload'
 import type { AnimalProvider, HerdLocator } from './animals'
+import type { PasteImporter } from './pasteImport'
 
 export interface NavItem {
   to: string
@@ -38,4 +39,7 @@ export interface ModuleDescriptor {
   /** Zusätzliche Kacheln auf der Übersicht (frontend/src/pages/Dashboard.tsx),
    * z.B. Maschinen & Wartung — prüfen ihre Rechte selbst. */
   dashboardTiles?: ComponentType[]
+  /** Bereiche für «Strukturierte Daten einfügen» auf der Import-Seite
+   * (core/frontend/src/pasteImport.ts). */
+  pasteImporters?: PasteImporter[]
 }
