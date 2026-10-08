@@ -6,7 +6,11 @@ import { useQuery } from '../hooks/useQuery'
 import { addDaysIso, fmtArea, fmtDate, num, todayIso } from '../lib/format'
 import { calibrate, fieldAxis, planSpreading } from '../lib/slurry'
 import { isTractor, loadMachines, loadsFor, machineSummary, suggestTractor } from '../lib/machines'
-import { getActivePlan, loadPlan, setActivePlan, type PlanTask } from '../lib/workPlan'
+import { completePlan, getActivePlan, loadPlan, setActivePlan, type PlanTask } from '../lib/workPlan'
+import { deletePlanTask } from '../lib/workPlanEdit'
+import { getDb } from '../db/pglite'
+import PlanCreateDialog from '../components/PlanCreateDialog'
+import CompletePlanDialog from '../components/CompletePlanDialog'
 import type { Machine } from '../types'
 
 const UNIT: Record<string, string> = { m3: 'm³', t: 't', kg: 'kg' }
@@ -38,13 +42,19 @@ function TaskCard({
   machines: all,
   flow,
   canTrack,
+  canWrite,
   onStart,
+  onComplete,
+  onDelete,
 }: {
   task: PlanTask
   machines: Machine[]
   flow: Map<string, number | null>
   canTrack: boolean
+  canWrite: boolean
   onStart: (machine: Machine | null, tractor: Machine | null) => void
+  onComplete: () => void
+  onDelete: () => void
 }) {
   const machines = all.filter((m) => !isTractor(m))
   const tractors = all.filter(isTractor)
@@ -173,6 +183,22 @@ function TaskCard({
           <p className="text-xs text-gray-500">Startet sofort die GPS-Aufzeichnung auf diesem Gerät.</p>
         </div>
       )}
+      {canWrite && (
+        <div className="flex flex-wrap gap-2 border-t pt-3">
+          <button type="button" onClick={onComplete} className="flex-1 rounded-lg border border-green-600 px-3 py-2 text-sm font-medium text-green-700">
+            ✓ Erledigt erfassen
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm(`Plan «${task.title}» (${task.items.length} ${task.items.length === 1 ? 'Parzelle' : 'Parzellen'}) löschen? Bereits Erledigtes bleibt.`)) onDelete()
+            }}
+            className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700"
+          >
+            Plan löschen
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -180,8 +206,14 @@ function TaskCard({
 /** Arbeitsplan aus der Planung im Journal: je Tag, was wo zu tun ist, mit
  * Menge und Anzahl Fässer — und dem Start der GPS-Aufzeichnung. */
 export default function WorkPlan() {
-  const { data, loading } = useQuery(load, [])
+  const { data, loading, refresh } = useQuery(load, [])
   const canTrack = useHasPermission('wiesenjournal:tracking:write')
+  // Planen und Abschliessen schreiben Journal-Einträge (Nutzung/Düngung)
+  const canFert = useHasPermission('wiesenjournal:duengung:write')
+  const canUsage = useHasPermission('wiesenjournal:nutzung:write')
+  const canWrite = canFert || canUsage
+  const [creating, setCreating] = useState(false)
+  const [completing, setCompleting] = useState<PlanTask | null>(null)
   const navigate = useNavigate()
   const today = todayIso()
   const active = getActivePlan()
@@ -208,9 +240,16 @@ export default function WorkPlan() {
     <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Arbeitsplan</h1>
-        <Link to="../maschinen" className="text-sm text-brand-700">
-          Maschinen
-        </Link>
+        <span className="flex items-baseline gap-3">
+          <Link to="../maschinen" className="text-sm text-brand-700">
+            Maschinen
+          </Link>
+          {canWrite && (
+            <button type="button" onClick={() => setCreating(true)} className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white">
+              + Arbeit planen
+            </button>
+          )}
+        </span>
       </div>
 
       {active && (
@@ -222,7 +261,7 @@ export default function WorkPlan() {
       {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
       {data && dates.length === 0 && (
         <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
-          Nichts geplant. Im Raster einen Tag ab heute öffnen und «Arbeit planen» wählen — z.B. Gülle mit Menge je Parzelle.
+          Nichts geplant. Mit «+ Arbeit planen» hier planen — oder im Raster einen Tag ab heute öffnen und «Arbeit planen» wählen.
         </p>
       )}
 
@@ -245,8 +284,41 @@ export default function WorkPlan() {
       )}
 
       {tasks.map((t) => (
-        <TaskCard flow={data?.flow ?? new Map()} key={t.key} task={t} machines={data?.machines ?? []} canTrack={canTrack && !active} onStart={(m, tr) => start(t, m, tr)} />
+        <TaskCard
+          flow={data?.flow ?? new Map()}
+          key={t.key}
+          task={t}
+          machines={data?.machines ?? []}
+          canTrack={canTrack && !active}
+          canWrite={canWrite}
+          onStart={(m, tr) => start(t, m, tr)}
+          onComplete={() => setCompleting(t)}
+          onDelete={() => void getDb().then((pg) => deletePlanTask(pg, t)).then(refresh)}
+        />
       ))}
+
+      {creating && (
+        <PlanCreateDialog
+          seasonYear={Number(today.slice(0, 4))}
+          onClose={() => setCreating(false)}
+          onSaved={(d) => {
+            setCreating(false)
+            setChosen(d)
+            refresh()
+          }}
+        />
+      )}
+      {completing && (
+        <CompletePlanDialog
+          task={completing}
+          onClose={() => setCompleting(null)}
+          onDone={async (done, date, amounts) => {
+            await completePlan(await getDb(), { task: completing }, done, date, amounts)
+            setCompleting(null)
+            refresh()
+          }}
+        />
+      )}
     </div>
   )
 }

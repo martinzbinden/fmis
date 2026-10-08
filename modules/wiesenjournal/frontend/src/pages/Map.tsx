@@ -29,6 +29,7 @@ import { completePlan, getActivePlan, setActivePlan, visitedParcels, type Active
 import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
 import SlurryPanel from '../components/SlurryPanel'
 import DriveAssist from '../components/DriveAssist'
+import CompletePlanDialog from '../components/CompletePlanDialog'
 import { loadTrackTanks } from '../lib/slurryData'
 import { fetchCoverage, fieldShapes, localDay, sameJob, timeMs, type CoverageParcel } from '../lib/coverage'
 import AckerToggle from '../components/AckerToggle'
@@ -295,9 +296,9 @@ export default function Map() {
     return m
   }, [planTanks])
 
-  async function finishPlan(done: Set<string>, useTanks: boolean) {
+  async function finishPlan(done: Set<string>, date: string, amounts: globalThis.Map<string, { amount: number; count: number | null }>) {
     if (!activePlan) return
-    await completePlan(db, activePlan, done, todayIso(), useTanks ? tanksByParcel : undefined)
+    await completePlan(db, activePlan, done, date, amounts)
     updateActivePlan(null)
     setCompleting(false)
     refresh()
@@ -602,15 +603,15 @@ export default function Map() {
       )}
 
       {completing && activePlan && (
-        <CompletePlanModal
-          plan={activePlan}
+        <CompletePlanDialog
+          task={activePlan.task}
           visited={visited}
+          tanks={tanksByParcel}
           onClose={() => setCompleting(false)}
           onCancelPlan={() => {
             updateActivePlan(null)
             setCompleting(false)
           }}
-          tanks={tanksByParcel}
           onDone={finishPlan}
         />
       )}
@@ -835,98 +836,6 @@ function PaddockDetailsModal({
   )
 }
 
-function CompletePlanModal({
-  plan,
-  visited,
-  tanks,
-  onClose,
-  onCancelPlan,
-  onDone,
-}: {
-  plan: ActivePlan
-  visited: Set<string>
-  tanks: globalThis.Map<string, { m3: number; count: number }>
-  onClose: () => void
-  onCancelPlan: () => void
-  onDone: (done: Set<string>, useTanks: boolean) => Promise<void>
-}) {
-  const [done, setDone] = useState<Set<string>>(() => new Set(visited))
-  const [useTanks, setUseTanks] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const toggle = (id: string) =>
-    setDone((d) => {
-      const next = new Set(d)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  return (
-    <Modal title="Ausführung abschliessen" onClose={onClose}>
-      <div className="space-y-3 text-sm">
-        <p className="text-gray-600">
-          Erledigte Parzellen werden als ausgeführt ins Journal übernommen (Datum heute). Nicht angekreuzte bleiben geplant.
-          Vorausgewählt ist, was laut GPS befahren wurde.
-        </p>
-        <ul className="divide-y">
-          {plan.task.items.map((it) => (
-            <li key={it.parcel_id}>
-              <label className="flex items-center gap-2 py-1.5">
-                <input type="checkbox" checked={done.has(it.parcel_id)} onChange={() => toggle(it.parcel_id)} />
-                <span className="flex-1">{it.parcel_name}</span>
-                {it.amount != null && it.unit && (
-                  <span className="text-gray-600">
-                    {it.amount} {it.unit === 'm3' ? 'm³' : it.unit}
-                  </span>
-                )}
-                {visited.has(it.parcel_id) && <span className="text-xs text-green-700">befahren</span>}
-              </label>
-              {tanks.get(it.parcel_id) && (
-                <div className="pb-1 pl-6 text-xs text-amber-800">
-                  gezählt: {tanks.get(it.parcel_id)!.count} {tanks.get(it.parcel_id)!.count === 1 ? 'Fass' : 'Fässer'} = {tanks.get(it.parcel_id)!.m3} m³
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-        {tanks.size > 0 && (
-          <label className="flex items-start gap-2 rounded bg-amber-50 p-2 text-xs text-amber-900">
-            <input type="checkbox" className="mt-0.5" checked={useTanks} onChange={(e) => setUseTanks(e.target.checked)} />
-            Menge aus den gezählten Fässern übernehmen (statt der geplanten), Nährstoffe neu berechnen
-          </label>
-        )}
-        <button
-          type="button"
-          disabled={saving}
-          onClick={async () => {
-            setSaving(true)
-            try {
-              await onDone(done, useTanks)
-            } finally {
-              setSaving(false)
-            }
-          }}
-          className="w-full rounded-lg bg-green-600 py-2 font-semibold text-white disabled:opacity-50"
-        >
-          {done.size} {done.size === 1 ? 'Parzelle' : 'Parzellen'} als ausgeführt übernehmen
-        </button>
-        <div className="flex justify-between text-xs">
-          <button type="button" onClick={onClose} className="text-gray-600 underline">
-            Später
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (confirm('Plan-Ausführung abbrechen? Die Einträge bleiben geplant, die GPS-Spur bleibt gespeichert.')) onCancelPlan()
-            }}
-            className="text-red-700 underline"
-          >
-            Ausführung abbrechen
-          </button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
 
 const m2 = (v: number) => (v >= 10000 ? `${(v / 10000).toLocaleString('de-CH', { maximumFractionDigits: 2 })} ha` : `${Math.round(v).toLocaleString('de-CH')} m²`)
 

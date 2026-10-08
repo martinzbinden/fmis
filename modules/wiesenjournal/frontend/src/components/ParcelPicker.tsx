@@ -15,21 +15,25 @@ export interface PickParcel {
 }
 
 const fmtA = (a: number | null) => (a == null ? '' : `${Math.round(a).toLocaleString('de-CH')} a`)
-const TILES = 'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg'
+export const TILES = 'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg'
 
 /** Parzellen als antippbare Flächen; zoomt auf den GPS-Standort, sonst auf
  * die gewählte Parzelle bzw. alle. */
-function ParcelLayer({
+export function ParcelLayer({
   parcels,
   selectedId,
+  selectedIds,
   here,
   onPick,
 }: {
   parcels: PickParcel[]
   selectedId: string | null
+  /** Mehrfachauswahl (Arbeitsplan) */
+  selectedIds?: Set<string>
   here: { lat: number; lng: number } | null
   onPick: (id: string) => void
 }) {
+  const isSel = (id: string) => id === selectedId || !!selectedIds?.has(id)
   const map = useMap()
   useEffect(() => {
     const layer = L.geoJSON(
@@ -41,7 +45,7 @@ function ParcelLayer({
       } as never,
       {
         style: (f) =>
-          f?.properties.id === selectedId
+          isSel(f?.properties.id)
             ? { color: '#1d4ed8', weight: 3, fillColor: '#3b82f6', fillOpacity: 0.45 }
             : { color: '#15803d', weight: 1.5, fillColor: '#86efac', fillOpacity: 0.25 },
         onEachFeature: (feature, l) => {
@@ -54,7 +58,8 @@ function ParcelLayer({
     return () => {
       map.removeLayer(layer)
     }
-  }, [map, parcels, selectedId, onPick])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, parcels, selectedId, selectedIds, onPick])
 
   // Einmal ausrichten: GPS-Standort, sonst gewählte Parzelle, sonst alle
   useEffect(() => {
@@ -63,8 +68,8 @@ function ParcelLayer({
       L.circleMarker([here.lat, here.lng], { radius: 7, color: '#fff', weight: 2, fillColor: '#1d4ed8', fillOpacity: 1 }).addTo(map)
       return
     }
-    const sel = parcels.find((p) => p.id === selectedId && p.base_geometry)
-    const b = L.geoJSON((sel ? [sel] : parcels.filter((p) => p.base_geometry)).map((p) => JSON.parse(p.base_geometry!)) as never).getBounds()
+    const sel = parcels.filter((p) => isSel(p.id) && p.base_geometry)
+    const b = L.geoJSON((sel.length ? sel : parcels.filter((p) => p.base_geometry)).map((p) => JSON.parse(p.base_geometry!)) as never).getBounds()
     if (b.isValid()) map.fitBounds(b.pad(0.1))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map])

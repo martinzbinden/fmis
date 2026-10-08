@@ -298,11 +298,12 @@ export function visitedParcels(items: PlanItem[], points: { lat: number; lng: nu
  * zu definitiven mit dem Ausführungsdatum; nicht erledigte bleiben geplant. */
 export async function completePlan(
   pg: PGlite,
-  plan: ActivePlan,
+  plan: Pick<ActivePlan, 'task'>,
   doneParcelIds: Set<string>,
   executedOn: string,
-  /** gezählte Fässer je Parzelle (Güllefass): Menge und Anzahl übernehmen */
-  measured?: Map<string, { m3: number; count: number }>,
+  /** definitive Menge je Parzelle (bestätigt bzw. aus gezählten Fässern),
+   * Anzahl Fässer/Fuhren falls bekannt */
+  measured?: Map<string, { amount: number; count: number | null }>,
 ): Promise<number> {
   const types = measured?.size ? await loadFertilizerTypes(pg, false) : []
   // Ein Eintrag über mehrere Parzellen gilt erst als ausgeführt, wenn alle
@@ -333,8 +334,16 @@ export async function completePlan(
       if (m) {
         // Menge aus den gezählten Fässern — Nährstoffe neu, auch im Anteil
         const type = types.find((t) => t.id === row.fertilizer_type_id) ?? null
-        const nutrients = computeNutrients(m.m3, type, num(row.dilution_factor))
-        await upsertRow(table, { ...row, id: String(row.id), entry_date: executedOn, is_planned: false, amount: m.m3, container_count: m.count, ...nutrients } as never)
+        const nutrients = computeNutrients(m.amount, type, num(row.dilution_factor))
+        await upsertRow(table, {
+          ...row,
+          id: String(row.id),
+          entry_date: executedOn,
+          is_planned: false,
+          amount: m.amount,
+          container_count: m.count ?? row.container_count ?? null,
+          ...nutrients,
+        } as never)
         const { rows: shares } = await pg.query<Record<string, unknown>>('select * from fertilization_shares where entry_id = $1 and deleted_at is null', [row.id])
         for (const s of shares) await upsertRow('fertilization_shares', { ...s, id: String(s.id), ...nutrients } as never)
       } else {
