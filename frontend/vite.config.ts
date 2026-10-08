@@ -50,6 +50,11 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/auth\//, /^\/[a-z_]+\/sync\//, /^\/core\//, /^\/admin\//],
         // pglite's wasm/data assets are large (~10MB) but are part of the
         // app shell (not user data) and must be cached for offline use.
+        // Der Standard ('**/*.{js,wasm,css,html}') erfasst pglite-*.data NICHT —
+        // ohne den Eintrag 'data' holte die App die Datei bei jedem Start aus
+        // dem Netz und scheiterte offline bzw. ohne Portal-Sitzung mit
+        // "Datenbank-Fehler: Failed to fetch".
+        globPatterns: ['**/*.{js,wasm,data,css,html,svg,png,ico}'],
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
       },
     }),

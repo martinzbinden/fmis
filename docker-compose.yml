@@ -114,14 +114,21 @@ services:
       - traefik.enable=true
       - traefik.docker.network=${TRAEFIK_NETWORK:-web-netzwerk}
       - traefik.http.routers.fmis-app.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`)
-      # Authelia-ForwardAuth vor der Oberflaeche, wo es das gibt (Server).
-      # Wo nicht (lokal): TRAEFIK_MIDDLEWARES=fmis-noop@docker in .env — der
-      # Router braucht eine Middleware, die wirklich existiert, sonst
-      # deaktiviert Traefik ihn ("middleware does not exist"), und ein leerer
-      # Wert hilft nicht: ${VAR:-default} greift auch bei leerer Variable.
+      # Die Oberflaeche (HTML, JS, pglite-Dateien, sw.js) laeuft seit
+      # 2026-10-08 OHNE ForwardAuth: sie enthaelt keine Daten, und hinter
+      # Authelia scheiterte die installierte PWA nach Ablauf der
+      # Portal-Sitzung — Nachladen und Updates (sw.js) wurden auf die
+      # Anmeldeseite umgeleitet ("Datenbank-Fehler: Failed to fetch").
+      # Die Daten schuetzt das fmis-Token (SESSION_TTL_DAYS); ausgestellt wird
+      # es nur ueber den Router "fmis-sso" oben, der MIT ForwardAuth laufen
+      # MUSS (sonst kann jeder den Kopf Remote-Email faelschen). Fehlt das
+      # Token, schickt Login.tsx ueber /auth/portal einmal durch Authelia.
+      # fmis-noop setzt nur einen Antwortkopf — der Router braucht eine
+      # Middleware, die wirklich existiert, sonst deaktiviert Traefik ihn
+      # ("middleware does not exist").
       # Der API-Router bleibt bewusst ohne ForwardAuth — Sync, Lesegeraet und
       # der Offline-Betrieb haengen am Bearer-Token, nicht an einem Cookie.
-      - traefik.http.routers.fmis-app.middlewares=${TRAEFIK_MIDDLEWARES:-authelia-chain@file}
+      - traefik.http.routers.fmis-app.middlewares=fmis-noop@docker
       - traefik.http.middlewares.fmis-noop.headers.customResponseHeaders.X-Fmis-Auth=none
       - traefik.http.routers.fmis-app.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.fmis-app.tls=${TRAEFIK_TLS:-false}
