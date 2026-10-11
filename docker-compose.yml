@@ -41,6 +41,8 @@ services:
       # kommagetrennt). Alle anderen Adressen brauchen einen bestehenden
       # Eintrag in users — siehe core/backend/fmis_core/auth.py.
       LOGIN_DOMAINS: ${LOGIN_DOMAINS:-}
+      # Nur lokal: Testdaten beim Start anlegen (modules/livestock/backend/app/dev_seed.py).
+      DEV_SEED: ${DEV_SEED:-false}
       # Anmeldung am vorgelagerten Portal gegen ein fmis-Token tauschen
       # (/auth/sso). NUR dort auf true setzen, wo der Router fmis-sso unten
       # tatsächlich hinter der ForwardAuth-Middleware hängt — sonst wäre der

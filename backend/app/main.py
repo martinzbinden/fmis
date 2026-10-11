@@ -1,3 +1,5 @@
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -12,6 +14,7 @@ from core.backend.fmis_core.modules_admin import require_module_enabled
 from modules.dairy.backend.app import reader as dairy_reader
 from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
+from modules.livestock.backend.app import dev_seed as livestock_dev_seed
 from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
 from modules.wiesenjournal.backend.app import fertilization as wiesenjournal_fertilization
@@ -46,6 +49,12 @@ async def lifespan(app: FastAPI):
         get_pool(spec.key)
     await open_pools()
     await run_migrations()
+    # Nur lokal (DEV_SEED=true in .env): Testdaten, damit sich die Module
+    # ohne echte Tiere durchspielen lassen. Auf dem Server nie gesetzt.
+    if os.environ.get("DEV_SEED") == "true":
+        created = await livestock_dev_seed.seed_if_empty(get_pool("livestock"))
+        if created:
+            logging.getLogger("uvicorn.error").info("DEV_SEED: %s Testtiere im Mastplaner angelegt", created)
     yield
     await close_pools()
 
