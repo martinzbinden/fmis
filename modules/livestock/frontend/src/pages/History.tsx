@@ -14,6 +14,8 @@ const TABLE_LABEL: Record<string, string> = {
   feed_records: 'Futtereintrag',
   expenses: 'Kosten',
   slaughter_results: 'Schlachtresultat',
+  market_prices: 'Marktpreis',
+  direct_marketing_settings: 'Direktvermarktung',
 }
 
 const ACTION_LABEL: Record<HistoryAction, string> = {

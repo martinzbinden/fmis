@@ -617,6 +617,33 @@ export default function AnimalDetail() {
                   className="w-full rounded border border-gray-300 px-2 py-1"
                 />
               </Field>
+              <Field label="Vermarktung">
+                <select
+                  value={slaughterForm.channel ?? slaughter.channel ?? ''}
+                  onChange={(e) =>
+                    setSlaughterForm((f) => ({
+                      ...f,
+                      channel: (e.target.value || null) as SlaughterResult['channel'],
+                    }))
+                  }
+                  className="w-full rounded border border-gray-300 px-2 py-1"
+                >
+                  <option value="">–</option>
+                  <option value="markt">Markt / Händler</option>
+                  <option value="direkt">Direktvermarktung</option>
+                </select>
+              </Field>
+              <Field label="Metzgerrechnung (CHF)">
+                <input
+                  type="number"
+                  step="0.01"
+                  value={slaughterForm.butcher_cost ?? slaughter.butcher_cost ?? ''}
+                  onChange={(e) =>
+                    setSlaughterForm((f) => ({ ...f, butcher_cost: e.target.value ? Number(e.target.value) : null }))
+                  }
+                  className="w-full rounded border border-gray-300 px-2 py-1"
+                />
+              </Field>
             </div>
             <div className="flex gap-2">
               <button
@@ -643,7 +670,14 @@ export default function AnimalDetail() {
             <Row label="Klassifizierung" value={slaughter.classification ?? '–'} />
             <Row label="Fettklasse" value={slaughter.fat_class ?? '–'} />
             <Row label="Preis/kg" value={fmtChf(num(slaughter.price_per_kg))} />
-            <Row label="Erlös" value={fmtChf(num(slaughter.total_revenue))} />
+            <Row
+              label="Vermarktung"
+              value={slaughter.channel === 'direkt' ? 'Direkt' : slaughter.channel === 'markt' ? 'Markt' : '–'}
+            />
+            <Row label={slaughter.channel === 'direkt' ? 'Verkaufswert' : 'Erlös'} value={fmtChf(num(slaughter.total_revenue))} />
+            {num(slaughter.butcher_cost) != null && (
+              <Row label="Metzgerrechnung" value={fmtChf(num(slaughter.butcher_cost))} />
+            )}
           </dl>
         )}
       </section>

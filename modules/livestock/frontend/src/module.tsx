@@ -17,6 +17,7 @@ import FeedEntry from './pages/FeedEntry'
 import FeedReference from './pages/FeedReference'
 import SlaughterEntry from './pages/SlaughterEntry'
 import Economics from './pages/Economics'
+import Vermarktung from './pages/Vermarktung'
 import History from './pages/History'
 import IntakePanel from './components/IntakePanel'
 import { createLivestockImporter, intakeOf } from './lib/importDetect'
@@ -53,6 +54,7 @@ const livestockModule: ModuleDescriptor = {
     { path: 'futter/referenz', element: <FeedReference /> },
     { path: 'schlachtung', element: <SlaughterEntry /> },
     { path: 'wirtschaftlichkeit', element: <Economics /> },
+    { path: 'vermarktung', element: <Vermarktung /> },
     { path: 'verlauf', element: <History /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],

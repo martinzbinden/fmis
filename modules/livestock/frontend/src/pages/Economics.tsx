@@ -53,7 +53,10 @@ export default function Economics() {
       entry.profit += num(r.profit) ?? 0
       entry.revenue += num(r.total_revenue) ?? 0
       entry.cost +=
-        (num(r.purchase_cost) ?? 0) + (num(r.medication_cost) ?? 0) + (num(r.allocated_group_cost) ?? 0)
+        (num(r.purchase_cost) ?? 0) +
+        (num(r.medication_cost) ?? 0) +
+        (num(r.allocated_group_cost) ?? 0) +
+        (num(r.butcher_cost) ?? 0)
       map.set(key, entry)
     }
     return [...map.values()].sort((a, b) => b.profit - a.profit)
@@ -63,7 +66,12 @@ export default function Economics() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4">
-      <h1 className="text-xl font-bold text-gray-800">Wirtschaftlichkeit</h1>
+      <div className="flex items-baseline justify-between gap-2">
+        <h1 className="text-xl font-bold text-gray-800">Wirtschaftlichkeit</h1>
+        <Link to="/livestock/vermarktung" className="text-sm text-brand-700">
+          Markt oder Direktvermarktung →
+        </Link>
+      </div>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold text-gray-600">Nach Gruppe</h2>
@@ -119,6 +127,7 @@ export default function Economics() {
                 <th className="px-3 py-2 text-right">Anschaffung</th>
                 <th className="px-3 py-2 text-right">Medikamente</th>
                 <th className="px-3 py-2 text-right">Anteil Gruppenkosten</th>
+                <th className="px-3 py-2 text-right">Metzger</th>
                 <th className="px-3 py-2 text-right">Erlös</th>
                 <th className="px-3 py-2 text-right">Gewinn</th>
               </tr>
@@ -135,6 +144,7 @@ export default function Economics() {
                   <td className="px-3 py-2 text-right">{fmtChf(r.purchase_cost)}</td>
                   <td className="px-3 py-2 text-right">{fmtChf(r.medication_cost)}</td>
                   <td className="px-3 py-2 text-right">{fmtChf(r.allocated_group_cost)}</td>
+                  <td className="px-3 py-2 text-right">{num(r.butcher_cost) ? fmtChf(r.butcher_cost) : '–'}</td>
                   <td className="px-3 py-2 text-right">{fmtChf(r.total_revenue)}</td>
                   <td
                     className={`px-3 py-2 text-right font-semibold ${

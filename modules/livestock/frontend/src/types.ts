@@ -105,6 +105,8 @@ export interface SlaughterResult {
   price_per_kg: number | null
   total_revenue: number | null
   notes: string | null
+  channel: 'markt' | 'direkt' | null
+  butcher_cost: number | null
   updated_at: string
   deleted_at: string | null
 }
@@ -158,6 +160,7 @@ export interface AnimalEconomics {
   purchase_cost: number
   medication_cost: number
   allocated_group_cost: number
+  butcher_cost: number
   total_revenue: number
   profit: number
 }

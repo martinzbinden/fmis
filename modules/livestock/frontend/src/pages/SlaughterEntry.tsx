@@ -6,6 +6,8 @@ import EarTagFilterInput from '../components/EarTagFilterInput'
 import { useDb } from '@fmis/core/DbContext'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
+import { directValue, marketValue, parseGrade } from '../lib/marketing'
+import { loadMarketing } from '../lib/marketingData'
 import type { Animal } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
 
@@ -40,20 +42,49 @@ export default function SlaughterEntry() {
   const [fatClass, setFatClass] = useState('')
   const [pricePerKg, setPricePerKg] = useState('')
   const [totalRevenue, setTotalRevenue] = useState('')
+  const [channel, setChannel] = useState<'markt' | 'direkt'>('markt')
+  const [butcherCost, setButcherCost] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Erlös automatisch aus Schlachtgewicht × Preis/kg vorschlagen, solange
-  // der Betrieb ihn nicht manuell überschreibt.
+  // Vorschläge aus lib/marketing.ts, solange der Betrieb nicht selbst
+  // überschreibt: am Markt Preis/kg nach Klasse und Gewichtsabzug, Erlös
+  // nach den Gebühren je Tier; direkt der Verkaufswert des Fleischs und die
+  // Metzgerrechnung nach Tarif.
+  const { data: marketing } = useQuery((pg) => loadMarketing(pg, date), [date])
+  const [priceTouched, setPriceTouched] = useState(false)
   const [revenueTouched, setRevenueTouched] = useState(false)
+  const [costTouched, setCostTouched] = useState(false)
+  const w = Number(carcassWeight)
+  const suggestion =
+    marketing && w > 0
+      ? channel === 'markt'
+        ? marketValue(w, parseGrade(classification, fatClass), marketing.prices)
+        : null
+      : null
+  const directSuggestion = marketing && w > 0 && channel === 'direkt' ? directValue(w, marketing.direct) : null
+  useEffect(() => {
+    if (channel === 'markt') {
+      if (!priceTouched && suggestion) setPricePerKg(suggestion.pricePerKg.toFixed(2))
+      if (!costTouched) setButcherCost('')
+    } else {
+      if (!priceTouched) setPricePerKg('')
+      if (!costTouched && directSuggestion) setButcherCost(directSuggestion.butcherCost.toFixed(2))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channel, suggestion?.pricePerKg, directSuggestion?.butcherCost, priceTouched, costTouched])
   useEffect(() => {
     if (revenueTouched) return
-    const w = Number(carcassWeight)
     const p = Number(pricePerKg)
-    if (w > 0 && p > 0) setTotalRevenue((w * p).toFixed(2))
-  }, [carcassWeight, pricePerKg, revenueTouched])
+    if (channel === 'markt' && w > 0 && p > 0) {
+      setTotalRevenue((w * p - (marketing?.prices.fee_per_animal ?? 0)).toFixed(2))
+    } else if (channel === 'direkt' && directSuggestion) {
+      setTotalRevenue(directSuggestion.meatValue.toFixed(2))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w, pricePerKg, channel, directSuggestion?.meatValue, revenueTouched, marketing?.prices.fee_per_animal])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -76,6 +107,8 @@ export default function SlaughterEntry() {
         price_per_kg: pricePerKg ? Number(pricePerKg) : null,
         total_revenue: totalRevenue ? Number(totalRevenue) : null,
         notes: notes || null,
+        channel,
+        butcher_cost: channel === 'direkt' && butcherCost ? Number(butcherCost) : null,
       })
       // upsertRow schreibt alle Spalten neu (fehlende -> null), daher die
       // volle Tierzeile laden, status patchen und komplett zurückschreiben.
@@ -94,8 +127,11 @@ export default function SlaughterEntry() {
       setFatClass('')
       setPricePerKg('')
       setTotalRevenue('')
+      setButcherCost('')
       setNotes('')
       setRevenueTouched(false)
+      setPriceTouched(false)
+      setCostTouched(false)
     } finally {
       setSaving(false)
     }
@@ -130,7 +166,23 @@ export default function SlaughterEntry() {
             className="w-full rounded border border-gray-300 px-3 py-3 text-base"
           />
         </Field>
-        <Field label="Schlachtbetrieb">
+        <Field label="Vermarktung">
+          <div className="grid grid-cols-2 gap-2">
+            {(['markt', 'direkt'] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setChannel(c)}
+                className={`rounded border px-3 py-3 text-base ${
+                  channel === c ? 'border-brand-700 bg-brand-50 font-semibold text-brand-800' : 'border-gray-300'
+                }`}
+              >
+                {c === 'markt' ? 'Markt / Händler' : 'Direktvermarktung'}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label={channel === 'markt' ? 'Schlachtbetrieb / Händler' : 'Metzger'}>
           <input
             type="text"
             value={slaughterhouse}
@@ -174,11 +226,44 @@ export default function SlaughterEntry() {
             step="0.01"
             inputMode="decimal"
             value={pricePerKg}
-            onChange={(e) => setPricePerKg(e.target.value)}
+            onChange={(e) => {
+              setPriceTouched(true)
+              setPricePerKg(e.target.value)
+            }}
             className="w-full rounded border border-gray-300 px-3 py-3 text-base"
           />
         </Field>
-        <Field label="Erlös (CHF)">
+        {suggestion && (
+          <p className="-mt-2 text-xs text-gray-500">
+            Proviande {suggestion.category}: {suggestion.basePerKg.toFixed(2)}
+            {suggestion.gradeDelta ? ` ${suggestion.gradeDelta > 0 ? '+' : '−'} ${Math.abs(suggestion.gradeDelta).toFixed(2)} Klasse` : ''}
+            {suggestion.weightDeduction ? ` − ${suggestion.weightDeduction.toFixed(2)} Gewicht` : ''} ={' '}
+            {suggestion.pricePerKg.toFixed(2)} Fr./kg; Erlös nach {marketing?.prices.fee_per_animal.toFixed(2)} Gebühren.
+          </p>
+        )}
+        {channel === 'direkt' && (
+          <Field label="Metzgerrechnung (CHF, inkl. MwSt)">
+            <input
+              type="number"
+              step="0.01"
+              inputMode="decimal"
+              value={butcherCost}
+              onChange={(e) => {
+                setCostTouched(true)
+                setButcherCost(e.target.value)
+              }}
+              className="w-full rounded border border-gray-300 px-3 py-3 text-base"
+            />
+          </Field>
+        )}
+        {directSuggestion && (
+          <p className="-mt-2 text-xs text-gray-500">
+            Nach Tarif: {directSuggestion.meatKg.toFixed(1)} kg Fleisch, {directSuggestion.packs} Pakete; Verkaufswert
+            zum Mischpreis {marketing?.direct.meat_price_per_kg.toFixed(2)}/kg, bleibt{' '}
+            {directSuggestion.net.toFixed(2)} nach dem Metzger.
+          </p>
+        )}
+        <Field label={channel === 'markt' ? 'Erlös (CHF)' : 'Verkaufswert Fleisch (CHF)'}>
           <input
             type="number"
             step="0.01"

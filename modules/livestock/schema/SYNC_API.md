@@ -16,7 +16,12 @@ Diese Reihenfolge ist verbindlich für Push-Payloads (Backend validiert per Name
 - `medications`: id, animal_id, date, medication_name, dose, reason, withdrawal_days, administered_by, cost, updated_at, deleted_at
 - `feed_records`: id, group_id, date, feed_type, quantity, unit, cost_total, supplier, notes, updated_at, deleted_at
 - `expenses`: id, group_id, date, category, description, amount, updated_at, deleted_at
-- `slaughter_results`: id, animal_id, slaughter_date, slaughterhouse, carcass_weight_kg, classification, fat_class, price_per_kg, total_revenue, notes, updated_at, deleted_at
+- `slaughter_results`: id, animal_id, slaughter_date, slaughterhouse, carcass_weight_kg, classification, fat_class, price_per_kg, total_revenue, notes, updated_at, deleted_at, channel, butcher_cost
+- `market_prices`: id, valid_from, la_t3, sm_t3, bio_premium, fee_per_animal, source, notes, updated_at, deleted_at — Proviande-Wochenpreise
+  für Lämmer (LA) und Schafe (SM), T3, Fr./kg SG; gilt die jüngste Zeile (Seite «Vermarktung»).
+- `direct_marketing_settings`: id, valid_from, butcher, fee_per_animal, fee_per_kg_carcass, meat_yield_pct, disposal_per_kg,
+  pack_grams, fee_per_pack, sausage_share_pct, sausage_fee_per_kg, vat_pct, meat_price_per_kg, notes, updated_at,
+  deleted_at — Metzgertarif und Kennzahlen der Direktvermarktung; gilt die jüngste Zeile.
 - `data_history`: id, table_name, row_id, action, changed_by, changed_at, snapshot, updated_at — Audit-Log, wird
   ausschliesslich automatisch von `upsertRow()`/`softDeleteRow()` befüllt (siehe `frontend/src/db/write.ts`),
   nie direkt von einem Formular. Kein `deleted_at` (unveränderlich). `snapshot` ist die komplette Zeile NACH

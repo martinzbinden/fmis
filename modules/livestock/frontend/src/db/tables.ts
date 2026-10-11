@@ -32,7 +32,17 @@ export const SYNC_TABLES = {
   slaughter_results: [
     'id', 'animal_id', 'slaughter_date', 'slaughterhouse', 'carcass_weight_kg',
     'classification', 'fat_class', 'price_per_kg', 'total_revenue', 'notes',
+    'updated_at', 'deleted_at', 'channel', 'butcher_cost',
+  ],
+  market_prices: [
+    'id', 'valid_from', 'la_t3', 'sm_t3', 'bio_premium', 'fee_per_animal', 'source', 'notes',
     'updated_at', 'deleted_at',
+  ],
+  direct_marketing_settings: [
+    'id', 'valid_from', 'butcher', 'fee_per_animal', 'fee_per_kg_carcass',
+    'meat_yield_pct', 'disposal_per_kg', 'pack_grams', 'fee_per_pack',
+    'sausage_share_pct', 'sausage_fee_per_kg', 'vat_pct', 'meat_price_per_kg',
+    'notes', 'updated_at', 'deleted_at',
   ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
@@ -64,6 +74,8 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   feed_records: new Set(['date']),
   expenses: new Set(['date']),
   slaughter_results: new Set(['slaughter_date']),
+  market_prices: new Set(['valid_from']),
+  direct_marketing_settings: new Set(['valid_from']),
   data_history: new Set(),
   medication_reference: new Set(['verified_at']),
   feed_reference: new Set(['verified_at']),
