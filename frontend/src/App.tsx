@@ -127,6 +127,8 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
   registerHerdLocator(enabledModules)
 
   return (
+    <>
+    {enabledModules.map((m) => (m.globalOverlay ? <m.globalOverlay key={`overlay-${m.key}`} /> : null))}
     <Routes>
       <Route path="/dashboard" element={<Dashboard modules={enabledModules} onLoggedOut={onLoggedOut} />} />
       <Route
@@ -150,6 +152,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
       ))}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    </>
   )
 }
 

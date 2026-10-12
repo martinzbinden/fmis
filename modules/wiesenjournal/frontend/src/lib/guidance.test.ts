@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { crossTrack, currentRunStart, laneOf, nextFreeLane, refFromField, refFromRecent, steer, travelSign, workedLanes, type GuideRef } from './guidance'
+import { alongTrack, crossTrack, currentRunStart, laneOf, lanePoint, lanesCovering, nextFreeLane, refFromAB, refFromField, refFromRecent, shiftRefTo, steer, travelSign, workedLanes, type GuideRef } from './guidance'
 import { fieldShape } from './slurry'
 
 const LAT = 47
@@ -61,5 +61,34 @@ describe('guidance', () => {
     const all = [...pts, ...lane2]
     const before = workedLanes(r, all.slice(0, currentRunStart(r, all, 7)), 7, [field])
     expect([...before]).toEqual([0])
+  })
+})
+
+describe('A-B-Linie, Nachziehen, Bahnen', () => {
+  const A = { lat: 47, lng: 7.5 }
+  const north = (m: number, east = 0) => ({ lat: 47 + m / 111195, lng: 7.5 + east / (111195 * Math.cos((47 * Math.PI) / 180)) })
+  it('A-B nach Norden, zu kurz = null', () => {
+    const r = refFromAB(A, north(100))!
+    expect(r.source).toBe('ab')
+    expect(Math.round(r.headingDeg)).toBe(0)
+    expect(refFromAB(A, north(10))).toBeNull()
+  })
+  it('Hier = Bahnmitte: Versatz verschwindet, Bahn bleibt', () => {
+    const r = refFromAB(A, north(100))!
+    const here = north(50, 6 + 0.8) // Bahn 1 bei 6 m Breite, 0.8 m daneben
+    expect(laneOf(r, here, 6).lane).toBe(1)
+    const s = shiftRefTo(r, here, 6)
+    const p = laneOf(s, here, 6)
+    expect(p.lane).toBe(1)
+    expect(Math.abs(p.offsetM)).toBeLessThan(0.01)
+  })
+  it('Bahnen über ein Gebiet und Punkte darauf', () => {
+    const r = refFromAB(A, north(100))!
+    const area = [north(0, -1), north(100, -1), north(100, 13), north(0, 13)]
+    const lanes = lanesCovering(r, area, 6)
+    expect(lanes.map((l) => l.lane)).toEqual([0, 1, 2])
+    const p = lanePoint(r, 2, 6, 50)
+    expect(Math.round(crossTrack(r, p))).toBe(12)
+    expect(Math.round(alongTrack(r, p))).toBe(50)
   })
 })

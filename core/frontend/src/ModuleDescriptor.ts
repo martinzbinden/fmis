@@ -42,4 +42,7 @@ export interface ModuleDescriptor {
   /** Bereiche für «Strukturierte Daten einfügen» auf der Import-Seite
    * (core/frontend/src/pasteImport.ts). */
   pasteImporters?: PasteImporter[]
+  /** Liegt über allen Seiten der App (auch anderer Module), z.B. das
+   * Badge einer laufenden GPS-Aufzeichnung. Prüft selbst, ob es etwas zeigt. */
+  globalOverlay?: ComponentType
 }

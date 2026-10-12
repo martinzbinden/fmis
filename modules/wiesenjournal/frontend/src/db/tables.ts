@@ -63,7 +63,7 @@ export const SYNC_TABLES = {
     'id', 'season_year', 'label', 'started_at', 'ended_at', 'width_m',
     'geometry', 'point_times', 'point_count', 'notes', 'created_by',
     'updated_at', 'deleted_at', 'work_type', 'machine', 'operator', 'machine_id',
-    'tractor_id',
+    'tractor_id', 'guide_ref',
   ],
   weed_observations: [
     'id', 'season_year', 'parcel_id', 'track_id', 'observed_at',

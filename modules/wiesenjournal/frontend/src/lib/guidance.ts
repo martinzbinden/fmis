@@ -16,9 +16,12 @@ export interface GuideRef {
   origin: LatLng
   /** Fahrrichtung der Referenz, 0 = Nord */
   headingDeg: number
-  source: 'feldrand' | 'bahn'
+  source: 'feldrand' | 'bahn' | 'ab'
   /** bei Feldrand: aus welcher Parzelle */
   fieldId?: string
+  /** bei A-B-Linie: die beiden Punkte */
+  a?: LatLng
+  b?: LatLng
 }
 
 /** Lokale Meter relativ zum Ursprung: x = Ost, y = Nord. */
@@ -165,4 +168,41 @@ export function currentRunStart(ref: GuideRef, points: LatLng[], widthM: number)
     i--
   }
   return i
+}
+
+/** Nulllinie aus zwei gesetzten Punkten: A am Anfang, B am Ende der ersten
+ * Bahn (mind. `minM` auseinander, sonst null). */
+export function refFromAB(a: LatLng, b: LatLng, minM = 20): GuideRef | null {
+  if (haversineMeters(a, b) < minM) return null
+  return { origin: a, headingDeg: bearingDeg(a, b), source: 'ab', a, b }
+}
+
+/** Nulllinie seitlich verschieben, sodass `here` genau auf einer Bahnmitte
+ * liegt (Bahnnummern bleiben) — gegen GPS-Abdrift über die Zeit. */
+export function shiftRefTo(ref: GuideRef, here: LatLng, widthM: number): GuideRef {
+  const { offsetM } = laneOf(ref, here, widthM)
+  const h = rad(ref.headingDeg)
+  // rechts (in Referenzrichtung) = (cos h, -sin h) in Ost/Nord
+  return { ...ref, origin: fromLocal(ref.origin, offsetM * Math.cos(h), -offsetM * Math.sin(h)) }
+}
+
+/** Punkt auf der Linie von Bahn `lane` bei Strecke `along` m (für Karten). */
+export function lanePoint(ref: GuideRef, lane: number, widthM: number, along: number): LatLng {
+  const h = rad(ref.headingDeg)
+  const c = lane * widthM
+  return fromLocal(ref.origin, c * Math.cos(h) + along * Math.sin(h), -c * Math.sin(h) + along * Math.cos(h))
+}
+
+/** Bahnen, die ein Gebiet (Punkte, z.B. Parzellenrand) schneiden, mit
+ * Anfang und Ende entlang der Linie. */
+export function lanesCovering(ref: GuideRef, points: LatLng[], widthM: number): { lane: number; from: number; to: number }[] {
+  if (!points.length || widthM <= 0) return []
+  const cs = points.map((p) => crossTrack(ref, p))
+  const as = points.map((p) => alongTrack(ref, p))
+  const lo = Math.ceil(Math.min(...cs) / widthM - 0.5)
+  const hi = Math.floor(Math.max(...cs) / widthM + 0.5)
+  if (hi - lo > 400) return []
+  const from = Math.min(...as)
+  const to = Math.max(...as)
+  return Array.from({ length: hi - lo + 1 }, (_, i) => ({ lane: lo + i, from, to }))
 }

@@ -220,6 +220,8 @@ export interface Track {
   machine_id?: string | null
   /** Traktor dazu (schema/0016). */
   tractor_id?: string | null
+  /** Nulllinie fürs Parallelfahren, JSON GuideRef (schema/0025) */
+  guide_ref?: string | null
 }
 
 export type MachineKind =

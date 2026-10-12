@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { getCurrentUserEmail } from '@fmis/core/auth'
@@ -8,27 +8,21 @@ import { useQuery } from '../hooks/useQuery'
 import PaddockMap, { type FertilizationFeature } from '../components/PaddockMap'
 import Modal from '../components/Modal'
 import WeedForm, { type WeedFormValues } from '../components/WeedForm'
-import StartTrackDialog from '../components/StartTrackDialog'
 import { createPaddock, saveNewVersion, deletePaddock, loadCurrentPaddocks } from '../lib/paddock'
 import {
-  startTrack,
-  saveTrackProgress,
-  stopTrack,
   deleteTrack,
   createWeedObservation,
   updateWeedObservation,
   deleteWeedObservation,
   getCurrentPositionOnce,
-  type TrackPoint,
-  type StartTrackDetails,
 } from '../lib/tracking'
+import { startSession, stopSession, useTrackingSession } from '../lib/trackingSession'
 import { detectDwell, haversineMeters } from '../lib/geo'
 import type { NearbyObservation } from '../components/MiniLocationMap'
 import { downloadGpx } from '../lib/gpx'
 import { completePlan, getActivePlan, setActivePlan, visitedParcels, type ActivePlan } from '../lib/workPlan'
 import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
 import SlurryPanel from '../components/SlurryPanel'
-import DriveAssist from '../components/DriveAssist'
 import CompletePlanDialog from '../components/CompletePlanDialog'
 import { loadTrackTanks } from '../lib/slurryData'
 import { fetchCoverage, fieldShapes, localDay, sameJob, timeMs, type CoverageParcel } from '../lib/coverage'
@@ -71,36 +65,6 @@ async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean, s
   return { paddocks, parcels, tracks, weedObservations, fertilization }
 }
 
-/** Bildschirm während der Aufzeichnung wach halten: Browser liefern GPS nur,
- * solange die Seite sichtbar ist — bei ausgeschaltetem Bildschirm oder im
- * Hintergrund stoppt watchPosition. */
-function useWakeLock(active: boolean) {
-  useEffect(() => {
-    if (!active || !('wakeLock' in navigator)) return
-    let lock: WakeLockSentinel | null = null
-    let cancelled = false
-    const request = async () => {
-      try {
-        const l = await navigator.wakeLock.request('screen')
-        if (cancelled) void l.release()
-        else lock = l
-      } catch {
-        // z.B. Energiesparmodus — dann eben ohne
-      }
-    }
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void request()
-    }
-    void request()
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      cancelled = true
-      document.removeEventListener('visibilitychange', onVisible)
-      void lock?.release()
-    }
-  }, [active])
-}
-
 /** Punkte eines gespeicherten Tracks (GeoJSON LineString). */
 function trackPoints(t: Track): { lat: number; lng: number }[] {
   if (!t.geometry) return []
@@ -130,23 +94,24 @@ export default function Map() {
   const tracks = data?.tracks ?? []
   const weedObservations = data?.weedObservations ?? []
 
-  // --- Tracking (Traktor-Knopf) ---
-  const [recording, setRecording] = useState(false)
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
-  const [livePoints, setLivePoints] = useState<TrackPoint[]>([])
-  const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number; accuracyM: number | null } | null>(
-    null,
-  )
-  const [startingTrack, setStartingTrack] = useState(false)
-  // Vollbild-Fahrhilfe (components/DriveAssist.tsx)
-  const [showAssist, setShowAssist] = useState(false)
+  // --- Tracking: läuft als eigene Sitzung (lib/trackingSession.ts), die
+  // Bedienung ist im Tracking-Vollbild (pages/Tracking.tsx) ---
+  const navigate = useNavigate()
+  const session = useTrackingSession()
+  const recording = session.track != null
+  const currentTrack = session.track
+  const livePoints = session.points
+  const [mapPosition, setMapPosition] = useState<{ lat: number; lng: number; accuracyM: number | null } | null>(null)
+  const currentPosition = session.fix ? { lat: session.fix.lat, lng: session.fix.lng, accuracyM: session.fix.accuracyM } : mapPosition
   const [dwellCandidate, setDwellCandidate] = useState<{ lat: number; lng: number } | null>(null)
-  // Zwischenspeichern nicht stapeln: läuft noch eines, wird übersprungen
-  // (langsames Gerät oder viele Punkte — sonst wartet «Stop» dahinter)
-  const savingRef = useRef(false)
-  const currentTrackRef = useRef(currentTrack)
-  currentTrackRef.current = currentTrack
-  useWakeLock(recording)
+  // Hier länger angehalten (Unkraut melden?)
+  useEffect(() => {
+    if (!recording) {
+      setDwellCandidate(null)
+      return
+    }
+    setDwellCandidate(detectDwell(livePoints))
+  }, [recording, livePoints])
 
   // --- Arbeitsplan-Ausführung (pages/WorkPlan.tsx) ---
   const [activePlan, setActivePlanState] = useState<ActivePlan | null>(() => getActivePlan())
@@ -162,70 +127,8 @@ export default function Map() {
     return visitedParcels(activePlan.task.items, [...earlier, ...(recording ? livePoints : [])])
   }, [activePlan, tracks, livePoints, recording])
 
-  useEffect(() => {
-    if (!recording || !currentTrack) return
-    if (!('geolocation' in navigator)) {
-      alert('GPS ist auf diesem Gerät/Browser nicht verfügbar.')
-      setRecording(false)
-      return
-    }
-    const id = navigator.geolocation.watchPosition(
-      (pos) => {
-        const point: TrackPoint = { lat: pos.coords.latitude, lng: pos.coords.longitude, timestamp: pos.timestamp }
-        setCurrentPosition({ lat: point.lat, lng: point.lng, accuracyM: pos.coords.accuracy })
-        setLivePoints((prev) => {
-          const next = [...prev, point]
-          if (next.length % 10 === 0 && currentTrackRef.current && !savingRef.current) {
-            savingRef.current = true
-            void saveTrackProgress(currentTrackRef.current, next).finally(() => {
-              savingRef.current = false
-            })
-          }
-          const dwell = detectDwell(next)
-          setDwellCandidate((prevCandidate) => dwell ?? (prevCandidate && !dwell ? null : prevCandidate))
-          return next
-        })
-      },
-      (err) => console.error('GPS-Fehler', err),
-      { enableHighAccuracy: true, maximumAge: 2000 },
-    )
-    return () => navigator.geolocation.clearWatch(id)
-  }, [recording, currentTrack])
-
-  async function startRecording(details: StartTrackDetails): Promise<string> {
-    setStartingTrack(false)
-    const trackId = await startTrack(seasonYear, details)
-    refresh()
-    setCurrentTrack({
-      id: trackId,
-      season_year: seasonYear,
-      label: details.label,
-      started_at: new Date().toISOString(),
-      ended_at: null,
-      width_m: details.widthM,
-      geometry: null,
-      point_times: '[]',
-      point_count: 0,
-      notes: null,
-      created_by: null,
-      updated_at: new Date().toISOString(),
-      deleted_at: null,
-      work_type: details.workType,
-      machine: details.machine,
-      operator: details.operator,
-      machine_id: details.machineId ?? null,
-      tractor_id: details.tractorId ?? null,
-    })
-    setLivePoints([])
-    setDwellCandidate(null)
-    setRecording(true)
-    // Mit Arbeitsbreite gleich in die Fahrhilfe (Parallelfahren)
-    if (details.widthM) setShowAssist(true)
-    return trackId
-  }
-
-  async function startPlanRecording(plan: ActivePlan) {
-    const trackId = await startRecording({
+  function startPlanRecording(plan: ActivePlan) {
+    const track = startSession(seasonYear, {
       label: `${plan.task.title} ${fmtDate(plan.task.date)}`,
       widthM: plan.width_m,
       workType: plan.task.work_type,
@@ -234,7 +137,9 @@ export default function Map() {
       machineId: plan.machine_id,
       tractorId: plan.tractor_id ?? null,
     })
-    updateActivePlan({ ...plan, track_id: trackId })
+    updateActivePlan({ ...plan, track_id: track.id })
+    refresh()
+    navigate('../tracking')
   }
 
   // Vom Arbeitsplan hierher: Aufzeichnung sofort starten.
@@ -244,35 +149,40 @@ export default function Map() {
     autoStarted.current = true
     setSearchParams({}, { replace: true })
     const plan = getActivePlan()
-    if (plan && !recording) void startPlanRecording(plan)
+    if (plan && !recording) startPlanRecording(plan)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, canTrack])
 
-  // Von der Übersicht («Fahrhilfe»): Startdialog gleich öffnen
+  // Alte Links (?fahrhilfe=1) → Tracking-Vollbild; ?abschluss=1 nach Stop
+  // im Tracking: Plan abschliessen; ?abdeckung=<Spur>: Doppelt/Lücken zeigen
   useEffect(() => {
-    if (searchParams.get('fahrhilfe') !== '1' || !canTrack) return
-    setSearchParams({}, { replace: true })
-    if (recording) setShowAssist(true)
-    else setStartingTrack(true)
+    if (searchParams.get('fahrhilfe') === '1') {
+      navigate('../tracking', { replace: true })
+      return
+    }
+    if (searchParams.get('abschluss') === '1') {
+      setSearchParams({}, { replace: true })
+      if (activePlan) setCompleting(true)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, canTrack])
+  }, [searchParams])
+  const coverageRequested = useRef<string | null>(null)
+  useEffect(() => {
+    const id = searchParams.get('abdeckung')
+    if (!id || coverageRequested.current === id) return
+    const t = tracks.find((x) => x.id === id)
+    if (!t) return
+    coverageRequested.current = id
+    setSearchParams({}, { replace: true })
+    void showCoverage(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, tracks])
 
   async function stopRecording() {
-    // Sofort beenden (GPS aus), dann speichern — schlägt das Speichern fehl,
-    // ist die Aufzeichnung trotzdem beendet und der Fehler sichtbar
-    const track = currentTrack
-    const points = livePoints
-    setShowAssist(false)
-    setRecording(false)
-    setCurrentTrack(null)
-    setLivePoints([])
-    setDwellCandidate(null)
-    if (track) {
-      try {
-        await stopTrack(track, points)
-      } catch (e) {
-        alert(`Spur konnte nicht gespeichert werden: ${e instanceof Error ? e.message : String(e)}`)
-      }
+    try {
+      await stopSession()
+    } catch (e) {
+      alert(`Spur konnte nicht gespeichert werden: ${e instanceof Error ? e.message : String(e)}`)
     }
     refresh()
     if (activePlan) setCompleting(true)
@@ -516,15 +426,15 @@ export default function Map() {
           {!recording ? (
             <button
               type="button"
-              onClick={() => setStartingTrack(true)}
+              onClick={() => navigate('../tracking?start=1')}
               className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white"
             >
               🚜 Tracking starten
             </button>
           ) : (
             <>
-              <button type="button" onClick={() => setShowAssist(true)} className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white">
-                🧭 Fahrhilfe
+              <button type="button" onClick={() => navigate('../tracking')} className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white">
+                🧭 Tracking öffnen
               </button>
               <button
                 type="button"
@@ -575,7 +485,7 @@ export default function Map() {
           ) : (
             canTrack && (
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => void startPlanRecording(activePlan)} className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white">
+                <button type="button" onClick={() => startPlanRecording(activePlan)} className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white">
                   ▶ Aufzeichnung fortsetzen
                 </button>
                 <button type="button" onClick={() => setCompleting(true)} className="rounded border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium">
@@ -587,21 +497,9 @@ export default function Map() {
         </div>
       )}
 
-      {recording && currentTrack?.machine_id && !showAssist && (
+      {recording && currentTrack?.machine_id && (
         <SlurryPanel track={currentTrack} points={livePoints} seasonYear={seasonYear} plan={activePlan} accuracyM={currentPosition?.accuracyM ?? null} />
       )}
-      {recording && currentTrack && showAssist && (
-        <DriveAssist
-          track={currentTrack}
-          points={livePoints}
-          accuracyM={currentPosition?.accuracyM ?? null}
-          seasonYear={seasonYear}
-          plan={activePlan}
-          onClose={() => setShowAssist(false)}
-          onStop={() => void stopRecording()}
-        />
-      )}
-
       {completing && activePlan && (
         <CompletePlanDialog
           task={activePlan.task}
@@ -647,7 +545,7 @@ export default function Map() {
         onDeleted={handleDeleted}
         onSelect={handleSelect}
         onAdoptFieldsGeometry={handleAdopted}
-        onLocationFound={(lat, lng, accuracyM) => setCurrentPosition({ lat, lng, accuracyM })}
+        onLocationFound={(lat, lng, accuracyM) => setMapPosition({ lat, lng, accuracyM })}
         onWeedSelect={handleWeedSelect}
         onPickLocation={handlePickLocation}
         focusParcelId={focusParcelId}
@@ -728,9 +626,6 @@ export default function Map() {
           onSave={saveWeed}
           onDelete={weedTarget.existing ? deleteWeed : undefined}
         />
-      )}
-      {startingTrack && (
-        <StartTrackDialog onClose={() => setStartingTrack(false)} onStart={startRecording} />
       )}
     </div>
   )

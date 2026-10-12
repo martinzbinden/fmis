@@ -17,6 +17,8 @@ import MachineDetail from './pages/MachineDetail'
 import Herds from './pages/Herds'
 import Maintenance from './pages/Maintenance'
 import OutdoorJournal from './pages/OutdoorJournal'
+import Tracking from './pages/Tracking'
+import TrackingBadge from './components/TrackingBadge'
 import { wiesenjournalHerdLocator } from './lib/herds'
 import MaintenanceTile from './components/MaintenanceTile'
 import DriveAssistTile from './components/DriveAssistTile'
@@ -45,6 +47,7 @@ const wiesenjournalModule: ModuleDescriptor = {
     { path: '', element: <JournalGrid /> },
     { path: 'liste', element: <Journal /> },
     { path: 'karte', element: <Map /> },
+    { path: 'tracking', element: <Tracking /> },
     { path: 'parzellen', element: <Parcels /> },
     { path: 'auswertung', element: <Report /> },
     { path: 'verlauf', element: <History /> },
@@ -64,6 +67,7 @@ const wiesenjournalModule: ModuleDescriptor = {
   sync: syncClient,
   herdLocator: wiesenjournalHerdLocator,
   dashboardTiles: [DriveAssistTile, MaintenanceTile],
+  globalOverlay: TrackingBadge,
   pasteImporters: [maintenancePasteImporter],
 }
 
