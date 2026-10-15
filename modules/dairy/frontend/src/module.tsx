@@ -42,6 +42,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     key,
     title,
     icon: '🥛',
+    group: 'tiere',
     navItems: [
       { to: '', label: 'Leistung', icon: '🥛' },
       { to: 'kuehe', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },

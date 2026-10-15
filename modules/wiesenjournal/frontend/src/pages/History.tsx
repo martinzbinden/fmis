@@ -12,7 +12,6 @@ const TABLE_LABEL: Record<string, string> = {
   fertilizer_types: 'Düngerart',
   n_dose_summary: 'Gabe (N)',
   daily_farm_log: 'Tagesmeldung',
-  tracks: 'Track',
   weed_observations: 'Unkraut',
 }
 
@@ -50,8 +49,6 @@ function describeEntry(entry: DataHistory): string {
       return `Gabe ${s(snap.gabe_number) ?? '?'}`
     case 'daily_farm_log':
       return s(snap.entry_date) ?? entry.row_id
-    case 'tracks':
-      return s(snap.label) ?? `${s(snap.point_count) ?? '?'} Punkte`
     case 'weed_observations':
       return `${s(snap.weed_type) ?? '?'}${snap.treatment ? ' · behandelt' : ''}`
     default:

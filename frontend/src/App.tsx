@@ -13,6 +13,8 @@ import livestockModule from '@fmis/livestock/module'
 import { createDairyModule } from '@fmis/dairy/module'
 import fieldsModule from '@fmis/fields/module'
 import wiesenjournalModule from '@fmis/wiesenjournal/module'
+import betriebModule from '@fmis/betrieb/module'
+import tiereModule from '@fmis/tiere/module'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
 import { registerAnimalProviders, registerHerdLocator } from '@fmis/core/animals'
@@ -29,6 +31,8 @@ const AVAILABLE_MODULES: ModuleDescriptor[] = [
   createDairyModule('dairy_schafe', 'Milchschafe'),
   fieldsModule,
   wiesenjournalModule,
+  tiereModule,
+  betriebModule,
 ]
 
 export default function App() {

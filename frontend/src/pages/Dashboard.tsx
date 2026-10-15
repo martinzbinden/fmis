@@ -1,7 +1,14 @@
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { logout } from '@fmis/core/auth'
-import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
+import type { ModuleDescriptor, ModuleGroup } from '@fmis/core/ModuleDescriptor'
+
+const GROUPS: { key: ModuleGroup | undefined; title: string }[] = [
+  { key: 'tiere', title: 'Tiere' },
+  { key: 'flaechen', title: 'Flächen' },
+  { key: 'betrieb', title: 'Betrieb' },
+  { key: undefined, title: 'Weitere' },
+]
 
 export default function Dashboard({
   modules,
@@ -45,20 +52,32 @@ export default function Dashboard({
             Keine Module aktiviert — bitte einen Admin kontaktieren.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {modules.map((mod) => (
-              <Link
-                key={mod.key}
-                to={`/${mod.key}`}
-                className="flex flex-col items-center justify-center gap-2 rounded-xl bg-white p-6 text-center shadow-sm active:bg-gray-100"
-              >
-                <span className="text-4xl">{mod.icon}</span>
-                <span className="font-semibold text-gray-800">{mod.title}</span>
-              </Link>
-            ))}
-          </div>
+          <>
+            {/* Heute: Dienste, Tracking, fällige Wartung (prüfen Rechte selbst) */}
+            {modules.flatMap((m) => (m.dashboardTiles ?? []).map((Tile, i) => <Tile key={`${m.key}-${i}`} />))}
+            {GROUPS.map((g) => {
+              const list = modules.filter((m) => m.group === g.key)
+              if (!list.length) return null
+              return (
+                <section key={g.title} className="mt-5">
+                  <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">{g.title}</h2>
+                  <div className="grid grid-cols-2 gap-3">
+                    {list.map((mod) => (
+                      <Link
+                        key={mod.key}
+                        to={`/${mod.key}`}
+                        className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-white p-4 text-center shadow-sm active:bg-gray-100"
+                      >
+                        <span className="text-3xl">{mod.icon}</span>
+                        <span className="font-semibold text-gray-800">{mod.title}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
+          </>
         )}
-        {modules.flatMap((m) => (m.dashboardTiles ?? []).map((Tile, i) => <Tile key={`${m.key}-${i}`} />))}
         {modules.some((m) => m.importer) && (
           <Link to="/import" className="mt-4 block rounded-xl bg-white p-4 text-center text-sm shadow-sm active:bg-gray-100">
             <span className="font-semibold text-brand-700">📥 Daten importieren</span>

@@ -1,9 +1,10 @@
 import { categoryFilterSql } from '../hooks/useShowAcker'
 import type { PGlite } from '@electric-sql/pglite'
-import type { FertilizationEntry, HerdStay, Parcel, UsageEntry } from '../types'
+import type { FertilizationEntry, Parcel, UsageEntry } from '../types'
+import type { HerdStay } from '@fmis/tiere/types'
 import { fmtDate, isoDate, todayIso, usageDescription } from './format'
-import { loadHerdData } from './herds'
-import { compositionText, herdWeidePeriods } from './herdModel'
+import { loadHerdData } from '@fmis/tiere/lib/herds'
+import { compositionText, herdWeidePeriods } from '@fmis/tiere/lib/herdModel'
 
 export interface JournalRow {
   id: string
@@ -44,7 +45,7 @@ export async function loadJournalRows(
       `select * from fertilization_entries where deleted_at is null and parcel_id = any($1)`,
       [parcelIds],
     ),
-    loadHerdData(pg),
+    loadHerdData(),
   ])
   const herdPeriods = herdWeidePeriods(herd.groups, herd.stays, herd.members, herd.counts, todayIso(), new Set(parcelIds))
 

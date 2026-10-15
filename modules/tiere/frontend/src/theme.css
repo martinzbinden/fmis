@@ -1,0 +1,16 @@
+/* Wiesenjournal-Modul: Bernstein/Heu-Markenfarbe (unterscheidet sich von
+   Mastplaner/Kulturen (grün) und Milchleistung (blau)). Aktiv, solange
+   Layout.tsx data-module="wiesenjournal" auf den umschliessenden Container
+   setzt. */
+[data-module='wiesenjournal'] {
+  --brand-50: #fffbeb;
+  --brand-100: #fef3c7;
+  --brand-200: #fde68a;
+  --brand-300: #fcd34d;
+  --brand-400: #fbbf24;
+  --brand-500: #f59e0b;
+  --brand-600: #d97706;
+  --brand-700: #b45309;
+  --brand-800: #92400e;
+  --brand-900: #78350f;
+}

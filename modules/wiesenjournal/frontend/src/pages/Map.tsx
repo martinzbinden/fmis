@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
-import { getCurrentUserEmail } from '@fmis/core/auth'
 import { useDb } from '@fmis/core/DbContext'
 import { useQuery } from '../hooks/useQuery'
 import PaddockMap, { type FertilizationFeature } from '../components/PaddockMap'
@@ -10,25 +9,23 @@ import Modal from '../components/Modal'
 import WeedForm, { type WeedFormValues } from '../components/WeedForm'
 import { createPaddock, saveNewVersion, deletePaddock, loadCurrentPaddocks } from '../lib/paddock'
 import {
-  deleteTrack,
   createWeedObservation,
   updateWeedObservation,
   deleteWeedObservation,
   getCurrentPositionOnce,
 } from '../lib/tracking'
-import { startSession, stopSession, useTrackingSession } from '../lib/trackingSession'
+// Spuren und laufende Aufzeichnung gehören dem Modul Betrieb — hier nur
+// angezeigt (Karte, Unkraut-Halt, Abdeckung). Bedienung: /betrieb/tracking.
+import { useTrackingSession } from '@fmis/betrieb/lib/trackingSession'
+import { getSyncedDb as getBetriebDb } from '@fmis/betrieb/db/access'
+import type { Track } from '@fmis/betrieb/types'
 import { detectDwell, haversineMeters } from '../lib/geo'
 import type { NearbyObservation } from '../components/MiniLocationMap'
-import { downloadGpx } from '../lib/gpx'
-import { completePlan, getActivePlan, setActivePlan, visitedParcels, type ActivePlan } from '../lib/workPlan'
-import { fmtDate, fmtDateTime, isoDate, todayIso } from '../lib/format'
-import SlurryPanel from '../components/SlurryPanel'
-import CompletePlanDialog from '../components/CompletePlanDialog'
-import { loadTrackTanks } from '../lib/slurryData'
+import { fmtDate, isoDate, todayIso } from '../lib/format'
 import { fetchCoverage, fieldShapes, localDay, sameJob, timeMs, type CoverageParcel } from '../lib/coverage'
 import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
-import type { Paddock, Parcel, Track, WeedObservation } from '../types'
+import type { Paddock, Parcel, WeedObservation } from '../types'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -39,7 +36,7 @@ async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean, s
       `select * from parcels where season_year = $1 and deleted_at is null${categoryFilterSql(showAcker, showSmall)} order by sort_order, name`,
       [seasonYear],
     ),
-    pg.query<Track>('select * from tracks where season_year = $1 and deleted_at is null order by started_at desc', [seasonYear]),
+    getBetriebDb().then((b) => b.query<Track>('select * from tracks where season_year = $1 and deleted_at is null order by started_at desc', [seasonYear])),
     pg.query<WeedObservation>('select * from weed_observations where season_year = $1 and deleted_at is null order by observed_at desc', [
       seasonYear,
     ]),
@@ -65,17 +62,6 @@ async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean, s
   return { paddocks, parcels, tracks, weedObservations, fertilization }
 }
 
-/** Punkte eines gespeicherten Tracks (GeoJSON LineString). */
-function trackPoints(t: Track): { lat: number; lng: number }[] {
-  if (!t.geometry) return []
-  try {
-    const g = JSON.parse(t.geometry) as { coordinates: [number, number][] }
-    return g.coordinates.map(([lng, lat]) => ({ lat, lng }))
-  } catch {
-    return []
-  }
-}
-
 export default function Map() {
   const [searchParams, setSearchParams] = useSearchParams()
   const db = useDb()
@@ -84,7 +70,8 @@ export default function Map() {
   const [showAcker] = useShowAcker()
   const [showSmall] = useShowSmall()
   const { data, refresh } = useQuery((pg) => loadMapData(pg, seasonYear, showAcker, showSmall), [seasonYear, showAcker, showSmall])
-  const canTrack = useHasPermission('wiesenjournal:tracking:write')
+  const canTrack = useHasPermission('betrieb:tracking:write')
+  const canWeed = useHasPermission('wiesenjournal:tracking:write')
 
   const [detailTarget, setDetailTarget] = useState<Paddock | null>(null)
   const [newPaddockId, setNewPaddockId] = useState<string | null>(null)
@@ -94,9 +81,7 @@ export default function Map() {
   const tracks = data?.tracks ?? []
   const weedObservations = data?.weedObservations ?? []
 
-  // --- Tracking: läuft als eigene Sitzung (lib/trackingSession.ts), die
-  // Bedienung ist im Tracking-Vollbild (pages/Tracking.tsx) ---
-  const navigate = useNavigate()
+  // --- Laufende Aufzeichnung (Betrieb) nur anzeigen ---
   const session = useTrackingSession()
   const recording = session.track != null
   const currentTrack = session.track
@@ -113,59 +98,11 @@ export default function Map() {
     setDwellCandidate(detectDwell(livePoints))
   }, [recording, livePoints])
 
-  // --- Arbeitsplan-Ausführung (pages/WorkPlan.tsx) ---
-  const [activePlan, setActivePlanState] = useState<ActivePlan | null>(() => getActivePlan())
-  const [completing, setCompleting] = useState(false)
-  const updateActivePlan = (plan: ActivePlan | null) => {
-    setActivePlan(plan)
-    setActivePlanState(plan)
-  }
-  // Befahrene Parzellen: alle Spuren seit Planstart plus laufende Aufzeichnung.
-  const visited = useMemo(() => {
-    if (!activePlan) return new Set<string>()
-    const earlier = tracks.filter((t) => timeMs(t.started_at) >= timeMs(activePlan.started_at)).flatMap(trackPoints)
-    return visitedParcels(activePlan.task.items, [...earlier, ...(recording ? livePoints : [])])
-  }, [activePlan, tracks, livePoints, recording])
-
-  function startPlanRecording(plan: ActivePlan) {
-    const track = startSession(seasonYear, {
-      label: `${plan.task.title} ${fmtDate(plan.task.date)}`,
-      widthM: plan.width_m,
-      workType: plan.task.work_type,
-      machine: [plan.machine_name, plan.tractor_name].filter(Boolean).join(' + ') || null,
-      operator: getCurrentUserEmail(),
-      machineId: plan.machine_id,
-      tractorId: plan.tractor_id ?? null,
-    })
-    updateActivePlan({ ...plan, track_id: track.id })
-    refresh()
-    navigate('../tracking')
-  }
-
-  // Vom Arbeitsplan hierher: Aufzeichnung sofort starten.
-  const autoStarted = useRef(false)
+  // ?abdeckung=<Spur> (aus dem Tracking): Doppelt/Lücken zeigen; alte Links
+  // (?fahrhilfe=1, ?plan=start, ?abschluss=1) führen in den Betrieb.
   useEffect(() => {
-    if (searchParams.get('plan') !== 'start' || autoStarted.current || !canTrack) return
-    autoStarted.current = true
-    setSearchParams({}, { replace: true })
-    const plan = getActivePlan()
-    if (plan && !recording) startPlanRecording(plan)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, canTrack])
-
-  // Alte Links (?fahrhilfe=1) → Tracking-Vollbild; ?abschluss=1 nach Stop
-  // im Tracking: Plan abschliessen; ?abdeckung=<Spur>: Doppelt/Lücken zeigen
-  useEffect(() => {
-    if (searchParams.get('fahrhilfe') === '1') {
-      navigate('../tracking', { replace: true })
-      return
-    }
-    if (searchParams.get('abschluss') === '1') {
-      setSearchParams({}, { replace: true })
-      if (activePlan) setCompleting(true)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+    if (searchParams.get('fahrhilfe') === '1') setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams])
   const coverageRequested = useRef<string | null>(null)
   useEffect(() => {
     const id = searchParams.get('abdeckung')
@@ -177,42 +114,6 @@ export default function Map() {
     void showCoverage(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, tracks])
-
-  async function stopRecording() {
-    try {
-      await stopSession()
-    } catch (e) {
-      alert(`Spur konnte nicht gespeichert werden: ${e instanceof Error ? e.message : String(e)}`)
-    }
-    refresh()
-    if (activePlan) setCompleting(true)
-  }
-
-  // Gezählte Fässer der Plan-Ausführung je Parzelle (components/SlurryPanel.tsx)
-  const planTrackIds = useMemo(
-    () => (activePlan ? tracks.filter((t) => timeMs(t.started_at) >= timeMs(activePlan.started_at)).map((t) => t.id) : []),
-    [activePlan, tracks],
-  )
-  const { data: planTanks } = useQuery((pg) => loadTrackTanks(pg, planTrackIds), [planTrackIds.join(','), completing])
-  const tanksByParcel = useMemo(() => {
-    const m = new globalThis.Map<string, { m3: number; count: number }>()
-    for (const t of planTanks ?? []) {
-      if (!t.parcel_id) continue
-      const e = m.get(t.parcel_id) ?? { m3: 0, count: 0 }
-      e.m3 = Math.round((e.m3 + t.volume_m3) * 10) / 10
-      e.count++
-      m.set(t.parcel_id, e)
-    }
-    return m
-  }, [planTanks])
-
-  async function finishPlan(done: Set<string>, date: string, amounts: globalThis.Map<string, { amount: number; count: number | null }>) {
-    if (!activePlan) return
-    await completePlan(db, activePlan, done, date, amounts)
-    updateActivePlan(null)
-    setCompleting(false)
-    refresh()
-  }
 
   // --- Abdeckung: Überlappung und Lücken einer Arbeit (lib/coverage.ts) ---
   const [coverage, setCoverage] = useState<{ title: string; widthM: number; tracks: number; parcels: CoverageParcel[] } | null>(null)
@@ -235,12 +136,6 @@ export default function Map() {
     } finally {
       setCoverageBusy(null)
     }
-  }
-
-  async function handleDeleteTrack(track: Track) {
-    if (!confirm(`Track "${track.label ?? fmtDateTime(track.started_at)}" löschen?`)) return
-    await deleteTrack(track)
-    refresh()
   }
 
   // --- Unkraut-Knopf ---
@@ -421,32 +316,17 @@ export default function Map() {
         Version gespeichert — die Karte zeigt immer den aktuellen Ist-Zustand, die Historie bleibt erhalten.
       </p>
 
-      {canTrack && (
+      {(canTrack || canWeed) && (
         <div className="flex flex-wrap items-center gap-2">
-          {!recording ? (
-            <button
-              type="button"
-              onClick={() => navigate('../tracking?start=1')}
-              className="rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-medium text-white"
+          {canTrack && (
+            <Link
+              to={recording ? '/betrieb/tracking' : '/betrieb/tracking?start=1'}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white ${recording ? 'bg-brand-700' : 'bg-purple-600'}`}
             >
-              🚜 Tracking starten
-            </button>
-          ) : (
-            <>
-              <button type="button" onClick={() => navigate('../tracking')} className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white">
-                🧭 Tracking öffnen
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('Aufzeichnung beenden?')) void stopRecording()
-                }}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white"
-              >
-                ⏹ Tracking beenden ({livePoints.length} Punkte)
-              </button>
-            </>
+              {recording ? `🧭 Tracking öffnen (${livePoints.length} Punkte)` : '🚜 Tracking starten'}
+            </Link>
           )}
+          {canWeed && (
           <button
             type="button"
             onClick={openWeedButton}
@@ -454,64 +334,8 @@ export default function Map() {
           >
             🌿 Unkraut melden
           </button>
-        </div>
-      )}
-
-      {activePlan && (
-        <div className={`space-y-2 rounded-lg p-3 text-sm ${recording ? 'bg-green-50 text-green-900' : 'bg-amber-50 text-amber-900'}`}>
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="font-semibold">
-              {recording ? '● Arbeitsplan läuft' : 'Arbeitsplan unterbrochen'}: {activePlan.task.title} · {fmtDate(activePlan.task.date)}
-              {activePlan.machine_name ? ` · ${activePlan.machine_name}` : ''}
-              {activePlan.tractor_name ? ` + ${activePlan.tractor_name}` : ''}
-            </span>
-            <span className="text-xs">
-              {visited.size} / {activePlan.task.items.length} Parzellen befahren
-            </span>
-          </div>
-          <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs sm:grid-cols-3">
-            {activePlan.task.items.map((it) => (
-              <li key={it.parcel_id} className={visited.has(it.parcel_id) ? 'font-semibold' : 'opacity-70'}>
-                {visited.has(it.parcel_id) ? '✓' : '○'} {it.parcel_name}
-                {it.amount != null && it.unit ? ` · ${it.amount} ${it.unit === 'm3' ? 'm³' : it.unit}` : ''}
-              </li>
-            ))}
-          </ul>
-          {recording ? (
-            <p className="text-xs">
-              Bildschirm bleibt eingeschaltet. App im Vordergrund lassen — im Hintergrund oder bei ausgeschaltetem Bildschirm
-              zeichnet der Browser kein GPS auf. Ladekabel anschliessen.
-            </p>
-          ) : (
-            canTrack && (
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => startPlanRecording(activePlan)} className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white">
-                  ▶ Aufzeichnung fortsetzen
-                </button>
-                <button type="button" onClick={() => setCompleting(true)} className="rounded border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium">
-                  Ausführung abschliessen
-                </button>
-              </div>
-            )
           )}
         </div>
-      )}
-
-      {recording && currentTrack?.machine_id && (
-        <SlurryPanel track={currentTrack} points={livePoints} seasonYear={seasonYear} plan={activePlan} accuracyM={currentPosition?.accuracyM ?? null} />
-      )}
-      {completing && activePlan && (
-        <CompletePlanDialog
-          task={activePlan.task}
-          visited={visited}
-          tanks={tanksByParcel}
-          onClose={() => setCompleting(false)}
-          onCancelPlan={() => {
-            updateActivePlan(null)
-            setCompleting(false)
-          }}
-          onDone={finishPlan}
-        />
       )}
 
       {dwellCandidate && (
@@ -552,36 +376,13 @@ export default function Map() {
       />
 
       {tracks.length > 0 && (
-        <div className="space-y-1">
-          <h2 className="text-sm font-bold text-gray-700">Tracks {seasonYear}</h2>
-          <ul className="space-y-1">
-            {tracks.map((t) => (
-              <li key={t.id} className="flex items-center justify-between rounded-lg bg-white p-2 text-xs shadow-sm">
-                <span>
-                  {t.label ?? fmtDateTime(t.started_at)}
-                  {t.work_type && <span className="text-gray-500"> · {t.work_type}</span>}
-                  {t.machine && <span className="text-gray-500"> · {t.machine}</span>}
-                  {' · '}
-                  {t.point_count} Punkte
-                  {!t.ended_at && <span className="ml-1 font-medium text-red-600">(läuft)</span>}
-                </span>
-                <div className="flex gap-2">
-                  {t.width_m != null && t.ended_at && (
-                    <button type="button" disabled={coverageBusy != null} onClick={() => void showCoverage(t)} className="text-brand-700 disabled:opacity-50">
-                      {coverageBusy === t.id ? 'rechnet…' : 'Abdeckung'}
-                    </button>
-                  )}
-                  <button type="button" onClick={() => downloadGpx(t)} className="text-brand-700">
-                    GPX
-                  </button>
-                  <button type="button" onClick={() => handleDeleteTrack(t)} className="text-red-600">
-                    Löschen
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <p className="text-xs text-gray-500">
+          {tracks.length} {tracks.length === 1 ? 'Spur' : 'Spuren'} {seasonYear} auf der Karte — Liste, GPX und Abdeckung im{' '}
+          <Link to="/betrieb/tracking" className="text-brand-700 underline">
+            Tracking
+          </Link>
+          .{coverageBusy && ' Abdeckung wird berechnet…'}
+        </p>
       )}
 
       {editingTarget && (

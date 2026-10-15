@@ -32,6 +32,7 @@ const livestockModule: ModuleDescriptor = {
   key: 'livestock',
   title: 'Mastplaner',
   icon: '🐑',
+  group: 'tiere',
   navItems: [
     { to: '', label: 'Dashboard', icon: '🏠' },
     { to: 'tiere', label: 'Tiere', icon: '🐑' },

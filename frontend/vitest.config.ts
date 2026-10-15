@@ -13,6 +13,8 @@ export default defineConfig({
       '@fmis/dairy': fileURLToPath(new URL('../modules/dairy/frontend/src', import.meta.url)),
       '@fmis/fields': fileURLToPath(new URL('../modules/fields/frontend/src', import.meta.url)),
       '@fmis/wiesenjournal': fileURLToPath(new URL('../modules/wiesenjournal/frontend/src', import.meta.url)),
+      '@fmis/betrieb': fileURLToPath(new URL('../modules/betrieb/frontend/src', import.meta.url)),
+      '@fmis/tiere': fileURLToPath(new URL('../modules/tiere/frontend/src', import.meta.url)),
     },
   },
   test: {

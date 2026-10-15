@@ -25,11 +25,12 @@ import type {
   FertilizationEntry,
   FertilizerType,
   Parcel,
-  Track,
   UsageEntry,
   UsageType,
   YieldUnit,
 } from '../types'
+import type { Track } from '@fmis/betrieb/types'
+import { getSyncedDb as getBetriebDb } from '@fmis/betrieb/db/access'
 
 // Reihenfolge der Typ-Chips: erst das Alltägliche (Weide/Schnitte), dann Pflege.
 const USAGE_TYPE_ORDER: UsageType[] = [
@@ -193,11 +194,11 @@ export default function DayEntryEditor({
         loadDayEntries(pg, parcelId, date),
         loadFertilizerTypes(pg),
         // Tracks rund um den Tag (±1 Tag) als Kandidaten für den Flächenbezug
-        pg.query<Track>(
+        getBetriebDb().then((b) => b.query<Track>(
           `select * from tracks where deleted_at is null and geometry is not null
            and started_at::date between ($1::date - 1) and ($1::date + 1) order by started_at`,
           [date],
-        ),
+        )),
       ])
       if (cancelled) return
       const shareRows = await pg.query<{ entry_id: string; parcel_id: string }>(

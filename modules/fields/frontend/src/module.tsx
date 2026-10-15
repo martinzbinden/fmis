@@ -19,6 +19,7 @@ const fieldsModule: ModuleDescriptor = {
   key: 'fields',
   title: 'Kulturen',
   icon: '🗺️',
+  group: 'flaechen',
   navItems: [
     { to: '', label: 'Karte', icon: '🗺️' },
     { to: 'fruchtfolge', label: 'Fruchtfolge', icon: '🔄' },

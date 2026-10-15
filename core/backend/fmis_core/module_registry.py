@@ -29,5 +29,10 @@ MODULE_SPECS: list[ModuleSpec] = [
     ModuleSpec(key="dairy", source="dairy", title="Milchkühe", schema_dir=REPO_ROOT / "modules" / "dairy" / "schema"),
     ModuleSpec(key="dairy_schafe", source="dairy", title="Milchschafe", schema_dir=REPO_ROOT / "modules" / "dairy" / "schema"),
     ModuleSpec(key="fields", source="fields", title="Kulturen", schema_dir=REPO_ROOT / "modules" / "fields" / "schema"),
+    # Betrieb und Tiere VOR dem Wiesenjournal: ihre Server-Migrationen
+    # übernehmen Bestandsdaten aus dem Wiesenjournal, dessen schema/0027 die
+    # alten Tabellen danach entfernt (Umzug Oktober 2026).
+    ModuleSpec(key="betrieb", source="betrieb", title="Betrieb", schema_dir=REPO_ROOT / "modules" / "betrieb" / "schema"),
+    ModuleSpec(key="tiere", source="tiere", title="Tiere", schema_dir=REPO_ROOT / "modules" / "tiere" / "schema"),
     ModuleSpec(key="wiesenjournal", source="wiesenjournal", title="Wiesenjournal", schema_dir=REPO_ROOT / "modules" / "wiesenjournal" / "schema"),
 ]

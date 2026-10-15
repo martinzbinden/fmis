@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation, useParams } from 'react-router-dom'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import { DbProvider } from '@fmis/core/DbContext'
 import { getDb } from './db/pglite'
@@ -11,21 +11,16 @@ import Parcels from './pages/Parcels'
 import Report from './pages/Report'
 import History from './pages/History'
 import FertilizerTypes from './pages/FertilizerTypes'
-import WorkPlan from './pages/WorkPlan'
-import Machines from './pages/Machines'
-import MachineDetail from './pages/MachineDetail'
-import Herds from './pages/Herds'
-import Maintenance from './pages/Maintenance'
-import OutdoorJournal from './pages/OutdoorJournal'
-import Tracking from './pages/Tracking'
-import Duty from './pages/Duty'
-import DutyTile from './components/DutyTile'
-import TrackingBadge from './components/TrackingBadge'
-import { wiesenjournalHerdLocator } from './lib/herds'
-import MaintenanceTile from './components/MaintenanceTile'
-import DriveAssistTile from './components/DriveAssistTile'
-import { maintenancePasteImporter } from './lib/pasteMaintenance'
 import './theme.css'
+
+// Bis 2026-10 lagen Dienste, Tracking, Maschinen, Arbeitsplan und Herden im
+// Wiesenjournal. Alte Links/Lesezeichen (auch Mail-/Kalender-Links) leiten
+// weiter — Suchparameter bleiben erhalten.
+function Moved({ to }: { to: string }) {
+  const { search } = useLocation()
+  const { id } = useParams()
+  return <Navigate to={to.replace(':id', id ?? '') + search} replace />
+}
 
 function WiesenjournalDbProvider({ children }: { children: ReactNode }) {
   return <DbProvider getDb={getDb}>{children}</DbProvider>
@@ -35,11 +30,10 @@ const wiesenjournalModule: ModuleDescriptor = {
   key: 'wiesenjournal',
   title: 'Wiesenjournal',
   icon: '🌾',
+  group: 'flaechen',
   navItems: [
     { to: '', label: 'Raster', icon: '📅' },
     { to: 'liste', label: 'Journal', icon: '📋' },
-    { to: 'arbeitsplan', label: 'Plan', icon: '🚜' },
-    { to: 'herden', label: 'Herden', icon: '🐑' },
     { to: 'karte', label: 'Karte', icon: '🗺️' },
     { to: 'parzellen', label: 'Parzellen', icon: '🌱' },
     { to: 'auswertung', label: 'Auswertung', icon: '📊' },
@@ -49,29 +43,23 @@ const wiesenjournalModule: ModuleDescriptor = {
     { path: '', element: <JournalGrid /> },
     { path: 'liste', element: <Journal /> },
     { path: 'karte', element: <Map /> },
-    { path: 'tracking', element: <Tracking /> },
-    { path: 'dienste', element: <Duty /> },
     { path: 'parzellen', element: <Parcels /> },
     { path: 'auswertung', element: <Report /> },
     { path: 'verlauf', element: <History /> },
     // Kein Nav-Eintrag (Bottom-Bar ist voll) — verlinkt von Parzellen/Auswertung.
     { path: 'duengerarten', element: <FertilizerTypes /> },
-    { path: 'arbeitsplan', element: <WorkPlan /> },
-    { path: 'herden', element: <Herds /> },
-    // Kein Nav-Eintrag — verlinkt von Herden und der Tagesmeldung.
-    { path: 'auslauf', element: <OutdoorJournal /> },
-    { path: 'maschinen', element: <Machines /> },
-    { path: 'maschinen/:id', element: <MachineDetail /> },
-    // Kein Nav-Eintrag — verlinkt von Maschinen
-    { path: 'wartung', element: <Maintenance /> },
+    { path: 'tracking', element: <Moved to="/betrieb/tracking" /> },
+    { path: 'dienste', element: <Moved to="/betrieb/dienste" /> },
+    { path: 'arbeitsplan', element: <Moved to="/betrieb/arbeitsplan" /> },
+    { path: 'maschinen', element: <Moved to="/betrieb/maschinen" /> },
+    { path: 'maschinen/:id', element: <Moved to="/betrieb/maschinen/:id" /> },
+    { path: 'wartung', element: <Moved to="/betrieb/wartung" /> },
+    { path: 'herden', element: <Moved to="/tiere" /> },
+    { path: 'auslauf', element: <Moved to="/tiere/auslauf" /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],
   DbProvider: WiesenjournalDbProvider,
   sync: syncClient,
-  herdLocator: wiesenjournalHerdLocator,
-  dashboardTiles: [DutyTile, DriveAssistTile, MaintenanceTile],
-  globalOverlay: TrackingBadge,
-  pasteImporters: [maintenancePasteImporter],
 }
 
 export default wiesenjournalModule

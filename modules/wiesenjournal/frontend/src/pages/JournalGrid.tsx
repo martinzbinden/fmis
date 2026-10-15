@@ -4,8 +4,8 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { loadEntriesInRange } from '../lib/journalEntry'
 import { loadSharesInRange } from '../lib/fertilization'
-import { loadHerdData } from '../lib/herds'
-import { accessIndex, categoryDay, type CategoryDay } from '../lib/outdoorAccess'
+import { loadHerdData } from '@fmis/tiere/lib/herds'
+import { accessIndex, categoryDay, type CategoryDay } from '@fmis/tiere/lib/outdoorAccess'
 import JournalGridComponent, { type DayIndex, LABEL_COL_WIDTH as LABEL_COL_WIDTH_NEU } from '../components/JournalGrid'
 import JournalGridClassic, { LABEL_COL_WIDTH as LABEL_COL_WIDTH_KLASSISCH } from '../components/JournalGridClassic'
 import DayEntryEditor from '../components/DayEntryEditor'
@@ -62,7 +62,7 @@ async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: st
     loadEntriesInRange(pg, from, to),
     pg.query<DailyFarmLog>('select * from daily_farm_log where entry_date between $1 and $2 and deleted_at is null', [from, to]),
     loadSharesInRange(pg, from, to),
-    loadHerdData(pg),
+    loadHerdData(),
   ])
   return { parcels, usage, fertilizations, dailyLogs, shares, herd }
 }

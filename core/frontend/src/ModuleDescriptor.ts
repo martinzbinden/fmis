@@ -18,10 +18,14 @@ export interface NavItem {
  * modules/<name>/frontend/src/module.tsx). Der Shell kennt keine
  * modulspezifischen Details, nur diese Schnittstelle.
  */
+export type ModuleGroup = 'tiere' | 'flaechen' | 'betrieb'
+
 export interface ModuleDescriptor {
   key: string
   title: string
   icon: string
+  /** Abschnitt auf der Übersicht (frontend/src/pages/Dashboard.tsx). */
+  group?: ModuleGroup
   navItems: NavItem[]
   /** Permission-String fürs 📜-Icon in der Nav, z.B. "livestock:history:read". */
   historyPermission: string
@@ -34,7 +38,7 @@ export interface ModuleDescriptor {
   importer?: ModuleImporter
   /** Tiere für Herdengruppen und Standorte (core/frontend/src/animals.ts). */
   animals?: AnimalProvider
-  /** Standort von Tieren in Herdengruppen (Wiesenjournal). */
+  /** Standort von Tieren in Herdengruppen (Modul Tiere). */
   herdLocator?: HerdLocator
   /** Zusätzliche Kacheln auf der Übersicht (frontend/src/pages/Dashboard.tsx),
    * z.B. Maschinen & Wartung — prüfen ihre Rechte selbst. */

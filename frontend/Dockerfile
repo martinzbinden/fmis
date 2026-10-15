@@ -24,6 +24,10 @@ COPY modules/fields/frontend/src ./modules/fields/frontend/src
 COPY modules/fields/schema ./modules/fields/schema
 COPY modules/wiesenjournal/frontend/src ./modules/wiesenjournal/frontend/src
 COPY modules/wiesenjournal/schema ./modules/wiesenjournal/schema
+COPY modules/betrieb/frontend/src ./modules/betrieb/frontend/src
+COPY modules/betrieb/schema ./modules/betrieb/schema
+COPY modules/tiere/frontend/src ./modules/tiere/frontend/src
+COPY modules/tiere/schema ./modules/tiere/schema
 
 # Leer = same-origin (Frontend+Backend hinter Traefik unter derselben Domain).
 ARG VITE_API_URL=

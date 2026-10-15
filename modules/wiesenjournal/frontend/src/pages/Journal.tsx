@@ -83,7 +83,7 @@ export default function Journal() {
             key={`${row.kind}-${row.id}`}
             className="cursor-pointer rounded-lg bg-white p-3 shadow-sm"
             // Weide aus einer Herde ändert man unter Herden, nicht als Tageseintrag
-            onClick={() => (row.herd ? navigate('../herden') : setEditorTarget({ parcel: row.parcel, date: row.date }))}
+            onClick={() => (row.herd ? navigate('/tiere') : setEditorTarget({ parcel: row.parcel, date: row.date }))}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-gray-500">

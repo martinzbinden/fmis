@@ -48,75 +48,12 @@ SYNC_TABLES: dict[str, list[str]] = {
         "laufhof_kaelber", "laufhof_galtkuehe", "laufhof_schafe", "laufhof_legehennen",
         "animal_counts", "wetter_quelle",
     ],
-    "machines": [
-        "id", "name", "kind", "capacity", "capacity_unit", "width_m", "notes",
-        "active", "sort_order", "updated_at", "deleted_at",
-        "manufacturer", "model", "type_no", "serial_no", "year_built", "weight_kg",
-        "power_hp", "front_pto", "tractor_id", "owner", "category", "flow_m3_min",
-    ],
     # Nur die Angaben; der Inhalt liegt in machine_file_data (nur Server).
-    "machine_files": [
-        "id", "machine_id", "kind", "title", "filename", "content_type",
-        "size_bytes", "source_url", "sort_order", "updated_at", "deleted_at",
-    ],
-    "tracks": [
-        "id", "season_year", "label", "started_at", "ended_at", "width_m",
-        "geometry", "point_times", "point_count", "notes", "created_by",
-        "updated_at", "deleted_at", "work_type", "machine", "operator", "machine_id",
-        "tractor_id", "guide_ref",
-    ],
     "weed_observations": [
         "id", "season_year", "parcel_id", "track_id", "observed_at",
         "weed_type", "severity", "treatment", "treated_at", "source",
         "geometry", "notes", "created_by", "updated_at", "deleted_at",
         "accuracy_m",
-    ],
-    "locations": [
-        "id", "name", "site", "kind", "sort_order", "active", "notes", "updated_at", "deleted_at",
-        "laufhof",
-    ],
-    "herd_groups": [
-        "id", "name", "species", "milking", "active", "sort_order", "notes", "updated_at", "deleted_at",
-    ],
-    "herd_stays": [
-        "id", "group_id", "slot", "location_id", "parcel_id", "day_only", "from_date", "to_date",
-        "notes", "updated_at", "deleted_at",
-    ],
-    "herd_members": [
-        "id", "group_id", "module_key", "animal_id", "label", "category", "from_date", "to_date",
-        "updated_at", "deleted_at",
-    ],
-    "herd_counts": [
-        "id", "group_id", "category", "count", "from_date", "to_date", "notes", "updated_at", "deleted_at",
-    ],
-    "herd_laufhof": ["id", "group_id", "entry_date", "notes", "updated_at", "deleted_at"],
-    "duty_people": ["id", "name", "email", "color", "active", "sort_order", "notes", "updated_at", "deleted_at"],
-    "duty_types": [
-        "id", "name", "start_time", "duration_min", "weekdays", "color", "description", "active",
-        "sort_order", "updated_at", "deleted_at",
-    ],
-    "duty_skills": ["id", "person_id", "type_id", "updated_at", "deleted_at"],
-    "duty_absences": ["id", "person_id", "from_date", "to_date", "kind", "notes", "created_by", "updated_at", "deleted_at"],
-    "duty_shifts": ["id", "type_id", "date", "slot", "person_id", "notes", "assigned_by", "updated_at", "deleted_at"],
-    "duty_changes": [
-        "id", "shift_id", "date", "type_id", "from_person", "to_person", "kind", "changed_by", "changed_at",
-        "notes", "updated_at", "deleted_at",
-    ],
-    "maintenance_tasks": [
-        "id", "machine_id", "title", "task_type", "interval_count", "interval_months", "notes",
-        "active", "sort_order", "template_key", "updated_at", "deleted_at",
-    ],
-    "maintenance_log": [
-        "id", "machine_id", "done_date", "entry_type", "title", "task_ids", "counter", "cost_chf",
-        "material", "done_by", "notes", "updated_at", "deleted_at",
-    ],
-    "machine_todos": [
-        "id", "machine_id", "title", "notes", "priority", "due_date", "status", "done_date",
-        "log_id", "done_log_id", "created_by", "updated_at", "deleted_at",
-    ],
-    "tank_events": [
-        "id", "track_id", "machine_id", "parcel_id", "event_at", "source", "volume_m3", "distance_m",
-        "spread_s", "width_m", "lat", "lng", "notes", "updated_at", "deleted_at", "unit",
     ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
@@ -139,28 +76,8 @@ TABLE_AREA: dict[str, str] = {
     "fertilization_shares": "wiesenjournal:duengung",
     "n_dose_summary": "wiesenjournal:duengung",
     "daily_farm_log": "wiesenjournal:tagesmeldung",
-    "machines": "wiesenjournal:tracking",
-    "machine_files": "wiesenjournal:tracking",
     # Wartungsjournal gehört zu den Maschinen
-    "maintenance_tasks": "wiesenjournal:tracking",
-    "maintenance_log": "wiesenjournal:tracking",
-    "tank_events": "wiesenjournal:tracking",
-    "machine_todos": "wiesenjournal:tracking",
-    "tracks": "wiesenjournal:tracking",
     "weed_observations": "wiesenjournal:tracking",
-    # Herden und Standorte gehören zum Weidegang
-    "locations": "wiesenjournal:weide",
-    "herd_groups": "wiesenjournal:weide",
-    "herd_stays": "wiesenjournal:weide",
-    "herd_members": "wiesenjournal:weide",
-    "herd_counts": "wiesenjournal:weide",
-    "herd_laufhof": "wiesenjournal:weide",
-    "duty_people": "wiesenjournal:dienste",
-    "duty_types": "wiesenjournal:dienste",
-    "duty_skills": "wiesenjournal:dienste",
-    "duty_absences": "wiesenjournal:dienste",
-    "duty_shifts": "wiesenjournal:dienste",
-    "duty_changes": "wiesenjournal:dienste",
     "data_history": "wiesenjournal:history",
 }
 
@@ -173,6 +90,5 @@ GEOMETRY_COLUMNS: dict[str, set[str]] = {
     "parcels": {"base_geometry"},
     "paddocks": {"geometry"},
     "fertilization_entries": {"geometry"},
-    "tracks": {"geometry"},
     "weed_observations": {"geometry"},
 }

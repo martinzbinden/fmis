@@ -17,9 +17,11 @@ from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import dev_seed as livestock_dev_seed
 from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
-from modules.wiesenjournal.backend.app import duty_feed as wiesenjournal_duty_feed
+from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
+from modules.betrieb.backend.app import machine_files as betrieb_machine_files
+from modules.betrieb.backend.app import sync as betrieb_sync
+from modules.tiere.backend.app import sync as tiere_sync
 from modules.wiesenjournal.backend.app import fertilization as wiesenjournal_fertilization
-from modules.wiesenjournal.backend.app import machine_files as wiesenjournal_machine_files
 from modules.wiesenjournal.backend.app import parcels_import as wiesenjournal_parcels_import
 from modules.wiesenjournal.backend.app import reports as wiesenjournal_reports
 from modules.wiesenjournal.backend.app import sync as wiesenjournal_sync
@@ -35,6 +37,8 @@ _MODULE_ROUTER_FACTORIES = {
     "dairy": dairy_sync.build_router,
     "fields": lambda key: fields_sync.router,
     "wiesenjournal": lambda key: wiesenjournal_sync.router,
+    "betrieb": lambda key: betrieb_sync.router,
+    "tiere": lambda key: tiere_sync.router,
 }
 
 
@@ -109,17 +113,17 @@ app.include_router(
     dependencies=[Depends(require_module_enabled("wiesenjournal"))],
 )
 app.include_router(
-    wiesenjournal_machine_files.router,
-    prefix="/wiesenjournal",
-    dependencies=[Depends(require_module_enabled("wiesenjournal"))],
+    betrieb_machine_files.router,
+    prefix="/betrieb",
+    dependencies=[Depends(require_module_enabled("betrieb"))],
 )
 app.include_router(
-    wiesenjournal_duty_feed.router,
-    prefix="/wiesenjournal",
-    dependencies=[Depends(require_module_enabled("wiesenjournal"))],
+    betrieb_duty_feed.router,
+    prefix="/betrieb",
+    dependencies=[Depends(require_module_enabled("betrieb"))],
 )
 # Kalender-Abo der Dienste: ohne Anmeldung, der geheime Link ist der Schutz
-app.include_router(wiesenjournal_duty_feed.public_router, prefix="/wiesenjournal")
+app.include_router(betrieb_duty_feed.public_router, prefix="/betrieb")
 app.include_router(
     livestock_reader.router,
     prefix="/livestock",

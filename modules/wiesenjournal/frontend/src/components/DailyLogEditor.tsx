@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { getDb } from '../db/pglite'
 import { upsertRow } from '../db/write'
 import { ANIMAL_CATEGORIES, ANIMAL_CATEGORY_LABEL, fmtDate } from '../lib/format'
-import { loadHerdData } from '../lib/herds'
-import { accessIndex, categoryDay, categoryMark, categoryTitle, type CategoryDay } from '../lib/outdoorAccess'
+import { loadHerdData } from '@fmis/tiere/lib/herds'
+import { accessIndex, categoryDay, categoryMark, categoryTitle, type CategoryDay } from '@fmis/tiere/lib/outdoorAccess'
 import Modal from './Modal'
 import type { AnimalCategory, DailyFarmLog } from '../types'
 
@@ -39,7 +39,7 @@ export default function DailyLogEditor({
         'select * from daily_farm_log where entry_date = $1 and deleted_at is null limit 1',
         [date],
       )
-      const herdData = await loadHerdData(pg)
+      const herdData = await loadHerdData()
       if (cancelled) return
       setHerd(categoryDay(accessIndex(herdData), herdData, date))
       const e = rows[0] ?? null
@@ -133,11 +133,11 @@ export default function DailyLogEditor({
             {herd.size > 0 && (
               <p className="mt-1 text-xs text-gray-500">
                 Aus den Herden (Weide, Laufhof, Ställe mit ständigem Laufhof) — gilt ohne Häkchen. Laufhofgänge je Gruppe unter{' '}
-                <Link to="../herden" className="text-brand-700 underline">
+                <Link to="/tiere" className="text-brand-700 underline">
                   Herden
                 </Link>{' '}
                 oder im{' '}
-                <Link to="../auslauf" className="text-brand-700 underline">
+                <Link to="/tiere/auslauf" className="text-brand-700 underline">
                   Auslaufjournal
                 </Link>
                 .

@@ -16,7 +16,7 @@ export default function HerdUsageNote({ entries }: { entries: UsageEntry[] }) {
           </li>
         ))}
       </ul>
-      <Link to="../herden" className="text-xs font-medium text-emerald-800 underline">
+      <Link to="/tiere" className="text-xs font-medium text-emerald-800 underline">
         Ändern unter Herden →
       </Link>
     </div>

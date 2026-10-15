@@ -20,9 +20,10 @@ import {
   todayIso,
 } from '../lib/format'
 import { fetchFertilizationMap, type FertilizationMapProps } from '../lib/report'
-import type { TrackPoint } from '../lib/tracking'
+import type { TrackPoint } from '@fmis/betrieb/lib/tracking'
 import type { CoverageParcel } from '../lib/coverage'
-import type { Paddock, Parcel, Track, WeedObservation } from '../types'
+import type { Paddock, Parcel, WeedObservation } from '../types'
+import type { Track } from '@fmis/betrieb/types'
 
 const BACKGROUND_LAYERS = {
   pixelkarte: { label: 'Pixelkarte', wmtsLayer: 'ch.swisstopo.pixelkarte-farbe', maxZoom: 18 },

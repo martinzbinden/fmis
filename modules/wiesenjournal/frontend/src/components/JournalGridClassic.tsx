@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import type { AnimalCategory, DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { categoryMark, categoryTitle, type CategoryDay } from '../lib/outdoorAccess'
+import { categoryMark, categoryTitle, type CategoryDay } from '@fmis/tiere/lib/outdoorAccess'
 import {
   USAGE_COLOR,
   USAGE_COLOR_FAMILY,

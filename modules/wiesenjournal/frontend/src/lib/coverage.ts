@@ -3,8 +3,8 @@
 // (backend/app/fertilization.py POST /fertilization/coverage).
 
 import { API_URL, getToken } from '@fmis/core/auth'
-import { coverageRuns, fieldShape, type FieldShape } from './slurry'
-import type { Track } from '../types'
+import { coverageRuns, fieldShape, type FieldShape } from '@fmis/betrieb/lib/slurry'
+import type { Track } from '@fmis/betrieb/types'
 
 export interface CoverageParcel {
   parcel_id: string

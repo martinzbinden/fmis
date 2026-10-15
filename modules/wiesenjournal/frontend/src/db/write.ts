@@ -4,19 +4,21 @@ import { SYNC_TABLES, type SyncTable } from './tables'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 
 // Simpler Pub/Sub, damit Seiten nach lokalen Schreibungen oder einem Pull neu
-// laden können, ohne auf pglite Live-Queries angewiesen zu sein.
-const dataListeners = new Set<() => void>()
+// laden können, ohne auf pglite Live-Queries angewiesen zu sein. Gemeinsames
+// Window-Event für Wiesenjournal, Betrieb und Tiere: deren Seiten zeigen auch
+// Daten der jeweils anderen (Spuren im Journal, Parzellen im Arbeitsplan …).
+const DATA_EVENT = 'fmis:betriebsdaten-changed'
 let notifyTimer: ReturnType<typeof setTimeout> | null = null
 export function notifyDataChanged(): void {
   if (notifyTimer) clearTimeout(notifyTimer)
   notifyTimer = setTimeout(() => {
     notifyTimer = null
-    dataListeners.forEach((l) => l())
+    window.dispatchEvent(new Event(DATA_EVENT))
   }, 150)
 }
 export function subscribeDataChanged(listener: () => void): () => void {
-  dataListeners.add(listener)
-  return () => dataListeners.delete(listener)
+  window.addEventListener(DATA_EVENT, listener)
+  return () => window.removeEventListener(DATA_EVENT, listener)
 }
 
 /**

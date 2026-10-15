@@ -32,7 +32,11 @@
       "@fmis/fields": ["../modules/fields/frontend/src"],
       "@fmis/fields/*": ["../modules/fields/frontend/src/*"],
       "@fmis/wiesenjournal": ["../modules/wiesenjournal/frontend/src"],
-      "@fmis/wiesenjournal/*": ["../modules/wiesenjournal/frontend/src/*"]
+      "@fmis/wiesenjournal/*": ["../modules/wiesenjournal/frontend/src/*"],
+      "@fmis/betrieb": ["../modules/betrieb/frontend/src"],
+      "@fmis/betrieb/*": ["../modules/betrieb/frontend/src/*"],
+      "@fmis/tiere": ["../modules/tiere/frontend/src"],
+      "@fmis/tiere/*": ["../modules/tiere/frontend/src/*"]
     }
   },
   "include": [
@@ -42,6 +46,8 @@
     "../modules/livestock/frontend/src",
     "../modules/dairy/frontend/src",
     "../modules/fields/frontend/src",
-    "../modules/wiesenjournal/frontend/src"
+    "../modules/wiesenjournal/frontend/src",
+    "../modules/betrieb/frontend/src",
+    "../modules/tiere/frontend/src"
   ]
 }

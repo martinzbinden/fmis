@@ -29,6 +29,14 @@ COPY modules/wiesenjournal/__init__.py ./modules/wiesenjournal/__init__.py
 COPY modules/wiesenjournal/backend/__init__.py ./modules/wiesenjournal/backend/__init__.py
 COPY modules/wiesenjournal/backend/app ./modules/wiesenjournal/backend/app
 COPY modules/wiesenjournal/schema ./modules/wiesenjournal/schema
+COPY modules/betrieb/__init__.py ./modules/betrieb/__init__.py
+COPY modules/betrieb/backend/__init__.py ./modules/betrieb/backend/__init__.py
+COPY modules/betrieb/backend/app ./modules/betrieb/backend/app
+COPY modules/betrieb/schema ./modules/betrieb/schema
+COPY modules/tiere/__init__.py ./modules/tiere/__init__.py
+COPY modules/tiere/backend/__init__.py ./modules/tiere/backend/__init__.py
+COPY modules/tiere/backend/app ./modules/tiere/backend/app
+COPY modules/tiere/schema ./modules/tiere/schema
 
 # WORKDIR /app entspricht dem Repo-Root-Layout (core/, modules/ liegen direkt
 # darunter) — core.backend.fmis_core und modules.<name>.backend.app lösen

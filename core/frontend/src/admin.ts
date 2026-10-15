@@ -41,8 +41,14 @@ export const ALL_PERMISSIONS = [
   'wiesenjournal:nutzung:read', 'wiesenjournal:nutzung:write',
   'wiesenjournal:duengung:read', 'wiesenjournal:duengung:write',
   'wiesenjournal:tagesmeldung:read', 'wiesenjournal:tagesmeldung:write',
+  // seit Betrieb/Tiere nur noch Unkraut-Meldungen
   'wiesenjournal:tracking:read', 'wiesenjournal:tracking:write',
   'wiesenjournal:history:read',
+  'tiere:herden:read', 'tiere:herden:write',
+  'tiere:history:read',
+  'betrieb:dienste:read', 'betrieb:dienste:write',
+  'betrieb:tracking:read', 'betrieb:tracking:write',
+  'betrieb:history:read',
   'core:users:manage',
   'core:modules:manage',
 ] as const

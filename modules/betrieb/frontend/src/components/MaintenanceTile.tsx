@@ -1,0 +1,75 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useHasPermission } from '@fmis/core/AuthContext'
+import { getSyncedDb as getDb } from '../db/access'
+import { subscribeDataChanged } from '../db/write'
+import { todayIso } from '../lib/format'
+import { openTodos, todoOverdue } from '../lib/maintenance'
+import { loadMaintenanceData } from '../lib/maintenanceData'
+import { machineStatuses } from './MachineMaintenance'
+
+/** Kachel auf der Übersicht: Maschinen und Wartung mit Anzahl fälliger
+ * Aufgaben (Stand der Daten auf diesem Gerät). */
+export default function MaintenanceTile() {
+  const canRead = useHasPermission('betrieb:tracking:read')
+  const [due, setDue] = useState<{ faellig: number; bald: number; machines: number; noStart: number; todos: number; todosLate: number } | null>(null)
+
+  // Neu laden, wenn der Sync (z.B. erster Pull auf diesem Gerät) Daten bringt
+  const [tick, setTick] = useState(0)
+  useEffect(() => subscribeDataChanged(() => setTick((t) => t + 1)), [])
+
+  useEffect(() => {
+    if (!canRead) return
+    let alive = true
+    getDb()
+      .then(loadMaintenanceData)
+      .then((d) => {
+        const today = todayIso()
+        const active = new Set(d.machines.filter((x) => x.active).map((x) => x.id))
+        const todos = openTodos(d.todos, today).filter((t) => active.has(t.machine_id))
+        const c = { faellig: 0, bald: 0, machines: 0, noStart: 0, todos: todos.length, todosLate: todos.filter((t) => todoOverdue(t, today)).length }
+        for (const m of d.machines.filter((x) => x.active)) {
+          c.machines++
+          const statuses = machineStatuses(m, d.tasks, d.log, d.tracksByMachine.get(m.id) ?? [])
+          if (statuses.some((s) => s.state === 'offen')) c.noStart++
+          for (const s of statuses) {
+            if (s.state === 'faellig') c.faellig++
+            else if (s.state === 'bald') c.bald++
+          }
+        }
+        if (alive) setDue(c)
+      })
+      .catch(() => alive && setDue(null))
+    return () => {
+      alive = false
+    }
+  }, [canRead, tick])
+
+  if (!canRead) return null
+  return (
+    <div className="mt-3 grid grid-cols-2 overflow-hidden first:mt-0 rounded-xl bg-white text-center text-sm shadow-sm">
+      <Link to="/betrieb/maschinen" className="p-4 active:bg-gray-100">
+        <span className="block text-2xl">🚜</span>
+        <span className="font-semibold text-gray-800">Maschinen</span>
+        {due && <span className="block text-xs text-gray-500">{due.machines} aktiv</span>}
+      </Link>
+      <Link to="/betrieb/wartung" className="border-l p-4 active:bg-gray-100">
+        <span className="block text-2xl">🔧</span>
+        <span className="font-semibold text-gray-800">Wartung</span>
+        {due && (
+          <span className="mt-0.5 flex flex-wrap justify-center gap-1 text-xs">
+            {due.faellig > 0 && <span className="rounded bg-red-100 px-1.5 text-red-800">{due.faellig} fällig</span>}
+            {due.bald > 0 && <span className="rounded bg-amber-100 px-1.5 text-amber-900">{due.bald} bald</span>}
+            {due.todos > 0 && (
+              <span className={`rounded px-1.5 ${due.todosLate ? 'bg-red-100 text-red-800' : 'bg-violet-100 text-violet-800'}`}>
+                {due.todos} {due.todos === 1 ? 'Pendenz' : 'Pendenzen'}
+              </span>
+            )}
+            {due.faellig + due.bald + due.todos === 0 && due.noStart === 0 && <span className="text-gray-500">nichts fällig</span>}
+            {due.faellig + due.bald === 0 && due.noStart > 0 && <span className="rounded bg-sky-100 px-1.5 text-sky-800">Ausgangslage fehlt ({due.noStart})</span>}
+          </span>
+        )}
+      </Link>
+    </div>
+  )
+}

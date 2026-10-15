@@ -66,7 +66,7 @@ _GEOM_SQL = {
         select ST_Transform(
                  ST_Buffer(ST_Transform(t.geometry, 2056), %(width_m)s / 2.0, 'endcap=flat join=round'),
                  4326) as geom
-        from tracks t where t.id = %(track_id)s and t.deleted_at is null and t.geometry is not null""",
+        from betrieb.tracks t where t.id = %(track_id)s and t.deleted_at is null and t.geometry is not null""",  # Spuren im Modul Betrieb
     "parcels": """
         select ST_Union(p.base_geometry) as geom from parcels p
         where p.id = any(%(parcel_ids)s::uuid[]) and p.deleted_at is null and p.base_geometry is not null""",
@@ -334,7 +334,7 @@ async def coverage(body: CoverageRequest, user: CurrentUser = Depends(require_au
     """Überlappung (zwischen verschiedenen Durchgängen doppelt befahren) und
     Lücken (in der Parzelle nicht befahren) je befahrener Parzelle — reine
     Berechnung, nichts wird gespeichert."""
-    if f"{TABLE_AREA['tracks']}:read" not in user.permissions:
+    if "betrieb:tracking:read" not in user.permissions:
         raise HTTPException(status_code=403, detail="Keine Leserechte für Tracking")
     runs = [r for r in body.runs if len(r) >= 2]
     if not runs or body.width_m <= 0:

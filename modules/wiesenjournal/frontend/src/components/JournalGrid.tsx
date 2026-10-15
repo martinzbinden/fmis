@@ -1,5 +1,5 @@
 import type { AnimalCategory, DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
-import { categoryMark, categoryTitle, type CategoryDay } from '../lib/outdoorAccess'
+import { categoryMark, categoryTitle, type CategoryDay } from '@fmis/tiere/lib/outdoorAccess'
 import { PARCEL_CATEGORY_COLOR, todayIso, usageDescription, usageLegend } from '../lib/format'
 import type { SortField, SortState } from '../lib/parcelSort'
 import type { ParcelSummary } from '../lib/parcelSummary'

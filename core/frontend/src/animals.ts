@@ -86,7 +86,7 @@ export interface AnimalLocation {
 }
 
 export interface HerdLocator {
-  /** Pfad zur Herden-Seite, z.B. "/wiesenjournal/herden" */
+  /** Pfad zur Herden-Seite, z.B. "/tiere" */
   herdsPath: string
   locate(moduleKey: string, animalId: string, date: string): Promise<AnimalLocation>
 }
