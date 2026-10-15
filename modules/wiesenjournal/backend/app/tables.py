@@ -90,6 +90,18 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "group_id", "category", "count", "from_date", "to_date", "notes", "updated_at", "deleted_at",
     ],
     "herd_laufhof": ["id", "group_id", "entry_date", "notes", "updated_at", "deleted_at"],
+    "duty_people": ["id", "name", "email", "color", "active", "sort_order", "notes", "updated_at", "deleted_at"],
+    "duty_types": [
+        "id", "name", "start_time", "duration_min", "weekdays", "color", "description", "active",
+        "sort_order", "updated_at", "deleted_at",
+    ],
+    "duty_skills": ["id", "person_id", "type_id", "updated_at", "deleted_at"],
+    "duty_absences": ["id", "person_id", "from_date", "to_date", "kind", "notes", "created_by", "updated_at", "deleted_at"],
+    "duty_shifts": ["id", "type_id", "date", "slot", "person_id", "notes", "assigned_by", "updated_at", "deleted_at"],
+    "duty_changes": [
+        "id", "shift_id", "date", "type_id", "from_person", "to_person", "kind", "changed_by", "changed_at",
+        "notes", "updated_at", "deleted_at",
+    ],
     "maintenance_tasks": [
         "id", "machine_id", "title", "task_type", "interval_count", "interval_months", "notes",
         "active", "sort_order", "template_key", "updated_at", "deleted_at",
@@ -143,6 +155,12 @@ TABLE_AREA: dict[str, str] = {
     "herd_members": "wiesenjournal:weide",
     "herd_counts": "wiesenjournal:weide",
     "herd_laufhof": "wiesenjournal:weide",
+    "duty_people": "wiesenjournal:dienste",
+    "duty_types": "wiesenjournal:dienste",
+    "duty_skills": "wiesenjournal:dienste",
+    "duty_absences": "wiesenjournal:dienste",
+    "duty_shifts": "wiesenjournal:dienste",
+    "duty_changes": "wiesenjournal:dienste",
     "data_history": "wiesenjournal:history",
 }
 

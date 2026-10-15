@@ -17,6 +17,7 @@ from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import dev_seed as livestock_dev_seed
 from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
+from modules.wiesenjournal.backend.app import duty_feed as wiesenjournal_duty_feed
 from modules.wiesenjournal.backend.app import fertilization as wiesenjournal_fertilization
 from modules.wiesenjournal.backend.app import machine_files as wiesenjournal_machine_files
 from modules.wiesenjournal.backend.app import parcels_import as wiesenjournal_parcels_import
@@ -112,6 +113,13 @@ app.include_router(
     prefix="/wiesenjournal",
     dependencies=[Depends(require_module_enabled("wiesenjournal"))],
 )
+app.include_router(
+    wiesenjournal_duty_feed.router,
+    prefix="/wiesenjournal",
+    dependencies=[Depends(require_module_enabled("wiesenjournal"))],
+)
+# Kalender-Abo der Dienste: ohne Anmeldung, der geheime Link ist der Schutz
+app.include_router(wiesenjournal_duty_feed.public_router, prefix="/wiesenjournal")
 app.include_router(
     livestock_reader.router,
     prefix="/livestock",

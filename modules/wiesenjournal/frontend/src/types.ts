@@ -497,3 +497,75 @@ export interface HerdCount {
   updated_at: string
   deleted_at: string | null
 }
+
+// --- Dienstplan (schema/0026) ---
+export interface DutyPerson {
+  id: string
+  name: string
+  email: string | null
+  color: string | null
+  active: boolean
+  sort_order: number
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+export interface DutyType {
+  id: string
+  name: string
+  /** HH:MM */
+  start_time: string
+  duration_min: number
+  /** Plätze je Wochentag Mo..So, z.B. '1111111' */
+  weekdays: string
+  color: string | null
+  description: string | null
+  active: boolean
+  sort_order: number
+  updated_at: string
+  deleted_at: string | null
+}
+export interface DutySkill {
+  id: string
+  person_id: string
+  type_id: string
+  updated_at: string
+  deleted_at: string | null
+}
+export type DutyAbsenceKind = 'ferien' | 'frei' | 'krank' | 'kurs' | 'andere'
+export interface DutyAbsence {
+  id: string
+  person_id: string
+  from_date: string
+  to_date: string
+  kind: DutyAbsenceKind
+  notes: string | null
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+export interface DutyShift {
+  id: string
+  type_id: string
+  date: string
+  slot: number
+  person_id: string | null
+  notes: string | null
+  assigned_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+export interface DutyChange {
+  id: string
+  shift_id: string
+  date: string
+  type_id: string
+  from_person: string | null
+  to_person: string | null
+  kind: 'einteilen' | 'tausch' | 'abgabe' | 'entfernt'
+  changed_by: string | null
+  changed_at: string
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+}
