@@ -6,6 +6,7 @@ export const SYNC_TABLES = {
     'active', 'sort_order', 'updated_at', 'deleted_at',
     'manufacturer', 'model', 'type_no', 'serial_no', 'year_built', 'weight_kg',
     'power_hp', 'front_pto', 'tractor_id', 'owner', 'category', 'flow_m3_min',
+    'settings_def',
   ],
   machine_files: [
     'id', 'machine_id', 'kind', 'title', 'filename', 'content_type',
@@ -28,6 +29,10 @@ export const SYNC_TABLES = {
     'geometry', 'point_times', 'point_count', 'notes', 'created_by',
     'updated_at', 'deleted_at', 'work_type', 'machine', 'operator', 'machine_id',
     'tractor_id', 'guide_ref',
+  ],
+  machine_settings: [
+    'id', 'machine_id', 'track_id', 'set_at', 'settings', 'crop', 'measured_kg_ha', 'notes',
+    'created_by', 'updated_at', 'deleted_at',
   ],
   tank_events: [
     'id', 'track_id', 'machine_id', 'parcel_id', 'event_at', 'source', 'volume_m3', 'distance_m',
@@ -56,6 +61,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   machine_todos: new Set(['due_date', 'done_date']),
   tracks: new Set(),
   tank_events: new Set(),
+  machine_settings: new Set(),
   duty_people: new Set(),
   duty_types: new Set(),
   duty_skills: new Set(),

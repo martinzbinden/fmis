@@ -3,6 +3,7 @@ import Modal from './Modal'
 import { upsertRow } from '../db/write'
 import { isSelfPropelled, isTractor, MACHINE_KIND_LABEL } from '../lib/machines'
 import { CATEGORY_LABEL, KIND_CATEGORY } from '../lib/maintenance'
+import { keyFor, parseDefs, SUGGESTED_DEFS, type SettingDef } from '../lib/machineSettings'
 import type { Machine, MachineCategory, MachineKind } from '../types'
 import type { DuengungUnit } from '@fmis/wiesenjournal/types'
 
@@ -43,6 +44,7 @@ export default function MachineForm({
     category: (machine?.category ?? '') as MachineCategory | '',
     flow_m3_min: s(machine?.flow_m3_min),
   })
+  const [defs, setDefs] = useState<SettingDef[]>(() => parseDefs(machine?.settings_def))
   const [saving, setSaving] = useState(false)
   const set = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }))
   // Träger (Traktor, Hoflader): Leistung statt Fass/Breite; selbstfahrend
@@ -78,6 +80,7 @@ export default function MachineForm({
         owner: f.owner.trim() || null,
         category: f.category || null,
         flow_m3_min: f.kind === 'guellefass' ? n(f.flow_m3_min) : null,
+        settings_def: defs.length ? JSON.stringify(cleanDefs(defs)) : null,
       } as never)
       onSaved(id)
     } finally {
@@ -229,6 +232,7 @@ export default function MachineForm({
           </div>
         </fieldset>
 
+        <SettingDefsEditor defs={defs} onChange={setDefs} suggestion={SUGGESTED_DEFS[f.kind]} field={field} />
         <label className="block">
           <span className={label}>Bemerkung</span>
           <textarea className={field} rows={2} value={f.notes} onChange={(e) => set({ notes: e.target.value })} placeholder="z.B. Schleppschuhverteiler" />
@@ -247,5 +251,62 @@ export default function MachineForm({
         </button>
       </div>
     </Modal>
+  )
+}
+
+/** Leere Zeilen weg, Schlüssel für neue Zeilen aus der Bezeichnung. Bestehende
+ * Schlüssel bleiben (das Protokoll verweist darauf). */
+function cleanDefs(defs: SettingDef[]): SettingDef[] {
+  const taken = new Set(defs.filter((d) => d.key).map((d) => d.key))
+  return defs
+    .filter((d) => d.label.trim())
+    .map((d) => {
+      const part = d.part?.trim() || undefined
+      const key = d.key || keyFor(d.label, part, taken)
+      taken.add(key)
+      return { key, label: d.label.trim(), unit: d.unit.trim(), ...(part ? { part } : {}) }
+    })
+}
+
+/** Einstellgrössen eines Geräts (z.B. Saatmengenschieber in cm), die im
+ * Tracking und auf der Maschinenseite protokolliert werden. */
+function SettingDefsEditor({
+  defs,
+  onChange,
+  suggestion,
+  field,
+}: {
+  defs: SettingDef[]
+  onChange: (d: SettingDef[]) => void
+  suggestion: SettingDef[] | undefined
+  field: string
+}) {
+  const update = (i: number, patch: Partial<SettingDef>) => onChange(defs.map((d, k) => (k === i ? { ...d, ...patch } : d)))
+  const missing = (suggestion ?? []).filter((s) => !defs.some((d) => d.key === s.key))
+  return (
+    <div className="space-y-2 rounded-lg border border-gray-200 p-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-medium text-gray-700">Einstellgrössen</span>
+        {missing.length > 0 && (
+          <button type="button" onClick={() => onChange([...defs, ...missing])} className="text-xs text-brand-700 underline">
+            Vorschlag übernehmen ({missing.map((d) => d.label).join(', ')})
+          </button>
+        )}
+      </div>
+      {defs.length === 0 && <p className="text-xs text-gray-500">Werte, die bei jedem Einsatz eingestellt werden — z.B. Saatmengenschieber, Abstreifer.</p>}
+      {defs.map((d, i) => (
+        <div key={i} className="grid grid-cols-[1fr_1.4fr_4rem_auto] items-center gap-1">
+          <input className={field} placeholder="Bauteil" value={d.part ?? ''} onChange={(e) => update(i, { part: e.target.value })} />
+          <input className={field} placeholder="Bezeichnung" value={d.label} onChange={(e) => update(i, { label: e.target.value })} />
+          <input className={field} placeholder="cm" value={d.unit} onChange={(e) => update(i, { unit: e.target.value })} />
+          <button type="button" onClick={() => onChange(defs.filter((_, k) => k !== i))} className="px-1 text-gray-400" aria-label="Entfernen">
+            ×
+          </button>
+        </div>
+      ))}
+      <button type="button" onClick={() => onChange([...defs, { key: '', label: '', unit: 'cm' }])} className="text-xs text-brand-700">
+        + Einstellgrösse
+      </button>
+    </div>
   )
 }

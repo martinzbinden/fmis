@@ -80,6 +80,8 @@ export interface Machine {
   category?: MachineCategory | null
   /** schema/0021: Güllefass-Ausfluss m³/min (Startwert, geeicht über tank_events) */
   flow_m3_min?: number | null
+  /** JSON [{key, label, unit, part}] — Einstellgrössen (lib/machineSettings.ts) */
+  settings_def?: string | null
   front_pto: boolean | null
   /** Anbaugeräte: Standard-Traktor (Vorschlag in Arbeitsplan und Tracking). */
   tractor_id: string | null

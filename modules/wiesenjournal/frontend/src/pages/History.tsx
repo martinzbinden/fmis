@@ -13,6 +13,7 @@ const TABLE_LABEL: Record<string, string> = {
   n_dose_summary: 'Gabe (N)',
   daily_farm_log: 'Tagesmeldung',
   weed_observations: 'Unkraut',
+  sowing_details: 'Saatangaben',
 }
 
 const ACTION_LABEL: Record<HistoryAction, string> = {
@@ -51,6 +52,8 @@ function describeEntry(entry: DataHistory): string {
       return s(snap.entry_date) ?? entry.row_id
     case 'weed_observations':
       return `${s(snap.weed_type) ?? '?'}${snap.treatment ? ' · behandelt' : ''}`
+    case 'sowing_details':
+      return [s(snap.variety), snap.seeds_m2 != null ? `${s(snap.seeds_m2)} Kö/m²` : null].filter(Boolean).join(' · ') || entry.row_id
     default:
       return entry.row_id
   }

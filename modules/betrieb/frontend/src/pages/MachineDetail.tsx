@@ -10,6 +10,8 @@ import { isSelfPropelled, isTractor, loadMachines, MACHINE_KIND_LABEL } from '..
 import { fmtBytes, loadMachineFiles, MACHINE_FILE_KIND_LABEL, machineFileUrl, uploadMachineFile } from '../lib/machineFiles'
 import MachineForm from '../components/MachineForm'
 import MachineImage from '../components/MachineImage'
+import MachineSettingsCard from '../components/MachineSettingsCard'
+import { machineDefs } from '../lib/machineSettings'
 import Modal from '../components/Modal'
 import type { MachineFile, MachineFileKind } from '../types'
 
@@ -203,6 +205,15 @@ export default function MachineDetail() {
         <p className="whitespace-pre-line rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">
           <Linkified text={m.notes} />
         </p>
+      )}
+
+      {machineDefs(m).length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Einstellungen</h2>
+          <div className="rounded-lg bg-white p-3 shadow-sm">
+            <MachineSettingsCard machine={m} trackId={null} canWrite={canWrite} historyLimit={20} />
+          </div>
+        </section>
       )}
 
       {data?.maintenance && (

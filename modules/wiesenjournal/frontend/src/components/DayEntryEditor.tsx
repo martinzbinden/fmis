@@ -16,6 +16,8 @@ import { deleteFertilizationEntry, loadFertilizerTypes, saveFertilizationEntry }
 import { computeNutrients, kgPerHa, parseDilution } from '../lib/nutrients'
 import Modal from './Modal'
 import HerdUsageNote from './HerdUsageNote'
+import SowingFields from './SowingFields'
+import { EMPTY_SOWING, formFromDetails, loadSowing, saveSowing, type SowingForm } from '../lib/sowing'
 import ExtentPicker from './ExtentPicker'
 import type {
   AnimalCategory,
@@ -68,6 +70,9 @@ interface UsageRow {
   notes: string
   paddock_version_id: string | null
   import_key: string | null
+  /** Saatangaben (lib/sowing.ts); kgHa entspricht value_num */
+  sowing: SowingForm
+  sowing_existed: boolean
 }
 
 function usageRowFromEntry(e: UsageEntry): UsageRow {
@@ -85,6 +90,8 @@ function usageRowFromEntry(e: UsageEntry): UsageRow {
     notes: e.notes ?? '',
     paddock_version_id: e.paddock_version_id,
     import_key: e.import_key,
+    sowing: formFromDetails(null, e.value_num),
+    sowing_existed: false,
   }
 }
 
@@ -102,6 +109,8 @@ const EMPTY_USAGE_ROW: UsageRow = {
   notes: '',
   paddock_version_id: null,
   import_key: null,
+  sowing: EMPTY_SOWING,
+  sowing_existed: false,
 }
 
 interface FertRow {
@@ -211,7 +220,17 @@ export default function DayEntryEditor({
       }
       setTypes(ftypes)
       setTracks(trackRows)
-      setUsageRows(usage.map(usageRowFromEntry))
+      const rows = usage.map(usageRowFromEntry)
+      for (const r of rows) {
+        if (!r.id) continue
+        const d = await loadSowing(pg, r.id)
+        if (d) {
+          r.sowing = formFromDetails(d, numOrNull(r.value_num))
+          r.sowing_existed = true
+        }
+      }
+      if (cancelled) return
+      setUsageRows(rows)
       setFertRows(fertilizations.map((f) => fertRowFromEntry(f, extra.get(f.id) ?? [], ftypes)))
       setLoading(false)
     })()
@@ -276,8 +295,9 @@ export default function DayEntryEditor({
       for (const id of removedUsageIds) await softDeleteRow('usage_entries', id)
       for (const row of usageRows) {
         const isWeide = row.usage_type === 'weide'
+        const usageId = row.id ?? crypto.randomUUID()
         await upsertRow('usage_entries', {
-          id: row.id ?? crypto.randomUUID(),
+          id: usageId,
           parcel_id: parcelId,
           entry_date: date,
           usage_type: row.usage_type,
@@ -296,6 +316,8 @@ export default function DayEntryEditor({
           // DayEntryEditorClassic.tsx) — immer definitiv.
           is_planned: false,
         } as never)
+        const seed = SEED_TYPES.includes(row.usage_type)
+        if (seed || row.sowing_existed) await saveSowing(usageId, seed ? row.sowing : EMPTY_SOWING, row.sowing_existed)
       }
 
       const pg = await getDb()
@@ -452,23 +474,15 @@ export default function DayEntryEditor({
                   )}
 
                   {SEED_TYPES.includes(row.usage_type) && (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        placeholder="Mischung / Saatgut"
-                        value={row.label}
-                        onChange={(e) => updateUsageRow(idx, { label: e.target.value })}
-                        className={`${input} flex-1`}
-                      />
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="kg/ha"
-                        value={row.value_num}
-                        onChange={(e) => updateUsageRow(idx, { value_num: e.target.value })}
-                        className={`${input} w-20`}
-                      />
-                    </div>
+                    <SowingFields
+                      label={row.label}
+                      onLabel={(v) => updateUsageRow(idx, { label: v })}
+                      form={{ ...row.sowing, kgHa: row.value_num }}
+                      onForm={(f) => updateUsageRow(idx, { sowing: f, value_num: f.kgHa })}
+                      areaA={num(parcel.area_a)}
+                      date={date}
+                      input={input}
+                    />
                   )}
 
                   {row.usage_type === 'aufwuchshoehe' && (

@@ -5,6 +5,7 @@ import { getCurrentUserEmail } from '@fmis/core/auth'
 import { useQuery } from '../hooks/useQuery'
 import DriveAssist, { assistFields, fmt0, fmt1, GuidanceStrip, loadAssistData, NullLine, useGuidance, useStored, type AssistField, type Guidance } from '../components/DriveAssist'
 import StartTrackDialog from '../components/StartTrackDialog'
+import MachineSettingsCard from '../components/MachineSettingsCard'
 import TrackMap, { type MapField } from '../components/TrackMap'
 import { gpsQuality, TONE, useNow } from '../components/TrackingBadge'
 import { closeOpenTrack, dismissNotice, ensureResumed, resumeTrack, startSession, stopSession, updateSessionTrack, useTrackingSession, type SessionState } from '../lib/trackingSession'
@@ -261,6 +262,7 @@ function Settings({
   setAutoLock: (v: number) => void
 }) {
   const t = s.track
+  const canWrite = useHasPermission('betrieb:tracking:write')
   const [w, setW] = useState(t?.width_m != null ? String(t.width_m) : '')
   const [work, setWork] = useState(t?.work_type ?? '')
   const plow = /pflug|pflüg/i.test(`${t?.work_type ?? ''} ${t?.machine ?? ''} ${machine?.kind ?? ''}`)
@@ -292,6 +294,12 @@ function Settings({
             </label>
           </div>
           <div className="text-xs text-gray-500">Gerät: {t.machine ?? 'keines gewählt'}</div>
+          {machine && (
+            <div className="border-t pt-2">
+              <h4 className="mb-1 text-xs font-semibold text-gray-700">Einstellungen {machine.name}</h4>
+              <MachineSettingsCard machine={machine} trackId={t.id} canWrite={canWrite} historyLimit={3} large />
+            </div>
+          )}
           {plow && (
             <a href={PLOW_ASSISTANT} target="_blank" rel="noreferrer" className="inline-block rounded-lg bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-900">
               Pflug einstellen: Prüfliste öffnen ↗

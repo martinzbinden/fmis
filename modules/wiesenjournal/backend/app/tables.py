@@ -55,6 +55,11 @@ SYNC_TABLES: dict[str, list[str]] = {
         "geometry", "notes", "created_by", "updated_at", "deleted_at",
         "accuracy_m",
     ],
+    # nach usage_entries (id = usage_entries.id)
+    "sowing_details": [
+        "id", "variety", "tkg_g", "germination_pct", "seeds_m2", "emergence_pct",
+        "row_spacing_cm", "wide_row_every", "notes", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
@@ -76,8 +81,8 @@ TABLE_AREA: dict[str, str] = {
     "fertilization_shares": "wiesenjournal:duengung",
     "n_dose_summary": "wiesenjournal:duengung",
     "daily_farm_log": "wiesenjournal:tagesmeldung",
-    # Wartungsjournal gehört zu den Maschinen
     "weed_observations": "wiesenjournal:tracking",
+    "sowing_details": "wiesenjournal:nutzung",
     "data_history": "wiesenjournal:history",
 }
 

@@ -5,7 +5,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "name", "kind", "capacity", "capacity_unit", "width_m", "notes", "active",
         "sort_order", "updated_at", "deleted_at", "manufacturer", "model", "type_no", "serial_no",
         "year_built", "weight_kg", "power_hp", "front_pto", "tractor_id", "owner", "category",
-        "flow_m3_min",
+        "flow_m3_min", "settings_def",
     ],
     "machine_files": [
         "id", "machine_id", "kind", "title", "filename", "content_type", "size_bytes",
@@ -27,6 +27,10 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "season_year", "label", "started_at", "ended_at", "width_m", "geometry",
         "point_times", "point_count", "notes", "created_by", "updated_at", "deleted_at",
         "work_type", "machine", "operator", "machine_id", "tractor_id", "guide_ref",
+    ],
+    "machine_settings": [
+        "id", "machine_id", "track_id", "set_at", "settings", "crop", "measured_kg_ha", "notes",
+        "created_by", "updated_at", "deleted_at",
     ],
     "tank_events": [
         "id", "track_id", "machine_id", "parcel_id", "event_at", "source", "volume_m3",
@@ -71,6 +75,7 @@ TABLE_AREA: dict[str, str] = {
     "machine_todos": "betrieb:tracking",
     "tracks": "betrieb:tracking",
     "tank_events": "betrieb:tracking",
+    "machine_settings": "betrieb:tracking",
     "duty_people": "betrieb:dienste",
     "duty_types": "betrieb:dienste",
     "duty_skills": "betrieb:dienste",

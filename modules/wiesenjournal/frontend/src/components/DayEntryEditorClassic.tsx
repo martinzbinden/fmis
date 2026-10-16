@@ -18,6 +18,8 @@ import {
 import { deleteFertilizationEntry, loadFertilizerTypes, saveFertilizationEntry } from '../lib/fertilization'
 import Modal from './Modal'
 import HerdUsageNote from './HerdUsageNote'
+import SowingFields from './SowingFields'
+import { EMPTY_SOWING, formFromDetails, loadSowing, saveSowing, type SowingForm } from '../lib/sowing'
 import type {
   AnimalCategory,
   DuengungCode,
@@ -110,6 +112,8 @@ export default function DayEntryEditorClassic({
   const [yieldAmount, setYieldAmount] = useState('')
   const [yieldUnit, setYieldUnit] = useState<YieldUnit | ''>('')
   const [notes, setNotes] = useState('')
+  const [sowing, setSowing] = useState<SowingForm>(EMPTY_SOWING)
+  const [sowingExistedId, setSowingExistedId] = useState<string | null>(null)
 
   const [rangeOpen, setRangeOpen] = useState(false)
   const [endDate, setEndDate] = useState(date)
@@ -172,7 +176,13 @@ export default function DayEntryEditorClassic({
         setYieldAmount(e.yield_amount == null ? '' : String(e.yield_amount))
         setYieldUnit(e.yield_unit ?? '')
         setNotes(e.notes ?? '')
+        const sd = await loadSowing(pg, e.id)
+        if (cancelled) return
+        setSowing(formFromDetails(sd, e.value_num))
+        setSowingExistedId(sd ? e.id : null)
       } else {
+        setSowing(EMPTY_SOWING)
+        setSowingExistedId(null)
         setInitialRunDays([])
         setEndDate(date)
         setRangeOpen(false)
@@ -247,10 +257,12 @@ export default function DayEntryEditorClassic({
         const existing = existingByDate[d]
         if (existing) await softDeleteRow('usage_entries', existing.id)
       }
+      const seed = usageType === 'saat' || usageType === 'uebersaat'
       for (const d of newDays) {
         const existing = existingByDate[d]
+        const usageId = existing?.id ?? crypto.randomUUID()
         await upsertRow('usage_entries', {
-          id: existing?.id ?? crypto.randomUUID(),
+          id: usageId,
           parcel_id: parcelId,
           entry_date: d,
           usage_type: usageType!,
@@ -267,7 +279,9 @@ export default function DayEntryEditorClassic({
           import_key: existing?.import_key ?? null,
           is_planned: planned,
         } as never)
+        if (seed) await saveSowing(usageId, sowing, usageId === sowingExistedId)
       }
+      if (!seed && sowingExistedId) await saveSowing(sowingExistedId, EMPTY_SOWING, true)
 
       const pg = await getDb()
       const fertEmpty = !fert.amount && !fert.containerCount && !fert.gabeNumber && !fert.notes
@@ -478,13 +492,18 @@ export default function DayEntryEditorClassic({
                 className={`${input} mt-2 w-full`}
               />
             )}
-            {family === 'pflege' && pflegeType === 'uebersaat' && (
-              <input
-                type="text"
-                placeholder="Mischung / Saatgut"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                className={`${input} mt-2 w-full`}
+            {family === 'pflege' && (pflegeType === 'uebersaat' || pflegeType === 'saat') && (
+              <SowingFields
+                label={label}
+                onLabel={setLabel}
+                form={{ ...sowing, kgHa: valueNum }}
+                onForm={(f) => {
+                  setSowing(f)
+                  setValueNum(f.kgHa)
+                }}
+                areaA={parcel.area_a == null ? null : Number(parcel.area_a)}
+                date={date}
+                input={input}
               />
             )}
             {family === 'sonstig' && (

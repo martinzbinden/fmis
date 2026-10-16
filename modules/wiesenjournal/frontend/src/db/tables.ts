@@ -55,6 +55,11 @@ export const SYNC_TABLES = {
     'geometry', 'notes', 'created_by', 'updated_at', 'deleted_at',
     'accuracy_m',
   ],
+  // nach usage_entries (id = usage_entries.id)
+  sowing_details: [
+    'id', 'variety', 'tkg_g', 'germination_pct', 'seeds_m2', 'emergence_pct',
+    'row_spacing_cm', 'wide_row_every', 'notes', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -76,5 +81,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   n_dose_summary: new Set(),
   daily_farm_log: new Set(['entry_date']),
   weed_observations: new Set(['treated_at']),
+  sowing_details: new Set(),
   data_history: new Set(),
 }

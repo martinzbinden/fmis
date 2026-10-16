@@ -17,6 +17,7 @@ const TABLE_LABEL: Record<string, string> = {
   duty_absences: 'Abwesenheit',
   duty_shifts: 'Einteilung',
   duty_changes: 'Diensttausch',
+  machine_settings: 'Geräteeinstellung',
 }
 
 const ACTION_LABEL: Record<HistoryAction, string> = {
@@ -56,6 +57,8 @@ function describeEntry(entry: DataHistory): string {
       return s(snap.date) ?? entry.row_id
     case 'duty_absences':
       return `${s(snap.kind) ?? '?'} ${s(snap.from_date) ?? ''}–${s(snap.to_date) ?? ''}`
+    case 'machine_settings':
+      return s(snap.crop) ?? s(snap.set_at) ?? entry.row_id
     default:
       return entry.row_id
   }
