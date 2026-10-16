@@ -172,3 +172,70 @@ export async function settingsOnDate(date: string): Promise<{ machine: string; t
 }
 
 export const machineDefs = (m: Pick<Machine, 'settings_def'> | null | undefined) => parseDefs(m?.settings_def)
+
+// --- Abdrehprobe → Vorschlag Saatmengenschieber -------------------------
+
+/** Einstellgrösse, die die Saatmenge steuert (Saatmengenschieber o.ä.). */
+export function rateDef(defs: SettingDef[]): SettingDef | null {
+  return defs.find((d) => /saatmenge|schieber|dosier/i.test(`${d.key} ${d.label}`)) ?? null
+}
+
+const norm = (s: string | null | undefined) => (s ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+
+/** kg/ha aus einer Abdrehprobe: abgedrehte Menge (g) auf Fläche (m²). */
+export function kgPerHaFromSample(grams: number, areaM2: number): number | null {
+  if (!(grams > 0) || !(areaM2 > 0)) return null
+  return Math.round((grams / 1000 / areaM2) * 10000 * 10) / 10
+}
+
+export interface SlideSuggestion {
+  value: number
+  /** Abdrehproben, auf denen der Vorschlag beruht */
+  points: { slide: number; kgHa: number; at: string }[]
+  /** gleiche Sorte (genauer Text) oder nur gleiche Kultur (erstes Wort) */
+  basis: 'sorte' | 'kultur'
+  method: 'proportional' | 'linear'
+  /** Ziel liegt ausserhalb der geprüften Schieberstellungen */
+  extrapolated: boolean
+}
+
+/** Schieberstellung für eine Ziel-Saatmenge aus früheren Abdrehproben:
+ * eine Probe → proportional (Stellung × Ziel ÷ gemessen), mehrere mit
+ * verschiedenen Stellungen → Gerade durch die Proben. Gleiche Sorte vor
+ * gleicher Kultur, weil die Durchflussmenge vom Saatgut abhängt. */
+export function suggestSlide(log: MachineSetting[], slideKey: string, crop: string, targetKgHa: number): SlideSuggestion | null {
+  if (!(targetKgHa > 0) || !norm(crop)) return null
+  const samples = log.filter((s) => s.measured_kg_ha != null && s.measured_kg_ha > 0 && (s.settings[slideKey] ?? 0) > 0)
+  const exact = samples.filter((s) => norm(s.crop) === norm(crop))
+  const first = norm(crop).split(' ')[0]
+  const sameCrop = samples.filter((s) => norm(s.crop).split(' ')[0] === first)
+  const basis: SlideSuggestion['basis'] = exact.length ? 'sorte' : 'kultur'
+  const used = exact.length ? exact : sameCrop
+  if (!used.length) return null
+  const points = used.map((s) => ({ slide: s.settings[slideKey], kgHa: s.measured_kg_ha!, at: s.set_at }))
+  const xs = points.map((p) => p.slide)
+  const distinct = new Set(xs).size
+  let value: number | null = null
+  let method: SlideSuggestion['method'] = 'proportional'
+  if (distinct >= 2) {
+    const n = points.length
+    const mx = xs.reduce((a, b) => a + b, 0) / n
+    const my = points.reduce((a, p) => a + p.kgHa, 0) / n
+    const sxy = points.reduce((a, p) => a + (p.slide - mx) * (p.kgHa - my), 0)
+    const sxx = points.reduce((a, p) => a + (p.slide - mx) ** 2, 0)
+    const b = sxy / sxx
+    if (b > 0) {
+      value = (targetKgHa - (my - b * mx)) / b
+      method = 'linear'
+    }
+  }
+  if (value == null) {
+    // Mittel der Verhältnisse Stellung je kg/ha
+    const ratio = points.reduce((a, p) => a + p.slide / p.kgHa, 0) / points.length
+    value = ratio * targetKgHa
+  }
+  if (!(value > 0)) return null
+  const rounded = Math.round(value * 10) / 10
+  const extrapolated = rounded < Math.min(...xs) - 0.05 || rounded > Math.max(...xs) + 0.05
+  return { value: rounded, points, basis, method, extrapolated }
+}

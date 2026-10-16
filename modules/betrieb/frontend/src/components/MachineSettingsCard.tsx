@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '../hooks/useQuery'
-import { formatSetting, loadSettings, machineDefs, saveSetting, type MachineSetting, type SettingDef } from '../lib/machineSettings'
+import {
+  formatSetting,
+  kgPerHaFromSample,
+  loadSettings,
+  machineDefs,
+  rateDef,
+  saveSetting,
+  suggestSlide,
+  type MachineSetting,
+  type SettingDef,
+} from '../lib/machineSettings'
 import type { Machine } from '../types'
 
 const parse = (v: string) => {
@@ -40,6 +50,9 @@ export default function MachineSettingsCard({
   const [values, setValues] = useState<Record<string, string>>({})
   const [crop, setCrop] = useState('')
   const [measured, setMeasured] = useState('')
+  const [target, setTarget] = useState('')
+  const [sampleG, setSampleG] = useState('')
+  const [sampleM2, setSampleM2] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
@@ -94,8 +107,62 @@ export default function MachineSettingsCard({
 
   const input = large ? 'w-full rounded-lg border border-gray-300 px-3 py-2 text-base' : 'w-full rounded border border-gray-300 px-2 py-1.5 text-sm'
   const sown = /saat|sä/i.test(`${machine.kind} ${machine.name}`)
+  const slideDef = sown ? rateDef(defs) : null
+  const suggestion = slideDef ? suggestSlide(log ?? [], slideDef.key, crop, parse(target) ?? 0) : null
+  const sampleKgHa = kgPerHaFromSample(parse(sampleG) ?? 0, parse(sampleM2) ?? 0)
+  const cropField = (
+    <label className="block text-xs text-gray-600">
+      Kultur / Sorte
+      <input className={input} disabled={!canWrite} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder={sown ? 'z.B. Winterweizen Wiwa' : ''} />
+    </label>
+  )
   return (
     <div className="space-y-3">
+      {slideDef && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            {cropField}
+            <label className="block text-xs text-gray-600">
+              Ziel-Saatmenge (kg/ha)
+              <input className={input} inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} />
+            </label>
+          </div>
+          {parse(target) != null && crop.trim() !== '' && (
+            <div className={`rounded-lg p-2 text-xs ${suggestion ? 'bg-green-50 text-green-900' : 'bg-gray-50 text-gray-600'}`}>
+              {suggestion ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold">
+                      {slideDef.label} ca. {suggestion.value.toLocaleString('de-CH')} {slideDef.unit}
+                    </span>
+                    {canWrite && (
+                      <button
+                        type="button"
+                        onClick={() => setValues((v) => ({ ...v, [slideDef.key]: String(suggestion.value) }))}
+                        className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white"
+                      >
+                        übernehmen
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    aus {suggestion.points.length} {suggestion.points.length === 1 ? 'Abdrehprobe' : 'Abdrehproben'}{' '}
+                    {suggestion.basis === 'sorte' ? 'dieser Sorte' : 'derselben Kultur (andere Sorte — TKG/Korngrösse können abweichen)'}:{' '}
+                    {suggestion.points.map((p) => `${p.slide} ${slideDef.unit} → ${p.kgHa} kg/ha`).join(', ')}
+                  </div>
+                  <div className="mt-1 font-medium">
+                    {suggestion.extrapolated || suggestion.points.length === 1 || suggestion.basis === 'kultur'
+                      ? 'Startwert — mit Abdrehprobe kontrollieren und Ergebnis unten eintragen.'
+                      : 'Liegt zwischen geprüften Stellungen. Kontrolle mit Abdrehprobe empfohlen.'}
+                  </div>
+                </>
+              ) : (
+                <>Noch keine Abdrehprobe für «{crop.trim()}» — Schieber schätzen, abdrehen und das Ergebnis unten eintragen. Ab der ersten Probe gibt es hier einen Vorschlag.</>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {groups(defs).map(([part, list]) => (
         <div key={part}>
           {part && <div className="mb-1 text-xs font-semibold text-gray-600">{part}</div>}
@@ -117,17 +184,32 @@ export default function MachineSettingsCard({
         </div>
       ))}
       <div className="grid grid-cols-2 gap-2">
-        <label className="block text-xs text-gray-600">
-          Kultur / Sorte
-          <input className={input} disabled={!canWrite} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder={sown ? 'z.B. Winterweizen Wiwa' : ''} />
-        </label>
+        {!slideDef && cropField}
         {sown && (
           <label className="block text-xs text-gray-600">
-            Abdrehprobe (kg/ha)
+            Abdrehprobe ergab (kg/ha)
             <input className={input} inputMode="decimal" disabled={!canWrite} value={measured} onChange={(e) => setMeasured(e.target.value)} />
           </label>
         )}
       </div>
+      {sown && canWrite && (
+        <div className="flex flex-wrap items-end gap-2 text-xs text-gray-600">
+          <span className="pb-2">Rechner:</span>
+          <label className="block w-20">
+            Gramm
+            <input className={input} inputMode="decimal" value={sampleG} onChange={(e) => setSampleG(e.target.value)} />
+          </label>
+          <label className="block w-20">
+            auf m²
+            <input className={input} inputMode="decimal" value={sampleM2} onChange={(e) => setSampleM2(e.target.value)} />
+          </label>
+          {sampleKgHa != null && (
+            <button type="button" onClick={() => setMeasured(String(sampleKgHa))} className="mb-1 rounded border border-gray-300 px-2 py-1 text-gray-800">
+              = {sampleKgHa.toLocaleString('de-CH')} kg/ha übernehmen
+            </button>
+          )}
+        </div>
+      )}
       <label className="block text-xs text-gray-600">
         Bemerkung
         <input className={input} disabled={!canWrite} value={notes} onChange={(e) => setNotes(e.target.value)} />
