@@ -425,8 +425,8 @@ function MoveDialog({
             </label>
           )}
           <div className="max-h-56 overflow-y-auto rounded border border-gray-200">
-            {animals == null && <p className="p-2 text-xs text-gray-400">Lädt…</p>}
-            {animals && candidates.length === 0 && <p className="p-2 text-xs text-gray-400">Keine Tiere.</p>}
+            {animals == null && <p className="p-2 text-xs text-gray-500">Lädt…</p>}
+            {animals && candidates.length === 0 && <p className="p-2 text-xs text-gray-500">Keine Tiere.</p>}
             {candidates.map((a) => {
               const g = groupOf(a)
               return (
@@ -446,7 +446,7 @@ function MoveDialog({
                     {a.name && <span className="text-gray-500"> {a.name}</span>}
                     {a.dry && <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800">trocken</span>}
                   </span>
-                  <span className="shrink-0 text-xs text-gray-400">{g ? g.name : 'ohne Gruppe'}</span>
+                  <span className="shrink-0 text-xs text-gray-500">{g ? g.name : 'ohne Gruppe'}</span>
                 </label>
               )
             })}
@@ -603,7 +603,7 @@ function IdentifyDialog({
           nur Tiere ohne Gruppe anzeigen
         </label>
         <div className="max-h-64 overflow-y-auto rounded border border-gray-200">
-          {animals == null && <p className="p-2 text-xs text-gray-400">Lädt…</p>}
+          {animals == null && <p className="p-2 text-xs text-gray-500">Lädt…</p>}
           {candidates.map((a) => {
             const g = groupOf(a)
             const isSel = selected.has(a.id)
@@ -622,7 +622,7 @@ function IdentifyDialog({
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{a.label}</span>
                   {a.name && <span className="text-gray-500"> {a.name}</span>}
-                  {g && <span className="ml-1 text-xs text-gray-400">({g.name})</span>}
+                  {g && <span className="ml-1 text-xs text-gray-500">({g.name})</span>}
                 </span>
                 {isSel && (
                   <select
@@ -756,7 +756,7 @@ function GroupAccessLine({ idx, groupId, date }: { idx: AccessIndex; groupId: st
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
       <span>
-        Auslauf: {day.kind ? <b className="text-gray-800">{ACCESS_LABEL[day.kind]}</b> : <span className="text-gray-400">{day.stallLaufhof === 'zeitweise' ? 'noch kein Laufhof erfasst' : 'keiner'}</span>}
+        Auslauf: {day.kind ? <b className="text-gray-800">{ACCESS_LABEL[day.kind]}</b> : <span className="text-gray-500">{day.stallLaufhof === 'zeitweise' ? 'noch kein Laufhof erfasst' : 'keiner'}</span>}
       </span>
       {counter && <CounterBadge c={counter} />}
     </div>
@@ -811,7 +811,7 @@ export default function Herds() {
     refresh()
   }
 
-  if (loading && !data) return <p className="p-4 text-center text-gray-400">Lädt…</p>
+  if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
   if (!data) return null
 
   return (
@@ -950,7 +950,7 @@ export default function Herds() {
                                 />
                               )}
                               <span className="truncate">
-                                {a.label} <span className="text-gray-400">{categoryLabel(defaultCategory(a, false, date))}</span>
+                                {a.label} <span className="text-gray-500">{categoryLabel(defaultCategory(a, false, date))}</span>
                               </span>
                             </label>
                           </li>
@@ -1010,7 +1010,7 @@ export default function Herds() {
                   </div>
                 </div>
                 {canWrite && (
-                  <button type="button" onClick={() => setDialog({ kind: 'group', group: g })} className="text-xs text-gray-400">
+                  <button type="button" onClick={() => setDialog({ kind: 'group', group: g })} className="text-xs text-gray-500">
                     ✎
                   </button>
                 )}
@@ -1026,10 +1026,10 @@ export default function Herds() {
                   {stall ? (
                     <>
                       <span className="font-medium">{stayName(data, stall)}</span>
-                      <span className="block text-xs text-gray-400">seit {fmtDate(stall.from_date)}</span>
+                      <span className="block text-xs text-gray-500">seit {fmtDate(stall.from_date)}</span>
                     </>
                   ) : (
-                    <span className="text-gray-400">kein Stall</span>
+                    <span className="text-gray-500">kein Stall</span>
                   )}
                 </button>
                 <button
@@ -1042,13 +1042,13 @@ export default function Herds() {
                   {weide ? (
                     <>
                       <span className="font-medium">{stayName(data, weide)}</span>
-                      <span className="block text-xs text-gray-400">
+                      <span className="block text-xs text-gray-500">
                         seit {fmtDate(weide.from_date)}
                         {weide.day_only ? ' · nur Tagweide' : ''}
                       </span>
                     </>
                   ) : (
-                    <span className="text-gray-400">keine Weide</span>
+                    <span className="text-gray-500">keine Weide</span>
                   )}
                 </button>
               </div>

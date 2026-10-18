@@ -277,10 +277,10 @@ function LactationTable({ rows, showAnimal, calvingLabel, sort }: {
             <td className="px-2 py-1.5 text-right text-gray-600">{l.days_in_milk ?? '–'}</td>
             <td className="px-2 py-1.5 text-right text-gray-700">{n0(l.milk_kg)}</td>
             <td className="whitespace-nowrap px-2 py-1.5 text-right text-gray-700">
-              {n0(l.fat_kg)} <span className="text-xs text-gray-400">{n2(l.fat_pct)}</span>
+              {n0(l.fat_kg)} <span className="text-xs text-gray-500">{n2(l.fat_pct)}</span>
             </td>
             <td className="whitespace-nowrap px-2 py-1.5 text-right text-gray-700">
-              {n0(l.protein_kg)} <span className="text-xs text-gray-400">{n2(l.protein_pct)}</span>
+              {n0(l.protein_kg)} <span className="text-xs text-gray-500">{n2(l.protein_pct)}</span>
             </td>
             <td className="px-2 py-1.5 text-right font-semibold text-gray-900">{n0(l.fat_protein_kg)}</td>
             <td className="px-2 py-1.5 text-right text-gray-600">{n0(fePerDay(l))}</td>
@@ -424,7 +424,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
     setTimeout(() => document.getElementById(`lact-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
-  if (loading && !data) return <p className="text-center text-gray-400">Lädt…</p>
+  if (loading && !data) return <p className="text-center text-gray-500">Lädt…</p>
   if (data && all.length === 0) return <p className="text-center text-gray-500">Keine Laktationsdaten. {terms.importHint}</p>
 
   const select = 'rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
@@ -625,7 +625,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
               )}
             </div>
             {snapshotDate && snapshotDate === days[0]?.date && (
-              <p className="text-xs text-gray-400">Neueste Wägung; frühere im Auswahlfeld.</p>
+              <p className="text-xs text-gray-500">Neueste Wägung; frühere im Auswahlfeld.</p>
             )}
             <HerdDimChart
               points={dimPoints}
@@ -674,7 +674,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                     <div className="font-semibold text-gray-800">
                       {a.lauf_nr && <span className="mr-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{a.lauf_nr}</span>}
                       {a.label}
-                      {a.animal_status !== 'aktiv' && <span className="ml-1.5 text-xs font-normal text-gray-400">{a.animal_status}</span>}
+                      {a.animal_status !== 'aktiv' && <span className="ml-1.5 text-xs font-normal text-gray-500">{a.animal_status}</span>}
                     </div>
                     <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-gray-500">
                       <span>
@@ -694,7 +694,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                               {Math.round(a.ltl.feRel * 100)} %
                             </span>
                           )}
-                          {a.ltl.feRel == null && <span className="ml-1 text-gray-400">(1. Laktation läuft, noch kein Vergleich)</span>}
+                          {a.ltl.feRel == null && <span className="ml-1 text-gray-500">(1. Laktation läuft, noch kein Vergleich)</span>}
                         </span>
                       )}
                     </div>
@@ -734,7 +734,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                             </>
                           )}
                         </span>
-                        <span className="text-gray-400">
+                        <span className="text-gray-500">
                           {rated.lactation_number}. Lakt.{isRunning(rated) ? `, laufend, Tag ${rated.lastDim ?? '?'}` : ''}
                         </span>
                         {projection != null && Number.isFinite(projection) && (

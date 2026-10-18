@@ -117,7 +117,7 @@ export default function YogurtPlanner() {
   const delivered = rows.filter((r) => !r.ex?.blocked).map((r) => r.c)
   const blocked = rows.filter((r) => r.ex?.blocked).map((r) => r.c)
 
-  if (loading && !data) return <p className="text-sm text-gray-400">Lädt…</p>
+  if (loading && !data) return <p className="text-sm text-gray-500">Lädt…</p>
 
   return (
     <div className="space-y-3">
@@ -237,7 +237,7 @@ export default function YogurtPlanner() {
                   </td>
                   <td className="px-1.5 py-1.5">
                     <span className="font-medium">{c.label}</span>
-                    <span className="block text-[11px] text-gray-500">
+                    <span className="block text-xs text-gray-500">
                       {fmtDate(c.test_date)}
                       {c.analysis_date ? ` · Gehalte ${fmtDate(c.analysis_date)}` : ''}
                       {ex && <span className={ex.blocked ? ' text-red-700' : ' text-amber-700'}> · {ex.reason}</span>}

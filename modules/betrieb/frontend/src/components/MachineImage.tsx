@@ -20,7 +20,7 @@ export default function MachineImage({ fileId, alt, className }: { fileId: strin
 
   if (!url) {
     return (
-      <div className={`flex items-center justify-center bg-gray-100 text-xs text-gray-400 ${className ?? ''}`}>
+      <div className={`flex items-center justify-center bg-gray-100 text-xs text-gray-500 ${className ?? ''}`}>
         {failed ? 'offline' : '…'}
       </div>
     )

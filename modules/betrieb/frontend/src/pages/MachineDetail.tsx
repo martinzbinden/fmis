@@ -93,7 +93,7 @@ export default function MachineDetail() {
   const images = files.filter((f) => f.kind === 'bild')
   const docs = files.filter((f) => f.kind !== 'bild')
 
-  if (loading && !data) return <p className="p-4 text-center text-gray-400">Lädt…</p>
+  if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
   if (!m) {
     return (
       <div className="p-4 text-sm">
@@ -282,7 +282,7 @@ export default function MachineDetail() {
           </label>
           {uploading && <p className="text-center text-xs text-gray-500">Lädt hoch… {uploading}</p>}
           {error && <p className="text-center text-xs text-red-700">{error}</p>}
-          <p className="text-center text-xs text-gray-400">Braucht Internet. Grosse Fotos werden verkleinert.</p>
+          <p className="text-center text-xs text-gray-500">Braucht Internet. Grosse Fotos werden verkleinert.</p>
         </div>
       )}
 

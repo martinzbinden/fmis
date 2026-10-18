@@ -117,7 +117,7 @@ export default function JournalGrid({
               return (
                 <div
                   key={d}
-                  className={`shrink-0 pt-1 text-center text-[9px] leading-tight text-gray-400 ${
+                  className={`shrink-0 pt-1 text-center text-[10px] leading-tight text-gray-500 ${
                     isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
                   } ${d === today ? 'bg-yellow-300/70 font-bold text-gray-700' : isWeekend(d) ? 'bg-gray-100' : ''}`}
                   style={{ width: CELL_WIDTH, scrollSnapAlign: isFirstOfMonth ? 'start' : undefined }}
@@ -154,7 +154,7 @@ export default function JournalGrid({
                 title={p.kultur_name_de ?? p.category}
               />
               <span className="min-w-0 flex-1 truncate" title={`${p.name}${p.kultur_name_de ? ' · ' + p.kultur_name_de : ''}`}>
-                <span className="text-gray-400">{farmPrefix(p)}</span>
+                <span className="text-gray-500">{farmPrefix(p)}</span>
                 {p.name}
               </span>
               <button
@@ -196,7 +196,7 @@ export default function JournalGrid({
                     style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
                   >
                     {badge && (
-                      <span className={`font-bold leading-tight text-brand-700 ${badge.length > 2 ? 'text-[9px]' : 'text-[11px]'}`}>
+                      <span className={`font-bold leading-tight text-brand-700 ${badge.length > 2 ? 'text-[10px]' : 'text-[11px]'}`}>
                         {badge}
                       </span>
                     )}
@@ -258,7 +258,7 @@ export default function JournalGrid({
                     type="button"
                     onClick={() => onFarmCellClick(d)}
                     title={fromGeodata ? 'Automatisch vom Geodatenserver' : herdMark && herdCat ? `Aus den Herden:\n${categoryTitle(herdCat)}` : undefined}
-                    className={`shrink-0 border-l border-gray-100 text-center text-[9px] ${herdMark ? 'font-semibold text-emerald-700' : 'text-gray-600'} hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
+                    className={`shrink-0 border-l border-gray-100 text-center text-[10px] ${herdMark ? 'font-semibold text-emerald-700' : 'text-gray-600'} hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
                     style={{ width: CELL_WIDTH, height: FARM_ROW_HEIGHT }}
                   >
                     {content}

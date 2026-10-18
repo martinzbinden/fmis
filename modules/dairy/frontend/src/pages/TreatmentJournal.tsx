@@ -403,7 +403,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                       Wirklich löschen?
                     </button>
                   ) : (
-                    <button type="button" onClick={() => setConfirmCase(c.key)} className="shrink-0 px-1 text-gray-400" aria-label="Behandlung löschen">
+                    <button type="button" onClick={() => setConfirmCase(c.key)} className="shrink-0 px-1 text-gray-500" aria-label="Behandlung löschen">
                       ×
                     </button>
                   ))}
@@ -418,7 +418,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                       <li key={r.id} className="border-l-2 border-brand-200 pl-2">
                         <div className="text-gray-800">
                           {r.medication}
-                          {r.critical_antibiotic && <span className="ml-1 rounded bg-red-100 px-1 text-[10px] text-red-800">kritisches Antibiotikum</span>}
+                          {r.critical_antibiotic && <span className="ml-1 rounded bg-red-100 px-1 text-xs text-red-800">kritisches Antibiotikum</span>}
                         </div>
                         <div className="text-xs text-gray-600">
                           {[

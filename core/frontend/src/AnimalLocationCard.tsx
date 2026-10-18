@@ -27,7 +27,7 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
   }, [locator, moduleKey, animalId])
 
   if (!locator || error) return null
-  if (!loc) return <div className="rounded-lg bg-white p-4 text-sm text-gray-400 shadow-sm">Standort lädt…</div>
+  if (!loc) return <div className="rounded-lg bg-white p-4 text-sm text-gray-500 shadow-sm">Standort lädt…</div>
 
   const cur = loc.current
   // Abgegangene Tiere ohne Herden-Verlauf: nichts zu zeigen
@@ -51,10 +51,10 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
               {cur.stall ? (
                 <>
                   <span className="font-medium text-gray-800">{cur.stall.name}</span>
-                  <span className="block text-gray-400">seit {fmt(cur.stall.since)}</span>
+                  <span className="block text-gray-500">seit {fmt(cur.stall.since)}</span>
                 </>
               ) : (
-                <span className="text-gray-400">kein Stall</span>
+                <span className="text-gray-500">kein Stall</span>
               )}
             </div>
             <div className="rounded bg-gray-50 p-2">
@@ -62,13 +62,13 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
               {cur.weide ? (
                 <>
                   <span className="font-medium text-gray-800">{cur.weide.name}</span>
-                  <span className="block text-gray-400">
+                  <span className="block text-gray-500">
                     seit {fmt(cur.weide.since)}
                     {cur.weide.dayOnly ? ' · Tagweide' : ''}
                   </span>
                 </>
               ) : (
-                <span className="text-gray-400">keine Weide</span>
+                <span className="text-gray-500">keine Weide</span>
               )}
             </div>
           </div>
@@ -87,7 +87,7 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
                 <span className="font-medium text-gray-700">
                   {fmt(h.from)}–{fmt(h.to)}: «{h.groupName}»
                 </span>{' '}
-                <span className="text-gray-400">{h.categoryLabel}</span>
+                <span className="text-gray-500">{h.categoryLabel}</span>
                 {h.places.length > 0 && (
                   <ul className="ml-3 text-gray-500">
                     {h.places.map((p, j) => (

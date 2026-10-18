@@ -62,7 +62,7 @@ export default function Economics() {
     return [...map.values()].sort((a, b) => b.profit - a.profit)
   }, [data])
 
-  if (loading && !data) return <div className="p-4 text-center text-gray-400">Lädt…</div>
+  if (loading && !data) return <div className="p-4 text-center text-gray-500">Lädt…</div>
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4">
@@ -158,7 +158,7 @@ export default function Economics() {
             </tbody>
           </table>
         </div>
-        {rows.length === 0 && <p className="p-3 text-center text-gray-400">Keine Daten.</p>}
+        {rows.length === 0 && <p className="p-3 text-center text-gray-500">Keine Daten.</p>}
       </section>
     </div>
   )

@@ -78,7 +78,7 @@ export default function GroupDetail() {
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
   const [expenseForm, setExpenseForm] = useState<Partial<Expense>>({})
 
-  if (loading && !data) return <div className="p-4 text-center text-gray-400">Lädt…</div>
+  if (loading && !data) return <div className="p-4 text-center text-gray-500">Lädt…</div>
   if (!data) {
     return (
       <div className="p-6 text-center">
@@ -259,7 +259,7 @@ export default function GroupDetail() {
       <section className="rounded-lg bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold text-gray-600">Mitglieder ({members.length})</h2>
         {members.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine Mitglieder.</p>
+          <p className="text-sm text-gray-500">Keine Mitglieder.</p>
         ) : (
           <ul className="divide-y">
             {members.map((m) => (
@@ -282,7 +282,7 @@ export default function GroupDetail() {
           Futtereinträge {totalFeedCost > 0 && `· Total ${fmtChf(totalFeedCost)}`}
         </h2>
         {feed.length === 0 ? (
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-500">
             Keine Einträge. <Link to="/livestock/futter" className="text-brand-700">Futter erfassen</Link>
           </p>
         ) : (
@@ -656,7 +656,7 @@ function ReaderImportPanel({ groupId, onImported }: { groupId: string; onImporte
         </div>
       ) : datapools ? (
         datapools.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine Datenpools auf dem Lesegerät gefunden.</p>
+          <p className="text-sm text-gray-500">Keine Datenpools auf dem Lesegerät gefunden.</p>
         ) : (
           <ul className="space-y-1 text-sm">
             {datapools.map((dp) => (
@@ -676,7 +676,7 @@ function ReaderImportPanel({ groupId, onImported }: { groupId: string; onImporte
           </ul>
         )
       ) : (
-        <p className="text-sm text-gray-400">Lädt…</p>
+        <p className="text-sm text-gray-500">Lädt…</p>
       )}
     </div>
   )

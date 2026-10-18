@@ -80,7 +80,7 @@ export default function OutdoorJournal() {
         {canWrite && ' Tipp auf eine Zelle bei Gruppen in Ställen mit zeitweisem Laufhof setzt oder entfernt den Laufhofgang.'}
       </p>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && rows.length === 0 && <p className="rounded-lg bg-white p-4 text-sm text-gray-500 shadow-sm">Keine Gruppen mit Tieren in diesem Monat.</p>}
 
       {rows.length > 0 && idx && (
@@ -92,7 +92,7 @@ export default function OutdoorJournal() {
                 {days.map((d) => {
                   const dow = new Date(`${d}T12:00:00`).getDay()
                   return (
-                    <th key={d} className={`w-6 min-w-6 p-0.5 text-center font-normal ${dow === 0 || dow === 6 ? 'text-gray-400' : ''} ${d === today ? 'text-brand-700 underline' : ''}`}>
+                    <th key={d} className={`w-6 min-w-6 p-0.5 text-center font-normal ${dow === 0 || dow === 6 ? 'text-gray-500' : ''} ${d === today ? 'text-brand-700 underline' : ''}`}>
                       {Number(d.slice(8))}
                     </th>
                   )
@@ -109,7 +109,7 @@ export default function OutdoorJournal() {
                   <tr key={g.id} className="border-t">
                     <td className="sticky left-0 z-10 max-w-40 bg-white p-1">
                       <span className="block truncate font-medium text-gray-800">{g.name}</span>
-                      <span className="block truncate text-[10px] text-gray-500">{comp.total ? `${comp.total}: ${compositionText(comp)}` : '—'}</span>
+                      <span className="block truncate text-xs text-gray-500">{comp.total ? `${comp.total}: ${compositionText(comp)}` : '—'}</span>
                     </td>
                     {cells.map((c, i) => {
                       const d = days[i]
@@ -138,7 +138,7 @@ export default function OutdoorJournal() {
           </table>
         </div>
       )}
-      <p className="text-[10px] text-gray-400 print:hidden">Stand {fmtDate(today)}. Laufhof je Ort unter Herden → Orte.</p>
+      <p className="text-xs text-gray-500 print:hidden">Stand {fmtDate(today)}. Laufhof je Ort unter Herden → Orte.</p>
     </div>
   )
 }

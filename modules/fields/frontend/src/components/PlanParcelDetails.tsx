@@ -120,7 +120,7 @@ export default function PlanParcelDetails({
     }
   }
 
-  if (!current) return <p className="text-sm text-gray-400">Lädt…</p>
+  if (!current) return <p className="text-sm text-gray-500">Lädt…</p>
 
   return (
     <div className="space-y-4">

@@ -135,7 +135,7 @@ function BreedingValues({ ctx }: { ctx: AnimalContext }) {
     return i === -1 ? TRAIT_ORDER.length : i
   }
   const entries = Object.entries(ctx.breedingValues).sort(([a], [b]) => rank(a) - rank(b))
-  if (!entries.length) return <p className="text-sm text-gray-400">Keine Zuchtwerte importiert.</p>
+  if (!entries.length) return <p className="text-sm text-gray-500">Keine Zuchtwerte importiert.</p>
   const evalDate = entries[0][1].eval_date
   return (
     <>
@@ -145,12 +145,12 @@ function BreedingValues({ ctx }: { ctx: AnimalContext }) {
             <tr key={trait} className="border-b last:border-0">
               <td className="py-1 text-gray-600">{TRAIT_LABEL[trait] ?? trait}</td>
               <td className="py-1 text-right font-medium">{v.value.toLocaleString('de-CH')}</td>
-              <td className="py-1 pl-3 text-right text-xs text-gray-400">{v.reliability != null ? `B ${v.reliability} %` : ''}</td>
+              <td className="py-1 pl-3 text-right text-xs text-gray-500">{v.reliability != null ? `B ${v.reliability} %` : ''}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="mt-1 text-xs text-gray-400">
+      <p className="mt-1 text-xs text-gray-500">
         Zuchtwertschätzung vom {fmtDate(evalDate)}
         {entries[0][1].base ? `, Basis ${entries[0][1].base}` : ''}
       </p>
@@ -168,7 +168,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const { thresholds } = useCullingThresholds(moduleKey, species)
   const { data, loading } = useQuery((pg) => loadDetail(pg, id, species), [id, species])
 
-  if (loading && !data) return <p className="p-4 text-center text-gray-400">Lädt…</p>
+  if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
   if (!data?.ctx) return <p className="p-4 text-center text-gray-500">Tier nicht gefunden.</p>
 
   const { ctx, inbreeding, sires, pedigreeByKey, herdIdByKey, lactations, tests, journal, certificate } = data
@@ -265,13 +265,13 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
               <li key={s.key} className="flex items-center justify-between gap-2 py-1.5">
                 <span className="min-w-0 break-words">
                   {sireLabel(s)}
-                  {s.lastUsed && <span className="ml-1 text-xs text-gray-400">zuletzt {fmtDate(s.lastUsed)}</span>}
+                  {s.lastUsed && <span className="ml-1 text-xs text-gray-500">zuletzt {fmtDate(s.lastUsed)}</span>}
                 </span>
                 <InbreedingBadge f={inbreeding.offspring(offspringKey, s.key)} />
               </li>
             ))}
           </ul>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-gray-500">
             Verwandtschaft aus dem bekannten Stammbaum; unbekannte Vorfahren gelten als unverwandt. Mehr im{' '}
             <Link to="../../anpaarung" relative="path" className="text-brand-700">
               Anpaarungsplaner
@@ -307,7 +307,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-gray-500">
             Blau kg Milch (links), orange Zellzahl in 1000/ml (rechts, logarithmisch), gestrichelt die Grenze{' '}
             {fmtCells(sccLimit)} Zellen.
           </p>
@@ -316,7 +316,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
 
       <Section title={`${birthWord}en`}>
         {ctx.births.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine erfasst.</p>
+          <p className="text-sm text-gray-500">Keine erfasst.</p>
         ) : (
           <ul className="divide-y text-sm">
             {[...ctx.births].reverse().map((b) => {
@@ -355,7 +355,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
 
       <Section title="Belegungen">
         {ctx.matings.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine erfasst.</p>
+          <p className="text-sm text-gray-500">Keine erfasst.</p>
         ) : (
           <ul className="divide-y text-sm">
             {[...ctx.matings].reverse().map((m) => (
@@ -376,7 +376,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
 
       <Section title="Laktationen">
         {lactations.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine erfasst.</p>
+          <p className="text-sm text-gray-500">Keine erfasst.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -422,7 +422,7 @@ function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
       Wirklich löschen?
     </button>
   ) : (
-    <button type="button" onClick={() => setConfirm(true)} className="px-1 text-base leading-none text-gray-400" aria-label="löschen">
+    <button type="button" onClick={() => setConfirm(true)} className="px-1 text-base leading-none text-gray-500" aria-label="löschen">
       ×
     </button>
   )
@@ -447,7 +447,7 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
         </button>
       )}
       {journal.length === 0 ? (
-        <p className="text-sm text-gray-400">Keine Einträge.</p>
+        <p className="text-sm text-gray-500">Keine Einträge.</p>
       ) : (
         <ul className="divide-y text-sm">
           {journal.map((j) => {
@@ -493,7 +493,7 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
                         Wirklich löschen?
                       </button>
                     ) : (
-                      <button type="button" onClick={() => setConfirmId(j.id)} className="shrink-0 px-1 text-gray-400" aria-label="löschen">
+                      <button type="button" onClick={() => setConfirmId(j.id)} className="shrink-0 px-1 text-gray-500" aria-label="löschen">
                         ×
                       </button>
                     ))}

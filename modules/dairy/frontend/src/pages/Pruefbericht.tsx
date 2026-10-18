@@ -196,7 +196,7 @@ export default function Pruefbericht({ moduleKey }: { moduleKey: string }) {
         </Link>
       </div>
 
-      {!data && <p className="text-center text-gray-400">Lädt…</p>}
+      {!data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && dates.length === 0 && <p className="text-center text-gray-500">Keine Milchproben. {terms.importHint}</p>}
 
       {date && (

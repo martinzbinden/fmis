@@ -227,7 +227,7 @@ export default function FeedReference() {
         </button>
       </form>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && references.length === 0 && (
         <p className="text-center text-gray-500">Noch keine Referenzeinträge.</p>
       )}
@@ -278,7 +278,7 @@ export default function FeedReference() {
                     {r.sodium_pct != null && <span>Na {r.sodium_pct}%</span>}
                   </div>
                   {r.notes && <div className="mt-1 text-gray-500">{r.notes}</div>}
-                  <div className="mt-1 text-xs text-gray-400">
+                  <div className="mt-1 text-xs text-gray-500">
                     {r.verified_at ? `zuletzt geprüft ${fmtDate(r.verified_at)}` : 'noch nie geprüft'}
                   </div>
                 </div>

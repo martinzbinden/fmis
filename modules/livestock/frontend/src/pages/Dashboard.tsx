@@ -94,7 +94,7 @@ export default function Dashboard() {
   const { data, loading } = useQuery(loadDashboard)
 
   if (loading && !data) {
-    return <div className="p-4 text-center text-gray-400">Lädt…</div>
+    return <div className="p-4 text-center text-gray-500">Lädt…</div>
   }
 
   const animals = data ?? []
@@ -136,7 +136,7 @@ export default function Dashboard() {
             {STATUS_META[s].label} ({groups[s].length})
           </h2>
           {groups[s].length === 0 ? (
-            <p className="text-sm text-gray-400">Keine Tiere</p>
+            <p className="text-sm text-gray-500">Keine Tiere</p>
           ) : (
             <ul className="space-y-2">
               {groups[s].map((a) => (

@@ -123,7 +123,7 @@ export default function TrackingBadge() {
       >
         <span className={`h-3 w-3 animate-pulse rounded-full ${q.tone === 'bad' ? 'bg-red-500' : 'bg-red-400'}`} />
         🚜 {hhmm(now - started)}
-        <span className={`rounded-full px-1.5 text-[11px] ${TONE[q.tone]}`}>{q.tone === 'bad' && q.label.startsWith('GPS weg') ? 'kein GPS' : q.label.replace('GPS ', '')}</span>
+        <span className={`rounded-full px-1.5 text-xs ${TONE[q.tone]}`}>{q.tone === 'bad' && q.label.startsWith('GPS weg') ? 'kein GPS' : q.label.replace('GPS ', '')}</span>
       </button>
     </div>
   )

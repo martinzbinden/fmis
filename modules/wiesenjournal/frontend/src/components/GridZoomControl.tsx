@@ -14,7 +14,7 @@ export default function GridZoomControl() {
       >
         −
       </button>
-      <span className="px-1 text-xs text-gray-400">🔍</span>
+      <span className="px-1 text-xs text-gray-500">🔍</span>
       <button
         type="button"
         onClick={zoomIn}

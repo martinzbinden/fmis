@@ -348,7 +348,7 @@ export default function WorkPlan() {
         </div>
       )}
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && dates.length === 0 && (
         <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
           Nichts geplant. Mit «+ Arbeit planen» hier planen — oder im Raster einen Tag ab heute öffnen und «Arbeit planen» wählen.

@@ -216,7 +216,7 @@ export function LactationCurveChart({
       </div>
       <div className="mx-2 min-h-[4.5rem] rounded bg-gray-50 px-2 py-1.5 text-xs">
         {cursor == null ? (
-          <p className="pt-3 text-center text-gray-400">Über die Grafik fahren oder tippen: alle Laktationen am selben Laktationstag vergleichen.</p>
+          <p className="pt-3 text-center text-gray-500">Über die Grafik fahren oder tippen: alle Laktationen am selben Laktationstag vergleichen.</p>
         ) : (
           <>
             <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3">
@@ -235,7 +235,7 @@ export function LactationCurveChart({
                     {c.lactation_number}.{c.lactation_number === runningNumber ? ' (lfd.)' : ''}
                   </span>
                   <span className={est ? 'font-semibold text-gray-800' : 'text-gray-300'}>{est ? fmt(est.value) : '—'}</span>
-                  {est && !est.measured && <span className="text-gray-400">≈</span>}
+                  {est && !est.measured && <span className="text-gray-500">≈</span>}
                 </span>
               ))}
             </div>

@@ -110,9 +110,9 @@ function BlockCheck({ mod, importer, block }: { mod: ModuleDescriptor; importer:
                   <input type="checkbox" className="mt-1" disabled={!selectable || busy} checked={selected.has(r.index)} onChange={() => toggle(r.index)} />
                   <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                     <div className="flex flex-wrap items-baseline gap-1">
-                      <span className="text-xs text-gray-400">#{r.index + 1}</span>
+                      <span className="text-xs text-gray-500">#{r.index + 1}</span>
                       <span className="text-gray-800">{r.title}</span>
-                      <span className={`rounded px-1 text-[10px] ${STATUS[r.status].chip}`}>{STATUS[r.status].label}</span>
+                      <span className={`rounded px-1 text-xs ${STATUS[r.status].chip}`}>{STATUS[r.status].label}</span>
                     </div>
                     {r.detail && <div className="text-xs text-gray-500">{r.detail}</div>}
                     {r.problems.map((p) => (

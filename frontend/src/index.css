@@ -36,3 +36,13 @@ textarea,
 button {
   font-size: 16px;
 }
+
+/* Sichtbarer Tastatur-Fokus (Desktop): der Browser-Standard ist auf den
+   farbigen Knöpfen kaum zu sehen. Nur bei Tastaturbedienung (focus-visible),
+   Maus und Touch bleiben unverändert. */
+@layer base {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--brand-700);
+    outline-offset: 2px;
+  }
+}

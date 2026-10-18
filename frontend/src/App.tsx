@@ -102,7 +102,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
         <div>
           <p className="text-lg font-semibold text-red-700">App konnte nicht starten</p>
           <p className="mt-2 text-sm text-gray-600">{moduleError}</p>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-gray-500">
             Beim ersten Start braucht die App einmal Verbindung; danach läuft sie offline weiter.
           </p>
           <button

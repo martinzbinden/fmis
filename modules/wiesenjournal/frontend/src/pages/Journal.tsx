@@ -74,7 +74,7 @@ export default function Journal() {
         />
       </div>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && filtered.length === 0 && <p className="text-center text-gray-500">Keine Einträge.</p>}
 
       <ul className="space-y-2">

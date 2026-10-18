@@ -33,7 +33,7 @@ export default function PlanAttributeTable({
   onChanged: () => void
 }) {
   if (planParcels.length === 0) {
-    return <p className="text-center text-sm text-gray-400">Dieser Layer hat noch keine Parzellen.</p>
+    return <p className="text-center text-sm text-gray-500">Dieser Layer hat noch keine Parzellen.</p>
   }
 
   return (

@@ -93,7 +93,7 @@ export default function Vermarktung() {
     })
   }, [data, grade])
 
-  if (loading && !data) return <div className="p-4 text-center text-gray-400">Lädt…</div>
+  if (loading && !data) return <div className="p-4 text-center text-gray-500">Lädt…</div>
   if (!data) return null
   const { prices, direct } = data.marketing
 
@@ -218,7 +218,7 @@ export default function Vermarktung() {
             </tbody>
           </table>
         </div>
-        {rows.length === 0 && <p className="p-3 text-center text-gray-400">Keine aktiven Tiere.</p>}
+        {rows.length === 0 && <p className="p-3 text-center text-gray-500">Keine aktiven Tiere.</p>}
       </section>
 
       <section className="rounded-lg bg-white p-4 shadow-sm">

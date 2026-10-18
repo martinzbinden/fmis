@@ -362,7 +362,7 @@ export default function DayEntryEditor({
     <Modal title={`${parcelName} · ${fmtDate(date)}`} onClose={onClose} onSubmit={() => !loading && !saving && void save()}>
       <HerdUsageNote entries={herdUsage} />
       {loading ? (
-        <p className="py-4 text-center text-gray-400">Lädt…</p>
+        <p className="py-4 text-center text-gray-500">Lädt…</p>
       ) : (
         <div className="space-y-5">
           <section>
@@ -517,7 +517,7 @@ export default function DayEntryEditor({
                   />
                 </div>
               ))}
-              {usageRows.length === 0 && <p className="text-xs text-gray-400">Keine Nutzung erfasst.</p>}
+              {usageRows.length === 0 && <p className="text-xs text-gray-500">Keine Nutzung erfasst.</p>}
             </div>
           </section>
 
@@ -678,7 +678,7 @@ export default function DayEntryEditor({
                         />
                       </div>
                     )}
-                    {preview && <p className="text-[11px] text-brand-800">{preview}</p>}
+                    {preview && <p className="text-xs text-brand-800">{preview}</p>}
                     <input
                       type="text"
                       placeholder="Bemerkung"
@@ -689,7 +689,7 @@ export default function DayEntryEditor({
                   </div>
                 )
               })}
-              {fertRows.length === 0 && <p className="text-xs text-gray-400">Keine Düngung erfasst.</p>}
+              {fertRows.length === 0 && <p className="text-xs text-gray-500">Keine Düngung erfasst.</p>}
             </div>
           </section>
 
@@ -744,7 +744,7 @@ export default function DayEntryEditor({
                       }
                     />
                     {p.farm_name ? `${p.farm_name} · ` : ''}
-                    {p.name} <span className="text-xs text-gray-400">{p.area_a != null ? `${p.area_a} a` : ''}</span>
+                    {p.name} <span className="text-xs text-gray-500">{p.area_a != null ? `${p.area_a} a` : ''}</span>
                   </label>
                 )
               })}

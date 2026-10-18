@@ -103,7 +103,7 @@ export default function MatingPlanner({ moduleKey }: { moduleKey: string }) {
         />
       </div>
 
-      {!data && <p className="text-center text-gray-400">Lädt…</p>}
+      {!data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && inb && columns.length > 0 && (
         <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
           <table className="w-full text-sm">

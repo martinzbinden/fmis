@@ -19,20 +19,20 @@ export function SummaryHeaderCells() {
   return (
     <>
       <div
-        className={`${CELL_CLASS} text-[9px] font-semibold`}
+        className={`${CELL_CLASS} text-[10px] font-semibold`}
         style={{ width: SUMMARY_COL_WIDTHS.weide, right: SUMMARY_COL_WIDTHS.ertrag + SUMMARY_COL_WIDTHS.nkg }}
         title="Weidetage"
       >
         Weide
       </div>
       <div
-        className={`${CELL_CLASS} text-[9px] font-semibold`}
+        className={`${CELL_CLASS} text-[10px] font-semibold`}
         style={{ width: SUMMARY_COL_WIDTHS.ertrag, right: SUMMARY_COL_WIDTHS.nkg }}
         title="Ertrag total"
       >
         Ertrag
       </div>
-      <div className={`${CELL_CLASS} text-[9px] font-semibold`} style={{ width: SUMMARY_COL_WIDTHS.nkg, right: 0 }} title="Stickstoff total (N kg)">
+      <div className={`${CELL_CLASS} text-[10px] font-semibold`} style={{ width: SUMMARY_COL_WIDTHS.nkg, right: 0 }} title="Stickstoff total (N kg)">
         N kg
       </div>
     </>

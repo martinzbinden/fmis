@@ -76,7 +76,7 @@ export function pedigreeLink(moduleKey: string, herdIdByKey: Map<string, string>
 
 function PedigreeCell({ node, role, linkFor }: { node: PedigreeNode | undefined; role: string; linkFor: (key: string) => string }) {
   if (!node) {
-    return <div className="rounded border border-dashed border-gray-200 p-2 text-xs text-gray-400">{role}: unbekannt</div>
+    return <div className="rounded border border-dashed border-gray-200 p-2 text-xs text-gray-500">{role}: unbekannt</div>
   }
   return (
     <div className="min-w-0 rounded border border-gray-200 p-2 text-xs">

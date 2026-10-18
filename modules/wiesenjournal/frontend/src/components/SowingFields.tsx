@@ -88,7 +88,7 @@ export default function SowingFields({
             {field('rowSpacing', 'Reihenabstand (cm)', 'z.B. 12.5')}
             {field('wideRowEvery', 'Weite Reihe: jede n-te zu', 'leer = keine')}
           </div>
-          <p className="text-[11px] text-gray-500">
+          <p className="text-xs text-gray-500">
             Mit TKG rechnet kg/ha ↔ Körner/m² automatisch (kg/ha = Kö/m² × TKG ÷ Keimfähigkeit).
             {sum.perRowMeter != null && (
               <>

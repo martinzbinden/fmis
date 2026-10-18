@@ -103,7 +103,7 @@ export default function Machines() {
         </span>
       </div>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && machines.length === 0 && <p className="text-center text-sm text-gray-500">Noch keine Maschinen erfasst.</p>}
 
       {sections

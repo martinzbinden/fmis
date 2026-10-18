@@ -74,7 +74,7 @@ export default function WeedForm({
               {relocating ? 'Bestimme…' : '📍 Position neu bestimmen'}
             </button>
           </div>
-          <p className="text-[11px] text-gray-400">Roter Punkt auf der Karte ziehen, um ihn genau zu setzen.</p>
+          <p className="text-xs text-gray-500">Roter Punkt auf der Karte ziehen, um ihn genau zu setzen.</p>
         </div>
 
         {nearby.length > 0 && (

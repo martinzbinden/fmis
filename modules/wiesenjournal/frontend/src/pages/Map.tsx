@@ -555,7 +555,7 @@ function CoveragePanel({
             <span className="font-medium text-red-700">rot = doppelt</span> · <span className="font-medium text-yellow-700">gelb = Lücke</span>
           </div>
         </div>
-        <button type="button" onClick={onClose} className="text-gray-400" aria-label="Schliessen">
+        <button type="button" onClick={onClose} className="text-gray-500" aria-label="Schliessen">
           ×
         </button>
       </div>
@@ -593,7 +593,7 @@ function CoveragePanel({
           </tbody>
         </table>
       )}
-      <p className="text-[11px] text-gray-500">
+      <p className="text-xs text-gray-500">
         Gezählt wird gerade Fahrt in der Parzelle mit Arbeitstempo; Wendebögen nicht. «Doppelt» = von zwei Durchgängen überfahren (zu viel
         ausgebracht), «Lücke» = in der Parzelle nicht befahren. Streifen unter 2 m Breite gelten als GPS-Ungenauigkeit und werden
         weggelassen (Handy-GPS ±3–5 m — einzelne Flecken mit Vorsicht deuten, ausgelassene oder doppelte Bahnen sind verlässlich).

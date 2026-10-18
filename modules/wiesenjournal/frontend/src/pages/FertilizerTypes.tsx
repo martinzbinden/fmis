@@ -113,7 +113,7 @@ export default function FertilizerTypes() {
         )}
       </div>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
 
       <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
         <table className="w-full min-w-[720px] text-sm">
@@ -132,11 +132,11 @@ export default function FertilizerTypes() {
           </thead>
           <tbody>
             {types.map((t) => (
-              <tr key={t.id} className={`border-b last:border-0 ${t.active ? '' : 'text-gray-400'}`}>
+              <tr key={t.id} className={`border-b last:border-0 ${t.active ? '' : 'text-gray-500'}`}>
                 <td className="px-3 py-2 font-semibold">{t.code}</td>
                 <td className="px-3 py-2">
                   {t.name}
-                  {t.notes && <div className="text-[11px] text-gray-400">{t.notes}</div>}
+                  {t.notes && <div className="text-xs text-gray-500">{t.notes}</div>}
                 </td>
                 <td className="px-3 py-2">
                   {UNIT_LABEL[t.unit]}

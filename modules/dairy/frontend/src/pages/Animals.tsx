@@ -70,7 +70,7 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
         </span>
       </Link>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && allAnimals.length === 0 && (
         <p className="text-center text-gray-500">Noch keine Tiere importiert.</p>
       )}
@@ -111,7 +111,7 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
       {view === 'list' && allAnimals.length > 0 && <AnimalTable animals={animals} storageKey={`${moduleKey}_animals_columns`} />}
 
       {view === 'cards' && animals.length === 0 && allAnimals.length > 0 && (
-        <p className="text-center text-gray-400">Keine Treffer.</p>
+        <p className="text-center text-gray-500">Keine Treffer.</p>
       )}
       <ul className={`space-y-2 ${view === 'list' ? 'hidden' : ''}`}>
         {animals.map((a) => (

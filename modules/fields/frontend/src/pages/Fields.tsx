@@ -256,7 +256,7 @@ export default function Fields() {
               </option>
             ))}
           </select>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-500">
             {filtered.length} Parzellen · {fmtArea(filtered.reduce((sum, d) => sum + (d.area_a ?? 0), 0))}
           </span>
           <button

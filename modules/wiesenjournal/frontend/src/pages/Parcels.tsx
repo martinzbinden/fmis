@@ -220,7 +220,7 @@ export default function Parcels() {
         </div>
       )}
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && parcels.length === 0 && (
         <p className="text-center text-gray-500">
           Noch keine Parzellen für {seasonYear} — „Aus GELAN übernehmen" (Kulturen-Modul muss die Raumdaten des
@@ -240,7 +240,7 @@ export default function Parcels() {
                     title={PARCEL_CATEGORY_LABEL[p.category] ?? p.category}
                   />
                   <span className="truncate">{p.name}</span>
-                  <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                  <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500">
                     {PARCEL_SOURCE_LABEL[p.source] ?? p.source}
                   </span>
                 </div>
@@ -251,7 +251,7 @@ export default function Parcels() {
                   {p.wiesentyp ? ` · ${p.wiesentyp}` : ''}
                   {p.intensitaet ? ` · ${p.intensitaet}` : ''}
                 </div>
-                {p.notes && <div className="mt-1 text-xs text-gray-400">{p.notes}</div>}
+                {p.notes && <div className="mt-1 text-xs text-gray-500">{p.notes}</div>}
               </div>
               {canWrite && (
                 <div className="flex shrink-0 flex-col items-end gap-0.5 sm:flex-row sm:gap-1">

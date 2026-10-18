@@ -194,7 +194,7 @@ export default function Animals() {
   const { filter, setFilter, filtered } = useEarTagFilter(data, (a) => a.ear_tag)
 
   if (loading && !data) {
-    return <div className="p-4 text-center text-gray-400">Lädt…</div>
+    return <div className="p-4 text-center text-gray-500">Lädt…</div>
   }
 
   const animals = data ?? []

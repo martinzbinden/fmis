@@ -25,11 +25,11 @@ export default function Layout({
 }) {
   const canManageUsers = useHasPermission('core:users:manage')
   const canViewHistory = useHasPermission(historyPermission)
-  const { status, error } = useSyncStatus(sync)
+  const { status, error, pending } = useSyncStatus(sync)
 
   return (
     <div data-module={moduleKey} className="flex min-h-screen flex-col bg-gray-50">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
         <div className="flex items-center gap-2">
           <NavLink to="/dashboard" className="rounded px-1 py-1 text-lg active:bg-gray-100" title="Zur Übersicht">
             🏠
@@ -37,7 +37,7 @@ export default function Layout({
           <span className="text-lg font-bold text-brand-800">{title}</span>
         </div>
         <div className="flex items-center gap-1">
-          <SyncStatusDot status={status} error={error} onSync={() => void sync.syncNow()} />
+          <SyncStatusDot status={status} error={error} pending={pending} onSync={() => void sync.syncNow()} />
           <NavLink to="/import" className="rounded px-2 py-1 text-lg active:bg-gray-100" title="Daten importieren">
             📥
           </NavLink>
@@ -64,10 +64,10 @@ export default function Layout({
         </div>
       </header>
 
-      <main className="flex-1 pb-20">{children}</main>
+      <main className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom,0px))]">{children}</main>
 
       <nav
-        className="fixed bottom-0 left-0 right-0 z-20 grid border-t bg-white"
+        className="fixed bottom-0 left-0 right-0 z-20 grid border-t bg-white pb-[env(safe-area-inset-bottom,0px)]"
         style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
       >
         {navItems.map((item) => (

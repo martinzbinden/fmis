@@ -189,7 +189,7 @@ export default function StartTrackDialog({
             className={input}
           />
         </label>
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-gray-500">
           Die Arbeitsbreite wird für den Flächenbezug einer Düngungsmassnahme über diesen Track gebraucht (falls
           nicht angegeben, gilt später ein Standardwert).
         </p>

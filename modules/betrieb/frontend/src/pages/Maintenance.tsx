@@ -119,7 +119,7 @@ export default function Maintenance() {
               className={`rounded-lg px-3 py-1.5 text-sm ${view.category === c ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}
             >
               {c === 'alle' ? 'Alle' : `${CATEGORY_ICON[c]} ${CATEGORY_LABEL[c]}`} <span className="opacity-70">{n}</span>
-              {due > 0 && <span className="ml-1 rounded bg-red-600 px-1 text-[10px] font-semibold text-white">{due}</span>}
+              {due > 0 && <span className="ml-1 rounded bg-red-600 px-1 text-xs font-semibold text-white">{due}</span>}
             </button>
           )
         })}
@@ -160,7 +160,7 @@ export default function Maintenance() {
         )}
       </div>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
 
       {view.tab === 'plan' && canWrite && withoutPlan.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
@@ -212,7 +212,7 @@ export default function Maintenance() {
                       {statuses[0] && statuses[0].state !== 'ok' && statuses[0].state !== 'offen' ? ` · ${statuses[0].task.title}` : ''}
                     </span>
                   </span>
-                  <span className="flex shrink-0 flex-wrap justify-end gap-1 text-[10px]">
+                  <span className="flex shrink-0 flex-wrap justify-end gap-1 text-xs">
                     {todos.length > 0 && (
                       <span className={`rounded px-1.5 py-0.5 font-medium ${todos.some((t) => todoOverdue(t, today)) ? 'bg-red-100 text-red-800' : 'bg-violet-100 text-violet-800'}`}>
                         {todos.length} {todos.length === 1 ? 'Pendenz' : 'Pendenzen'}

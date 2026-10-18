@@ -36,7 +36,7 @@ async function loadGroups(pg: PGlite): Promise<Row[]> {
 export default function Groups() {
   const { data, loading } = useQuery(loadGroups)
 
-  if (loading && !data) return <div className="p-4 text-center text-gray-400">Lädt…</div>
+  if (loading && !data) return <div className="p-4 text-center text-gray-500">Lädt…</div>
   const groups = data ?? []
 
   return (

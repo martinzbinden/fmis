@@ -80,7 +80,7 @@ export default function TreatmentItems({
                 />
               </label>
               {items.length > 1 && (
-                <button type="button" onClick={() => onChange(items.filter((_, k) => k !== i))} className="mt-6 px-1 text-lg text-gray-400" aria-label="Präparat entfernen">
+                <button type="button" onClick={() => onChange(items.filter((_, k) => k !== i))} className="mt-6 px-1 text-lg text-gray-500" aria-label="Präparat entfernen">
                   ×
                 </button>
               )}

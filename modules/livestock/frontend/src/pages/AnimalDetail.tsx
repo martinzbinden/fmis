@@ -82,7 +82,7 @@ export default function AnimalDetail() {
   const [editingSlaughter, setEditingSlaughter] = useState(false)
   const [slaughterForm, setSlaughterForm] = useState<Partial<SlaughterResult>>({})
 
-  if (loading && !data) return <div className="p-4 text-center text-gray-400">Lädt…</div>
+  if (loading && !data) return <div className="p-4 text-center text-gray-500">Lädt…</div>
   if (!data) {
     return (
       <div className="p-6 text-center">
@@ -361,7 +361,7 @@ export default function AnimalDetail() {
       <section className="rounded-lg bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold text-gray-600">Gewichtsverlauf</h2>
         {chartData.length === 0 ? (
-          <p className="text-sm text-gray-400">Noch keine Wägungen erfasst.</p>
+          <p className="text-sm text-gray-500">Noch keine Wägungen erfasst.</p>
         ) : (
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -386,7 +386,7 @@ export default function AnimalDetail() {
       <section className="rounded-lg bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold text-gray-600">Wägungen</h2>
         {weighings.length === 0 ? (
-          <p className="text-sm text-gray-400">Noch keine Wägungen erfasst.</p>
+          <p className="text-sm text-gray-500">Noch keine Wägungen erfasst.</p>
         ) : (
           <ul className="divide-y">
             {[...weighings].reverse().map((w) =>
@@ -455,7 +455,7 @@ export default function AnimalDetail() {
       <section className="rounded-lg bg-white p-4 shadow-sm">
         <h2 className="mb-2 text-sm font-semibold text-gray-600">Medikamente</h2>
         {medications.length === 0 ? (
-          <p className="text-sm text-gray-400">Keine Einträge.</p>
+          <p className="text-sm text-gray-500">Keine Einträge.</p>
         ) : (
           <ul className="divide-y">
             {medications.map((m) => {
@@ -521,7 +521,7 @@ export default function AnimalDetail() {
                     {m.reason ?? ''} {m.dose ? `· ${m.dose}` : ''}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className={open ? 'text-red-600' : 'text-gray-400'}>
+                    <span className={open ? 'text-red-600' : 'text-gray-500'}>
                       Absetzfrist bis {fmtDate(untilIso)} {open ? '(offen)' : '(abgelaufen)'}
                     </span>
                     <span className="flex gap-3 text-xs">
@@ -569,7 +569,7 @@ export default function AnimalDetail() {
           )}
         </div>
         {!slaughter ? (
-          <p className="text-sm text-gray-400">Noch nicht geschlachtet.</p>
+          <p className="text-sm text-gray-500">Noch nicht geschlachtet.</p>
         ) : editingSlaughter ? (
           <div className="space-y-2 text-sm">
             <div className="grid grid-cols-2 gap-2">

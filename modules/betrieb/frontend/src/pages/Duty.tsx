@@ -172,7 +172,7 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
                 ))}
               </ul>
             ) : (
-              <p className="px-2 py-1.5 text-xs text-gray-400">keine Dienste</p>
+              <p className="px-2 py-1.5 text-xs text-gray-500">keine Dienste</p>
             )}
           </section>
         )
@@ -341,7 +341,7 @@ function Absences({ d, canWrite }: { d: DutyData; canWrite: boolean }) {
                   Wirklich löschen?
                 </button>
               ) : (
-                <button type="button" className="px-1 text-gray-400" onClick={() => setConfirmId(a.id)} aria-label="Abwesenheit löschen">
+                <button type="button" className="px-1 text-gray-500" onClick={() => setConfirmId(a.id)} aria-label="Abwesenheit löschen">
                   ×
                 </button>
               ))}
@@ -530,7 +530,7 @@ function Settings({ d }: { d: DutyData }) {
                 </>
               ) : (
                 <button type="button" className="flex-1 text-left" onClick={() => setEditPerson(p)}>
-                  <b className={p.active ? '' : 'text-gray-400 line-through'}>{p.name}</b> <span className="text-xs text-gray-500">{p.email ?? 'ohne FMIS-Konto'}</span>
+                  <b className={p.active ? '' : 'text-gray-500 line-through'}>{p.name}</b> <span className="text-xs text-gray-500">{p.email ?? 'ohne FMIS-Konto'}</span>
                 </button>
               )}
             </li>
@@ -570,7 +570,7 @@ function Settings({ d }: { d: DutyData }) {
               ) : (
                 <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setEditType(t)}>
                   <span className="h-3 w-3 rounded-full" style={{ background: t.color ?? '#64748b' }} />
-                  <span className={`flex-1 ${t.active ? '' : 'text-gray-400 line-through'}`}>{t.name}</span>
+                  <span className={`flex-1 ${t.active ? '' : 'text-gray-500 line-through'}`}>{t.name}</span>
                   <span className="text-xs tabular-nums text-gray-500">
                     {t.start_time}–{endTime(t)} · {DAYS.filter((_, i) => t.weekdays[i] !== '0').join(' ')}
                   </span>

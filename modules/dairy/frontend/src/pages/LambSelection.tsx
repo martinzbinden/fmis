@@ -214,7 +214,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && visible.length === 0 && (
         <p className="text-center text-sm text-gray-500">
           Keine Jungtiere bis {settings.maxAgeMonths} Monate. Jungtiere kommen aus der Geburtserfassung, dem Herdebuch-Export oder dem
@@ -244,7 +244,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                 const p = r.dam?.performance
                 const scc = settings.scc12m ? p?.scc_geo_12m : p?.scc_geo
                 return (
-                  <tr key={r.key} className={`border-b align-top last:border-0 ${r.purpose === 'mast' ? 'text-gray-400' : ''}`}>
+                  <tr key={r.key} className={`border-b align-top last:border-0 ${r.purpose === 'mast' ? 'text-gray-500' : ''}`}>
                     <td className="px-2 py-2 text-right font-bold">{r.rank ?? ''}</td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {r.animal_id ? (
@@ -268,7 +268,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                           {animalLabel(r.dam)}
                         </Link>
                       ) : (
-                        <span className="text-gray-400">{r.dam_key ? shortEarTag(r.dam_key) : 'unbekannt'}</span>
+                        <span className="text-gray-500">{r.dam_key ? shortEarTag(r.dam_key) : 'unbekannt'}</span>
                       )}
                       <div className="text-xs text-gray-500">
                         {p ? `${p.lactation_group}. Lakt. · Daten ${BASIS_LABEL[p.data_basis]}` : r.dam ? 'nicht mehr im Bestand' : ''}

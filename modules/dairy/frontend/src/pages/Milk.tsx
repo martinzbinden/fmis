@@ -118,7 +118,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
 
       {tab === 'joghurt' && showYogurt && <YogurtPlanner />}
 
-      {tab === 'waegung' && loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {tab === 'waegung' && loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {tab === 'waegung' && data && cows.length === 0 && !analysedOnly && (
         <p className="text-center text-gray-500">
           Keine aktuellen Milchtests. {terms.importHint}

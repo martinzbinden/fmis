@@ -123,7 +123,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
           <button
             type="button"
             onClick={() => setMode((m) => (m === 'email' ? 'password' : 'email'))}
-            className="mt-4 w-full text-center text-xs text-gray-400 underline"
+            className="mt-4 w-full text-center text-xs text-gray-500 underline"
           >
             {mode === 'email' ? 'Testpasswort verwenden' : 'Mit E-Mail-Link anmelden'}
           </button>
@@ -194,7 +194,7 @@ function EmailLogin() {
       >
         {busy ? 'Sende Link…' : 'Login-Link anfordern'}
       </button>
-      <p className="text-center text-xs text-gray-400">
+      <p className="text-center text-xs text-gray-500">
         Neue Adressen müssen erst von einem Admin freigeschaltet werden. Nach der Anmeldung
         funktioniert die App vollständig offline.
       </p>

@@ -105,7 +105,7 @@ export default function ParcelFilterBar({
                   className="flex w-full items-center justify-between gap-2 px-2 py-1 text-left hover:bg-gray-50"
                 >
                   <span className="truncate">{s.label}</span>
-                  <span className={`shrink-0 text-[10px] ${s.kind === 'category' ? 'font-medium text-teal-600' : 'text-gray-400'}`}>
+                  <span className={`shrink-0 text-xs ${s.kind === 'category' ? 'font-medium text-teal-600' : 'text-gray-500'}`}>
                     {KIND_LABEL[s.kind]}
                   </span>
                 </button>

@@ -195,7 +195,7 @@ export default function MowPanel({
               </div>
             ))}
           <GridCanvas grid={grid} version={version} at={last} />
-          <p className="text-[11px] text-gray-500">
+          <p className="text-xs text-gray-500">
             Grün gemäht, gelb steht noch (Spur × {widthM.toLocaleString('de-CH')} m Arbeitsbreite; scharfe Wendebögen zählen nicht). Handy-GPS ist auf
             ±3–5 m genau — ein Puffer von einigen Prozent ist sinnvoll.
           </p>

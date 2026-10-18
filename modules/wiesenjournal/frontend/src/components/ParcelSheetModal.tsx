@@ -108,7 +108,7 @@ export default function ParcelSheetModal({
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-brand-700">Düngungsplanung — Soll/Ist</div>
           {amountRows.length === 0 ? (
-            <p className="mt-1 text-xs text-gray-400">Keine Düngung erfasst.</p>
+            <p className="mt-1 text-xs text-gray-500">Keine Düngung erfasst.</p>
           ) : (
             <table className="mt-1 w-full text-xs">
               <thead>
@@ -165,13 +165,13 @@ export default function ParcelSheetModal({
           </button>
           {usageOpen && (
             <ul className="mt-1 divide-y text-xs">
-              {usageRows.length === 0 && <li className="py-1.5 text-gray-400">Keine Nutzung erfasst.</li>}
+              {usageRows.length === 0 && <li className="py-1.5 text-gray-500">Keine Nutzung erfasst.</li>}
               {usageRows.map(({ date, entry }) => (
                 <li key={entry.id}>
                   <button type="button" onClick={() => openDay(date)} className="flex w-full items-center justify-between gap-2 py-1.5 text-left active:bg-gray-50">
                     <span className="text-gray-500">{fmtDate(date)}</span>
                     <span className="flex-1 truncate text-gray-700">{usageDescription(entry)}</span>
-                    {entry.is_planned && <span className="shrink-0 rounded border border-dashed border-gray-400 px-1 text-[10px] text-gray-500">geplant</span>}
+                    {entry.is_planned && <span className="shrink-0 rounded border border-dashed border-gray-400 px-1 text-xs text-gray-500">geplant</span>}
                   </button>
                 </li>
               ))}
@@ -190,13 +190,13 @@ export default function ParcelSheetModal({
           </button>
           {fertOpen && (
             <ul className="mt-1 divide-y text-xs">
-              {fertRows.length === 0 && <li className="py-1.5 text-gray-400">Keine Düngung erfasst.</li>}
+              {fertRows.length === 0 && <li className="py-1.5 text-gray-500">Keine Düngung erfasst.</li>}
               {fertRows.map(({ date, entry }) => (
                 <li key={entry.id}>
                   <button type="button" onClick={() => openDay(date)} className="flex w-full items-center justify-between gap-2 py-1.5 text-left active:bg-gray-50">
                     <span className="text-gray-500">{fmtDate(date)}</span>
                     <span className="flex-1 truncate text-gray-700">{fertAmountText(entry)}{entry.notes ? ` · ${entry.notes}` : ''}</span>
-                    {entry.is_planned && <span className="shrink-0 rounded border border-dashed border-gray-400 px-1 text-[10px] text-gray-500">geplant</span>}
+                    {entry.is_planned && <span className="shrink-0 rounded border border-dashed border-gray-400 px-1 text-xs text-gray-500">geplant</span>}
                   </button>
                 </li>
               ))}

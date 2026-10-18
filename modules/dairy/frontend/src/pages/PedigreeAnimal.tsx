@@ -23,7 +23,7 @@ export default function PedigreeAnimal({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
   const { data, loading } = useQuery((pg) => load(pg, key, species), [key, species])
 
-  if (loading && !data) return <p className="p-4 text-center text-gray-400">Lädt…</p>
+  if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
   if (!data) return null
   const herdId = data.herdIdByKey.get(key)
   if (herdId) return <Navigate to={`/${moduleKey}/kuehe/${herdId}`} replace />
@@ -59,7 +59,7 @@ export default function PedigreeAnimal({ moduleKey }: { moduleKey: string }) {
         {hasCertificateDetails(data.certificate) ? (
           <CertificateDetailsView details={data.certificate} />
         ) : (
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-500">
             Keine Angaben. Den SMG-Abstammungs- und Leistungsausweis (PDF) unter Tiere → Herdebuch-Export importieren.
           </p>
         )}

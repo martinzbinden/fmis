@@ -350,7 +350,7 @@ export default function DayEntryEditorClassic({
     <Modal title={`${parcel.name} · ${fmtDate(date)}`} onClose={onClose}>
       <HerdUsageNote entries={herdUsage} />
       {loading ? (
-        <p className="py-4 text-center text-gray-400">Lädt…</p>
+        <p className="py-4 text-center text-gray-500">Lädt…</p>
       ) : loadError ? (
         <p className="rounded bg-red-50 p-3 text-sm text-red-700">{loadError}</p>
       ) : (
@@ -552,7 +552,7 @@ export default function DayEntryEditorClassic({
                       onChange={(e) => setEndDate(e.target.value || date)}
                       className={input}
                     />
-                    <button type="button" onClick={() => setRangeOpen(false)} className="text-gray-400">
+                    <button type="button" onClick={() => setRangeOpen(false)} className="text-gray-500">
                       zurück auf 1 Tag
                     </button>
                   </div>

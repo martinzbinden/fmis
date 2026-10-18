@@ -75,7 +75,7 @@ function ModulesSection() {
       <h1 className="mb-2 text-xl font-bold text-gray-800">Module</h1>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       {loading ? (
-        <div className="p-4 text-center text-gray-400">Lädt…</div>
+        <div className="p-4 text-center text-gray-500">Lädt…</div>
       ) : (
         <ul className="space-y-2">
           {modules.map((m) => (
@@ -216,7 +216,7 @@ function UsersSection() {
   }, [])
 
   if (loading) {
-    return <div className="p-4 text-center text-gray-400">Lädt…</div>
+    return <div className="p-4 text-center text-gray-500">Lädt…</div>
   }
 
   async function handleRoleChange(userId: string, roleId: string) {

@@ -13,6 +13,10 @@ export interface SyncClient {
   subscribeSyncStatus(listener: () => void): () => void
   getSyncStatus(): SyncStatus
   getSyncError(): string | null
+  /** Anzahl noch nicht an den Server gesendeter Einträge (ohne Verlauf). */
+  getPendingCount(): number
+  /** Zähler neu aus der Outbox lesen (meldet sich nur bei Änderung). */
+  refreshPending(): Promise<void>
 }
 
 function authHeaders(): Record<string, string> {
@@ -37,6 +41,14 @@ function handleUnauthorized(res: Response): void {
     logout()
     window.location.reload()
   }
+}
+
+const UNREACHABLE = 'Server nicht erreichbar — Änderungen bleiben auf dem Gerät und werden später gesendet.'
+
+/** Verständlicher Text zu einer Fehlerantwort. 404/405/5xx heisst fast immer:
+ * das Backend antwortet nicht (z.B. fängt der Webserver die Anfrage ab). */
+function failureText(what: 'Push' | 'Pull', status: number): string {
+  return [404, 405, 502, 503, 504].includes(status) ? UNREACHABLE : `${what} fehlgeschlagen (${status})`
 }
 
 function formatValue(value: unknown, dateOnly: boolean): unknown {
@@ -94,12 +106,32 @@ export function createSyncClient(
 
   let status: SyncStatus = navigator.onLine ? 'synced' : 'offline'
   let lastError: string | null = null
+  let pending = 0
   const listeners = new Set<() => void>()
 
   function setStatus(next: SyncStatus, error?: string) {
     status = next
     lastError = error ?? null
     listeners.forEach((l) => l())
+  }
+
+  /** Offene Einträge zählen; der Verlauf (data_history) zählt nicht mit — er
+   * entsteht als Nebeneffekt jeder Änderung und sagt nichts über offene Daten. */
+  async function refreshPending(): Promise<void> {
+    try {
+      const pg = await getDb()
+      await ensureOutbox(pg)
+      const { rows } = await pg.query<{ n: number }>(
+        `select count(*)::int as n from sync_outbox where table_name <> 'data_history'`,
+      )
+      const next = rows[0]?.n ?? 0
+      if (next !== pending) {
+        pending = next
+        listeners.forEach((l) => l())
+      }
+    } catch {
+      // Zähler ist nur Anzeige
+    }
   }
 
   function subscribeSyncStatus(listener: () => void): () => void {
@@ -148,10 +180,14 @@ export function createSyncClient(
     })
     if (!res.ok) {
       handleUnauthorized(res)
-      throw new Error(`Push fehlgeschlagen (${res.status})`)
+      throw new Error(failureText('Push', res.status))
     }
+    // Nur eine echte Push-Antwort (JSON mit "accepted") gilt als Quittung. Eine
+    // «erfolgreiche» Antwort anderer Herkunft (z.B. die HTML-Startseite, wenn
+    // das Backend fehlt) darf die Outbox NIE leeren.
+    const body = (await res.json().catch(() => null)) as { accepted?: unknown; rejected?: RejectedRow[] } | null
+    if (!body || typeof body.accepted !== 'object' || body.accepted === null) throw new Error(UNREACHABLE)
     // Ältere Server kennen "rejected" nicht → alles gilt als angenommen.
-    const body = (await res.json().catch(() => ({}))) as { rejected?: RejectedRow[] }
     const rejected = body.rejected ?? []
 
     // Nur genau die gesendeten Stände quittieren (siehe outbox.ts)
@@ -173,12 +209,13 @@ export function createSyncClient(
     const res = await fetch(url.toString(), { headers: authHeaders() })
     if (!res.ok) {
       handleUnauthorized(res)
-      throw new Error(`Pull fehlgeschlagen (${res.status})`)
+      throw new Error(failureText('Pull', res.status))
     }
-    const data = (await res.json()) as {
+    const data = (await res.json().catch(() => null)) as {
       server_time: string
       tables: Record<string, Record<string, unknown>[]>
-    }
+    } | null
+    if (!data || typeof data.server_time !== 'string' || !data.tables) throw new Error(UNREACHABLE)
 
     // Alles in EINER Transaktion: ausserhalb einer Transaktion committet
     // pglite jede Query einzeln nach IndexedDB — bei einem Erst-Pull mit
@@ -234,6 +271,7 @@ export function createSyncClient(
       setStatus('error', err instanceof Error ? err.message : String(err))
     } finally {
       syncing = false
+      void refreshPending()
     }
   }
 
@@ -262,5 +300,7 @@ export function createSyncClient(
     subscribeSyncStatus,
     getSyncStatus: () => status,
     getSyncError: () => lastError,
+    getPendingCount: () => pending,
+    refreshPending,
   }
 }

@@ -336,7 +336,7 @@ export default function WeighIn() {
         </div>
       </div>
 
-      {animalsLoading && <p className="text-center text-gray-400">Lädt Tiere…</p>}
+      {animalsLoading && <p className="text-center text-gray-500">Lädt Tiere…</p>}
 
       {groups && groups.length === 0 && (
         <p className="text-center text-gray-500">Keine aktiven Gruppen vorhanden.</p>

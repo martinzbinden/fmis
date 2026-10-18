@@ -40,7 +40,7 @@ interface SessionState {
 /** Verbindungsqualität aus Keep-alive-Antworten: Alter der letzten Antwort und Umlaufzeit.
  * (Eine Funksignalstärke liefert das Protokoll nicht.) */
 function quality(s: SessionState, now: number): { label: string; color: string } {
-  if (!s.active || !s.handshake) return { label: '–', color: 'text-gray-400' }
+  if (!s.active || !s.handshake) return { label: '–', color: 'text-gray-500' }
   if (s.pings === 0) return { label: 'noch kein Keep-alive', color: 'text-gray-500' }
   const age = s.last_pong_at ? (now - new Date(s.last_pong_at).getTime()) / 1000 : Infinity
   if (age > 65) return { label: `keine Antwort seit ${Number.isFinite(age) ? Math.round(age) + ' s' : 'Beginn'}`, color: 'text-red-600' }
@@ -349,7 +349,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
     }
   }, [])
 
-  if (readerEnabled === null) return <div className="p-4 text-center text-gray-400">Lädt…</div>
+  if (readerEnabled === null) return <div className="p-4 text-center text-gray-500">Lädt…</div>
 
   return (
     <div className="mx-auto max-w-2xl space-y-3 p-3 pb-6">
@@ -453,7 +453,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
               </dl>
             )}
             {showDetails && (
-              <p className="mt-1 text-gray-400">
+              <p className="mt-1 text-gray-500">
                 Die Sitzung läuft auf dem Server — die Seite darf verlassen werden, der Leser liest weiter. Ist eine
                 Bank voll, beginnt automatisch die nächste. Eine Funksignalstärke (WLAN) liefert der Leser nicht; die
                 Qualität wird aus den Keep-alive-Antworten (alle 20 s) abgeleitet.
@@ -488,7 +488,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       {openBank ? (
         <BankTable bank={openBank} terms={terms} canWrite={canWrite} onChanged={onChanged} />
       ) : (
-        <p className="text-center text-sm text-gray-400">
+        <p className="text-center text-sm text-gray-500">
           {session?.active ? 'Warte auf die erste Lesung…' : 'Leser verbinden oder unten manuell aufnehmen.'}
         </p>
       )}
@@ -555,13 +555,13 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
                     <span className="block text-sm font-medium text-gray-800">{a.name ?? ''}</span>
                     <span className="block text-xs text-gray-500">{shortEarTag(a.ear_tag)}</span>
                   </span>
-                  {inBank && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">schon in Bank</span>}
+                  {inBank && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">schon in Bank</span>}
                 </li>
               ))}
             </ul>
           )}
           {suggestOpen && manualInput.trim() && suggestions.length === 0 && (
-            <p className="mt-1 text-xs text-gray-400">Kein Tier gefunden — „Aufnehmen" nimmt die Eingabe als unbekannte Ohrmarke auf.</p>
+            <p className="mt-1 text-xs text-gray-500">Kein Tier gefunden — „Aufnehmen" nimmt die Eingabe als unbekannte Ohrmarke auf.</p>
           )}
         </form>
       )}
@@ -809,14 +809,14 @@ function BankTable({
                       role="button"
                       aria-label={`${label(s)} verschieben`}
                       title="Zum Verschieben ziehen"
-                      className="flex h-9 w-6 cursor-grab touch-none select-none items-center justify-center text-lg leading-none text-gray-400 active:cursor-grabbing active:text-brand-700"
+                      className="flex h-9 w-6 cursor-grab touch-none select-none items-center justify-center text-lg leading-none text-gray-500 active:cursor-grabbing active:text-brand-700"
                     >
                       ⣿
                     </span>
                   </td>
                 )}
                 {editing && (
-                  <td className="px-2 py-0.5 align-top text-xs text-gray-400">
+                  <td className="px-2 py-0.5 align-top text-xs text-gray-500">
                     {byOriginal[idx] ? `${byOriginal[idx].original_position}. ${label(byOriginal[idx])}` : ''}
                   </td>
                 )}
@@ -832,21 +832,21 @@ function BankTable({
                 </td>
                 <td className="px-2 py-0.5 align-middle">
                   <span className="text-2xl font-bold leading-none text-gray-800">{s.animal?.lauf_nr ?? '–'}</span>
-                  <span className="ml-1 text-[10px] text-gray-400">{editing ? idx + 1 : s.position}.</span>
+                  <span className="ml-1 text-xs text-gray-500">{editing ? idx + 1 : s.position}.</span>
                 </td>
                 <td className="px-2 py-0.5 align-middle">
                   <div className="truncate text-sm font-medium text-gray-800">
                     {s.animal?.name ?? (s.animal ? '' : <span className="text-amber-700">unbekannt</span>)}
                   </div>
                   {s.withdrawalUntil && s.withdrawalUntil >= (isoDate(bank.bank.session_date) ?? '') && (
-                    <div className="text-[11px] font-semibold text-red-700">
+                    <div className="text-xs font-semibold text-red-700">
                       ⚠ Milch-Absetzfrist bis {fmtDate(s.withdrawalUntil)}
                     </div>
                   )}
                   {/* Zweite Zeile kostet ~14 px mal zwölf. Auf kurzen Schirmen
                       weicht sie, damit Häkchen und Laufnummer ohne Scrollen
                       sichtbar bleiben — auf hohen Geräten ist sie da. */}
-                  <div className="hidden text-[11px] text-gray-400 [@media(min-height:760px)]:block">
+                  <div className="hidden text-xs text-gray-500 [@media(min-height:760px)]:block">
                     {shortEarTag(s.ear_tag)}
                     {s.transponder && s.transponder !== s.ear_tag ? ` · ${s.transponder}` : ''}
                   </div>
@@ -878,7 +878,7 @@ function BankTable({
                       className="flex items-center gap-1 text-left text-xs text-gray-600"
                       title="Notiz zur Wägung (wird ins Journal des Tiers kopiert)"
                     >
-                      <span className="text-gray-400">✎</span>
+                      <span className="text-gray-500">✎</span>
                       <span className={s.notes ? '' : 'text-gray-300'}>{s.notes ?? 'Notiz'}</span>
                     </button>
                   )}
@@ -904,7 +904,7 @@ function BankTable({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={editing ? 6 : 5} className="px-3 py-4 text-center text-gray-400">
+                <td colSpan={editing ? 6 : 5} className="px-3 py-4 text-center text-gray-500">
                   Noch keine Lesung.
                 </td>
               </tr>

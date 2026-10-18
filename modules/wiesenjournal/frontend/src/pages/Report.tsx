@@ -167,7 +167,7 @@ function NutrientsTab({ seasonYear }: { seasonYear: number }) {
         </button>
       </div>
       {recomputeMsg && <p className="rounded bg-brand-50 p-2 text-xs text-brand-900">{recomputeMsg}</p>}
-      {loading && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && <p className="text-center text-gray-500">Lädt…</p>}
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       {report && (
@@ -190,7 +190,7 @@ function NutrientsTab({ seasonYear }: { seasonYear: number }) {
               {rows.map((p) => (
                 <tr key={p.parcel_id} className="border-b last:border-0">
                   <td className="px-2 py-1.5">
-                    <span className="text-gray-400">{p.farm_name ? p.farm_name.slice(0, 1) + ' · ' : ''}</span>
+                    <span className="text-gray-500">{p.farm_name ? p.farm_name.slice(0, 1) + ' · ' : ''}</span>
                     {p.name}
                   </td>
                   <td className="px-2 py-1.5 text-xs text-gray-500">{p.kultur_name_de ?? PARCEL_CATEGORY_LABEL[p.category]}</td>
@@ -235,7 +235,7 @@ function NutrientsTab({ seasonYear }: { seasonYear: number }) {
           </table>
         </div>
       )}
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-gray-500">
         Die Düngungskarte (Verschnitt aller Massnahmen, unabhängig von Parzellengrenzen) ist unter{' '}
         <Link to="../karte" className="text-brand-700 underline">
           Karte
@@ -278,7 +278,7 @@ function OverlapTab({ seasonYear }: { seasonYear: number }) {
         überlappen. Braucht eine Internetverbindung.
       </p>
 
-      {loading && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && <p className="text-center text-gray-500">Lädt…</p>}
       {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {report && report.parcels.length === 0 && !loading && !error && (
         <p className="text-center text-gray-500">
@@ -292,7 +292,7 @@ function OverlapTab({ seasonYear }: { seasonYear: number }) {
           <li key={p.field_declaration_id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="font-semibold text-gray-800">
               {p.flurname ?? p.kultur_name_de ?? 'Parzelle'}
-              {p.area_a != null && <span className="ml-2 text-xs text-gray-400">({fmtArea(p.area_a)})</span>}
+              {p.area_a != null && <span className="ml-2 text-xs text-gray-500">({fmtArea(p.area_a)})</span>}
             </div>
             <ul className="mt-2 space-y-1">
               {p.overlaps.map((o) => (

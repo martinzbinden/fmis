@@ -167,7 +167,7 @@ export default function ParcelPicker({
                     >
                       <span className="min-w-0">
                         <span className="font-medium text-gray-800">{p.name}</span>
-                        {p.bff && <span className="ml-1 rounded bg-lime-100 px-1 text-[10px] text-lime-800">BFF</span>}
+                        {p.bff && <span className="ml-1 rounded bg-lime-100 px-1 text-xs text-lime-800">BFF</span>}
                         <span className="block truncate text-xs text-gray-500">{[p.kultur_name_de, p.farm_name].filter(Boolean).join(' · ')}</span>
                       </span>
                       <span className="shrink-0 tabular-nums text-xs text-gray-600">{fmtA(p.area_a)}</span>

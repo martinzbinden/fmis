@@ -258,7 +258,7 @@ export default function JournalGridPage() {
         </div>
       </div>
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && allParcels.length === 0 && (
         <p className="text-center text-gray-500">
           Noch keine Parzellen für {seasonYear} — unter „Parzellen" aus GELAN übernehmen oder anlegen.

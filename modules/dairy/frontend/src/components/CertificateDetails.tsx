@@ -203,7 +203,7 @@ export default function CertificateDetailsView({ details }: { details: Certifica
         </Sub>
       )}
 
-      {details.document_date && <p className="text-xs text-gray-400">Stand Leistungsausweis {fmtDate(details.document_date)}</p>}
+      {details.document_date && <p className="text-xs text-gray-500">Stand Leistungsausweis {fmtDate(details.document_date)}</p>}
     </div>
   )
 }

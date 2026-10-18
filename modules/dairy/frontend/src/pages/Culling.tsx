@@ -168,7 +168,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
-      {loading && !data && <p className="text-center text-gray-400">Lädt…</p>}
+      {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
 
       {data && (
         <label className="flex items-center gap-2 text-xs text-gray-600 print:hidden">

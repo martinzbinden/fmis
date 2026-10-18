@@ -135,7 +135,7 @@ function Tracks({ fields, s, selectedId, onSelect }: { fields: AssistField[]; s:
                 {detail.width ? ` · ${fmt1(detail.width)} m` : ''} · {sel.operator ?? ''}
               </div>
             </div>
-            <button type="button" onClick={() => onSelect(null)} className="px-2 text-lg text-gray-400" aria-label="Schliessen">
+            <button type="button" onClick={() => onSelect(null)} className="px-2 text-lg text-gray-500" aria-label="Schliessen">
               ×
             </button>
           </div>

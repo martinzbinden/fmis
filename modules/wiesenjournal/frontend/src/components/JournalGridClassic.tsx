@@ -174,7 +174,7 @@ const ClassicRow = memo(function ClassicRow({
               🌐
             </button>
           </div>
-          <div className="truncate text-[10px] text-gray-400" title={`${fmtArea(parcel.area_a)}${parcel.kultur_name_de ? ' · ' + parcel.kultur_name_de : ''}`}>
+          <div className="truncate text-[10px] text-gray-500" title={`${fmtArea(parcel.area_a)}${parcel.kultur_name_de ? ' · ' + parcel.kultur_name_de : ''}`}>
             {parcel.kultur_code ? (
               <span style={{ color: kulturColor }} className="font-semibold">
                 ({parcel.kultur_code})
@@ -453,7 +453,7 @@ export default function JournalGridClassic({
               return (
                 <div
                   key={d}
-                  className={`shrink-0 pt-1 text-center text-[8px] leading-tight text-gray-400 ${
+                  className={`shrink-0 pt-1 text-center text-[8px] leading-tight text-gray-500 ${
                     isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
                   } ${d === today ? 'bg-yellow-300/70 font-bold text-gray-700' : isWeekend(d) ? 'bg-gray-100' : ''}`}
                   style={{ width: cellWidth, scrollSnapAlign: isFirstOfMonth ? 'start' : undefined }}

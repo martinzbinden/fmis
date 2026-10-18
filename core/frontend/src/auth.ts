@@ -2,6 +2,7 @@
 // einziger Satz Storage-Keys statt vormals einem Präfix pro Modul.
 const TOKEN_KEY = 'fmis_token'
 const EMAIL_KEY = 'fmis_email'
+const ME_KEY = 'fmis_me'
 
 // `??` statt `||`: ein bewusst leerer VITE_API_URL (Produktions-Build, gleiche
 // Origin wie das Frontend) soll NICHT auf localhost zurückfallen — nur ein
@@ -19,6 +20,7 @@ export function isLoggedIn(): boolean {
 export function logout(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(EMAIL_KEY)
+  localStorage.removeItem(ME_KEY)
 }
 
 /**
@@ -144,14 +146,36 @@ export interface CurrentUser {
   permissions: string[]
 }
 
+/** Zuletzt bekannte Rechte dieses Geräts. Ohne diesen Zwischenspeicher fehlen
+ * beim App-Start OHNE Netz (Funkloch auf dem Feld) alle Schreibknöpfe, obwohl
+ * alle Daten lokal da sind — /auth/me kann dann nicht antworten. Die
+ * eigentliche Durchsetzung bleibt serverseitig beim Sync. */
+export function cachedMe(): CurrentUser | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(ME_KEY) ?? 'null') as Partial<CurrentUser> | null
+    if (!v || typeof v.email !== 'string' || !Array.isArray(v.permissions)) return null
+    return { email: v.email, role: typeof v.role === 'string' ? v.role : null, permissions: v.permissions.filter((p) => typeof p === 'string') }
+  } catch {
+    return null
+  }
+}
+
 export async function fetchMe(): Promise<CurrentUser> {
   const res = await fetch(`${API_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   })
   if (!res.ok) {
+    // Token ungültig/entzogen: alte Rechte nicht weiter vorhalten
+    if (res.status === 401 || res.status === 403) localStorage.removeItem(ME_KEY)
     throw new Error(`Nutzerdaten konnten nicht geladen werden (${res.status})`)
   }
-  return (await res.json()) as CurrentUser
+  const me = (await res.json()) as CurrentUser
+  try {
+    localStorage.setItem(ME_KEY, JSON.stringify(me))
+  } catch {
+    // Speicher voll/gesperrt — nur der Offline-Start fällt dann weg
+  }
+  return me
 }
 
 /**

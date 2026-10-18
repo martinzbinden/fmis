@@ -299,7 +299,7 @@ function SettingDefsEditor({
           <input className={field} placeholder="Bauteil" value={d.part ?? ''} onChange={(e) => update(i, { part: e.target.value })} />
           <input className={field} placeholder="Bezeichnung" value={d.label} onChange={(e) => update(i, { label: e.target.value })} />
           <input className={field} placeholder="cm" value={d.unit} onChange={(e) => update(i, { unit: e.target.value })} />
-          <button type="button" onClick={() => onChange(defs.filter((_, k) => k !== i))} className="px-1 text-gray-400" aria-label="Entfernen">
+          <button type="button" onClick={() => onChange(defs.filter((_, k) => k !== i))} className="px-1 text-gray-500" aria-label="Entfernen">
             ×
           </button>
         </div>

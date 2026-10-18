@@ -175,7 +175,7 @@ export default function RotationTimeline({
                         {run.decl.kultur_name_de ?? run.decl.kultur_code}
                       </div>
                       {run.decl.sorte && (
-                        <div className="truncate text-[9px] leading-tight text-white/80">{run.decl.sorte}</div>
+                        <div className="truncate text-[10px] leading-tight text-white/80">{run.decl.sorte}</div>
                       )}
                     </div>
                   )),

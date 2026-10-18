@@ -101,7 +101,7 @@ export default function DailyLogEditor({
   return (
     <Modal title={`Tagesmeldung · ${fmtDate(date)}`} onClose={onClose}>
       {loading ? (
-        <p className="py-4 text-center text-gray-400">Lädt…</p>
+        <p className="py-4 text-center text-gray-500">Lädt…</p>
       ) : (
         <div className="space-y-3">
           <div>

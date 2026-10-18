@@ -429,7 +429,7 @@ export function TodoLine({ todo, machineName, today = todayIso() }: { todo: Mach
         {machineName && <b className="text-gray-800">{machineName}:</b>}
         <span className={todo.status === 'erledigt' ? 'text-gray-500 line-through' : 'text-gray-800'}>{todo.title}</span>
         {todo.status === 'offen' && todo.priority !== 'normal' && (
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${PRIORITY_STYLE[todo.priority]}`}>{PRIORITY_LABEL[todo.priority]}</span>
+          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${PRIORITY_STYLE[todo.priority]}`}>{PRIORITY_LABEL[todo.priority]}</span>
         )}
       </span>
       <span className={`block text-xs ${overdue ? 'text-red-700' : 'text-gray-500'}`}>
@@ -719,14 +719,14 @@ export default function MachineMaintenance({
           <ul className="divide-y rounded border border-gray-100">
             {statuses.map((s) => (
               <li key={s.task.id} className="flex items-start gap-2 px-2 py-1.5">
-                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${STATE_STYLE[s.state]}`}>{STATE_LABEL[s.state]}</span>
+                <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs font-medium ${STATE_STYLE[s.state]}`}>{STATE_LABEL[s.state]}</span>
                 <button type="button" disabled={!canWrite} onClick={() => open({ kind: 'task', task: s.task })} className="min-w-0 flex-1 text-left">
                   <span className="block text-gray-800">{s.task.title}</span>
                   <span className="block text-xs text-gray-500">
                     {intervalText(s.task, unit)}
                     {s.last ? ` · zuletzt ${fmtDate(s.last.done_date)}${s.last.counter != null ? ` bei ${fmtNum(s.last.counter)} ${unit}` : ''}` : ''}
                   </span>
-                  <span className={`block text-xs ${s.state === 'faellig' ? 'text-red-700' : s.state === 'bald' ? 'text-amber-800' : 'text-gray-400'}`}>{dueText(s, unit)}</span>
+                  <span className={`block text-xs ${s.state === 'faellig' ? 'text-red-700' : s.state === 'bald' ? 'text-amber-800' : 'text-gray-500'}`}>{dueText(s, unit)}</span>
                 </button>
                 {canWrite && (
                   <button type="button" className={`${btn} shrink-0`} onClick={() => open({ kind: 'entry', entry: null, preselect: [s.task.id], type: 'wartung' })}>
@@ -737,7 +737,7 @@ export default function MachineMaintenance({
             ))}
           </ul>
         )}
-        {inactive.length > 0 && <p className="mt-1 text-xs text-gray-400">Inaktiv: {inactive.map((t) => t.title).join(', ')}</p>}
+        {inactive.length > 0 && <p className="mt-1 text-xs text-gray-500">Inaktiv: {inactive.map((t) => t.title).join(', ')}</p>}
       </div>
 
       <div>

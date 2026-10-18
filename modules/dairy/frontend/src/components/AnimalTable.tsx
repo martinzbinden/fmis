@@ -146,7 +146,7 @@ export default function AnimalTable({ animals, storageKey }: { animals: AnimalRo
           </thead>
           <tbody>
             {sorted.map((a) => (
-              <tr key={a.id} className={`border-b last:border-0 ${a.status !== 'aktiv' ? 'text-gray-400' : ''}`}>
+              <tr key={a.id} className={`border-b last:border-0 ${a.status !== 'aktiv' ? 'text-gray-500' : ''}`}>
                 {visible.map((c) => (
                   <td
                     key={c.key}
@@ -173,7 +173,7 @@ export default function AnimalTable({ animals, storageKey }: { animals: AnimalRo
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={visible.length} className="px-3 py-4 text-center text-gray-400">
+                <td colSpan={visible.length} className="px-3 py-4 text-center text-gray-500">
                   Keine Treffer.
                 </td>
               </tr>

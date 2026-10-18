@@ -13,7 +13,7 @@ export default function ParcelHeaderSort({ sort, onSort }: { sort: SortState; on
           key={f}
           type="button"
           onClick={() => onSort(f)}
-          className={`text-[10px] font-semibold ${sort.field === f ? 'text-brand-700' : 'text-gray-400'}`}
+          className={`text-[10px] font-semibold ${sort.field === f ? 'text-brand-700' : 'text-gray-500'}`}
           title={`Nach ${FIELD_LABEL[f]} sortieren`}
         >
           {FIELD_LABEL[f]}

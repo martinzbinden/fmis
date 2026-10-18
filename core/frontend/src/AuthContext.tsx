@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { fetchMe, setCurrentUserEmail, type CurrentUser } from './auth'
+import { cachedMe, fetchMe, setCurrentUserEmail, type CurrentUser } from './auth'
 
 /**
  * Lädt /auth/me einmal nach dem Login und stellt Rolle/Permissions bereit.
@@ -11,7 +11,8 @@ import { fetchMe, setCurrentUserEmail, type CurrentUser } from './auth'
 const AuthUserContext = createContext<CurrentUser | null>(null)
 
 export function AuthUserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<CurrentUser | null>(null)
+  // Start mit den zuletzt bekannten Rechten (Offline-Start), danach aktualisiert
+  const [user, setUser] = useState<CurrentUser | null>(() => cachedMe())
 
   useEffect(() => {
     fetchMe()

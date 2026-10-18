@@ -286,7 +286,7 @@ export default function SlurryPanel({
         {L.empty}
       </button>
       {message && <p className="text-center text-xs font-medium text-emerald-800">{message}</p>}
-      <p className="text-[11px] text-gray-500">
+      <p className="text-xs text-gray-500">
         Ausfluss {flow ? `${fmt1(flow)} ${L.unit}/min` : 'unbekannt — nach dem ersten Knopfdruck geeicht'}
         {flow ? ` — ${calib.n ? `geeicht aus ${calib.n}× «${L.empty}»${calib.rateM3Ha ? ` (zuletzt ⌀ ${fmt0(calib.rateM3Ha)} ${L.unit}/ha)` : ''}` : `Startwert, wird mit «${L.empty}» geeicht`}` : ''}
         . Ausbringen zählt automatisch bei Fahrt in Feldrichtung; ein vergessener Knopf zählt, wenn das Feld 2 Minuten verlassen wird.

@@ -338,7 +338,7 @@ export function NullLine({ g, storageKey }: { g: Guidance; storageKey: string })
         )}
       </div>
       {msg && <p className="text-xs text-emerald-700">{msg}</p>}
-      <p className="text-[11px] text-gray-500">«Hier = Bahnmitte» gleicht GPS-Abdrift aus, wenn du sicher in der Spur fährst (z.B. Anschlussfahren an der letzten Bahn).</p>
+      <p className="text-xs text-gray-500">«Hier = Bahnmitte» gleicht GPS-Abdrift aus, wenn du sicher in der Spur fährst (z.B. Anschlussfahren an der letzten Bahn).</p>
     </div>
   )
 }
@@ -565,7 +565,7 @@ export default function DriveAssist({
         </section>
       )}
 
-      <p className="text-[11px] text-gray-500">
+      <p className="text-xs text-gray-500">
         Bahnen und Fläche zählen bei Fahrt in Feldrichtung. Handy-GPS ist auf ±3–5 m genau: der Lichtbalken hilft gegen ausgelassene und doppelte
         Bahnen, nicht für Zentimeter.
       </p>
