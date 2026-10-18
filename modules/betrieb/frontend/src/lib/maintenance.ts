@@ -2,6 +2,7 @@
 // einer Maschine, Zähler (Betriebsstunden bzw. km), Fälligkeit je Aufgabe,
 // Standard-Wartungspläne je Art.
 
+import { localDateOf } from '@fmis/core/dates'
 import type { Machine, MachineCategory, MachineKind, MachineTodo, MaintenanceLog, MaintenanceTask, MaintenanceTaskType } from '../types'
 
 // --- Kategorien ---
@@ -88,7 +89,7 @@ export function trackedHoursSince(tracks: TrackSpan[], since: string | null): nu
   let ms = 0
   for (const t of tracks) {
     if (!t.ended_at) continue
-    if (since && t.started_at.slice(0, 10) < since) continue
+    if (since && localDateOf(t.started_at) < since) continue
     ms += Math.max(0, Date.parse(t.ended_at) - Date.parse(t.started_at))
   }
   return ms / 3_600_000

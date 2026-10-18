@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { herdLocator, type AnimalLocation } from './animals'
+import { localTodayIso } from './dates'
 
 const fmt = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('de-CH') : 'heute')
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localTodayIso()
 
 /** Standort eines Tiers aus den Herdengruppen (Wiesenjournal → Herden):
  * aktuelle Gruppe mit Stall und Weide, darunter der Verlauf. Ohne

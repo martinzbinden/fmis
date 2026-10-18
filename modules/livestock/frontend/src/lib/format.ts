@@ -1,3 +1,5 @@
+import { localTodayIso } from '@fmis/core/dates'
+
 // pglite liefert numeric-Spalten als string (Präzisionserhalt) — zentrale
 // Konvertierungs- und Format-Helfer.
 
@@ -31,8 +33,9 @@ export function fmtDateTime(v: string | null | undefined): string {
   return d.toLocaleString('de-CH', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
+/** Heute in LOKALER Zeit (core/frontend/src/dates.ts). */
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  return localTodayIso()
 }
 
 export function ageInDays(birthDate: string | null): number | null {

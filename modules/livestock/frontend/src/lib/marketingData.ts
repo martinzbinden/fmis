@@ -1,3 +1,4 @@
+import { localTodayIso } from '@fmis/core/dates'
 import type { PGlite } from '@electric-sql/pglite'
 import { num } from './format'
 import {
@@ -38,7 +39,7 @@ function numbers<K extends string>(row: Record<string, unknown>, keys: readonly 
  * ohne erfasste Zeile die eingebauten Werte aus lib/marketing.ts.
  */
 export async function loadMarketing(pg: PGlite, day?: string): Promise<MarketingData> {
-  const at = day ?? new Date().toISOString().slice(0, 10)
+  const at = day ?? localTodayIso()
   const { rows: p } = await pg.query<Record<string, unknown>>(
     `select * from market_prices where deleted_at is null and valid_from <= $1
      order by valid_from desc, updated_at desc limit 1`,

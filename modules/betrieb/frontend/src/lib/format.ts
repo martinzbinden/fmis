@@ -1,3 +1,5 @@
+import { localTodayIso } from '@fmis/core/dates'
+
 // pglite liefert numeric-Spalten als string (Präzisionserhalt) — zentrale
 // Konvertierungs- und Format-Helfer.
 
@@ -33,8 +35,9 @@ export function isoDate(v: unknown): string {
   return String(v).slice(0, 10)
 }
 
+/** Heute in LOKALER Zeit (core/frontend/src/dates.ts). */
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  return localTodayIso()
 }
 
 // Rechnet bewusst in UTC (T00:00:00Z), nicht in der lokalen Zeitzone: mit

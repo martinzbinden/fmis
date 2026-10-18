@@ -1,3 +1,4 @@
+import { localDateOf } from '@fmis/core/dates'
 import type { Track } from '../types'
 
 function escapeXml(s: string): string {
@@ -28,7 +29,7 @@ export function trackToGpx(track: Track): string {
     })
     .join('\n')
 
-  const name = track.label ? escapeXml(track.label) : `Track ${track.started_at.slice(0, 10)}`
+  const name = track.label ? escapeXml(track.label) : `Track ${localDateOf(track.started_at)}`
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="FMIS Wiesenjournal" xmlns="http://www.topografix.com/GPX/1/1">
@@ -48,7 +49,7 @@ export function downloadGpx(track: Track): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${(track.label ?? 'track').replace(/[^a-z0-9-_]+/gi, '_')}_${track.started_at.slice(0, 10)}.gpx`
+  a.download = `${(track.label ?? 'track').replace(/[^a-z0-9-_]+/gi, '_')}_${localDateOf(track.started_at)}.gpx`
   a.click()
   URL.revokeObjectURL(url)
 }

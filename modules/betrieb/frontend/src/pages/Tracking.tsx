@@ -1,3 +1,4 @@
+import { localDateOf } from '@fmis/core/dates'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
@@ -127,7 +128,7 @@ function Tracks({ fields, s, selectedId, onSelect }: { fields: AssistField[]; s:
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="font-semibold text-gray-800">
-                {sel.work_type ?? sel.label ?? 'Spur'} · {fmtDate(sel.started_at.slice(0, 10))}
+                {sel.work_type ?? sel.label ?? 'Spur'} · {fmtDate(localDateOf(sel.started_at))}
               </div>
               <div className="text-xs text-gray-500">
                 {sel.machine ?? 'ohne Gerät'}
@@ -177,7 +178,7 @@ function Tracks({ fields, s, selectedId, onSelect }: { fields: AssistField[]; s:
               <button
                 type="button"
                 onClick={() => {
-                  if (!confirm(`Spur «${sel.work_type ?? sel.label ?? 'Spur'}» vom ${fmtDate(sel.started_at.slice(0, 10))} löschen?`)) return
+                  if (!confirm(`Spur «${sel.work_type ?? sel.label ?? 'Spur'}» vom ${fmtDate(localDateOf(sel.started_at))} löschen?`)) return
                   void deleteTrack(sel).then(() => {
                     onSelect(null)
                     refresh()
@@ -199,7 +200,7 @@ function Tracks({ fields, s, selectedId, onSelect }: { fields: AssistField[]; s:
             <li key={t.id} className={`p-3 text-sm ${t.id === selectedId ? 'bg-brand-50' : ''}`}>
               <button type="button" onClick={() => onSelect(t.id)} className="w-full text-left">
                 <span className="font-medium text-gray-800">
-                  {fmtDate(t.started_at.slice(0, 10))} {new Date(t.started_at).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} ·{' '}
+                  {fmtDate(localDateOf(t.started_at))} {new Date(t.started_at).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })} ·{' '}
                   {t.work_type ?? t.label ?? 'Spur'}
                 </span>
                 {isCurrent && <span className="ml-1 rounded bg-red-100 px-1 text-xs text-red-800">läuft</span>}

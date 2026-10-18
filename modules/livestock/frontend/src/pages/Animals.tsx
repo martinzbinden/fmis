@@ -9,6 +9,7 @@ import { useDb } from '@fmis/core/DbContext'
 import { fmtKg, fmtAge, num } from '../lib/format'
 import type { AnimalStatus } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
+import { localTodayIso } from '@fmis/core/dates'
 
 interface Row {
   id: string
@@ -58,7 +59,7 @@ const STATUS_COLOR: Record<AnimalStatus, string> = {
   verendet: 'bg-red-100 text-red-800',
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localTodayIso()
 
 function ImportLink() {
   return (

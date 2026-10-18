@@ -2,6 +2,7 @@
 // Konflikte (abwesend, gleichzeitig, nicht befähigt), fairer Vorschlag.
 
 import type { DutyAbsence, DutyPerson, DutyShift, DutySkill, DutyType } from '../types'
+import { localTodayIso } from '@fmis/core/dates'
 
 const DAY = 86_400_000
 const parse = (iso: string) => new Date(`${iso}T12:00:00Z`)
@@ -9,7 +10,7 @@ const fmt = (d: Date) => d.toISOString().slice(0, 10)
 export const addDays = (iso: string, n: number) => fmt(new Date(parse(iso).getTime() + n * DAY))
 /** Heute in Ortszeit (nicht UTC: kurz nach Mitternacht sonst der Vortag). */
 export function localToday(now = new Date()): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return localTodayIso(now)
 }
 
 /** 0 = Montag … 6 = Sonntag */

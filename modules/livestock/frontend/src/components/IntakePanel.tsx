@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import type { ImportPanelProps } from '@fmis/core/upload'
 import { importAnimalRows, type SeedRow } from '../lib/importCsv'
 import { syncClient } from '../db/sync'
+import { localTodayIso } from '@fmis/core/dates'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => localTodayIso()
 
 /** Neue Mastgruppe aus einem TVD-Begleitdokument (PDF) oder einer CSV
  * (ear_tag,birth_date,sex) — von der zentralen Upload-Seite

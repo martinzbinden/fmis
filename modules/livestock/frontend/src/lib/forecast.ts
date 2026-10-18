@@ -1,3 +1,4 @@
+import { localTodayIso } from '@fmis/core/dates'
 // Reine Berechnungsfunktionen für die Ampel-Logik im Dashboard.
 // Bewusst von der DB-Abfrage getrennt, damit die Regeln an einer Stelle stehen.
 
@@ -32,7 +33,7 @@ function daysBetween(a: string, b: string): number {
 }
 
 export function computeForecast(input: AnimalForecastInput): AnimalForecast {
-  const today = input.today ?? new Date().toISOString().slice(0, 10)
+  const today = input.today ?? localTodayIso()
   const withdrawalOpen = !!input.withdrawalUntil && input.withdrawalUntil >= today
 
   let adgKgPerDay: number | null = null
