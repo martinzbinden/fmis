@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import UpdatePrompt from './UpdatePrompt.tsx'
 import './index.css'
+import { requestPersistentStorage } from '@fmis/core/storagePersist'
+
+void requestPersistentStorage()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
