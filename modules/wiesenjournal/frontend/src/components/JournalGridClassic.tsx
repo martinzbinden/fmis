@@ -168,6 +168,7 @@ const ClassicRow = memo(function ClassicRow({
                 onFocusMap(parcel)
               }}
               title="Auf Karte zeigen"
+              tabIndex={-1}
               aria-label="Auf Karte zeigen"
               className="shrink-0 rounded text-xs leading-none active:bg-gray-100"
             >
@@ -203,9 +204,14 @@ const ClassicRow = memo(function ClassicRow({
             <button
               key={d}
               type="button"
+              // Roving: das Raster ist EIN Tab-Stopp, darin bewegen Pfeiltasten
+              // (JournalGridClassic → onGridKeyDown).
+              tabIndex={-1}
+              data-pcell={parcel.id}
+              data-day={d}
               onClick={() => onDayClick(parcel, d, hasContent)}
               title={title || undefined}
-              className={`absolute top-0 flex items-center justify-center hover:bg-brand-50 ${
+              className={`absolute top-0 flex items-center justify-center hover:bg-brand-50 focus-visible:z-20 focus-visible:outline-offset-[-2px] ${
                 isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
               } ${d === today ? 'bg-yellow-200/60' : isWeekend(d) ? 'bg-gray-50' : ''}`}
               style={{ left: idx * cellWidth, width: cellWidth, height: ROW_HEIGHT }}
@@ -272,6 +278,7 @@ const ClassicRow = memo(function ClassicRow({
               type="button"
               onClick={() => onExtend(parcel, bar, nextDate)}
               title={`Verlängern auf ${nextDate}`}
+              tabIndex={-1}
               aria-label="Um einen Tag verlängern"
               className="absolute flex items-center justify-center rounded-full border border-brand-600 bg-white text-[10px] font-bold leading-none text-brand-600 shadow hover:bg-brand-50"
               style={{ left: nextIdx * cellWidth + 2, top: ROW_HEIGHT / 2 - 8, width: 16, height: 16 }}
@@ -396,6 +403,81 @@ export default function JournalGridClassic({
     [onDayOpen],
   )
 
+  // --- Tastatur (Desktop): das Raster ist ein Tab-Stopp; Pfeiltasten bewegen
+  // von Zelle zu Zelle, Bild auf/ab = ±7 Tage, Pos1/Ende = Zeilenanfang/-ende,
+  // T = heute, Enter öffnet den Tag (ohne das «bewaffnen» für Touch).
+  const lastCell = useRef<{ id: string; day: string } | null>(null)
+
+  function focusCell(root: HTMLElement, id: string, day: string): boolean {
+    const el = root.querySelector<HTMLElement>(`[data-pcell="${CSS.escape(id)}"][data-day="${day}"]`)
+    if (!el) return false
+    el.focus({ preventScroll: true })
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    return true
+  }
+
+  function onGridFocus(e: React.FocusEvent<HTMLDivElement>) {
+    const t = e.target as HTMLElement
+    if (t.dataset?.pcell && t.dataset.day) {
+      lastCell.current = { id: t.dataset.pcell, day: t.dataset.day }
+      return
+    }
+    if (t !== e.currentTarget || parcels.length === 0) return
+    // Eintritt per Tab: zur zuletzt benutzten Zelle, sonst heute in der ersten Zeile
+    const last = lastCell.current
+    if (last && focusCell(e.currentTarget, last.id, last.day)) return
+    const start = Math.max(0, days.indexOf(todayIso()))
+    // heute in der ersten Zeile; liegt dort ein Balken (keine Zelle), die
+    // nächste freie Zelle rechts bzw. links davon
+    for (let k = 0; k < days.length; k++) {
+      for (const d of [start + k, start - k]) {
+        if (d >= 0 && d < days.length && focusCell(e.currentTarget, parcels[0].id, days[d])) return
+      }
+    }
+  }
+
+  function onGridKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    const t = e.target as HTMLElement
+    const id = t.dataset?.pcell
+    const day = t.dataset?.day
+    if (!id || !day) return
+    const pi = parcels.findIndex((p) => p.id === id)
+    const di = days.indexOf(day)
+    if (pi < 0 || di < 0) return
+    const root = e.currentTarget
+    const move = (dp: number, dd: number) => {
+      let p = pi + dp
+      let d = di + dd
+      while (p >= 0 && p < parcels.length && d >= 0 && d < days.length) {
+        if (focusCell(root, parcels[p].id, days[d])) return
+        if (dp !== 0) return // senkrecht: kein Überspringen
+        d += dd // waagrecht: Zellen unter Balken überspringen
+      }
+    }
+    const toDay = (target: string | undefined) => {
+      if (target) focusCell(root, id, target)
+    }
+    switch (e.key) {
+      case 'ArrowRight': move(0, 1); break
+      case 'ArrowLeft': move(0, -1); break
+      case 'ArrowDown': move(1, 0); break
+      case 'ArrowUp': move(-1, 0); break
+      case 'PageDown': move(0, 7); break
+      case 'PageUp': move(0, -7); break
+      case 'Home': toDay(days[0]); break
+      case 'End': toDay(days[days.length - 1]); break
+      case 't':
+      case 'T': toDay(days.includes(todayIso()) ? todayIso() : undefined); break
+      case 'Enter':
+        onDayOpen(parcels[pi], day)
+        break
+      default:
+        return
+    }
+    e.preventDefault()
+  }
+
   const barsByParcel = useMemo(() => {
     const out: Record<string, UsageBar[]> = {}
     for (const p of parcels) out[p.id] = groupUsageRuns(days, usageByDay[p.id] ?? {})
@@ -433,7 +515,12 @@ export default function JournalGridClassic({
   return (
     <div
       ref={scrollRef}
-      className="overflow-auto rounded-lg bg-white shadow-sm"
+      role="grid"
+      tabIndex={0}
+      aria-label="Journal-Raster: Pfeiltasten bewegen, Enter öffnet den Tag, T springt auf heute"
+      onFocus={onGridFocus}
+      onKeyDown={onGridKeyDown}
+      className="overflow-auto rounded-lg bg-white shadow-sm focus-visible:outline-offset-[-2px]"
       // "Magnetische" Monatsgrenzen: proximity statt mandatory, damit nur
       // schnelle/weite Scrolls in der Nähe eines Monatsanfangs einrasten —
       // feines Scrollen Tag für Tag bleibt frei (siehe scrollSnapAlign an
@@ -532,6 +619,7 @@ export default function JournalGridClassic({
                   <button
                     key={d}
                     type="button"
+                    tabIndex={-1}
                     onClick={() => onFarmCellClick(d)}
                     title={fromGeodata ? 'Automatisch vom Geodatenserver' : herdMark && herdCat ? `Aus den Herden:\n${categoryTitle(herdCat)}` : undefined}
                     className={`shrink-0 border-l border-gray-100 text-center text-[8px] ${herdMark ? 'font-semibold text-emerald-700' : 'text-gray-600'} hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
