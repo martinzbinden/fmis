@@ -10,6 +10,7 @@ import { directValue, marketValue, parseGrade } from '../lib/marketing'
 import { loadMarketing } from '../lib/marketingData'
 import type { Animal } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface AnimalOption {
   id: string
@@ -191,8 +192,7 @@ export default function SlaughterEntry() {
           />
         </Field>
         <Field label="Schlachtgewicht (kg)">
-          <input
-            type="number"
+          <NumberInput
             step="0.1"
             inputMode="decimal"
             value={carcassWeight}
@@ -221,8 +221,7 @@ export default function SlaughterEntry() {
           </Field>
         </div>
         <Field label="Preis/kg (CHF)">
-          <input
-            type="number"
+          <NumberInput
             step="0.01"
             inputMode="decimal"
             value={pricePerKg}
@@ -243,8 +242,7 @@ export default function SlaughterEntry() {
         )}
         {channel === 'direkt' && (
           <Field label="Metzgerrechnung (CHF, inkl. MwSt)">
-            <input
-              type="number"
+            <NumberInput
               step="0.01"
               inputMode="decimal"
               value={butcherCost}
@@ -264,8 +262,7 @@ export default function SlaughterEntry() {
           </p>
         )}
         <Field label={channel === 'markt' ? 'Erlös (CHF)' : 'Verkaufswert Fleisch (CHF)'}>
-          <input
-            type="number"
+          <NumberInput
             step="0.01"
             inputMode="decimal"
             value={totalRevenue}

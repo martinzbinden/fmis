@@ -8,6 +8,7 @@ import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
 import type { MedicationReference } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface AnimalOption {
   id: string
@@ -283,8 +284,7 @@ export default function MedicationEntry() {
           />
         </Field>
         <Field label="Absetzfrist (Tage)">
-          <input
-            type="number"
+          <NumberInput
             inputMode="numeric"
             value={withdrawalDays}
             onChange={(e) => {
@@ -303,8 +303,7 @@ export default function MedicationEntry() {
           />
         </Field>
         <Field label="Kosten (CHF, optional)">
-          <input
-            type="number"
+          <NumberInput
             step="0.01"
             inputMode="decimal"
             value={cost}

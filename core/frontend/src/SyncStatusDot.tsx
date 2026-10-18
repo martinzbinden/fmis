@@ -1,3 +1,4 @@
+import { notifyError } from './toast'
 import type { SyncStatus } from './sync'
 
 const COLORS: Record<SyncStatus, string> = {
@@ -31,7 +32,7 @@ export default function SyncStatusDot({
   function handleClick() {
     // Auf dem Handy gibt es keinen Hover für den title-Tooltip — bei Fehler
     // also zusätzlich direkt anzeigen, bevor erneut synchronisiert wird.
-    if (status === 'error' && error) window.alert(error)
+    if (status === 'error' && error) notifyError(error)
     onSync()
   }
 
@@ -47,7 +48,7 @@ export default function SyncStatusDot({
       onClick={handleClick}
       title={tooltip}
       aria-label={`${label}. Tippen zum Synchronisieren.`}
-      className="flex min-h-12 items-center gap-2 rounded-full px-3 text-xs font-medium text-gray-700 active:bg-gray-100"
+      className="flex min-h-12 min-w-12 items-center justify-center gap-2 rounded-full px-3 text-xs font-medium text-gray-700 active:bg-gray-100"
     >
       <span className={`h-3 w-3 shrink-0 rounded-full ${COLORS[status]}`} />
       <span aria-live="polite" className={needsText ? '' : 'hidden sm:inline'}>

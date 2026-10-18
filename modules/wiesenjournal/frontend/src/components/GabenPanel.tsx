@@ -5,6 +5,7 @@ import Modal from './Modal'
 import { loadParcelNutrientTotals } from '../lib/fertilization'
 import { kgPerHa } from '../lib/nutrients'
 import type { NDoseSummary } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface Row {
   id: string | null
@@ -132,8 +133,7 @@ export default function GabenPanel({
               {rows.map((row, idx) => (
                 <tr key={idx}>
                   <td className="pr-1 py-0.5">
-                    <input
-                      type="number"
+                    <NumberInput
                       value={row.gabe_number}
                       onChange={(e) => update(idx, { gabe_number: e.target.value })}
                       className="w-12 rounded border border-gray-300 px-1 py-1"
@@ -149,8 +149,7 @@ export default function GabenPanel({
                     />
                   </td>
                   <td className="pr-1 py-0.5">
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       value={row.n_planned_kg}
                       onChange={(e) => update(idx, { n_planned_kg: e.target.value })}
@@ -158,8 +157,7 @@ export default function GabenPanel({
                     />
                   </td>
                   <td className="pr-1 py-0.5">
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       value={row.n_actual_kg}
                       onChange={(e) => update(idx, { n_actual_kg: e.target.value })}

@@ -12,6 +12,7 @@ import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowA
 import AckerToggle from '../components/AckerToggle'
 import Modal from '../components/Modal'
 import type { Intensitaet, Parcel, ParcelCategory } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -312,8 +313,7 @@ export default function Parcels() {
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-gray-700">Aren</span>
-                <input
-                  type="number"
+                <NumberInput
                   step="0.01"
                   value={form.area_a}
                   disabled={form.existing?.source === 'fields'}

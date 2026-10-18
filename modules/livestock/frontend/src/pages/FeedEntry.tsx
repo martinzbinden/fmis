@@ -5,6 +5,7 @@ import { useQuery } from '../hooks/useQuery'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
 import type { FeedReference } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface GroupOption {
   id: string
@@ -134,8 +135,7 @@ export default function FeedEntry() {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Menge">
-            <input
-              type="number"
+            <NumberInput
               step="0.01"
               inputMode="decimal"
               value={quantity}
@@ -157,8 +157,7 @@ export default function FeedEntry() {
           </Field>
         </div>
         <Field label="Kosten total (CHF, optional)">
-          <input
-            type="number"
+          <NumberInput
             step="0.01"
             inputMode="decimal"
             value={costTotal}

@@ -3,6 +3,7 @@ import { getDb } from '../db/pglite'
 import { deletePlanParcel, loadVersionHistory, revertToVersion, saveNewVersion } from '../lib/planLayer'
 import { fmtArea, fmtDateTime, num } from '../lib/format'
 import type { Farm, PlanParcel } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface CropOption {
   code: string
@@ -150,8 +151,7 @@ export default function PlanParcelDetails({
         </label>
         <label className="block text-sm">
           Jahr
-          <input
-            type="number"
+          <NumberInput
             value={jahr}
             onChange={(e) => setJahr(e.target.value)}
             className="mt-1 w-full rounded border border-gray-300 p-2"

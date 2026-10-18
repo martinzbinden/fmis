@@ -7,6 +7,7 @@ import { loadHerdData } from '@fmis/tiere/lib/herds'
 import { accessIndex, categoryDay, categoryMark, categoryTitle, type CategoryDay } from '@fmis/tiere/lib/outdoorAccess'
 import Modal from './Modal'
 import type { AnimalCategory, DailyFarmLog } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 export default function DailyLogEditor({
   date,
@@ -161,8 +162,7 @@ export default function DailyLogEditor({
           </label>
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-gray-700">Niederschlag (mm)</span>
-            <input
-              type="number"
+            <NumberInput
               step="0.1"
               value={niederschlag}
               onChange={(e) => setNiederschlag(e.target.value)}
@@ -185,8 +185,7 @@ export default function DailyLogEditor({
               {ANIMAL_CATEGORIES.map((c) => (
                 <label key={c} className="text-xs text-gray-600">
                   {ANIMAL_CATEGORY_LABEL[c]}
-                  <input
-                    type="number"
+                  <NumberInput
                     placeholder={herd.get(c) ? String(herd.get(c)!.animals) : undefined}
                     value={animalCounts[c] ?? ''}
                     onChange={(e) => setAnimalCounts((s) => ({ ...s, [c]: e.target.value }))}

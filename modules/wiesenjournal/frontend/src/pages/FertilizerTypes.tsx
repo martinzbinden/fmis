@@ -6,6 +6,7 @@ import { upsertRow, softDeleteRow } from '../db/write'
 import { loadFertilizerTypes } from '../lib/fertilization'
 import Modal from '../components/Modal'
 import type { DuengungUnit, FertilizerType } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface FormState {
   existing: FertilizerType | null
@@ -188,27 +189,27 @@ export default function FertilizerTypes() {
             </label>
             <label className="text-sm">
               kg N je {UNIT_LABEL[form.unit]}
-              <input type="number" step="0.001" value={form.n_kg_per_unit} onChange={(e) => setForm({ ...form, n_kg_per_unit: e.target.value })} className={field} />
+              <NumberInput step="0.001" value={form.n_kg_per_unit} onChange={(e) => setForm({ ...form, n_kg_per_unit: e.target.value })} className={field} />
             </label>
             <label className="text-sm">
               davon verfügbar %
-              <input type="number" step="1" value={form.n_avail_pct} onChange={(e) => setForm({ ...form, n_avail_pct: e.target.value })} className={field} />
+              <NumberInput step="1" value={form.n_avail_pct} onChange={(e) => setForm({ ...form, n_avail_pct: e.target.value })} className={field} />
             </label>
             <label className="text-sm">
               kg P₂O₅ je {UNIT_LABEL[form.unit]}
-              <input type="number" step="0.001" value={form.p2o5_kg_per_unit} onChange={(e) => setForm({ ...form, p2o5_kg_per_unit: e.target.value })} className={field} />
+              <NumberInput step="0.001" value={form.p2o5_kg_per_unit} onChange={(e) => setForm({ ...form, p2o5_kg_per_unit: e.target.value })} className={field} />
             </label>
             <label className="text-sm">
               kg K₂O je {UNIT_LABEL[form.unit]}
-              <input type="number" step="0.001" value={form.k2o_kg_per_unit} onChange={(e) => setForm({ ...form, k2o_kg_per_unit: e.target.value })} className={field} />
+              <NumberInput step="0.001" value={form.k2o_kg_per_unit} onChange={(e) => setForm({ ...form, k2o_kg_per_unit: e.target.value })} className={field} />
             </label>
             <label className="text-sm">
               kg Mg je {UNIT_LABEL[form.unit]}
-              <input type="number" step="0.001" value={form.mg_kg_per_unit} onChange={(e) => setForm({ ...form, mg_kg_per_unit: e.target.value })} className={field} />
+              <NumberInput step="0.001" value={form.mg_kg_per_unit} onChange={(e) => setForm({ ...form, mg_kg_per_unit: e.target.value })} className={field} />
             </label>
             <label className="text-sm" title="Gülle-Anteil im ausgebrachten Volumen, auf den sich die Werte beziehen: 1:1 verdünnt = 0.5, unverdünnt = 1">
               Gülleanteil (Basis)
-              <input type="number" step="0.05" min="0.05" max="1" value={form.dilution_default} onChange={(e) => setForm({ ...form, dilution_default: e.target.value })} className={field} />
+              <NumberInput step="0.05" min="0.05" max="1" value={form.dilution_default} onChange={(e) => setForm({ ...form, dilution_default: e.target.value })} className={field} />
             </label>
             <label className="text-sm">
               Gefäss (Fass/Fuder)
@@ -216,7 +217,7 @@ export default function FertilizerTypes() {
             </label>
             <label className="text-sm">
               Gefäss-Inhalt ({UNIT_LABEL[form.unit]})
-              <input type="number" step="0.1" value={form.container_size} onChange={(e) => setForm({ ...form, container_size: e.target.value })} className={field} />
+              <NumberInput step="0.1" value={form.container_size} onChange={(e) => setForm({ ...form, container_size: e.target.value })} className={field} />
             </label>
             <label className="col-span-2 text-sm">
               Bemerkung / Quelle

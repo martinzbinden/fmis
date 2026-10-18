@@ -10,6 +10,7 @@ import { todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { ReasonChips } from './AnimalDetail'
 import { animalLabel } from '@fmis/core/earTag'
+import NumberInput from '@fmis/core/NumberInput'
 
 const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: number }[] = [
   { key: 'intervalDays', label: 'Zwischengeburtszeit über (Tage)' },
@@ -152,8 +153,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
             {THRESHOLD_FIELDS.map((f) => (
               <label key={f.key} className="flex items-center justify-between gap-2 text-xs text-gray-600">
                 {f.label}
-                <input
-                  type="number"
+                <NumberInput
                   step={f.step ?? 1}
                   value={thresholds[f.key]}
                   onChange={(e) => update({ ...thresholds, [f.key]: Number(e.target.value) })}

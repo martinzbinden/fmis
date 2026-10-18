@@ -10,6 +10,7 @@ import { DEFAULT_SELECTION_SETTINGS, rankLambs, type LambRow, type Purpose, type
 import { loadLambSelection, saveDecision, SIRE_TRAIT } from '../lib/lambSelectionData'
 import { speciesOf } from '../lib/species'
 import { InbreedingBadge } from './AnimalDetail'
+import NumberInput from '@fmis/core/NumberInput'
 
 function settingsKey(moduleKey: string) {
   return `${moduleKey}_lamb_selection`
@@ -130,8 +131,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
   const weightField = (key: 'weightPerformance' | 'weightScc' | 'weightSire' | 'weightTrend', label: string) => (
     <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
       {label}
-      <input
-        type="number"
+      <NumberInput
         min={0}
         max={1}
         step={0.05}
@@ -192,8 +192,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
           {weightField('weightTrend', 'Gewicht Tendenz Mutter über die Laktationen')}
           <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
             Höchstalter (Monate)
-            <input
-              type="number"
+            <NumberInput
               min={1}
               max={36}
               value={settings.maxAgeMonths}

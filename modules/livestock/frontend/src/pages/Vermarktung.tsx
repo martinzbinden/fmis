@@ -17,6 +17,7 @@ import {
   type MarketPrices,
 } from '../lib/marketing'
 import { loadMarketing, type MarketingData } from '../lib/marketingData'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface ActiveAnimal {
   id: string
@@ -407,8 +408,7 @@ function NumField({ label, value, onChange }: { label: string; value: string; on
   return (
     <label className="block">
       <span className="mb-1 block text-xs text-gray-600">{label}</span>
-      <input
-        type="number"
+      <NumberInput
         step="0.01"
         inputMode="decimal"
         value={value}

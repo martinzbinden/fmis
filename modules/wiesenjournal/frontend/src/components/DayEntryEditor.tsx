@@ -33,6 +33,7 @@ import type {
 } from '../types'
 import type { Track } from '@fmis/betrieb/types'
 import { getSyncedDb as getBetriebDb } from '@fmis/betrieb/db/access'
+import NumberInput from '@fmis/core/NumberInput'
 
 // Reihenfolge der Typ-Chips: erst das Alltägliche (Weide/Schnitte), dann Pflege.
 const USAGE_TYPE_ORDER: UsageType[] = [
@@ -430,8 +431,7 @@ export default function DayEntryEditor({
                           />
                           nur Tagweide
                         </label>
-                        <input
-                          type="number"
+                        <NumberInput
                           placeholder="Anzahl Tiere"
                           value={row.animal_count}
                           onChange={(e) => updateUsageRow(idx, { animal_count: e.target.value })}
@@ -450,8 +450,7 @@ export default function DayEntryEditor({
 
                   {HARVEST_TYPES.includes(row.usage_type) && (
                     <div className="flex items-center gap-1">
-                      <input
-                        type="number"
+                      <NumberInput
                         step="0.1"
                         placeholder="Ertrag"
                         value={row.yield_amount}
@@ -486,8 +485,7 @@ export default function DayEntryEditor({
                   )}
 
                   {row.usage_type === 'aufwuchshoehe' && (
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.5"
                       placeholder="Höhe cm (Deckelmethode)"
                       value={row.value_num}
@@ -570,8 +568,7 @@ export default function DayEntryEditor({
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
                       {type?.container_label && (
-                        <input
-                          type="number"
+                        <NumberInput
                           step="0.5"
                           placeholder={type.container_label}
                           value={row.container_count}
@@ -580,8 +577,7 @@ export default function DayEntryEditor({
                           title={`Anzahl ${type.container_label}${type.container_size ? ` à ${type.container_size} ${type.unit === 'm3' ? 'm³' : type.unit}` : ''}`}
                         />
                       )}
-                      <input
-                        type="number"
+                      <NumberInput
                         step="0.01"
                         placeholder={`Menge ${type?.unit === 'm3' ? 'm³' : (type?.unit ?? '')}`}
                         value={row.amount}
@@ -598,8 +594,7 @@ export default function DayEntryEditor({
                           title="Verdünnung Gülle:Wasser, z.B. 1:1 oder 3:1"
                         />
                       )}
-                      <input
-                        type="number"
+                      <NumberInput
                         placeholder="Gabe"
                         value={row.gabe_number}
                         onChange={(e) => updateFertRow(idx, { gabe_number: e.target.value })}
@@ -667,8 +662,7 @@ export default function DayEntryEditor({
                             </option>
                           ))}
                         </select>
-                        <input
-                          type="number"
+                        <NumberInput
                           step="0.5"
                           placeholder="Breite m"
                           value={row.track_width_m}

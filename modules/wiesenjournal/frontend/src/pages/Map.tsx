@@ -26,6 +26,7 @@ import { fetchCoverage, fieldShapes, localDay, sameJob, timeMs, type CoveragePar
 import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import type { Paddock, Parcel, WeedObservation } from '../types'
+import { notifyError } from '@fmis/core/toast'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -132,7 +133,7 @@ export default function Map() {
       setCoverage({ title: `${track.work_type ?? 'Arbeit'} ${fmtDate(localDay(track.started_at))}${track.machine ? ` · ${track.machine}` : ''}`, widthM: width, tracks: job.length, parcels: parcelsResult })
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e) {
-      alert(e instanceof Error ? e.message : String(e))
+      notifyError(e instanceof Error ? e.message : String(e))
     } finally {
       setCoverageBusy(null)
     }
@@ -192,7 +193,7 @@ export default function Map() {
       )
     } catch (err) {
       console.error('GPS-Fehler', err)
-      alert('Position konnte nicht neu bestimmt werden.')
+      notifyError('Position konnte nicht neu bestimmt werden.')
     } finally {
       setRelocating(false)
     }

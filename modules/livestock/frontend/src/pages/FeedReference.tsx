@@ -5,6 +5,7 @@ import { useQuery } from '../hooks/useQuery'
 import { upsertRow, softDeleteRow } from '../db/write'
 import { fmtDate, todayIso } from '../lib/format'
 import type { FeedReference as FeedReferenceRow } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 async function loadReferences(pg: PGlite): Promise<FeedReferenceRow[]> {
   const { rows } = await pg.query<FeedReferenceRow>(
@@ -98,8 +99,7 @@ function LabeledNumber({
   return (
     <label className="block text-xs">
       <span className="mb-1 block font-medium text-gray-700">{label}</span>
-      <input
-        type="number"
+      <NumberInput
         step="0.01"
         inputMode="decimal"
         value={value}

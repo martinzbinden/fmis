@@ -7,6 +7,7 @@ import Login from '@fmis/core/Login'
 import VerifyToken from '@fmis/core/VerifyToken'
 import CoreAdmin from '@fmis/core/Admin'
 import Layout from '@fmis/core/Layout'
+import Toaster from '@fmis/core/Toaster'
 import { ModuleListError, cachedModules, fetchModules, type ModuleInfo } from '@fmis/core/modulesApi'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import livestockModule from '@fmis/livestock/module'
@@ -132,6 +133,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
 
   return (
     <>
+    <Toaster />
     {enabledModules.map((m) => (m.globalOverlay ? <m.globalOverlay key={`overlay-${m.key}`} /> : null))}
     <Routes>
       <Route path="/dashboard" element={<Dashboard modules={enabledModules} onLoggedOut={onLoggedOut} />} />

@@ -9,6 +9,7 @@ import { addEarTagsToGroup, type EarTagImportResult } from '../lib/importCsv'
 import { fmtDate, fmtChf, num, todayIso } from '../lib/format'
 import type { AnimalGroup, FeedRecord, Expense, GroupStatus } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
+import NumberInput from '@fmis/core/NumberInput'
 
 const GROUP_STATUS_OPTIONS: GroupStatus[] = ['aktiv', 'abgeschlossen']
 
@@ -216,16 +217,14 @@ export default function GroupDetail() {
             <div>
               <span className="mb-1 block text-sm font-medium text-gray-700">Zielgewicht</span>
               <div className="flex items-center gap-2">
-                <input
-                  type="number"
+                <NumberInput
                   step="0.1"
                   value={minKg}
                   onChange={(e) => setMinKg(e.target.value)}
                   className="w-24 rounded border border-gray-300 px-2 py-2 text-base"
                 />
                 <span className="text-gray-500">–</span>
-                <input
-                  type="number"
+                <NumberInput
                   step="0.1"
                   value={maxKg}
                   onChange={(e) => setMaxKg(e.target.value)}
@@ -304,16 +303,14 @@ export default function GroupDetail() {
                       onChange={(e) => setFeedForm((s) => ({ ...s, date: e.target.value }))}
                       className="rounded border border-gray-300 px-2 py-1"
                     />
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       value={feedForm.quantity ?? f.quantity}
                       onChange={(e) => setFeedForm((s) => ({ ...s, quantity: Number(e.target.value) }))}
                       className="w-24 rounded border border-gray-300 px-2 py-1"
                       placeholder="Menge"
                     />
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       value={feedForm.cost_total ?? f.cost_total ?? ''}
                       onChange={(e) =>
@@ -403,8 +400,7 @@ export default function GroupDetail() {
                       onChange={(ev) => setExpenseForm((s) => ({ ...s, date: ev.target.value }))}
                       className="rounded border border-gray-300 px-2 py-1"
                     />
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.01"
                       value={expenseForm.amount ?? e.amount}
                       onChange={(ev) => setExpenseForm((s) => ({ ...s, amount: Number(ev.target.value) }))}
@@ -481,8 +477,7 @@ export default function GroupDetail() {
             onChange={(e) => setExpDescription(e.target.value)}
             className="col-span-2 rounded border border-gray-300 px-3 py-2"
           />
-          <input
-            type="number"
+          <NumberInput
             step="0.01"
             placeholder="Betrag CHF"
             value={expAmount}

@@ -30,6 +30,7 @@ import type {
   UsageType,
   YieldUnit,
 } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 const WINDOW_DAYS = 180
 
@@ -412,8 +413,7 @@ export default function DayEntryEditorClassic({
                     <input type="checkbox" checked={dayOnly} onChange={(e) => setDayOnly(e.target.checked)} />
                     nur Tagweide
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     placeholder="Anzahl Tiere"
                     value={animalCount}
                     onChange={(e) => setAnimalCount(e.target.value)}
@@ -463,8 +463,7 @@ export default function DayEntryEditorClassic({
 
             {HARVEST_FAMILIES.includes(family as UsageColorFamily) && (
               <div className="mt-2 flex items-center gap-1">
-                <input
-                  type="number"
+                <NumberInput
                   step="0.1"
                   placeholder="Ertrag"
                   value={yieldAmount}
@@ -483,8 +482,7 @@ export default function DayEntryEditorClassic({
             )}
 
             {family === 'pflege' && pflegeType === 'aufwuchshoehe' && (
-              <input
-                type="number"
+              <NumberInput
                 step="0.5"
                 placeholder="Höhe cm"
                 value={valueNum}
@@ -580,8 +578,7 @@ export default function DayEntryEditorClassic({
             {fert.typeId && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                 {typeById(fert.typeId)?.container_label && (
-                  <input
-                    type="number"
+                  <NumberInput
                     step="0.5"
                     placeholder={typeById(fert.typeId)!.container_label!}
                     value={fert.containerCount}
@@ -589,16 +586,14 @@ export default function DayEntryEditorClassic({
                     className={`${input} w-20`}
                   />
                 )}
-                <input
-                  type="number"
+                <NumberInput
                   step="0.01"
                   placeholder={`Menge ${typeById(fert.typeId)?.unit === 'm3' ? 'm³' : (typeById(fert.typeId)?.unit ?? '')}`}
                   value={fert.amount}
                   onChange={(e) => setFert((f) => ({ ...f, amount: e.target.value }))}
                   className={`${input} w-24`}
                 />
-                <input
-                  type="number"
+                <NumberInput
                   placeholder="Gabe"
                   value={fert.gabeNumber}
                   onChange={(e) => setFert((f) => ({ ...f, gabeNumber: e.target.value }))}

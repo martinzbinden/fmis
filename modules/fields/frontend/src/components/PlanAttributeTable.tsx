@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { saveNewVersion } from '../lib/planLayer'
 import { fmtArea } from '../lib/format'
 import type { PlanParcel } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface CropOption {
   code: string
@@ -159,8 +160,7 @@ function PlanAttributeRow({
         />
       </td>
       <td className="px-2 py-1">
-        <input
-          type="number"
+        <NumberInput
           value={jahr}
           onChange={(e) => setJahr(e.target.value)}
           onBlur={commitJahr}

@@ -13,6 +13,7 @@ import { speciesTerms } from '../lib/species'
 import type { Animal, MilkingBank, MilkingSlot } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
 import { MILK_UNTIL_SQL } from '../lib/treatments'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface SessionState {
   active: boolean
@@ -383,8 +384,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
             {!session?.active && (
               <label className="flex items-center gap-1 text-xs text-gray-600">
                 Plätze
-                <input
-                  type="number"
+                <NumberInput
                   min={1}
                   max={60}
                   value={capacity}

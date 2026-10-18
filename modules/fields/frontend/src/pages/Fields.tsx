@@ -19,6 +19,7 @@ import PlanParcelDetails from '../components/PlanParcelDetails'
 import { fmtArea, num } from '../lib/format'
 import { colorForKultur } from '../lib/kulturColor'
 import type { Farm, FieldDeclaration, PlanLayer, PlanParcel } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 async function loadFarms(pg: PGlite): Promise<Farm[]> {
   const { rows } = await pg.query<Farm>('select * from farms where deleted_at is null order by name')
@@ -672,8 +673,7 @@ function PlanBulkEditForm({
         <input type="checkbox" checked={applyJahr} onChange={(e) => setApplyJahr(e.target.checked)} />
         <label className="flex-1 text-sm">
           Jahr
-          <input
-            type="number"
+          <NumberInput
             value={jahr}
             onChange={(e) => setJahr(e.target.value)}
             disabled={!applyJahr}

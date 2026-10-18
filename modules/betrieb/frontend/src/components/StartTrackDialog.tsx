@@ -4,6 +4,7 @@ import { getCurrentUserEmail } from '@fmis/core/auth'
 import type { StartTrackDetails } from '../lib/tracking'
 import { useQuery } from '../hooks/useQuery'
 import { comboName, isTractor, loadMachines, machineSummary, suggestTractor } from '../lib/machines'
+import NumberInput from '@fmis/core/NumberInput'
 
 // Vorschläge für die Arbeitsart — kein CHECK in der DB (siehe schema/0012),
 // darum hier nur ein <datalist>: Freitext bleibt möglich, Tippen wird schneller.
@@ -159,8 +160,7 @@ export default function StartTrackDialog({
         <div className="flex gap-2">
           <label className="block flex-1 text-sm">
             <span className="mb-1 block font-medium text-gray-700">Arbeitsbreite (m)</span>
-            <input
-              type="number"
+            <NumberInput
               step="0.1"
               min="0"
               placeholder="z.B. 12"

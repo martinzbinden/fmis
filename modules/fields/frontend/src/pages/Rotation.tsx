@@ -8,6 +8,7 @@ import { classifyKultur, isGeholz, KULTUR_CATEGORY_LABEL, type KulturCategory } 
 import RotationTimeline from '../components/RotationTimeline'
 import Modal from '../components/Modal'
 import type { FieldDeclaration, FieldLineageSummary } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 const FILTERS: ('alle' | KulturCategory)[] = ['alle', 'acker', 'futter']
 const FILTER_LABEL: Record<'alle' | KulturCategory, string> = {
@@ -269,8 +270,7 @@ function PlanForm({
       <div className="flex gap-2">
         <label className="flex-1 text-sm">
           Jahr
-          <input
-            type="number"
+          <NumberInput
             value={year}
             onChange={(e) => setYear(e.target.value)}
             className="mt-1 w-full rounded border border-gray-300 p-2"

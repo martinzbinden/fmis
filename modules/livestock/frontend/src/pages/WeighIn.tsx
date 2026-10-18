@@ -14,6 +14,7 @@ import {
   type ImportWeightsResult,
 } from '../lib/importWeights'
 import { shortEarTag } from '@fmis/core/earTag'
+import NumberInput from '@fmis/core/NumberInput'
 
 interface GroupOption {
   id: string
@@ -359,8 +360,7 @@ export default function WeighIn() {
                 <div className="text-xs text-gray-500">zuletzt {num(a.last_weight)} kg</div>
               )}
             </div>
-            <input
-              type="number"
+            <NumberInput
               inputMode="decimal"
               step="0.1"
               placeholder="kg"

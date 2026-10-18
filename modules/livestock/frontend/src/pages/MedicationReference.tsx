@@ -5,6 +5,7 @@ import { useQuery } from '../hooks/useQuery'
 import { upsertRow, softDeleteRow } from '../db/write'
 import { fmtDate, todayIso } from '../lib/format'
 import type { MedicationReference as MedicationReferenceRow } from '../types'
+import NumberInput from '@fmis/core/NumberInput'
 
 async function loadReferences(pg: PGlite): Promise<MedicationReferenceRow[]> {
   const { rows } = await pg.query<MedicationReferenceRow>(
@@ -102,8 +103,7 @@ export default function MedicationReference() {
         />
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-gray-700">Absetzfrist (Tage)</span>
-          <input
-            type="number"
+          <NumberInput
             inputMode="numeric"
             value={withdrawalDays}
             onChange={(e) => setWithdrawalDays(e.target.value)}
@@ -149,8 +149,7 @@ export default function MedicationReference() {
                 className="w-full rounded border border-gray-300 px-2 py-1"
                 placeholder="Wirkstoff"
               />
-              <input
-                type="number"
+              <NumberInput
                 value={editForm.default_withdrawal_days ?? r.default_withdrawal_days}
                 onChange={(e) =>
                   setEditForm((f) => ({ ...f, default_withdrawal_days: Number(e.target.value) }))

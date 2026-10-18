@@ -14,6 +14,7 @@ import MachineSettingsCard from '../components/MachineSettingsCard'
 import { machineDefs } from '../lib/machineSettings'
 import Modal from '../components/Modal'
 import type { MachineFile, MachineFileKind } from '../types'
+import { notifyError } from '@fmis/core/toast'
 
 const UNIT_LABEL = { m3: 'm³', t: 't', kg: 'kg' } as const
 
@@ -44,7 +45,7 @@ async function openFile(file: MachineFile) {
     a.remove()
   } catch (e) {
     win?.close()
-    alert(e instanceof Error ? e.message : String(e))
+    notifyError(e instanceof Error ? e.message : String(e))
   }
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import AsyncButton from '@fmis/core/AsyncButton'
 import { useQuery } from '../hooks/useQuery'
 import {
   formatSetting,
@@ -54,7 +55,6 @@ export default function MachineSettingsCard({
   const [sampleG, setSampleG] = useState('')
   const [sampleM2, setSampleM2] = useState('')
   const [notes, setNotes] = useState('')
-  const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [prefilled, setPrefilled] = useState<string | null>(null)
 
@@ -79,8 +79,7 @@ export default function MachineSettingsCard({
   }
 
   async function save() {
-    setSaving(true)
-    try {
+    {
       const settings: Record<string, number> = {}
       for (const d of defs) {
         const v = parse(values[d.key] ?? '')
@@ -100,8 +99,6 @@ export default function MachineSettingsCard({
       })
       setSavedAt(new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }))
       refresh()
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -216,9 +213,9 @@ export default function MachineSettingsCard({
       </label>
       {canWrite && (
         <div className="flex items-center gap-3">
-          <button type="button" disabled={saving} onClick={() => void save()} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+          <AsyncButton onClick={save} className="min-h-12 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
             {forTrack ? 'Einstellung aktualisieren' : 'Einstellung speichern'}
-          </button>
+          </AsyncButton>
           {savedAt && <span className="text-xs text-green-700">gespeichert {savedAt}</span>}
         </div>
       )}

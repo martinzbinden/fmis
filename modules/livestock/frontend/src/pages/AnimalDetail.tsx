@@ -9,6 +9,7 @@ import { fmtKg, fmtChf, fmtDate, fmtAge, num, todayIso } from '../lib/format'
 import { computeForecast } from '../lib/forecast'
 import type { Animal, Weighing, Medication, SlaughterResult, AnimalGroup, AnimalSex, AnimalStatus } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
+import NumberInput from '@fmis/core/NumberInput'
 
 const SEX_LABEL: Record<AnimalSex, string> = { m: 'männlich', w: 'weiblich', k: 'kastriert' }
 const STATUS_OPTIONS: AnimalStatus[] = ['aktiv', 'verkauft', 'geschlachtet', 'verendet']
@@ -261,8 +262,7 @@ export default function AnimalDetail() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Eingangsgewicht (kg)">
-              <input
-                type="number"
+              <NumberInput
                 step="0.1"
                 value={animalForm.entry_weight_kg ?? ''}
                 onChange={(e) =>
@@ -272,8 +272,7 @@ export default function AnimalDetail() {
               />
             </Field>
             <Field label="Kaufpreis (CHF)">
-              <input
-                type="number"
+              <NumberInput
                 step="0.01"
                 value={animalForm.purchase_cost ?? 0}
                 onChange={(e) => setAnimalForm((f) => ({ ...f, purchase_cost: Number(e.target.value) }))}
@@ -399,8 +398,7 @@ export default function AnimalDetail() {
                       onChange={(e) => setWeighingForm((f) => ({ ...f, date: e.target.value }))}
                       className="rounded border border-gray-300 px-2 py-1"
                     />
-                    <input
-                      type="number"
+                    <NumberInput
                       step="0.1"
                       value={weighingForm.weight_kg ?? w.weight_kg}
                       onChange={(e) => setWeighingForm((f) => ({ ...f, weight_kg: Number(e.target.value) }))}
@@ -481,8 +479,7 @@ export default function AnimalDetail() {
                         onChange={(e) => setMedicationForm((f) => ({ ...f, date: e.target.value }))}
                         className="rounded border border-gray-300 px-2 py-1"
                       />
-                      <input
-                        type="number"
+                      <NumberInput
                         value={medicationForm.withdrawal_days ?? m.withdrawal_days}
                         onChange={(e) =>
                           setMedicationForm((f) => ({ ...f, withdrawal_days: Number(e.target.value) }))
@@ -582,8 +579,7 @@ export default function AnimalDetail() {
                 />
               </Field>
               <Field label="Schlachtgewicht (kg)">
-                <input
-                  type="number"
+                <NumberInput
                   step="0.1"
                   value={slaughterForm.carcass_weight_kg ?? slaughter.carcass_weight_kg ?? ''}
                   onChange={(e) =>
@@ -596,8 +592,7 @@ export default function AnimalDetail() {
                 />
               </Field>
               <Field label="Preis/kg (CHF)">
-                <input
-                  type="number"
+                <NumberInput
                   step="0.01"
                   value={slaughterForm.price_per_kg ?? slaughter.price_per_kg ?? ''}
                   onChange={(e) =>
@@ -607,8 +602,7 @@ export default function AnimalDetail() {
                 />
               </Field>
               <Field label="Erlös (CHF)">
-                <input
-                  type="number"
+                <NumberInput
                   step="0.01"
                   value={slaughterForm.total_revenue ?? slaughter.total_revenue ?? ''}
                   onChange={(e) =>
@@ -634,8 +628,7 @@ export default function AnimalDetail() {
                 </select>
               </Field>
               <Field label="Metzgerrechnung (CHF)">
-                <input
-                  type="number"
+                <NumberInput
                   step="0.01"
                   value={slaughterForm.butcher_cost ?? slaughter.butcher_cost ?? ''}
                   onChange={(e) =>

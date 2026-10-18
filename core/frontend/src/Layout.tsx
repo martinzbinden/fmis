@@ -29,25 +29,25 @@ export default function Layout({
 
   return (
     <div data-module={moduleKey} className="flex min-h-screen flex-col bg-gray-50">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-3 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))]">
         <div className="flex items-center gap-2">
-          <NavLink to="/dashboard" className="rounded px-1 py-1 text-lg active:bg-gray-100" title="Zur Übersicht">
+          <NavLink to="/dashboard" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" title="Zur Übersicht">
             🏠
           </NavLink>
           <span className="text-lg font-bold text-brand-800">{title}</span>
         </div>
         <div className="flex items-center gap-1">
           <SyncStatusDot status={status} error={error} pending={pending} onSync={() => void sync.syncNow()} />
-          <NavLink to="/import" className="rounded px-2 py-1 text-lg active:bg-gray-100" title="Daten importieren">
+          <NavLink to="/import" className="hidden min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 sm:grid" title="Daten importieren">
             📥
           </NavLink>
           {canViewHistory && (
-            <NavLink to="verlauf" className="rounded px-2 py-1 text-lg active:bg-gray-100">
+            <NavLink to="verlauf" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100">
               📜
             </NavLink>
           )}
           {canManageUsers && (
-            <NavLink to="/admin" className="rounded px-2 py-1 text-lg active:bg-gray-100">
+            <NavLink to="/admin" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100">
               ⚙️
             </NavLink>
           )}
@@ -57,9 +57,12 @@ export default function Layout({
               logout()
               onLoggedOut()
             }}
-            className="rounded px-2 py-1 text-xs text-gray-500 active:bg-gray-100"
+            title="Abmelden"
+            aria-label="Abmelden"
+            className="grid min-h-12 min-w-12 place-items-center rounded-full text-xs text-gray-600 active:bg-gray-100 sm:px-3"
           >
-            Abmelden
+            <span aria-hidden className="text-xl sm:hidden">🚪</span>
+            <span className="hidden sm:inline">Abmelden</span>
           </button>
         </div>
       </header>
