@@ -1,6 +1,8 @@
 import hashlib
 import os
 import secrets
+import socket
+import time
 import uuid as uuidlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -46,6 +48,22 @@ LOGIN_DOMAINS = {
 # selbst mitschicken und sich ein Token für eine fremde Adresse ausstellen.
 SSO_ENABLED = os.environ.get("SSO_ENABLED", "").strip().lower() == "true"
 SSO_EMAIL_HEADER = os.environ.get("SSO_EMAIL_HEADER", "Remote-Email").strip()
+# Der Kopf zaehlt nur, wenn die Anfrage von Traefik kommt. Der Backend-Container steht im selben Docker-Netz wie
+# alle anderen Dienste; ohne diese Pruefung konnte jeder von dort ein 365-Tage-Token fuer eine beliebige Adresse
+# (auch einen Admin) holen (geprueft 2026-10-18: Kopf wurde geglaubt). Name aus Compose, alle 60 s neu aufgeloest.
+SSO_TRAEFIK_HOST = os.environ.get("SSO_TRAEFIK_HOST", "traefik").strip()
+_traefik = {"ips": set(), "bis": 0.0}
+
+
+def _von_traefik(ip: str) -> bool:
+    jetzt = time.time()
+    if jetzt > _traefik["bis"]:
+        try:
+            _traefik["ips"] = {ai[4][0] for ai in socket.getaddrinfo(SSO_TRAEFIK_HOST, None)}
+        except OSError:
+            pass  # alte Liste behalten
+        _traefik["bis"] = jetzt + 60
+    return ip in _traefik["ips"]
 
 router = APIRouter()
 bearer_scheme = HTTPBearer()
@@ -254,6 +272,8 @@ async def sso_login(request: Request) -> VerifyResponse:
     """
     if not SSO_ENABLED:
         raise HTTPException(status_code=404, detail="SSO ist hier nicht eingerichtet")
+    if not _von_traefik(request.client.host if request.client else ""):
+        raise HTTPException(status_code=403, detail="SSO nur ueber das Portal")
 
     email = (request.headers.get(SSO_EMAIL_HEADER) or "").lower().strip()
     if not email:
