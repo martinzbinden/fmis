@@ -359,7 +359,7 @@ export default function DayEntryEditor({
   const input = 'rounded border border-gray-300 px-2 py-1.5 text-xs'
 
   return (
-    <Modal title={`${parcelName} · ${fmtDate(date)}`} onClose={onClose}>
+    <Modal title={`${parcelName} · ${fmtDate(date)}`} onClose={onClose} onSubmit={() => !loading && !saving && void save()}>
       <HerdUsageNote entries={herdUsage} />
       {loading ? (
         <p className="py-4 text-center text-gray-400">Lädt…</p>

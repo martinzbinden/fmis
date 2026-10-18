@@ -121,12 +121,23 @@ export async function openImportSession(opts: {
       const { rows } = await pg.query<Record<string, unknown>>(`select ${colList} from "${table}" where id = any($1::uuid[])`, [ids])
       payload[table] = rows.map((row) => Object.fromEntries(columns.map((c) => [c, formatValue(row[c], dateOnly.has(c))])))
     }
-    const push = await fetch(`${base}/push`, {
+    // ?atomic=1: wird nur eine Zeile abgelehnt, übernimmt der Server nichts
+    const push = await fetch(`${base}/push?atomic=1`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ tables: payload }),
     })
-    if (!push.ok) throw new Error(`Import konnte nicht gespeichert werden (Server ${push.status}) — es wurde nichts übernommen.`)
+    if (!push.ok) {
+      let why = `Server ${push.status}`
+      try {
+        const body = (await push.json()) as { detail?: { rejected?: { table: string; detail: string }[] } }
+        const first = body.detail?.rejected?.[0]
+        if (first) why = `${first.table}: ${first.detail}`
+      } catch {
+        // keine Details — der Status genügt
+      }
+      throw new Error(`Import konnte nicht gespeichert werden (${why}) — es wurde nichts übernommen.`)
+    }
     await pg.exec('delete from sync_outbox')
     // Das Gerät holt den Import mit dem normalen Abgleich.
     await opts.sync.syncNow()

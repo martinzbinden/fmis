@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
+from core.backend.fmis_core.sync_push import push_rows
 from core.backend.fmis_core.sync_stamps import pull_cursor
 from .tables import GEOMETRY_COLUMNS, SYNC_TABLES, TABLE_AREA
 
@@ -20,8 +21,16 @@ class PushRequest(BaseModel):
     tables: dict[str, list[dict[str, Any]]]
 
 
+class RejectedRow(BaseModel):
+    table: str
+    id: str
+    reason: str  # forbidden | invalid | unknown_table
+    detail: str
+
+
 class PushResponse(BaseModel):
     accepted: dict[str, int]
+    rejected: list[RejectedRow] = []
 
 
 class PullResponse(BaseModel):
@@ -32,49 +41,9 @@ class HistoryResponse(BaseModel):
 
 
 @router.post("/sync/push", response_model=PushResponse)
-async def push(body: PushRequest, user: CurrentUser = Depends(require_auth)) -> PushResponse:
-    # All-or-nothing: fehlt für irgendeine der enthaltenen Tabellen das
-    # Schreibrecht, wird der GESAMTE Request abgelehnt.
-    for table in body.tables:
-        if table == "data_history":
-            continue
-        area = TABLE_AREA.get(table)
-        if area is None or f"{area}:write" not in user.permissions:
-            raise HTTPException(status_code=403, detail=f"Keine Schreibrechte für {table}")
-
-    accepted: dict[str, int] = {}
-    async with pool.connection() as conn:
-        for table, rows in body.tables.items():
-            columns = SYNC_TABLES.get(table)
-            if columns is None or not rows:
-                continue
-            geometry_cols = GEOMETRY_COLUMNS.get(table, set())
-            set_clause = ", ".join(f'"{c}" = excluded."{c}"' for c in columns if c != "id")
-            col_list = ", ".join(f'"{c}"' for c in columns)
-            # Geometrie-Spalten (siehe schema/0004_postgis_geometry.sql) sind
-            # server-seitig echtes PostGIS `geometry` — der Client schickt
-            # aber weiterhin reinen GeoJSON-Text, deshalb hier explizit
-            # konvertieren statt den rohen Wert zu binden. `excluded."{c}"`
-            # im ON CONFLICT (oben) braucht dafür keine Änderung, da es den
-            # bereits konvertierten Wert aus genau diesem Ausdruck referenziert.
-            placeholders = ", ".join(
-                f"ST_SetSRID(ST_GeomFromGeoJSON(%({c})s), 4326)" if c in geometry_cols else f"%({c})s"
-                for c in columns
-            )
-            sql = (
-                f'insert into "{table}" ({col_list}) values ({placeholders}) '
-                f'on conflict (id) do update set {set_clause} '
-                f'where "{table}".updated_at < excluded.updated_at'
-            )
-            count = 0
-            async with conn.cursor() as cur:
-                for row in rows:
-                    params = {c: row.get(c) for c in columns}
-                    await cur.execute(sql, params)
-                    count += 1
-            accepted[table] = count
-        await conn.commit()
-    return PushResponse(accepted=accepted)
+async def push(body: PushRequest, user: CurrentUser = Depends(require_auth), atomic: bool = False) -> PushResponse:
+    # Zeilenweise (core/backend/fmis_core/sync_push.py): abgelehnte Zeilen blockieren den Rest nicht.
+    return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, TABLE_AREA, GEOMETRY_COLUMNS, atomic=atomic))
 
 
 @router.get("/sync/pull", response_model=PullResponse)

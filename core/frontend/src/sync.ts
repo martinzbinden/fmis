@@ -1,10 +1,12 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getToken, logout } from './auth'
+import { clearSent, describeRejected, readOutbox, type RejectedRow } from './outbox'
 
 export type SyncStatus = 'offline' | 'synced' | 'syncing' | 'error'
 
 export interface SyncClient {
-  push(): Promise<void>
+  /** Gibt die vom Server abgelehnten Zeilen zurück (bleiben in der Outbox). */
+  push(): Promise<RejectedRow[]>
   pull(): Promise<void>
   syncNow(): Promise<void>
   startSyncLoop(): void
@@ -105,26 +107,27 @@ export function createSyncClient(
     return () => listeners.delete(listener)
   }
 
-  /** Sendet alle noch nicht gesyncten lokalen Änderungen an POST /<module>/sync/push. */
-  async function push(): Promise<void> {
+  /** Sendet alle noch nicht gesyncten lokalen Änderungen an POST /<module>/sync/push.
+   * Der Server quittiert zeilenweise: akzeptierte Zeilen verlassen die Outbox,
+   * abgelehnte bleiben (und werden zurückgemeldet), ohne den Rest zu blockieren. */
+  async function push(): Promise<RejectedRow[]> {
     const pg = await getDb()
     await ensureOutbox(pg)
 
-    const { rows: outboxRows } = await pg.query<{ table_name: string; row_id: string }>(
-      'select table_name, row_id from sync_outbox',
-    )
-    if (outboxRows.length === 0) return
+    const outbox = await readOutbox(pg)
+    if (outbox.length === 0) return []
 
     const byTable = new Map<string, string[]>()
-    for (const r of outboxRows) {
-      const list = byTable.get(r.table_name) ?? []
-      list.push(r.row_id)
-      byTable.set(r.table_name, list)
+    for (const r of outbox) {
+      const list = byTable.get(r.table) ?? []
+      list.push(r.id)
+      byTable.set(r.table, list)
     }
 
     const payload: Record<string, Record<string, unknown>[]> = {}
     for (const [table, ids] of byTable) {
       const columns = syncTables[table]
+      if (!columns) continue
       const dateOnly = dateOnlyColumns[table]
       const colList = columns.map((c) => `"${c}"`).join(', ')
       const { rows } = await pg.query<Record<string, unknown>>(
@@ -147,14 +150,14 @@ export function createSyncClient(
       handleUnauthorized(res)
       throw new Error(`Push fehlgeschlagen (${res.status})`)
     }
+    // Ältere Server kennen "rejected" nicht → alles gilt als angenommen.
+    const body = (await res.json().catch(() => ({}))) as { rejected?: RejectedRow[] }
+    const rejected = body.rejected ?? []
 
-    // Outbox nur für die tatsächlich gesendeten Zeilen leeren.
-    for (const [table, ids] of byTable) {
-      await pg.query(
-        'delete from sync_outbox where table_name = $1 and row_id = any($2::uuid[])',
-        [table, ids],
-      )
-    }
+    // Nur genau die gesendeten Stände quittieren (siehe outbox.ts)
+    // (Zeilen unbekannter Tabellen wurden nicht gesendet und bleiben stehen.)
+    await clearSent(pg, outbox.filter((e) => syncTables[e.table]), rejected)
+    return rejected
   }
 
   /** Holt alle serverseitigen Änderungen seit dem letzten Sync (GET /<module>/sync/pull) und wendet sie per Last-Write-Wins lokal an. */
@@ -222,9 +225,10 @@ export function createSyncClient(
     syncing = true
     setStatus('syncing')
     try {
-      await push()
+      const rejected = await push()
       await pull()
-      setStatus('synced')
+      if (rejected.length > 0) setStatus('error', describeRejected(rejected))
+      else setStatus('synced')
     } catch (err) {
       console.error(`Sync fehlgeschlagen (${moduleKey})`, err)
       setStatus('error', err instanceof Error ? err.message : String(err))
