@@ -15,6 +15,7 @@ export default defineConfig({
       '@fmis/wiesenjournal': fileURLToPath(new URL('../modules/wiesenjournal/frontend/src', import.meta.url)),
       '@fmis/betrieb': fileURLToPath(new URL('../modules/betrieb/frontend/src', import.meta.url)),
       '@fmis/tiere': fileURLToPath(new URL('../modules/tiere/frontend/src', import.meta.url)),
+      '@fmis/bau': fileURLToPath(new URL('../modules/bau/frontend/src', import.meta.url)),
     },
   },
   test: {

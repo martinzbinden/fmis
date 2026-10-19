@@ -1,0 +1,15 @@
+/* Bauprojekte: Petrol (unterscheidet sich von Wiesenjournal/Betrieb (Bernstein),
+   Mastplaner/Kulturen (grün) und Milchleistung (blau)). Aktiv, solange
+   Layout.tsx data-module="bau" auf den umschliessenden Container setzt. */
+[data-module='bau'] {
+  --brand-50: #ecfeff;
+  --brand-100: #cffafe;
+  --brand-200: #a5f3fc;
+  --brand-300: #67e8f9;
+  --brand-400: #22d3ee;
+  --brand-500: #06b6d4;
+  --brand-600: #0891b2;
+  --brand-700: #0e7490;
+  --brand-800: #155e75;
+  --brand-900: #164e63;
+}

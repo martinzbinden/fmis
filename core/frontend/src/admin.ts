@@ -49,6 +49,8 @@ export const ALL_PERMISSIONS = [
   'betrieb:dienste:read', 'betrieb:dienste:write',
   'betrieb:tracking:read', 'betrieb:tracking:write',
   'betrieb:history:read',
+  'bau:projekte:read', 'bau:projekte:write',
+  'bau:history:read',
   'core:users:manage',
   'core:modules:manage',
 ] as const

@@ -28,6 +28,8 @@ COPY modules/betrieb/frontend/src ./modules/betrieb/frontend/src
 COPY modules/betrieb/schema ./modules/betrieb/schema
 COPY modules/tiere/frontend/src ./modules/tiere/frontend/src
 COPY modules/tiere/schema ./modules/tiere/schema
+COPY modules/bau/frontend/src ./modules/bau/frontend/src
+COPY modules/bau/schema ./modules/bau/schema
 
 # Leer = same-origin (Frontend+Backend hinter Traefik unter derselben Domain).
 ARG VITE_API_URL=

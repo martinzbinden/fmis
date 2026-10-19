@@ -37,6 +37,10 @@ COPY modules/tiere/__init__.py ./modules/tiere/__init__.py
 COPY modules/tiere/backend/__init__.py ./modules/tiere/backend/__init__.py
 COPY modules/tiere/backend/app ./modules/tiere/backend/app
 COPY modules/tiere/schema ./modules/tiere/schema
+COPY modules/bau/__init__.py ./modules/bau/__init__.py
+COPY modules/bau/backend/__init__.py ./modules/bau/backend/__init__.py
+COPY modules/bau/backend/app ./modules/bau/backend/app
+COPY modules/bau/schema ./modules/bau/schema
 
 # WORKDIR /app entspricht dem Repo-Root-Layout (core/, modules/ liegen direkt
 # darunter) — core.backend.fmis_core und modules.<name>.backend.app lösen

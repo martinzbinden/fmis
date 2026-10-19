@@ -36,7 +36,9 @@
       "@fmis/betrieb": ["../modules/betrieb/frontend/src"],
       "@fmis/betrieb/*": ["../modules/betrieb/frontend/src/*"],
       "@fmis/tiere": ["../modules/tiere/frontend/src"],
-      "@fmis/tiere/*": ["../modules/tiere/frontend/src/*"]
+      "@fmis/tiere/*": ["../modules/tiere/frontend/src/*"],
+      "@fmis/bau": ["../modules/bau/frontend/src"],
+      "@fmis/bau/*": ["../modules/bau/frontend/src/*"]
     }
   },
   "include": [
@@ -48,6 +50,7 @@
     "../modules/fields/frontend/src",
     "../modules/wiesenjournal/frontend/src",
     "../modules/betrieb/frontend/src",
-    "../modules/tiere/frontend/src"
+    "../modules/tiere/frontend/src",
+    "../modules/bau/frontend/src"
   ]
 }

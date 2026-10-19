@@ -34,5 +34,6 @@ MODULE_SPECS: list[ModuleSpec] = [
     # alten Tabellen danach entfernt (Umzug Oktober 2026).
     ModuleSpec(key="betrieb", source="betrieb", title="Betrieb", schema_dir=REPO_ROOT / "modules" / "betrieb" / "schema"),
     ModuleSpec(key="tiere", source="tiere", title="Tiere", schema_dir=REPO_ROOT / "modules" / "tiere" / "schema"),
+    ModuleSpec(key="bau", source="bau", title="Bauprojekte", schema_dir=REPO_ROOT / "modules" / "bau" / "schema"),
     ModuleSpec(key="wiesenjournal", source="wiesenjournal", title="Wiesenjournal", schema_dir=REPO_ROOT / "modules" / "wiesenjournal" / "schema"),
 ]

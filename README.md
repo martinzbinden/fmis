@@ -171,6 +171,19 @@ docker-compose.yml -f docker-compose.local.yml up --build` — Backend auf
    und in `core/backend/fmis_core/schema/0001_core.sql` den Standardrollen
    sowie in `core/frontend/src/admin.ts` (`ALL_PERMISSIONS`) ergänzen.
 
+5. **Weitere Stellen, ohne die ein neues Modul nicht läuft** (beim Modul
+   `bau` hinzugekommen):
+   - `backend/Dockerfile` und `frontend/Dockerfile`: Module werden dort
+     einzeln kopiert.
+   - `docker-compose.yml`: in der Traefik-Regel `PathPrefix(/<modul>/sync)`
+     ergänzen, sonst läuft der Sync in Produktion ins Leere.
+   - `frontend/vite.config.ts`, `frontend/vitest.config.ts` und
+     `frontend/tsconfig.app.json` (Alias, Pfade, include).
+   - Eine Core-Migration (`core/backend/fmis_core/schema/NNNN_*.sql`) für
+     den `modules`-Eintrag und die Rollen-Rechte (Muster: `0009_bau_module.sql`).
+   - Tabellen mit Geometrie: GeoJSON-Text im Client, PostGIS erst in
+     `schema/server/` (siehe `modules/bau/schema/server/`).
+
 Das neue Modul erscheint danach automatisch in der `modules`-Tabelle
 (aktiviert per Default) und kann jederzeit über "⚙️ Verwaltung" umgeschaltet
 werden, ohne dass Code dafür geändert werden muss.

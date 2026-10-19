@@ -16,6 +16,7 @@ import fieldsModule from '@fmis/fields/module'
 import wiesenjournalModule from '@fmis/wiesenjournal/module'
 import betriebModule from '@fmis/betrieb/module'
 import tiereModule from '@fmis/tiere/module'
+import bauModule from '@fmis/bau/module'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
 import { registerAnimalProviders, registerHerdLocator } from '@fmis/core/animals'
@@ -34,6 +35,7 @@ const AVAILABLE_MODULES: ModuleDescriptor[] = [
   wiesenjournalModule,
   tiereModule,
   betriebModule,
+  bauModule,
 ]
 
 export default function App() {

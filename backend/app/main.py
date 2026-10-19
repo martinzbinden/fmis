@@ -21,6 +21,7 @@ from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
 from modules.betrieb.backend.app import machine_files as betrieb_machine_files
 from modules.betrieb.backend.app import sync as betrieb_sync
 from modules.tiere.backend.app import sync as tiere_sync
+from modules.bau.backend.app import sync as bau_sync
 from modules.wiesenjournal.backend.app import fertilization as wiesenjournal_fertilization
 from modules.wiesenjournal.backend.app import parcels_import as wiesenjournal_parcels_import
 from modules.wiesenjournal.backend.app import reports as wiesenjournal_reports
@@ -39,6 +40,7 @@ _MODULE_ROUTER_FACTORIES = {
     "wiesenjournal": lambda key: wiesenjournal_sync.router,
     "betrieb": lambda key: betrieb_sync.router,
     "tiere": lambda key: tiere_sync.router,
+    "bau": lambda key: bau_sync.router,
 }
 
 
