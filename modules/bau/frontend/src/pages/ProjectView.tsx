@@ -175,7 +175,10 @@ export default function ProjectView() {
     else if (mode === 'draw') setDraft((d) => (draftType === 'Point' ? [c] : [...d, c]))
   }
 
-  const fitKey = `${project?.id ?? ''}:${features.length === 0 ? 0 : 1}`
+  // Ändert sich der Schlüssel, zoomt die Karte auf das ganze Projekt (beim Laden und per Knopf)
+  const [fitN, setFitN] = useState(0)
+  const hasGeometry = features.some((f) => parseGeometry(f.geometry)) || points.length > 0
+  const fitKey = `${project?.id ?? ''}:${features.length === 0 ? 0 : 1}:${fitN}`
 
   if (loading && !data) return <div className="fixed inset-0 z-[1900] grid place-items-center bg-gray-100 text-gray-600">Lädt …</div>
   if (!project)
@@ -236,30 +239,40 @@ export default function ProjectView() {
         />
 
         {/* schwebende Werkzeuge */}
-        {mode === 'view' && (
-          <div className="absolute right-2 top-2 z-[700] flex flex-col gap-2">
-            <button type="button" className={btn} onClick={() => setLayersOpen((o) => !o)} aria-label="Kartenebenen" aria-expanded={layersOpen}>
-              🗂️
-            </button>
-            <button
-              type="button"
-              className={`${btn} ${locating ? 'ring-2 ring-blue-500' : ''}`}
-              onClick={() => (locating ? (setLocating(false)) : setLocating(true))}
-              aria-label="Mein Standort"
-              aria-pressed={locating}
-            >
-              🎯
-            </button>
-            <button type="button" className={btn} onClick={() => { setMeasure([]); setMode('measure') }} aria-label="Distanz messen">
-              📏
-            </button>
-            {canWrite && (
-              <button type="button" className={`${btn} bg-brand-600 text-white`} onClick={() => setDialog('new')} aria-label="Objekt zeichnen">
-                ✏️
+        <div className="absolute right-2 top-2 z-[700] flex flex-col gap-2">
+          {mode === 'view' && (
+            <>
+              <button type="button" className={btn} onClick={() => setLayersOpen((o) => !o)} aria-label="Kartenebenen" aria-expanded={layersOpen}>
+                🗂️
               </button>
-            )}
-          </div>
-        )}
+              <button
+                type="button"
+                className={`${btn} ${locating ? 'ring-2 ring-blue-500' : ''}`}
+                onClick={() => setLocating((l) => !l)}
+                aria-label="Mein Standort"
+                aria-pressed={locating}
+              >
+                🎯
+              </button>
+            </>
+          )}
+          {/* in jedem Modus erreichbar, auch beim Zeichnen und Messen */}
+          <button type="button" className={`${btn} disabled:opacity-40`} onClick={() => setFitN((n) => n + 1)} disabled={!hasGeometry} aria-label="Zoom auf Projekt" title="Zoom auf Projekt">
+            🔍
+          </button>
+          {mode === 'view' && (
+            <>
+              <button type="button" className={btn} onClick={() => { setMeasure([]); setMode('measure') }} aria-label="Distanz messen">
+                📏
+              </button>
+              {canWrite && (
+                <button type="button" className={`${btn} bg-brand-600 text-white`} onClick={() => setDialog('new')} aria-label="Objekt zeichnen">
+                  ✏️
+                </button>
+              )}
+            </>
+          )}
+        </div>
 
         {layersOpen && mode === 'view' && (
           <div className="absolute right-16 top-2 z-[700] w-60 space-y-2 rounded-xl bg-white p-3 text-sm shadow-lg">

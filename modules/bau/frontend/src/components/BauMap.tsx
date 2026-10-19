@@ -135,7 +135,15 @@ export default function BauMap({
   }, [layers.cultures])
 
   const shown = useMemo(() => features.filter((f) => layers.discarded || f.status !== 'verworfen'), [features, layers.discarded])
-  const bounds = useMemo(() => boundsOf(features.map((f) => parseGeometry(f.geometry))), [features])
+  // Ausdehnung für «Zoom auf Projekt»: sichtbare Objekte (verworfene nur, wenn eingeblendet) und Messpunkte
+  const bounds = useMemo(
+    () =>
+      boundsOf([
+        ...shown.map((f) => parseGeometry(f.geometry)),
+        ...points.map((p): Geom => ({ type: 'Point', coordinates: [p.lng, p.lat] })),
+      ]),
+    [shown, points],
+  )
   const bg = BACKGROUND_LAYERS[background]
 
   function onClick(c: LngLat) {
