@@ -1,21 +1,13 @@
 import JSZip from 'jszip'
 import { parseShp, parseDbf, combine } from 'shpjs'
-import proj4 from 'proj4'
+import { lv95ToWgs84 } from '@fmis/core/lv95'
 import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
 import { keepExisting, sameRow } from '@fmis/core/importMerge'
 import { num } from './format'
 
-// CH1903+/LV95 (EPSG:2056), amtliche Projektionsdefinition (Swiss Oblique
-// Mercator), Parameter gegen die .prj-Dateien im Export verifiziert.
-// shpjs bekommt bewusst KEINE .prj übergeben (siehe extractLayers) — wir
-// reprojizieren explizit selbst, um sicherzugehen, dass diese für die
-// Schweiz etwas ungewöhnliche Projektion korrekt behandelt wird (siehe
-// Plan-Notiz zur Verifikation gegen die bekannte Lage in Kanton Bern).
-const CH1903_LV95 =
-  '+proj=somerc +lat_0=46.95240555555556 +lon_0=7.439583333333333 ' +
-  '+k_0=1 +x_0=2600000 +y_0=1200000 +ellps=bessel ' +
-  '+towgs84=674.4,15.1,405.3,0,0,0,0 +units=m +no_defs'
+// LV95 → WGS84: gemeinsame Umrechnung in core/frontend/src/lv95.ts (swisstopo-
+// Parameter; shpjs bekommt bewusst KEINE .prj, wir reprojizieren selbst).
 
 const LAYER_NAMES = [
   'betrieb_betrieb',
@@ -41,7 +33,7 @@ function findZipEntry(zip: JSZip, filename: string): JSZip.JSZipObject | null {
 }
 
 function reprojectPoint([x, y]: [number, number]): [number, number] {
-  return proj4(CH1903_LV95, proj4.WGS84, [x, y]) as [number, number]
+  return lv95ToWgs84([x, y])
 }
 
 function mapCoordinates(coords: unknown): unknown {

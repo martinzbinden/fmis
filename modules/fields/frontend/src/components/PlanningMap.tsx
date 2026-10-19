@@ -5,18 +5,16 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
 import 'leaflet-draw/dist/leaflet.draw.css'
 import LocateControl from '@fmis/core/LocateControl'
+import { BACKGROUND_LAYERS as ALL_BACKGROUNDS, swisstopoUrl } from '@fmis/core/swisstopo'
 import type { PlanParcel } from '../types'
 import { colorForKultur } from '../lib/kulturColor'
 
+// swisstopo-WMTS: gemeinsam in core/frontend/src/swisstopo.ts
 const BACKGROUND_LAYERS = {
-  pixelkarte: { label: 'Pixelkarte', wmtsLayer: 'ch.swisstopo.pixelkarte-farbe', maxZoom: 18 },
-  swissimage: { label: 'Luftbild', wmtsLayer: 'ch.swisstopo.swissimage', maxZoom: 20 },
+  pixelkarte: { ...ALL_BACKGROUNDS.pixelkarte, label: 'Pixelkarte' },
+  swissimage: ALL_BACKGROUNDS.swissimage,
 } as const
 type BackgroundKey = keyof typeof BACKGROUND_LAYERS
-
-function swisstopoUrl(wmtsLayer: string): string {
-  return `https://wmts.geo.admin.ch/1.0.0/${wmtsLayer}/default/current/3857/{z}/{x}/{y}.jpeg`
-}
 
 const EMPTY_SELECTION = new Set<string>()
 function noop() {}

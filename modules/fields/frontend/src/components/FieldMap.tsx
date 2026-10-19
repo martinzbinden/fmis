@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-le
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import LocateControl from '@fmis/core/LocateControl'
+import { BACKGROUND_LAYERS as ALL_BACKGROUNDS, swisstopoUrl } from '@fmis/core/swisstopo'
 import type { FieldDeclaration } from '../types'
 import { fmtArea } from '../lib/format'
 import { colorForKultur } from '../lib/kulturColor'
@@ -21,18 +22,13 @@ const MIN_ZOOM_FOR_TREES = 17
 // Feldsplitter (die liegen typischerweise bei 0.02a und mehr).
 const TREE_SCALE_AREA_A = 0.01
 
-// swisstopo-WMTS, kein API-Key nötig (öffentlicher Web-Kartendienst,
-// api3.geo.admin.ch) — Pflicht-Attribution "© swisstopo". EPSG:3857
-// (Web-Mercator), passt zu Leaflets Standard-CRS.
+// swisstopo-WMTS: gemeinsam in core/frontend/src/swisstopo.ts. Die Kulturen-
+// Karte zeigt weiterhin nur Pixelkarte und Luftbild.
 const BACKGROUND_LAYERS = {
-  pixelkarte: { label: 'Pixelkarte', wmtsLayer: 'ch.swisstopo.pixelkarte-farbe', maxZoom: 18 },
-  swissimage: { label: 'Luftbild', wmtsLayer: 'ch.swisstopo.swissimage', maxZoom: 20 },
+  pixelkarte: { ...ALL_BACKGROUNDS.pixelkarte, label: 'Pixelkarte' },
+  swissimage: ALL_BACKGROUNDS.swissimage,
 } as const
 type BackgroundKey = keyof typeof BACKGROUND_LAYERS
-
-function swisstopoUrl(wmtsLayer: string): string {
-  return `https://wmts.geo.admin.ch/1.0.0/${wmtsLayer}/default/current/3857/{z}/{x}/{y}.jpeg`
-}
 
 interface Feature {
   type: 'Feature'

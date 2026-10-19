@@ -156,10 +156,13 @@ export function createSyncClient(
       byTable.set(r.table, list)
     }
 
+    // In der Reihenfolge der Tabellenliste (Eltern vor Kindern): der Server
+    // prüft Fremdschlüssel zeilenweise sofort.
     const payload: Record<string, Record<string, unknown>[]> = {}
-    for (const [table, ids] of byTable) {
+    for (const table of Object.keys(syncTables)) {
+      const ids = byTable.get(table)
       const columns = syncTables[table]
-      if (!columns) continue
+      if (!ids || !columns) continue
       const dateOnly = dateOnlyColumns[table]
       const colList = columns.map((c) => `"${c}"`).join(', ')
       const { rows } = await pg.query<Record<string, unknown>>(
