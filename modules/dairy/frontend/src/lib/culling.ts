@@ -20,6 +20,12 @@ export interface CullingThresholds {
   sccHighTest: number
   /** so viele hohe Proben in der laufenden Laktation */
   sccHighCount: number
+  /** Proben in den ersten … Laktationstagen zählen nicht (Kolostrum/Frischmelker, 0 = alle zählen) */
+  sccIgnoreDays: number
+  /** ab diesem Laktationstag gilt die höhere Grenze (Zellzahl steigt gegen Laktationsende, 0 = aus) */
+  sccLateDay: number
+  /** Faktor auf die Grenze der Einzelprobe ab sccLateDay */
+  sccLateFactor: number
   /** relative, altersstandardisierte Leistung unter … (1.00 = Herdenschnitt) */
   performanceRel: number
   /** Gesamtzuchtwert unter … (Kühe ISET Basis 1000, Schafe GZW Basis 100) */
@@ -46,6 +52,9 @@ export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
     sccGeo12m: 200,
     sccHighTest: 200,
     sccHighCount: 3,
+    sccIgnoreDays: 10,
+    sccLateDay: 250,
+    sccLateFactor: 1.5,
     performanceRel: 0.85,
     totalBreedingValue: 925,
     udderBreedingValue: 90,
@@ -62,6 +71,9 @@ export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
     sccGeo12m: 500,
     sccHighTest: 1000,
     sccHighCount: 3,
+    sccIgnoreDays: 7,
+    sccLateDay: 180,
+    sccLateFactor: 1.5,
     performanceRel: 0.85,
     totalBreedingValue: 90,
     udderBreedingValue: 0,
@@ -87,6 +99,9 @@ export interface CullingInput {
   performance: PerformanceMetrics | undefined
   /** Milchproben der laufenden Laktation (seit der letzten Geburt). */
   currentLactationScc: (number | null)[]
+  /** Dieselben Proben mit Laktationstag (null = unbekannt): macht die Beurteilung stadienabhängig.
+   * Fehlt das Feld, gilt die einfache Zählung über currentLactationScc. */
+  currentLactationTests?: { scc: number | null; dim: number | null }[]
   /** Neuester Wert je Zuchtwert-Merkmal. */
   breedingValues: Record<string, number>
   lactationNumber: number | null
@@ -103,6 +118,32 @@ export interface CullingInput {
  * Apostroph, z.B. 1000 → "1'000'000". */
 export function fmtCells(thousands: number): string {
   return String(Math.round(thousands * 1000)).replace(/\B(?=(\d{3})+(?!\d))/g, "'")
+}
+
+/** Hohe Einzelproben der laufenden Laktation, stadienabhängig gezählt: die ersten Tage nach der
+ * Geburt zählen nicht (Kolostrum/Frischmelker), ab `sccLateDay` gilt die Grenze mal Faktor. */
+export function stageSccTests(input: Pick<CullingInput, 'currentLactationScc' | 'currentLactationTests'>, t: CullingThresholds) {
+  const tests = input.currentLactationTests ?? input.currentLactationScc.map((scc) => ({ scc, dim: null as number | null }))
+  let counted = 0
+  let high = 0
+  let skipped = 0
+  let lateUsed = false
+  for (const x of tests) {
+    if (x.scc == null) continue
+    if (t.sccIgnoreDays > 0 && x.dim != null && x.dim < t.sccIgnoreDays) {
+      skipped++
+      continue
+    }
+    counted++
+    const late = t.sccLateDay > 0 && x.dim != null && x.dim >= t.sccLateDay
+    const limit = late ? t.sccHighTest * t.sccLateFactor : t.sccHighTest
+    if (late) lateUsed = true
+    if (x.scc > limit) high++
+  }
+  const parts: string[] = []
+  if (lateUsed && t.sccLateFactor !== 1) parts.push(`ab Tag ${t.sccLateDay} ${fmtCells(t.sccHighTest * t.sccLateFactor)}`)
+  if (skipped) parts.push(`${skipped} Probe${skipped === 1 ? '' : 'n'} in den ersten ${t.sccIgnoreDays} Tagen nicht gezählt`)
+  return { counted, high, skipped, note: parts.length ? ` (${parts.join('; ')})` : '' }
 }
 
 export function cullingReasons(input: CullingInput, t: CullingThresholds): CullingReason[] {
@@ -135,10 +176,13 @@ export function cullingReasons(input: CullingInput, t: CullingThresholds): Culli
   if (p?.scc_geo_12m != null && p.scc_geo_12m > t.sccGeo12m) {
     reasons.push({ area: 'euter', weight: 2, text: `Zellzahl Ø 12 Monate ${fmtCells(p.scc_geo_12m)} (Grenze ${fmtCells(t.sccGeo12m)})` })
   }
-  const tests = input.currentLactationScc.filter((v): v is number => v != null)
-  const high = tests.filter((v) => v > t.sccHighTest).length
-  if (t.sccHighCount > 0 && high >= t.sccHighCount) {
-    reasons.push({ area: 'euter', weight: 2, text: `${high} von ${tests.length} Proben dieser Laktation über ${fmtCells(t.sccHighTest)} Zellen` })
+  const sc = stageSccTests(input, t)
+  if (t.sccHighCount > 0 && sc.high >= t.sccHighCount) {
+    reasons.push({
+      area: 'euter',
+      weight: 2,
+      text: `${sc.high} von ${sc.counted} Proben dieser Laktation über ${fmtCells(t.sccHighTest)} Zellen${sc.note}`,
+    })
   }
   for (const [trait, label] of [['scc', 'Zuchtwert Zellzahl'], ['mastitis', 'Zuchtwert Mastitisresistenz']] as const) {
     const v = input.breedingValues[trait]
@@ -147,9 +191,13 @@ export function cullingReasons(input: CullingInput, t: CullingThresholds): Culli
     }
   }
 
-  if (p?.performance_rel != null && p.performance_rel < t.performanceRel) {
-    const pct = Math.round((1 - p.performance_rel) * 100)
-    const basis = p.performance_basis === 'Standardlaktation' ? 'Standardlaktation' : 'Lebenstagleistung'
+  // stadienbereinigt (Lebenstage bis zur letzten Abkalbung), damit frisch abgekalbte Tiere
+  // nicht allein wegen der noch kurzen laufenden Laktation schlecht dastehen
+  const perfRel = p?.performance_rel_stage ?? p?.performance_rel ?? null
+  if (perfRel != null && perfRel < t.performanceRel) {
+    const pct = Math.round((1 - perfRel) * 100)
+    const b = p?.performance_basis_stage ?? p?.performance_basis
+    const basis = b === 'Standardlaktation' ? 'Standardlaktation' : b === 'Lebenstagleistung bis zur Abkalbung' ? 'Lebenstagleistung (bis zur letzten Abkalbung)' : 'Lebenstagleistung'
     reasons.push({ area: 'leistung', weight: 1, text: `${basis} ${pct} % unter Gleichaltrigen` })
   }
 

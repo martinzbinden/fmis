@@ -180,6 +180,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
     fertility: f,
     performance: p,
     currentLactationScc: ctx.currentLactationScc,
+    currentLactationTests: ctx.currentLactationTests,
     breedingValues: latestValues(ctx.breedingValues),
     lactationNumber: ctx.lactationNumber,
     recentOffspring: ctx.births.slice(-2).flatMap((b) => b.offspring),
@@ -245,6 +246,9 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
             label="Leistung ggü. Gleichaltrigen"
             value={p?.performance_rel != null ? `${Math.round(p.performance_rel * 100)} %${p.performance_basis === 'Standardlaktation' ? ' (Std.-Lakt.)' : ''}` : '–'}
           />
+          {p?.ltl_cycle_rel != null && (
+            <Field label="… stadienunabhängig (bis letzte Abkalbung)" value={`${Math.round(p.ltl_cycle_rel * 100)} %`} />
+          )}
           <Field label="Zellzahl Ø 12 Mt." value={p?.scc_geo_12m != null ? fmtCells(p.scc_geo_12m) : '–'} />
           <Field label="Index Leistung / Zellzahl" value={p ? `${round(p.idx_performance, 1)} / ${round(p.idx_scc, 1)}` : '–'} />
           <Field label="Datenbasis" value={p?.data_basis === 'duenn' ? 'dünn' : p?.data_basis ?? '–'} />

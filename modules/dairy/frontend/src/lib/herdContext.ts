@@ -8,6 +8,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { computeFertility, type FertilityStatus, type MatingEvent, type Species } from './fertility'
 import { computeHerdPerformance, type PerformanceMetrics } from './herdPerformance'
 import { isoDate, num } from './format'
+import { lactationDayAt } from './lactationDay'
 import { analyzeLactations, buildTestDayModel, type TestPoint } from './lactationCurves'
 import { trendsByAnimal, type LactationTrend } from './lactationTrend'
 import type { Animal } from '../types'
@@ -54,6 +55,8 @@ export interface AnimalContext {
   fertility: FertilityStatus
   performance: PerformanceMetrics | undefined
   currentLactationScc: (number | null)[]
+  /** Proben der laufenden Laktation mit Laktationstag (für die stadienabhängige Zellzahl). */
+  currentLactationTests: { scc: number | null; dim: number | null }[]
   breedingValues: Record<string, BreedingValueEntry>
   lactationNumber: number | null
   /** Tage mit Krankheit/Behandlung im Journal der letzten 12 Monate. */
@@ -213,6 +216,11 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
       performance: performance.get(a.id),
       currentLactationScc: lastBirth
         ? (testsByAnimal.get(a.id) ?? []).filter((t) => (isoDate(t.test_date) ?? '') >= lastBirth).map((t) => num(t.cell_count))
+        : [],
+      currentLactationTests: lastBirth
+        ? (testsByAnimal.get(a.id) ?? [])
+            .filter((t) => (isoDate(t.test_date) ?? '') >= lastBirth)
+            .map((t) => ({ scc: num(t.cell_count), dim: lactationDayAt(lastBirth, isoDate(t.test_date)) }))
         : [],
       breedingValues: bvByAnimal.get(a.id) ?? {},
       lactationNumber: maxLact || null,

@@ -59,6 +59,14 @@ export interface PerformanceMetrics {
   ltl_fe_rel: number | null
   performance_rel: number | null
   performance_basis: 'Lebenstagleistung' | 'Standardlaktation' | null
+  /** Stadienunabhängige Lebenstagleistung (nur abgeschlossene Laktationen, Lebenstage
+   * bis zur Abkalbung der laufenden); null ohne laufende Laktation oder ohne Abschluss. */
+  ltl_cycle_milk: number | null
+  ltl_cycle_rel: number | null
+  /** Leistung relativ für Vergleiche über Tiere in verschiedenen Laktationsstadien:
+   * ltl_cycle_rel, sonst performance_rel. */
+  performance_rel_stage: number | null
+  performance_basis_stage: 'Lebenstagleistung bis zur Abkalbung' | 'Lebenstagleistung' | 'Standardlaktation' | null
   scc_geo: number | null
   scc_geo_12m: number | null
   scc_max: number | null
@@ -72,6 +80,17 @@ export interface PerformanceMetrics {
 function round(v: number, digits: number): number {
   const f = 10 ** digits
   return Math.round(v * f) / f
+}
+
+/** Stadienunabhängige Lebenstagleistung: Milch der abgeschlossenen Laktationen geteilt durch
+ * die Lebenstage bis zur Abkalbung der laufenden Laktation. Die laufende Laktation zählt nicht —
+ * ihre bisherige Milch wäre je nach Laktationstag klein oder gross, während die Lebenstage
+ * (inkl. Galtzeit) immer voll laufen: eine frisch abgekalbte Kuh stünde sonst bis zu rund
+ * 20 % schlechter da als dieselbe Kuh am Laktationsende. */
+export function cycleLtl(birthDate: string | null, runningCalving: string | null, completeMilkKg: number, nComplete: number): number | null {
+  if (!birthDate || !runningCalving || nComplete === 0 || completeMilkKg <= 0) return null
+  const days = daysBetween(birthDate, runningCalving)
+  return days > 0 ? round(completeMilkKg / days, 3) : null
 }
 
 export function geoMean(values: (number | null)[]): number | null {
@@ -143,6 +162,15 @@ export function computeHerdPerformance(animals: PerformanceInput[], stichtag: st
     let milk = 0
     let fe = 0
     let nRunning = 0
+    let completeMilk = 0
+    for (const l of complete.values()) completeMilk += l.milk_kg ?? 0
+    // Abkalbung der laufenden Laktation (ohne abgeschlossenes Gegenstück): bis dort zählen
+    // die Lebenstage für die stadienunabhängige Lebenstagleistung.
+    const runningCalving = [...running]
+      .filter(([nr, l]) => !complete.has(nr) && l.calving_date)
+      .map(([, l]) => l.calving_date!)
+      .sort()
+      .at(-1) ?? null
     for (const l of complete.values()) {
       milk += l.milk_kg ?? 0
       fe += (l.fat_kg ?? 0) + (l.protein_kg ?? 0)
@@ -170,6 +198,7 @@ export function computeHerdPerformance(animals: PerformanceInput[], stichtag: st
       milk_total: milk,
       fat_protein_total: fe,
       ltl_milk: lifetime && milk ? round(milk / lifetime, 3) : null,
+      ltl_cycle_milk: cycleLtl(a.birth_date, runningCalving, completeMilk, complete.size),
       ltl_fe: lifetime && fe ? round(fe / lifetime, 4) : null,
       standard_milk: (standard as LactationInput | null)?.milk_kg ?? null,
       scc_geo: geo != null ? Math.round(geo) : null,
@@ -191,6 +220,11 @@ export function computeHerdPerformance(animals: PerformanceInput[], stichtag: st
     )
   }
   const milkRel = relTo('ltl_milk')
+  // Stadienunabhängig: nur Tiere mit laufender Laktation und mindestens einem Abschluss,
+  // verglichen mit Gleichaltrigen gleicher Zahl abgeschlossener Laktationen.
+  const cycleExpected = expectedByGroup(
+    base.filter((b) => b.ltl_cycle_milk).map((b) => ({ group: b.n_lactations, value: b.ltl_cycle_milk! })),
+  )
   const feRel = relTo('ltl_fe')
 
   const firstStd = base.filter((b) => b.lactation_group === 1 && b.standard_milk).map((b) => b.standard_milk!)
@@ -206,6 +240,11 @@ export function computeHerdPerformance(animals: PerformanceInput[], stichtag: st
       performance_rel = round(b.standard_milk / meanFirstStd, 3)
       performance_basis = 'Standardlaktation'
     }
+    const cycleE = b.ltl_cycle_milk ? cycleExpected.get(b.n_lactations) : undefined
+    const ltl_cycle_rel = b.ltl_cycle_milk && cycleE ? round(b.ltl_cycle_milk / cycleE, 3) : null
+    const performance_rel_stage = ltl_cycle_rel ?? performance_rel
+    const performance_basis_stage: PerformanceMetrics['performance_basis_stage'] =
+      ltl_cycle_rel != null ? 'Lebenstagleistung bis zur Abkalbung' : performance_basis
     const data_basis: DataBasis =
       b.n_lactations && b.n_tests >= 5 ? 'gut' : performance_rel && b.n_tests >= 3 ? 'mittel' : 'duenn'
     return {
@@ -215,6 +254,9 @@ export function computeHerdPerformance(animals: PerformanceInput[], stichtag: st
       ltl_fe_rel: feRel.get(b.id)!.rel,
       performance_rel,
       performance_basis,
+      ltl_cycle_rel,
+      performance_rel_stage,
+      performance_basis_stage,
       data_basis,
     }
   })

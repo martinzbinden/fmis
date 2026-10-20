@@ -19,6 +19,9 @@ const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: nu
   { key: 'sccGeo12m', label: "Zellzahl Ø 12 Mt. über ('000)" },
   { key: 'sccHighTest', label: "Hohe Einzelprobe über ('000)" },
   { key: 'sccHighCount', label: 'Anzahl hohe Proben je Laktation' },
+  { key: 'sccIgnoreDays', label: 'Proben in den ersten … Laktationstagen nicht zählen (0 = alle)' },
+  { key: 'sccLateDay', label: 'Höhere Grenze ab Laktationstag (0 = aus)' },
+  { key: 'sccLateFactor', label: 'Faktor auf die Grenze ab diesem Tag', step: 0.1 },
   { key: 'performanceRel', label: 'Leistung ggü. Gleichaltrigen unter', step: 0.01 },
   { key: 'totalBreedingValue', label: 'Gesamtzuchtwert unter' },
   { key: 'udderBreedingValue', label: 'ZW Zellzahl/Mastitis unter (0 = aus)' },
@@ -68,6 +71,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
             fertility: c.fertility,
             performance: c.performance,
             currentLactationScc: c.currentLactationScc,
+            currentLactationTests: c.currentLactationTests,
             breedingValues: bv,
             lactationNumber: c.lactationNumber,
             recentOffspring: c.births.slice(-2).flatMap((b) => b.offspring),
@@ -85,7 +89,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           reasons,
           score: reasonScore(reasons),
           sccGeo12m: c.performance?.scc_geo_12m ?? null,
-          performanceRel: c.performance?.performance_rel ?? null,
+          performanceRel: c.performance?.performance_rel_stage ?? c.performance?.performance_rel ?? null,
           totalBv: species === 'sheep' ? (bv.gzw ?? null) : (bv.iset ?? null),
           trend: c.trend,
         }
@@ -141,8 +145,10 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
       </div>
       <p className="text-xs text-gray-500">
         {terms.plural} mit Hinweisen auf Fruchtbarkeit, Eutergesundheit, Leistung oder Zuchtwert — nach Gewicht der
-        Gründe sortiert. Leistung im Vergleich mit Gleichaltrigen (gleiche Laktationszahl), Zellzahl als geometrisches
-        Mittel. Tendenz: Niveau je Laktation im Vergleich mit den Herdengenossinnen am gleichen Wägungstag (wie unter
+        Gründe sortiert. Leistung im Vergleich mit Gleichaltrigen (gleiche Laktationszahl; bei laufender Laktation
+        stadienunabhängig: abgeschlossene Laktationen geteilt durch die Lebenstage bis zur letzten {terms.calving}),
+        Zellzahl als geometrisches Mittel; hohe Einzelproben zählen stadienabhängig (die ersten Tage nach der Geburt
+        nicht, ab dem eingestellten Tag gilt eine höhere Grenze, ⚙️ Schwellen). Tendenz: Niveau je Laktation im Vergleich mit den Herdengenossinnen am gleichen Wägungstag (wie unter
         Leistung → Laktationsleistung), ↘ = fällt über die letzten Laktationen. Die Liste entscheidet nichts; sie zeigt,
         wo sich ein genauer Blick lohnt.
       </p>
