@@ -8,6 +8,8 @@ export interface SpeciesTerms {
   singular: string
   /** z.B. "Kühe" */
   plural: string
+  /** Geburt des Muttertiers: "Abkalbung" / "Ablammung" */
+  calving: string
   /** Hinweis, wenn noch keine Daten da sind — verweist auf den passenden Import. */
   importHint: string
 }
@@ -16,11 +18,13 @@ const TERMS: Record<string, SpeciesTerms> = {
   dairy: {
     singular: 'Kuh',
     plural: 'Kühe',
+    calving: 'Abkalbung',
     importHint: 'Zuerst unter "Tiere" den Herdebuch-Export importieren.',
   },
   dairy_schafe: {
     singular: 'Aue',
     plural: 'Auen',
+    calving: 'Ablammung',
     importHint: 'Zuerst unter "Tiere" den TVD-Tierbestand und die SMG-Dateien importieren.',
   },
 }
@@ -32,5 +36,5 @@ export function speciesOf(moduleKey: string): 'cattle' | 'sheep' {
 }
 
 export function speciesTerms(moduleKey: string): SpeciesTerms {
-  return TERMS[moduleKey] ?? { singular: 'Tier', plural: 'Tiere', importHint: 'Zuerst unter "Tiere" die Daten importieren.' }
+  return TERMS[moduleKey] ?? { singular: 'Tier', plural: 'Tiere', calving: 'Geburt', importHint: 'Zuerst unter "Tiere" die Daten importieren.' }
 }

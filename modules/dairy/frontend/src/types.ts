@@ -155,6 +155,12 @@ export interface AnimalMilkCurrent {
   fat_protein_kg: number | null
   ecm_kg: number | null
   has_analysis: boolean
+  // Abkalbe-/Ablammdatum und Laktationsnummer zur Wägung (aus milk_tests, sonst aus
+  // den Laktationen); fehlen, wenn beides unbekannt ist. dim = Laktationstag am
+  // Wägungstag (lib/lactationDay.ts), nur in pages/Milk.tsx gesetzt.
+  calving_date?: string | null
+  lactation_number?: number | null
+  dim?: number | null
 }
 
 // ADIS Satzart K04 — Abschlussart-Code, siehe schema/0003_lactations.sql.

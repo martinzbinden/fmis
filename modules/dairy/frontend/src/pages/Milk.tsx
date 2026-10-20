@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { fmtDate, fmtKg, fmtPct, num } from '../lib/format'
+import { fmtDate, fmtKg, fmtPct, isoDate, num } from '../lib/format'
+import { lactationDayAt } from '../lib/lactationDay'
 import YogurtPlanner from '../components/YogurtPlanner'
 import { speciesTerms } from '../lib/species'
 import type { AnimalMilkCurrent } from '../types'
@@ -12,6 +13,7 @@ import { animalLabel } from '@fmis/core/earTag'
 type SortKey =
   | 'name'
   | 'test_date'
+  | 'dim'
   | 'milk_kg'
   | 'fat_kg'
   | 'protein_kg'
@@ -31,11 +33,31 @@ type SortKey =
 function loadCurrentMilk(analysedOnly: boolean) {
   const view = analysedOnly ? 'v_animal_milk_current_analysed' : 'v_animal_milk_current'
   return async (pg: PGlite): Promise<AnimalMilkCurrent[]> => {
+    // Abkalbedatum der Wägung: aus der Wägung selbst, sonst aus der letzten
+    // Laktation vor dem Wägungstag (Herdebuch-Abschlüsse).
     const { rows } = await pg.query<AnimalMilkCurrent>(
-      `select * from ${view} where status = 'aktiv' order by protein_pct desc nulls last`,
+      `select v.*,
+         coalesce(mt.calving_date, lc.calving_date) as calving_date,
+         coalesce(mt.lactation_number, lc.lactation_number) as lactation_number
+       from ${view} v
+       left join lateral (
+         select t.calving_date, t.lactation_number from milk_tests t
+         where t.animal_id = v.animal_id and t.test_date = v.test_date and t.deleted_at is null
+         order by t.updated_at desc limit 1
+       ) mt on true
+       left join lateral (
+         select l.calving_date, l.lactation_number from lactations l
+         where l.animal_id = v.animal_id and l.deleted_at is null and l.calving_date <= v.test_date
+         order by l.calving_date desc limit 1
+       ) lc on true
+       where v.status = 'aktiv' order by v.protein_pct desc nulls last`,
     )
     return rows.map((r) => ({
       ...r,
+      test_date: isoDate(r.test_date) ?? r.test_date,
+      calving_date: isoDate(r.calving_date),
+      lactation_number: num(r.lactation_number),
+      dim: lactationDayAt(isoDate(r.calving_date), isoDate(r.test_date)),
       milk_kg: num(r.milk_kg) ?? 0,
       fat_pct: num(r.fat_pct),
       protein_pct: num(r.protein_pct),
@@ -153,7 +175,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
           )}
 
           <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[840px] text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-gray-500">
                   <Th label={terms.singular} active={sortKey === 'name'} onClick={() => handleSort('name')} />
@@ -162,6 +184,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
                     active={sortKey === 'test_date'}
                     onClick={() => handleSort('test_date')}
                   />
+                  <Th label="Lakt.-Tag" active={sortKey === 'dim'} onClick={() => handleSort('dim')} />
                   <Th label="Milch" active={sortKey === 'milk_kg'} onClick={() => handleSort('milk_kg')} />
                   <Th
                     label="kg Fett"
@@ -211,6 +234,17 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
                           ohne Analyse
                         </span>
                       )}
+                    </td>
+                    <td
+                      className="whitespace-nowrap px-3 py-2 tabular-nums text-gray-600"
+                      title={
+                        c.dim != null
+                          ? `Tag ${c.dim} der ${c.lactation_number ? `${c.lactation_number}. ` : ''}Laktation am Wägungstag (${terms.calving} am ${fmtDate(c.calving_date)})`
+                          : `${terms.calving}sdatum unbekannt`
+                      }
+                    >
+                      {c.dim != null ? c.dim : '–'}
+                      {c.dim != null && c.lactation_number ? <span className="ml-1 text-xs text-gray-500">L{c.lactation_number}</span> : null}
                     </td>
                     <td className="px-3 py-2 text-gray-600">{fmtKg(c.milk_kg)}</td>
                     <td className="px-3 py-2 font-semibold text-gray-800">{fmtKg(c.fat_kg)}</td>
