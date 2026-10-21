@@ -12,6 +12,7 @@ const cow = (id: string, milk: number, fat: number | null, prot: number | null, 
   analysis_date: null,
   dry: false,
   withdrawal_until: null,
+  calving_date: null,
   ...extra,
 })
 
@@ -33,6 +34,16 @@ describe('yogurtPlan', () => {
     expect(exclusion(herd[5], opts, '2026-10-05')?.blocked).toBe(true)
     expect(exclusion(herd[6], opts, '2026-10-05')).toEqual({ reason: 'ohne Laboranalyse', blocked: false })
     expect(exclusion(herd[2], opts, '2026-10-05')?.reason).toBe('Zellzahl zu hoch')
+  })
+
+  it('sperrt frisch gekalbte Kühe immer, ebenso Abkalbung nach der Wägung', () => {
+    const fresh = cow('x', 25, 4.5, 4.2, 50, { calving_date: '2026-10-01', test_date: '2026-10-03' })
+    expect(exclusion(fresh, opts, '2026-10-05')).toEqual({ reason: 'frisch gekalbt (Tag 4)', blocked: true })
+    expect(exclusion(fresh, opts, '2026-10-08')?.reason).toBe('frisch gekalbt (Tag 7)')
+    expect(exclusion(fresh, opts, '2026-10-09')).toBeNull()
+    const after = cow('y', 25, 4.5, 4.2, 50, { calving_date: '2026-10-04', test_date: '2026-09-22' })
+    expect(exclusion(after, opts, '2026-10-30')).toEqual({ reason: 'Wägung vor der Abkalbung', blocked: true })
+    expect(suggestYogurt([fresh, after, ...herd], opts, '2026-10-05')).toEqual(['a', 'd', 'b'])
   })
 
   it('Vorschlag nach Eiweiss bis zur Menge: a (3.9) → d (3.6) → b (3.5)', () => {

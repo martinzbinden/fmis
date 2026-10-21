@@ -3,6 +3,8 @@
 // (getestet). Gehalte sind mengengewichtet (Σ kg × % / Σ kg), die Zellzahl
 // ebenso (wie die Tankmilch-Zellzahl).
 
+import { lactationDayAt } from './lactationDay'
+
 export interface YogurtCow {
   animal_id: string
   label: string
@@ -20,7 +22,14 @@ export interface YogurtCow {
   dry: boolean
   /** letzter Tag einer offenen Milch-Absetzfrist */
   withdrawal_until: string | null
+  /** letzte Abkalbung (null = unbekannt) */
+  calving_date?: string | null
 }
+
+/** Milch in den ersten Tagen nach der Abkalbung (Kolostrum/Vormilch) kommt nie
+ * in den Joghurt: Laktationstage 0 … FRESH_DAYS − 1 sind gesperrt.
+ * Annahme: 8 Tage (Kolostrum ca. 5 Tage plus Sicherheit). */
+export const FRESH_DAYS = 8
 
 export type YogurtCriterion = 'eiweiss' | 'fett_eiweiss' | 'zellzahl'
 
@@ -41,9 +50,13 @@ export interface YogurtOptions {
 }
 
 /** Warum eine Kuh nicht vorgeschlagen wird (null = geeignet). Gesperrt
- * (nicht wählbar) sind trockene und solche mit offener Absetzfrist. */
+ * (nicht wählbar) sind trockene, frisch gekalbte und solche mit offener
+ * Absetzfrist. */
 export function exclusion(c: YogurtCow, opts: Pick<YogurtOptions, 'maxCellCount' | 'criterion'>, today: string): { reason: string; blocked: boolean } | null {
   if (c.withdrawal_until && c.withdrawal_until >= today) return { reason: `Absetzfrist bis ${c.withdrawal_until}`, blocked: true }
+  if (c.calving_date && c.calving_date > c.test_date) return { reason: 'Wägung vor der Abkalbung', blocked: true }
+  const dim = lactationDayAt(c.calving_date, today)
+  if (dim != null && dim < FRESH_DAYS) return { reason: `frisch gekalbt (Tag ${dim})`, blocked: true }
   if (c.dry) return { reason: 'trocken', blocked: true }
   if (c.milk_kg <= 0) return { reason: 'keine Milch', blocked: true }
   if (c.protein_pct == null || (opts.criterion === 'fett_eiweiss' && c.fat_pct == null)) return { reason: 'ohne Laboranalyse', blocked: false }

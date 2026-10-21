@@ -4,6 +4,15 @@
 
 import type { PGlite } from '@electric-sql/pglite'
 
+/** SQL-Ausdruck: letzte Abkalbung/Ablammung/Geburt des Tiers <alias> (date oder null). */
+export function lastCalvingSql(alias = 'a'): string {
+  return `nullif(greatest(
+        coalesce((select max(b.birth_date) from births b where b.dam_id = ${alias}.id and b.deleted_at is null), date '1900-01-01'),
+        coalesce((select max(l.calving_date) from lactations l where l.animal_id = ${alias}.id and l.deleted_at is null), date '1900-01-01'),
+        coalesce((select max(t.calving_date) from milk_tests t where t.animal_id = ${alias}.id and t.deleted_at is null), date '1900-01-01')
+      ), date '1900-01-01')`
+}
+
 /** SQL-Bedingung "Tier <alias> ist trocken". */
 export function isDrySql(alias = 'a'): string {
   return `exists (

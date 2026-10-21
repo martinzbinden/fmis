@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { fmtDate, isoDate, num, todayIso } from '../lib/format'
-import { isDrySql } from '../lib/dryOff'
+import { daysBetween, fmtDate, isoDate, num, todayIso } from '../lib/format'
+import { lactationDayAt } from '../lib/lactationDay'
+import { isDrySql, lastCalvingSql } from '../lib/dryOff'
 import { YogurtPaper, YogurtPrintPortal, YOGURT_PRINT_CSS } from './YogurtPrint'
-import { CRITERION_LABEL, exclusion, suggestYogurt, yogurtMix, type YogurtCow, type YogurtCriterion, type YogurtOptions } from '../lib/yogurtPlan'
+import { CRITERION_LABEL, exclusion, FRESH_DAYS, suggestYogurt, yogurtMix, type YogurtCow, type YogurtCriterion, type YogurtOptions } from '../lib/yogurtPlan'
 import { MILK_UNTIL_SQL } from '../lib/treatments'
 
 /** Letzte Wägung je aktivem Tier; fehlt dort die Laboranalyse, die Gehalte
@@ -13,7 +14,7 @@ async function loadCows(pg: PGlite): Promise<YogurtCow[]> {
   const [latest, analysed] = await Promise.all([
     pg.query<Record<string, unknown>>(
       `select distinct on (a.id) a.id as animal_id, a.ear_tag, a.name, a.lauf_nr, t.test_date, t.milk_kg, t.fat_pct, t.protein_pct, t.cell_count,
-              (${isDrySql('a')}) as dry,
+              (${isDrySql('a')}) as dry, ${lastCalvingSql('a')} as calving_date,
               (select max(${MILK_UNTIL_SQL}) from animal_journal j
                 where j.animal_id = a.id and j.deleted_at is null) as withdrawal_until
        from animals a join milk_tests t on t.animal_id = a.id and t.deleted_at is null
@@ -43,6 +44,7 @@ async function loadCows(pg: PGlite): Promise<YogurtCow[]> {
       analysis_date: l ? isoDate(l.test_date) : null,
       dry: Boolean(r.dry),
       withdrawal_until: isoDate(r.withdrawal_until),
+      calving_date: isoDate(r.calving_date),
     }
   })
 }
@@ -238,7 +240,9 @@ export default function YogurtPlanner() {
                   <td className="px-1.5 py-1.5">
                     <span className="font-medium">{c.label}</span>
                     <span className="block text-xs text-gray-500">
-                      {fmtDate(c.test_date)}
+                      {lactationDayAt(c.calving_date, today) != null && <span>Tag {lactationDayAt(c.calving_date, today)} · </span>}
+                      Wägung {fmtDate(c.test_date)}
+                      <span className={daysBetween(c.test_date, today) > 25 ? 'text-amber-700' : ''}> (vor {daysBetween(c.test_date, today)} Tagen)</span>
                       {c.analysis_date ? ` · Gehalte ${fmtDate(c.analysis_date)}` : ''}
                       {ex && <span className={ex.blocked ? ' text-red-700' : ' text-amber-700'}> · {ex.reason}</span>}
                     </span>
@@ -257,8 +261,9 @@ export default function YogurtPlanner() {
       </div>
       <p className="text-xs text-gray-500">
         Milchmenge und Gehalte aus der letzten Milchwägung je Kuh (ohne Laboranalyse: Gehalte der letzten analysierten). Gehalte und Zellzahl
-        der Mischung sind mengengewichtet; Zellen in 1000/ml. Zeile antippen = an-/abwählen. Trockene Kühe und Kühe mit offener
-        Milch-Absetzfrist sind gesperrt.
+        der Mischung sind mengengewichtet; Zellen in 1000/ml. Zeile antippen = an-/abwählen. Trockene Kühe, Kühe mit offener
+        Milch-Absetzfrist und frisch gekalbte Kühe (die ersten {FRESH_DAYS} Laktationstage, Kolostrum) sind gesperrt — ebenso Kühe, die nach
+        der letzten Wägung gekalbt haben. Die Milchmenge ist der Wert der letzten Wägung, nicht hochgerechnet.
       </p>
     </div>
   )
