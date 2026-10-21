@@ -36,13 +36,14 @@ describe('yogurtPlan', () => {
     expect(exclusion(herd[2], opts, '2026-10-05')?.reason).toBe('Zellzahl zu hoch')
   })
 
-  it('sperrt frisch gekalbte Kühe immer, ebenso Abkalbung nach der Wägung', () => {
+  it('sperrt frisch gekalbte Kühe immer; ohne Wägung seit Abkalbung nur nicht vorgeschlagen', () => {
     const fresh = cow('x', 25, 4.5, 4.2, 50, { calving_date: '2026-10-01', test_date: '2026-10-03' })
     expect(exclusion(fresh, opts, '2026-10-05')).toEqual({ reason: 'frisch gekalbt (Tag 4)', blocked: true })
     expect(exclusion(fresh, opts, '2026-10-08')?.reason).toBe('frisch gekalbt (Tag 7)')
     expect(exclusion(fresh, opts, '2026-10-09')).toBeNull()
     const after = cow('y', 25, 4.5, 4.2, 50, { calving_date: '2026-10-04', test_date: '2026-09-22' })
-    expect(exclusion(after, opts, '2026-10-30')).toEqual({ reason: 'Wägung vor der Abkalbung', blocked: true })
+    expect(exclusion(after, opts, '2026-10-30')).toEqual({ reason: 'noch keine Wägung seit der Abkalbung', blocked: false })
+    expect(exclusion(after, opts, '2026-10-05')?.blocked).toBe(true) // noch frisch
     expect(suggestYogurt([fresh, after, ...herd], opts, '2026-10-05')).toEqual(['a', 'd', 'b'])
   })
 

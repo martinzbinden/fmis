@@ -51,12 +51,15 @@ export interface YogurtOptions {
 
 /** Warum eine Kuh nicht vorgeschlagen wird (null = geeignet). Gesperrt
  * (nicht wählbar) sind trockene, frisch gekalbte und solche mit offener
- * Absetzfrist. */
+ * Absetzfrist. Ohne Wägung seit der Abkalbung: nicht vorgeschlagen, von Hand
+ * wählbar. */
 export function exclusion(c: YogurtCow, opts: Pick<YogurtOptions, 'maxCellCount' | 'criterion'>, today: string): { reason: string; blocked: boolean } | null {
   if (c.withdrawal_until && c.withdrawal_until >= today) return { reason: `Absetzfrist bis ${c.withdrawal_until}`, blocked: true }
-  if (c.calving_date && c.calving_date > c.test_date) return { reason: 'Wägung vor der Abkalbung', blocked: true }
   const dim = lactationDayAt(c.calving_date, today)
   if (dim != null && dim < FRESH_DAYS) return { reason: `frisch gekalbt (Tag ${dim})`, blocked: true }
+  // Regel: Joghurt-Milch frühestens nach der ersten Wägung der Laktation — nicht
+  // vorgeschlagen, aber als Ausnahme von Hand wählbar (Menge ist dann veraltet)
+  if (c.calving_date && c.calving_date > c.test_date) return { reason: 'noch keine Wägung seit der Abkalbung', blocked: false }
   if (c.dry) return { reason: 'trocken', blocked: true }
   if (c.milk_kg <= 0) return { reason: 'keine Milch', blocked: true }
   if (c.protein_pct == null || (opts.criterion === 'fett_eiweiss' && c.fat_pct == null)) return { reason: 'ohne Laboranalyse', blocked: false }

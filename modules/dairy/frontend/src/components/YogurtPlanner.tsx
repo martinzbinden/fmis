@@ -262,8 +262,7 @@ export default function YogurtPlanner() {
       <p className="text-xs text-gray-500">
         Milchmenge und Gehalte aus der letzten Milchwägung je Kuh (ohne Laboranalyse: Gehalte der letzten analysierten). Gehalte und Zellzahl
         der Mischung sind mengengewichtet; Zellen in 1000/ml. Zeile antippen = an-/abwählen. Trockene Kühe, Kühe mit offener
-        Milch-Absetzfrist und frisch gekalbte Kühe (die ersten {FRESH_DAYS} Laktationstage, Kolostrum) sind gesperrt — ebenso Kühe, die nach
-        der letzten Wägung gekalbt haben. Die Milchmenge ist der Wert der letzten Wägung, nicht hochgerechnet.
+        Milch-Absetzfrist und frisch gekalbte Kühe (die ersten {FRESH_DAYS} Laktationstage, Kolostrum) sind gesperrt. Kühe ohne Wägung seit der Abkalbung werden nicht vorgeschlagen (Ausnahme: von Hand wählbar, die Menge ist dann veraltet). Die Milchmenge ist der Wert der letzten Wägung, nicht hochgerechnet.
       </p>
     </div>
   )
