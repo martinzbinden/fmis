@@ -103,3 +103,8 @@ export async function createRole(name: string, permissions: string[]): Promise<A
     }),
   )
 }
+
+/** Rechte eines Nutzers für «Ansicht wechseln» (nur Admins). */
+export async function fetchUserView(userId: string): Promise<{ email: string; role: string | null; permissions: string[] }> {
+  return handle(await fetch(`${API_URL}/admin/users/${userId}/view`, { headers: authHeaders() }))
+}

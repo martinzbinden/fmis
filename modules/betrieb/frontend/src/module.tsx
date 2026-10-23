@@ -12,7 +12,6 @@ import Maintenance from './pages/Maintenance'
 import WorkPlan from './pages/WorkPlan'
 import History from './pages/History'
 import DutyTile from './components/DutyTile'
-import DriveAssistTile from './components/DriveAssistTile'
 import MaintenanceTile from './components/MaintenanceTile'
 import TrackingBadge from './components/TrackingBadge'
 import { maintenancePasteImporter } from './lib/pasteMaintenance'
@@ -51,7 +50,12 @@ const betriebModule: ModuleDescriptor = {
   ],
   DbProvider: BetriebDbProvider,
   sync: syncClient,
-  dashboardTiles: [DutyTile, DriveAssistTile, MaintenanceTile],
+  dashboardTiles: [
+    { Tile: DutyTile, section: 'top' },
+    { Tile: MaintenanceTile, section: 'maschinen' },
+  ],
+  // Tracking & Fahrhilfe: Symbol oben neben dem Import statt grosser Kachel
+  quickLinks: [{ to: '/betrieb/tracking', icon: '🧭', title: 'Tracking & Fahrhilfe', permission: 'betrieb:tracking:write' }],
   globalOverlay: TrackingBadge,
   pasteImporters: [maintenancePasteImporter],
 }

@@ -53,6 +53,36 @@ async def list_users() -> list[UserOut]:
     ]
 
 
+class UserViewOut(BaseModel):
+    email: str
+    role: str | None
+    permissions: list[str]
+
+
+@router.get("/admin/users/{user_id}/view", response_model=UserViewOut)
+async def user_view(user_id: str) -> UserViewOut:
+    """Rechte eines Nutzers, damit ein Admin die App «mit seinen Augen» sehen
+    kann (Ansicht wechseln). Nur lesend: der Admin bleibt mit dem eigenen Token
+    angemeldet, es entsteht keine fremde Sitzung und nichts wird unter dem
+    Namen des Nutzers gespeichert."""
+    async with pool.connection() as conn:
+        row = await (
+            await conn.execute(
+                """
+                select u.email, u.status, r.name, r.permissions
+                from users u left join roles r on r.id = u.role_id
+                where u.id = %s
+                """,
+                (user_id,),
+            )
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Nutzer nicht gefunden")
+    if row[1] != "active":
+        raise HTTPException(status_code=409, detail="Nutzer ist nicht aktiv")
+    return UserViewOut(email=row[0], role=row[2], permissions=sorted(row[3] or []))
+
+
 @router.post("/admin/users/{user_id}/role")
 async def assign_role(user_id: str, body: AssignRoleBody) -> dict[str, str]:
     async with pool.connection() as conn:

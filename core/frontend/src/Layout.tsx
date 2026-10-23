@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import SyncStatusDot from './SyncStatusDot'
 import { logout } from './auth'
 import { useHasPermission } from './AuthContext'
+import AdminMenu from './AdminMenu'
 import { useSyncStatus } from './useSyncStatus'
 import type { ModuleDescriptor, NavItem } from './ModuleDescriptor'
 
@@ -23,7 +24,6 @@ export default function Layout({
   sync: ModuleDescriptor['sync']
   onLoggedOut: () => void
 }) {
-  const canManageUsers = useHasPermission('core:users:manage')
   const canViewHistory = useHasPermission(historyPermission)
   const { status, error, pending } = useSyncStatus(sync)
 
@@ -46,11 +46,7 @@ export default function Layout({
               📜
             </NavLink>
           )}
-          {canManageUsers && (
-            <NavLink to="/admin" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100">
-              ⚙️
-            </NavLink>
-          )}
+          <AdminMenu />
           <button
             type="button"
             onClick={() => {

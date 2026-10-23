@@ -20,6 +20,22 @@ export interface NavItem {
  */
 export type ModuleGroup = 'tiere' | 'flaechen' | 'betrieb'
 
+/** Kachel auf der Übersicht: 'top' ganz oben (z.B. Dienste), 'maschinen'
+ * im Abschnitt «Maschinen & Betrieb». */
+export interface DashboardTile {
+  Tile: ComponentType
+  section: 'top' | 'maschinen'
+}
+
+/** Schnellzugriff als Symbol in der Kopfzeile der Übersicht (neben Import). */
+export interface QuickLink {
+  to: string
+  icon: string
+  title: string
+  /** nur mit diesem Recht sichtbar */
+  permission: string
+}
+
 export interface ModuleDescriptor {
   key: string
   title: string
@@ -42,7 +58,9 @@ export interface ModuleDescriptor {
   herdLocator?: HerdLocator
   /** Zusätzliche Kacheln auf der Übersicht (frontend/src/pages/Dashboard.tsx),
    * z.B. Maschinen & Wartung — prüfen ihre Rechte selbst. */
-  dashboardTiles?: ComponentType[]
+  dashboardTiles?: DashboardTile[]
+  /** Symbole in der Kopfzeile der Übersicht, z.B. Tracking & Fahrhilfe. */
+  quickLinks?: QuickLink[]
   /** Bereiche für «Strukturierte Daten einfügen» auf der Import-Seite
    * (core/frontend/src/pasteImport.ts). */
   pasteImporters?: PasteImporter[]

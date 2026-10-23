@@ -46,3 +46,16 @@ button {
     outline-offset: 2px;
   }
 }
+
+/* Fremde Ansicht (Admin → Ansicht wechseln): roter Balken ganz oben; seine Höhe
+   meldet core/frontend/src/ViewAsBar.tsx als --viewas-h (ein- bis zweizeilig).
+   Seiten und Kopfzeilen rücken darunter. */
+html[data-view-as] body {
+  padding-top: var(--viewas-h, 2.25rem);
+}
+html[data-view-as] header.sticky {
+  top: var(--viewas-h, 2.25rem);
+}
+html[data-view-as] .min-h-screen {
+  min-height: calc(100vh - var(--viewas-h, 2.25rem));
+}

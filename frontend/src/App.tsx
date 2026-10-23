@@ -8,6 +8,7 @@ import VerifyToken from '@fmis/core/VerifyToken'
 import CoreAdmin from '@fmis/core/Admin'
 import Layout from '@fmis/core/Layout'
 import Toaster from '@fmis/core/Toaster'
+import ViewAsBar from '@fmis/core/ViewAsBar'
 import { ModuleListError, cachedModules, fetchModules, type ModuleInfo } from '@fmis/core/modulesApi'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import livestockModule from '@fmis/livestock/module'
@@ -97,6 +98,13 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
     }
   }, [attempt, onLoggedOut])
 
+  // Nach «Speichern» in Verwaltung → Module: Liste neu holen, Navigation und Routen passen sich an
+  useEffect(() => {
+    const reload = () => setAttempt((n) => n + 1)
+    window.addEventListener('fmis:modules-changed', reload)
+    return () => window.removeEventListener('fmis:modules-changed', reload)
+  }, [])
+
   // Ohne diesen Zweig blieb der Ladekringel bei jedem Fehler für immer stehen —
   // von aussen ein weisser Schirm ohne jeden Hinweis.
   if (moduleError) {
@@ -136,6 +144,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
   return (
     <>
     <Toaster />
+    <ViewAsBar />
     {enabledModules.map((m) => (m.globalOverlay ? <m.globalOverlay key={`overlay-${m.key}`} /> : null))}
     <Routes>
       <Route path="/dashboard" element={<Dashboard modules={enabledModules} onLoggedOut={onLoggedOut} />} />
@@ -148,7 +157,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
         }
       />
       <Route
-        path="/admin"
+        path="/verwaltung/*"
         element={
           <CoreShell onLoggedOut={onLoggedOut}>
             <CoreAdmin />

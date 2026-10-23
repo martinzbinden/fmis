@@ -1,5 +1,7 @@
 // Login ist jetzt app-weit (ein Backend, ein JWT für alle Module) — ein
 // einziger Satz Storage-Keys statt vormals einem Präfix pro Modul.
+import { getViewedEmail, stopViewAs } from './viewAs'
+
 const TOKEN_KEY = 'fmis_token'
 const EMAIL_KEY = 'fmis_email'
 const ME_KEY = 'fmis_me'
@@ -21,6 +23,7 @@ export function logout(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(EMAIL_KEY)
   localStorage.removeItem(ME_KEY)
+  stopViewAs()
 }
 
 /**
@@ -35,6 +38,13 @@ export function setCurrentUserEmail(email: string): void {
 
 export function getCurrentUserEmail(): string | null {
   return localStorage.getItem(EMAIL_KEY)
+}
+
+/** Für die Anzeige («meine Dienste»): in einer fremden Ansicht (Admin →
+ * Ansicht wechseln) die E-Mail des angezeigten Nutzers. Verlauf und
+ * created_by nehmen weiter getCurrentUserEmail. */
+export function getViewedUserEmail(): string | null {
+  return getViewedEmail(getCurrentUserEmail())
 }
 
 /**

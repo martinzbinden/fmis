@@ -1,7 +1,7 @@
 // Dienstplan laden und schreiben (schema/0026); Logik in lib/duty.ts.
 
 import type { PGlite } from '@electric-sql/pglite'
-import { getCurrentUserEmail } from '@fmis/core/auth'
+import { getCurrentUserEmail, getViewedUserEmail } from '@fmis/core/auth'
 import { softDeleteRow, upsertRow, upsertRows } from '../db/write'
 import { isoDate } from './format'
 import type { Slot } from './duty'
@@ -97,6 +97,6 @@ export const deleteAbsence = (id: string) => softDeleteRow('duty_absences', id)
 
 /** Person zum angemeldeten Konto (über die E-Mail). */
 export function me(people: DutyPerson[]): DutyPerson | null {
-  const email = (getCurrentUserEmail() ?? '').toLowerCase()
+  const email = (getViewedUserEmail() ?? '').toLowerCase()
   return people.find((p) => p.email && p.email.toLowerCase() === email) ?? null
 }

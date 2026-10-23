@@ -1,14 +1,26 @@
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
+import AdminMenu from '@fmis/core/AdminMenu'
 import { logout } from '@fmis/core/auth'
-import type { ModuleDescriptor, ModuleGroup } from '@fmis/core/ModuleDescriptor'
+import type { ModuleDescriptor, ModuleGroup, QuickLink } from '@fmis/core/ModuleDescriptor'
 
+// Reihenfolge der Übersicht: Dienste (Kachel) → Tiere → Maschinen & Betrieb → Weitere → Flächen
 const GROUPS: { key: ModuleGroup | undefined; title: string }[] = [
   { key: 'tiere', title: 'Tiere' },
-  { key: 'flaechen', title: 'Flächen' },
-  { key: 'betrieb', title: 'Betrieb' },
+  { key: 'betrieb', title: 'Maschinen & Betrieb' },
   { key: undefined, title: 'Weitere' },
+  { key: 'flaechen', title: 'Flächen' },
 ]
+
+function QuickLinkIcon({ link }: { link: QuickLink }) {
+  const allowed = useHasPermission(link.permission)
+  if (!allowed) return null
+  return (
+    <Link to={link.to} className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" title={link.title} aria-label={link.title}>
+      {link.icon}
+    </Link>
+  )
+}
 
 export default function Dashboard({
   modules,
@@ -17,22 +29,19 @@ export default function Dashboard({
   modules: ModuleDescriptor[]
   onLoggedOut: () => void
 }) {
-  const canManageUsers = useHasPermission('core:users:manage')
-  const canManageModules = useHasPermission('core:modules:manage')
+  const tiles = (section: 'top' | 'maschinen') =>
+    modules.flatMap((m) => (m.dashboardTiles ?? []).filter((t) => t.section === section).map(({ Tile }, i) => <Tile key={`${m.key}-${section}-${i}`} />))
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">
         <span className="text-lg font-bold text-brand-800">FMIS</span>
         <div className="flex items-center gap-1">
-          <Link to="/import" className="rounded px-2 py-1 text-lg active:bg-gray-100" title="Daten importieren">
+          {modules.flatMap((m) => (m.quickLinks ?? []).map((l) => <QuickLinkIcon key={`${m.key}-${l.to}`} link={l} />))}
+          <Link to="/import" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" title="Daten importieren" aria-label="Daten importieren">
             📥
           </Link>
-          {(canManageUsers || canManageModules) && (
-            <Link to="/admin" className="rounded px-2 py-1 text-lg active:bg-gray-100">
-              ⚙️
-            </Link>
-          )}
+          <AdminMenu />
           <button
             type="button"
             onClick={() => {
@@ -53,15 +62,17 @@ export default function Dashboard({
           </p>
         ) : (
           <>
-            {/* Heute: Dienste, Tracking, fällige Wartung (prüfen Rechte selbst) */}
-            {modules.flatMap((m) => (m.dashboardTiles ?? []).map((Tile, i) => <Tile key={`${m.key}-${i}`} />))}
+            {/* Heute: Dienste ganz oben (prüft Rechte selbst) */}
+            {tiles('top')}
             {GROUPS.map((g) => {
               const list = modules.filter((m) => m.group === g.key)
-              if (!list.length) return null
+              const extra = g.key === 'betrieb' ? tiles('maschinen') : null
+              if (!list.length && !extra) return null
               return (
                 <section key={g.title} className="mt-5">
                   <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">{g.title}</h2>
-                  <div className="grid grid-cols-2 gap-3">
+                  {extra}
+                  <div className={`grid grid-cols-2 gap-3 ${extra ? 'mt-3' : ''}`}>
                     {list.map((mod) => (
                       <Link
                         key={mod.key}
