@@ -4,6 +4,7 @@ import {
   ALL_PERMISSIONS,
   assignRole,
   createRole,
+  createUser,
   listRoles,
   listSsoGroups,
   listUsers,
@@ -329,6 +330,7 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showNewRole, setShowNewRole] = useState(false)
+  const [showNewUser, setShowNewUser] = useState(false)
   const [savedGroups, setSavedGroups] = useState<SsoGroupRole[]>([])
   const [groupRows, setGroupRows] = useState<SsoGroupRole[]>([])
 
@@ -453,6 +455,17 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
       <div>
         <button
           type="button"
+          onClick={() => setShowNewUser((v) => !v)}
+          className="mr-2 rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
+        >
+          {showNewUser ? 'Schliessen' : '+ Person vorab erfassen'}
+        </button>
+        {showNewUser && <NewUserForm roles={roles} onCreated={reload} onDone={() => setShowNewUser(false)} />}
+      </div>
+
+      <div>
+        <button
+          type="button"
           onClick={() => setShowNewRole((v) => !v)}
           className="rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
         >
@@ -542,6 +555,65 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
         }}
         onSave={save}
       />
+    </div>
+  )
+}
+
+/** Person vor dem ersten Login erfassen. Ohne Rolle gilt beim ersten Portal-Login
+ * die Rolle ihrer Authelia-Gruppe; mit Rolle ist sie sofort aktiv. Wirkt sofort
+ * (nicht über «Speichern»), wie «+ Neue Rolle». */
+function NewUserForm({ roles, onCreated, onDone }: { roles: AdminRole[]; onCreated: () => void; onDone: () => void }) {
+  const [email, setEmail] = useState('')
+  const [roleId, setRoleId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit() {
+    setBusy(true)
+    setError(null)
+    try {
+      await createUser(email.trim(), roleId || null)
+      notifySuccess('Person erfasst')
+      onCreated()
+      onDone()
+    } catch (err) {
+      setError(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2 rounded-lg bg-white p-3 shadow-sm">
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="E-Mail (wie in Authelia/LLDAP)"
+        aria-label="E-Mail der Person"
+        className="w-full rounded border border-gray-300 p-2 text-sm"
+      />
+      <select value={roleId} onChange={(e) => setRoleId(e.target.value)} aria-label="Rolle" className="w-full rounded border border-gray-300 p-2 text-sm">
+        <option value="">Rolle nach Authelia-Gruppe (beim ersten Login)</option>
+        {roles.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name} (sofort, von Hand)
+          </option>
+        ))}
+      </select>
+      <p className="text-xs text-gray-500">
+        Ohne Rolle wartet das Konto, bis die Person sich erstmals über das Portal anmeldet; dann gilt die Rolle ihrer Gruppe. Mit Rolle ist sie sofort aktiv und
+        wird nicht von der Gruppe nachgeführt.
+      </p>
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      <button
+        type="button"
+        onClick={() => void handleSubmit()}
+        disabled={busy || !email.includes('@')}
+        className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+      >
+        {busy ? 'Erfasse…' : 'Erfassen'}
+      </button>
     </div>
   )
 }

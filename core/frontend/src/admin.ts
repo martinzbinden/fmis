@@ -78,6 +78,17 @@ export async function listUsers(): Promise<AdminUser[]> {
   return handle(await fetch(`${API_URL}/admin/users`, { headers: authHeaders() }))
 }
 
+/** Person vorab erfassen (vor dem ersten Login). Ohne Rolle gilt beim ersten Portal-Login die Rolle der Authelia-Gruppe. */
+export async function createUser(email: string, roleId: string | null): Promise<AdminUser> {
+  return handle(
+    await fetch(`${API_URL}/admin/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ email, role_id: roleId }),
+    }),
+  )
+}
+
 export async function listRoles(): Promise<AdminRole[]> {
   return handle(await fetch(`${API_URL}/admin/roles`, { headers: authHeaders() }))
 }

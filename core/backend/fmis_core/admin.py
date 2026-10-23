@@ -38,6 +38,50 @@ class CreateRoleBody(BaseModel):
     permissions: list[str]
 
 
+class CreateUserBody(BaseModel):
+    email: str
+    role_id: str | None = None
+
+
+@router.post("/admin/users", response_model=UserOut)
+async def create_user(body: CreateUserBody) -> UserOut:
+    """Person vorab erfassen, bevor sie sich erstmals anmeldet.
+
+    Ohne Rolle: wartend und «über Authelia» verwaltet — beim ersten Portal-Login
+    gilt die Rolle der Authelia-Gruppe (ohne passende Gruppe bleibt das Konto
+    gesperrt). Mit Rolle: sofort aktiv, von Hand vergeben (keine Nachführung
+    durch die Gruppe)."""
+    email = body.email.strip().lower()
+    if "@" not in email or any(c.isspace() for c in email) or email.startswith("@") or email.endswith("@"):
+        raise HTTPException(status_code=400, detail="Ungültige E-Mail-Adresse")
+    user_id = str(uuidlib.uuid4())
+    manual = body.role_id is not None
+    async with pool.connection() as conn:
+        exists = await (await conn.execute("select 1 from users where email = %s", (email,))).fetchone()
+        if exists:
+            raise HTTPException(status_code=409, detail="Diese Adresse ist schon erfasst")
+        try:
+            await conn.execute(
+                "insert into users (id, email, role_id, status, sso_managed) values (%s, %s, %s, %s, %s)",
+                (user_id, email, body.role_id, "active" if manual else "pending", not manual),
+            )
+        except Exception as exc:
+            await conn.rollback()
+            raise HTTPException(status_code=400, detail="Rolle unbekannt") from exc
+        row = await (
+            await conn.execute(
+                "select u.id, u.email, u.status, u.role_id, r.name, u.sso_managed, u.sso_groups "
+                "from users u left join roles r on r.id = u.role_id where u.id = %s",
+                (user_id,),
+            )
+        ).fetchone()
+        await conn.commit()
+    return UserOut(
+        id=str(row[0]), email=row[1], status=row[2], role_id=str(row[3]) if row[3] else None, role_name=row[4],
+        sso_managed=bool(row[5]), sso_groups=row[6],
+    )
+
+
 @router.get("/admin/users", response_model=list[UserOut])
 async def list_users() -> list[UserOut]:
     async with pool.connection() as conn:
