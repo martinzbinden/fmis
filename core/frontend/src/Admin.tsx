@@ -5,8 +5,11 @@ import {
   assignRole,
   createRole,
   listRoles,
+  listSsoGroups,
   listUsers,
+  saveSsoGroups,
   setUserEnabled,
+  type SsoGroupRole,
   type AdminRole,
   type AdminUser,
 } from './admin'
@@ -297,6 +300,27 @@ export function userChanged(u: AdminUser, d: UserDraft): boolean {
   return d.role_id !== u.role_id || d.active !== (u.status === 'active')
 }
 
+/** Zuordnung Authelia-Gruppe → Rolle: hat sich etwas geändert? (Reihenfolge egal, Gross-/Kleinschreibung der Gruppe egal) */
+export function groupsChanged(saved: SsoGroupRole[], draft: SsoGroupRole[]): boolean {
+  const key = (g: SsoGroupRole[]) =>
+    g
+      .filter((x) => x.group_name.trim())
+      .map((x) => `${x.group_name.trim().toLowerCase()}=${x.role_id}`)
+      .sort()
+      .join('|')
+  return key(saved) !== key(draft)
+}
+
+/** Fehler in der Zuordnung (leer = in Ordnung). */
+export function groupsProblem(draft: SsoGroupRole[]): string | null {
+  const named = draft.filter((g) => g.group_name.trim() || g.role_id)
+  if (named.some((g) => !g.group_name.trim())) return 'Gruppenname fehlt'
+  if (named.some((g) => !g.role_id)) return 'Gruppe ohne Rolle'
+  const names = named.map((g) => g.group_name.trim().toLowerCase())
+  if (new Set(names).size !== names.length) return 'Jede Gruppe nur einmal'
+  return null
+}
+
 function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
   const real = useRealUser()
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -305,12 +329,16 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showNewRole, setShowNewRole] = useState(false)
+  const [savedGroups, setSavedGroups] = useState<SsoGroupRole[]>([])
+  const [groupRows, setGroupRows] = useState<SsoGroupRole[]>([])
 
   async function reload() {
     try {
-      const [u, r] = await Promise.all([listUsers(), listRoles()])
+      const [u, r, g] = await Promise.all([listUsers(), listRoles(), listSsoGroups()])
       setUsers(u)
       setRoles(r)
+      setSavedGroups(g)
+      setGroupRows(g)
       setDrafts(Object.fromEntries(u.map((x) => [x.id, userDraftOf(x)])))
       setError(null)
     } catch (err) {
@@ -325,8 +353,12 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
   }, [])
 
   const changed = useMemo(() => users.filter((u) => drafts[u.id] && userChanged(u, drafts[u.id])), [users, drafts])
-  useEffect(() => onDirty(changed.length > 0), [changed.length, onDirty])
+  const groupsDirty = groupsChanged(savedGroups, groupRows)
+  const groupError = groupsDirty ? groupsProblem(groupRows) : null
+  const count = changed.length + (groupsDirty ? 1 : 0)
+  useEffect(() => onDirty(count > 0), [count, onDirty])
   const missingRole = changed.find((u) => drafts[u.id].active && !drafts[u.id].role_id)
+  const seenGroups = [...new Set(users.flatMap((u) => (u.sso_groups ?? '').split(',').map((x) => x.trim()).filter(Boolean)))].sort()
 
   const patch = (id: string, p: Partial<UserDraft>) => setDrafts((all) => ({ ...all, [id]: { ...all[id], ...p } }))
 
@@ -347,10 +379,17 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
         failures.push(`${u.email}: ${errorText(err)}`)
       }
     }
+    if (groupsDirty) {
+      try {
+        await saveSsoGroups(groupRows.filter((g) => g.group_name.trim()).map((g) => ({ group_name: g.group_name.trim(), role_id: g.role_id })))
+      } catch (err) {
+        failures.push(`Authelia-Gruppen: ${errorText(err)}`)
+      }
+    }
     await reload()
     if (failures.length) {
       setError(failures.join(' · '))
-      throw new Error(`${failures.length} von ${changed.length} nicht gespeichert`)
+      throw new Error(`${failures.length} von ${count} nicht gespeichert`)
     }
     notifySuccess('Benutzer gespeichert')
   }
@@ -380,6 +419,8 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
                       <div className="truncate font-medium text-gray-800">{u.email}</div>
                       <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[u.status]}`}>{STATUS_LABEL[u.status]}</span>
                       {own && <span className="ml-1 text-xs text-gray-500">(du)</span>}
+                      {u.sso_managed && <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">über Authelia</span>}
+                      {u.sso_groups && <div className="mt-0.5 truncate text-xs text-gray-500">Authelia-Gruppen: {u.sso_groups}</div>}
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="hidden text-xs text-gray-500 sm:inline">{d.active ? 'aktiv' : u.status === 'pending' ? 'wartet' : 'gesperrt'}</span>
@@ -421,6 +462,65 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
       </div>
 
       <div>
+        <h2 className="mb-1 text-sm font-semibold text-gray-500">Authelia-Gruppen → Rolle</h2>
+        <p className="mb-2 text-xs text-gray-500">
+          Wer sich über das Portal anmeldet und in einer dieser Gruppen ist, wird beim ersten Login sofort aktiv angelegt. Solche Nutzer («über Authelia»)
+          werden bei jeder Anmeldung nachgeführt — auch gesperrt, wenn die Gruppe entfällt; die App prüft das Portal alle 6 Stunden. Eine hier von Hand
+          vergebene Rolle oder Sperre nimmt den Nutzer aus der Nachführung. Passen mehrere Gruppen, gilt die Rolle mit den meisten Rechten.
+        </p>
+        <datalist id="sso-group-names">
+          {seenGroups.map((g) => (
+            <option key={g} value={g} />
+          ))}
+        </datalist>
+        <ul className="space-y-2">
+          {groupRows.map((g, i) => (
+            <li key={i} className="flex items-center gap-2 rounded-lg bg-white p-2 shadow-sm">
+              <input
+                type="text"
+                list="sso-group-names"
+                value={g.group_name}
+                onChange={(e) => setGroupRows((rows) => rows.map((r, j) => (j === i ? { ...r, group_name: e.target.value } : r)))}
+                placeholder="Gruppe"
+                aria-label="Authelia-Gruppe"
+                className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-2 text-sm"
+              />
+              <select
+                value={g.role_id}
+                onChange={(e) => setGroupRows((rows) => rows.map((r, j) => (j === i ? { ...r, role_id: e.target.value } : r)))}
+                aria-label="Rolle für die Gruppe"
+                className="min-w-0 flex-1 rounded border border-gray-300 px-2 py-2 text-sm"
+              >
+                <option value="" disabled>
+                  Rolle…
+                </option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setGroupRows((rows) => rows.filter((_, j) => j !== i))}
+                aria-label="Zuordnung entfernen"
+                className="grid min-h-11 min-w-11 place-items-center rounded-full text-lg text-gray-500 active:bg-gray-100"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={() => setGroupRows((rows) => [...rows, { group_name: '', role_id: '' }])}
+          className="mt-2 rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
+        >
+          + Gruppe
+        </button>
+      </div>
+
+      <div>
         <h2 className="mb-2 text-sm font-semibold text-gray-500">Bestehende Rollen</h2>
         <ul className="space-y-2">
           {roles.map((r) => (
@@ -433,10 +533,13 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
       </div>
 
       <SaveBar
-        count={changed.length}
-        hint={missingRole ? `${missingRole.email}: zuerst eine Rolle wählen` : null}
-        canSave={!missingRole}
-        onDiscard={() => setDrafts(Object.fromEntries(users.map((x) => [x.id, userDraftOf(x)])))}
+        count={count}
+        hint={missingRole ? `${missingRole.email}: zuerst eine Rolle wählen` : groupError ? `Authelia-Gruppen: ${groupError}` : null}
+        canSave={!missingRole && !groupError}
+        onDiscard={() => {
+          setDrafts(Object.fromEntries(users.map((x) => [x.id, userDraftOf(x)])))
+          setGroupRows(savedGroups)
+        }}
         onSave={save}
       />
     </div>

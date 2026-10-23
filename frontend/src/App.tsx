@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthUserProvider, useHasPermission } from '@fmis/core/AuthContext'
-import { isLoggedIn, logout } from '@fmis/core/auth'
+import { isLoggedIn, logout, recheckSso } from '@fmis/core/auth'
 import Login from '@fmis/core/Login'
 import VerifyToken from '@fmis/core/VerifyToken'
 import CoreAdmin from '@fmis/core/Admin'
@@ -97,6 +97,24 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
       active = false
     }
   }, [attempt, onLoggedOut])
+
+  // Portal-Prüfung im Hintergrund (alle 6 Stunden fällig, siehe auth.ts): gesperrte
+  // oder aus der Gruppe entfernte Nutzer verlieren FMIS bald, Rollen werden nachgeführt
+  useEffect(() => {
+    const run = () =>
+      void recheckSso().then((r) => {
+        if (r === 'denied') onLoggedOut()
+        else if (r === 'refreshed') window.dispatchEvent(new Event('fmis:auth-refreshed'))
+      })
+    const onVisible = () => document.visibilityState === 'visible' && run()
+    run()
+    const timer = setInterval(run, 10 * 60_000)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [onLoggedOut])
 
   // Nach «Speichern» in Verwaltung → Module: Liste neu holen, Navigation und Routen passen sich an
   useEffect(() => {

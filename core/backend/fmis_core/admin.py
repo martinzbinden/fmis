@@ -17,6 +17,10 @@ class UserOut(BaseModel):
     status: str
     role_id: str | None
     role_name: str | None
+    # per Authelia-Gruppe verwaltet (Rolle/Sperre werden bei der Anmeldung nachgeführt)
+    sso_managed: bool = False
+    # zuletzt gesehene Authelia-Gruppen
+    sso_groups: str | None = None
 
 
 class RoleOut(BaseModel):
@@ -40,7 +44,7 @@ async def list_users() -> list[UserOut]:
         rows = await (
             await conn.execute(
                 """
-                select u.id, u.email, u.status, u.role_id, r.name
+                select u.id, u.email, u.status, u.role_id, r.name, u.sso_managed, u.sso_groups
                 from users u
                 left join roles r on r.id = u.role_id
                 order by u.created_at
@@ -48,7 +52,10 @@ async def list_users() -> list[UserOut]:
             )
         ).fetchall()
     return [
-        UserOut(id=str(r[0]), email=r[1], status=r[2], role_id=str(r[3]) if r[3] else None, role_name=r[4])
+        UserOut(
+            id=str(r[0]), email=r[1], status=r[2], role_id=str(r[3]) if r[3] else None, role_name=r[4],
+            sso_managed=bool(r[5]), sso_groups=r[6],
+        )
         for r in rows
     ]
 
@@ -87,7 +94,7 @@ async def user_view(user_id: str) -> UserViewOut:
 async def assign_role(user_id: str, body: AssignRoleBody) -> dict[str, str]:
     async with pool.connection() as conn:
         result = await conn.execute(
-            "update users set role_id = %s, status = 'active' where id = %s",
+            "update users set role_id = %s, status = 'active', sso_managed = false where id = %s",
             (body.role_id, user_id),
         )
         if result.rowcount == 0:
@@ -99,7 +106,7 @@ async def assign_role(user_id: str, body: AssignRoleBody) -> dict[str, str]:
 @router.post("/admin/users/{user_id}/disable")
 async def disable_user(user_id: str) -> dict[str, str]:
     async with pool.connection() as conn:
-        result = await conn.execute("update users set status = 'disabled' where id = %s", (user_id,))
+        result = await conn.execute("update users set status = 'disabled', sso_managed = false where id = %s", (user_id,))
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Nutzer nicht gefunden")
         await conn.commit()
@@ -110,7 +117,7 @@ async def disable_user(user_id: str) -> dict[str, str]:
 async def enable_user(user_id: str) -> dict[str, str]:
     async with pool.connection() as conn:
         result = await conn.execute(
-            "update users set status = 'active' where id = %s and role_id is not null",
+            "update users set status = 'active', sso_managed = false where id = %s and role_id is not null",
             (user_id,),
         )
         if result.rowcount == 0:
@@ -143,3 +150,38 @@ async def create_role(body: CreateRoleBody) -> RoleOut:
             raise HTTPException(status_code=409, detail="Rollenname bereits vergeben") from exc
         await conn.commit()
     return RoleOut(id=role_id, name=body.name, permissions=body.permissions)
+
+
+class SsoGroupRole(BaseModel):
+    group_name: str
+    role_id: str
+
+
+@router.get("/admin/sso-groups", response_model=list[SsoGroupRole])
+async def list_sso_groups() -> list[SsoGroupRole]:
+    async with pool.connection() as conn:
+        rows = await (
+            await conn.execute("select group_name, role_id from sso_group_roles order by lower(group_name)")
+        ).fetchall()
+    return [SsoGroupRole(group_name=r[0], role_id=str(r[1])) for r in rows]
+
+
+@router.put("/admin/sso-groups", response_model=list[SsoGroupRole])
+async def save_sso_groups(body: list[SsoGroupRole]) -> list[SsoGroupRole]:
+    """Zuordnung Authelia-Gruppe → Rolle ersetzen. Wirkt bei der nächsten
+    Anmeldung der Betroffenen (die App prüft alle 6 Stunden im Hintergrund)."""
+    names = [g.group_name.strip() for g in body]
+    if any(not n for n in names):
+        raise HTTPException(status_code=400, detail="Gruppenname fehlt")
+    if len({n.lower() for n in names}) != len(names):
+        raise HTTPException(status_code=400, detail="Jede Gruppe nur einmal")
+    async with pool.connection() as conn:
+        try:
+            await conn.execute("delete from sso_group_roles")
+            for n, g in zip(names, body):
+                await conn.execute("insert into sso_group_roles (group_name, role_id) values (%s, %s)", (n, g.role_id))
+        except Exception as exc:
+            await conn.rollback()
+            raise HTTPException(status_code=400, detail="Rolle unbekannt") from exc
+        await conn.commit()
+    return [SsoGroupRole(group_name=n, role_id=g.role_id) for n, g in zip(names, body)]

@@ -17,12 +17,17 @@ export function AuthUserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(() => cachedMe())
 
   useEffect(() => {
-    fetchMe()
-      .then((u) => {
-        setUser(u)
-        setCurrentUserEmail(u.email)
-      })
-      .catch((err) => console.error('auth/me fehlgeschlagen', err))
+    const load = () =>
+      fetchMe()
+        .then((u) => {
+          setUser(u)
+          setCurrentUserEmail(u.email)
+        })
+        .catch((err) => console.error('auth/me fehlgeschlagen', err))
+    void load()
+    // Nach der Portal-Prüfung im Hintergrund (auth.ts recheckSso): Rolle kann sich geändert haben
+    window.addEventListener('fmis:auth-refreshed', load)
+    return () => window.removeEventListener('fmis:auth-refreshed', load)
   }, [])
 
   // Fremde Ansicht (Admin → Ansicht wechseln): Rechte des angezeigten Nutzers

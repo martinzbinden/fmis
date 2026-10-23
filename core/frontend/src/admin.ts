@@ -6,6 +6,10 @@ export interface AdminUser {
   status: 'pending' | 'active' | 'disabled'
   role_id: string | null
   role_name: string | null
+  /** per Authelia-Gruppe verwaltet */
+  sso_managed: boolean
+  /** zuletzt gesehene Authelia-Gruppen */
+  sso_groups: string | null
 }
 
 export interface AdminRole {
@@ -107,4 +111,23 @@ export async function createRole(name: string, permissions: string[]): Promise<A
 /** Rechte eines Nutzers für «Ansicht wechseln» (nur Admins). */
 export async function fetchUserView(userId: string): Promise<{ email: string; role: string | null; permissions: string[] }> {
   return handle(await fetch(`${API_URL}/admin/users/${userId}/view`, { headers: authHeaders() }))
+}
+
+export interface SsoGroupRole {
+  group_name: string
+  role_id: string
+}
+
+export async function listSsoGroups(): Promise<SsoGroupRole[]> {
+  return handle(await fetch(`${API_URL}/admin/sso-groups`, { headers: authHeaders() }))
+}
+
+export async function saveSsoGroups(groups: SsoGroupRole[]): Promise<SsoGroupRole[]> {
+  return handle(
+    await fetch(`${API_URL}/admin/sso-groups`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(groups),
+    }),
+  )
 }

@@ -52,6 +52,13 @@ SSO_EMAIL_HEADER = os.environ.get("SSO_EMAIL_HEADER", "Remote-Email").strip()
 # alle anderen Dienste; ohne diese Pruefung konnte jeder von dort ein 365-Tage-Token fuer eine beliebige Adresse
 # (auch einen Admin) holen (geprueft 2026-10-18: Kopf wurde geglaubt). Name aus Compose, alle 60 s neu aufgeloest.
 SSO_TRAEFIK_HOST = os.environ.get("SSO_TRAEFIK_HOST", "traefik").strip()
+# Gruppen des Portal-Nutzers (kommagetrennt), ebenfalls von Authelia über Traefik.
+SSO_GROUPS_HEADER = os.environ.get("SSO_GROUPS_HEADER", "Remote-Groups").strip()
+# Mit /auth/sso ausgestellte Tokens gelten nur so lange ohne erneute Portal-Prüfung
+# (die App prüft im Hintergrund alle 6 Stunden und erneuert das Token). Wer in
+# Authelia gesperrt oder aus der Gruppe genommen wird, verliert FMIS so spätestens
+# nach dieser Frist. 0 = keine Frist.
+SSO_MAX_AGE_HOURS = int(os.environ.get("SSO_MAX_AGE_HOURS", "24"))
 _traefik = {"ips": set(), "bis": 0.0}
 
 
@@ -111,9 +118,40 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _issue_session_jwt(user_id: str) -> str:
+def _issue_session_jwt(user_id: str, sso: bool = False) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=SESSION_TTL_DAYS)
-    return jwt.encode({"sub": str(user_id), "exp": expire}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    claims: dict = {"sub": str(user_id), "exp": expire}
+    if sso:
+        claims["sso_at"] = int(time.time())  # Zeitpunkt der letzten Portal-Prüfung
+    return jwt.encode(claims, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def parse_groups(header: str | None) -> list[str]:
+    """Gruppen aus dem Kopf Remote-Groups (kommagetrennt), ohne Leere/Doppelte."""
+    seen: dict[str, None] = {}
+    for part in (header or "").split(","):
+        name = part.strip()
+        if name and name.lower() not in {k.lower() for k in seen}:
+            seen[name] = None
+    return list(seen)
+
+
+async def _role_for_groups(conn, groups: list[str]) -> str | None:
+    """Rolle zu den Portal-Gruppen. Passen mehrere, gilt die mit den meisten Rechten."""
+    if not groups:
+        return None
+    row = await (
+        await conn.execute(
+            """
+            select m.role_id from sso_group_roles m join roles r on r.id = m.role_id
+            where lower(m.group_name) = any(%s)
+            order by coalesce(cardinality(r.permissions), 0) desc, r.name
+            limit 1
+            """,
+            ([g.lower() for g in groups],),
+        )
+    ).fetchone()
+    return str(row[0]) if row else None
 
 
 # Immer dieselbe Antwort, unabhängig davon ob die Adresse neu/bekannt/gesperrt
@@ -278,24 +316,48 @@ async def sso_login(request: Request) -> VerifyResponse:
     email = (request.headers.get(SSO_EMAIL_HEADER) or "").lower().strip()
     if not email:
         raise HTTPException(status_code=401, detail="Keine Portal-Anmeldung erkannt")
+    groups = parse_groups(request.headers.get(SSO_GROUPS_HEADER))
+    groups_text = ", ".join(groups) or None
 
     async with pool.connection() as conn:
-        user_id = await _find_or_create_user(conn, email)
-        if user_id is None:
-            raise HTTPException(status_code=403, detail="Adresse ist für FMIS nicht zugelassen")
-
+        mapped_role = await _role_for_groups(conn, groups)
+        row = await (
+            await conn.execute("select id, sso_managed from users where email = %s", (email,))
+        ).fetchone()
+        if row is None and mapped_role:
+            # Neue Adresse in einer zugeordneten Gruppe: sofort aktiv mit der Rolle der Gruppe
+            user_id = str(uuidlib.uuid4())
+            await conn.execute(
+                "insert into users (id, email, role_id, status, sso_managed, sso_groups) "
+                "values (%s, %s, %s, 'active', true, %s)",
+                (user_id, email, mapped_role, groups_text),
+            )
+        else:
+            user_id = await _find_or_create_user(conn, email)
+            if user_id is None:
+                raise HTTPException(status_code=403, detail="Adresse ist für FMIS nicht zugelassen")
+            if row is not None and row[1]:
+                # per Gruppe verwaltet: Rolle nachführen; ohne passende Gruppe gesperrt
+                if mapped_role:
+                    await conn.execute("update users set role_id = %s, status = 'active' where id = %s", (mapped_role, user_id))
+                else:
+                    await conn.execute("update users set status = 'disabled' where id = %s", (user_id,))
+        await conn.execute(
+            "update users set last_login_at = now(), sso_groups = %s where id = %s", (groups_text, user_id)
+        )
         status_row = await (
             await conn.execute("select status from users where id = %s", (user_id,))
         ).fetchone()
-        await conn.execute("update users set last_login_at = now() where id = %s", (user_id,))
         await conn.commit()
 
-    if status_row is None or status_row[0] != "active":
+    if status_row is None or status_row[0] == "pending":
         raise HTTPException(
             status_code=403, detail="Konto wartet auf Freischaltung durch einen Admin"
         )
+    if status_row[0] != "active":
+        raise HTTPException(status_code=403, detail="Konto ist gesperrt (Gruppe/Rolle im Portal prüfen)")
 
-    return VerifyResponse(access_token=_issue_session_jwt(user_id))
+    return VerifyResponse(access_token=_issue_session_jwt(user_id, sso=True))
 
 
 @router.post("/auth/password-login", response_model=VerifyResponse)
@@ -337,6 +399,16 @@ async def require_auth(
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Ungültiges oder abgelaufenes Token")
+
+    sso_at = payload.get("sso_at")
+    if sso_at is not None and SSO_MAX_AGE_HOURS > 0:
+        try:
+            stale = time.time() - float(sso_at) > SSO_MAX_AGE_HOURS * 3600
+        except (TypeError, ValueError):
+            stale = True
+        if stale:
+            # Die App holt dann über das Portal ein neues Token (Login.tsx → /auth/sso)
+            raise HTTPException(status_code=401, detail="Portal-Anmeldung muss erneuert werden")
 
     user_id = payload.get("sub")
     # Rolle/Status werden bei JEDEM Request frisch geladen (kein Claim im JWT) —

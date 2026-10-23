@@ -81,14 +81,22 @@ export async function fetchAuthConfig(): Promise<AuthConfig> {
   return { passwordLogin: data.password_login === true, sso: data.sso === true }
 }
 
+/** Portal-Anmeldung vorhanden, aber FMIS lehnt den Nutzer ab (gesperrt, Gruppe entfernt, wartet). */
+export class SsoDeniedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SsoDeniedError'
+  }
+}
+
 /**
  * Tauscht eine bestehende Portal-Anmeldung (Authelia-Cookie) gegen ein
  * fmis-Token. `redirect: 'manual'` ist wichtig: ohne gültige Portal-Sitzung
  * antwortet die ForwardAuth mit einer Umleitung auf eine fremde Origin, der
- * zu folgen nur eine CORS-Fehlermeldung einbrächte. Gibt false zurück, wenn
+ * zu folgen nur eine CORS-Fehlermeldung einbrächte. Gibt null zurück, wenn
  * dieser Weg gerade nicht trägt — dann führt der Weg über PORTAL_ENTRY_PATH.
  */
-export async function ssoLogin(): Promise<boolean> {
+async function ssoExchange(): Promise<string | null> {
   const res = await fetch(`${API_URL}/auth/sso`, {
     method: 'POST',
     redirect: 'manual',
@@ -97,13 +105,94 @@ export async function ssoLogin(): Promise<boolean> {
   if (!res.ok) {
     if (res.status === 403) {
       const body = (await res.json().catch(() => null)) as { detail?: string } | null
-      throw new Error(body?.detail ?? 'Anmeldung abgelehnt')
+      throw new SsoDeniedError(body?.detail ?? 'Anmeldung abgelehnt')
     }
-    return false
+    return null
   }
-  const data = (await res.json()) as { access_token: string }
-  localStorage.setItem(TOKEN_KEY, data.access_token)
+  return ((await res.json()) as { access_token: string }).access_token
+}
+
+export async function ssoLogin(): Promise<boolean> {
+  const token = await ssoExchange()
+  if (!token) return false
+  localStorage.setItem(TOKEN_KEY, token)
+  markSsoChecked()
   return true
+}
+
+// --- Regelmässige Portal-Prüfung -------------------------------------------
+// Ein FMIS-Token gilt lange (Feld ohne Netz). Damit eine Sperre oder eine
+// entfernte Gruppe im Portal trotzdem bald greift, fragt die App im
+// Hintergrund alle 6 Stunden das Portal erneut (Rolle wird nachgeführt, das
+// Token erneuert). Der Server lässt Portal-Tokens zusätzlich nach 24 Stunden
+// ohne diese Prüfung ablaufen (SSO_MAX_AGE_HOURS).
+const SSO_CHECKED_KEY = 'fmis_sso_checked'
+const SSO_TRIED_KEY = 'fmis_sso_tried'
+export const SSO_RECHECK_MS = 6 * 3600_000
+/** Nach einem erfolglosen Versuch (kein Netz, keine Portal-Sitzung) frühestens wieder nach … */
+export const SSO_RETRY_MS = 30 * 60_000
+
+function markSsoChecked(): void {
+  try {
+    localStorage.setItem(SSO_CHECKED_KEY, String(Date.now()))
+  } catch {
+    // dann eben bei jedem Start
+  }
+}
+
+/** Ist eine Portal-Prüfung fällig? (rein, getestet) */
+export function ssoRecheckDue(checkedAt: number | null, triedAt: number | null, now: number): boolean {
+  if (checkedAt != null && now - checkedAt < SSO_RECHECK_MS) return false
+  if (triedAt != null && now - triedAt < SSO_RETRY_MS) return false
+  return true
+}
+
+/** Nutzer-ID (sub) aus einem JWT, ohne Prüfung — nur um «dieselbe Person» zu erkennen. */
+export function jwtSub(token: string | null): string | null {
+  try {
+    const part = token?.split('.')[1]
+    if (!part) return null
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'))
+    const sub = (JSON.parse(json) as { sub?: unknown }).sub
+    return typeof sub === 'string' ? sub : null
+  } catch {
+    return null
+  }
+}
+
+const num = (key: string): number | null => {
+  try {
+    const v = Number(localStorage.getItem(key))
+    return Number.isFinite(v) && v > 0 ? v : null
+  } catch {
+    return null
+  }
+}
+
+/** Portal-Prüfung im Hintergrund, wenn fällig. Gibt zurück, was passiert ist. */
+export async function recheckSso(now = Date.now()): Promise<'skipped' | 'refreshed' | 'none' | 'denied'> {
+  if (!isLoggedIn() || !ssoRecheckDue(num(SSO_CHECKED_KEY), num(SSO_TRIED_KEY), now)) return 'skipped'
+  try {
+    localStorage.setItem(SSO_TRIED_KEY, String(now))
+  } catch {
+    // egal
+  }
+  try {
+    const token = await ssoExchange()
+    if (!token) return 'none'
+    // Das Portal meldet eine andere Person an als dieses Gerät: Token nicht tauschen
+    if (jwtSub(token) !== jwtSub(getToken())) return 'none'
+    localStorage.setItem(TOKEN_KEY, token)
+    markSsoChecked()
+    return 'refreshed'
+  } catch (err) {
+    // Gesperrt/Gruppe entfernt: hier abmelden. Kein Netz (TypeError/Abbruch): später wieder.
+    if (err instanceof SsoDeniedError) {
+      logout()
+      return 'denied'
+    }
+    return 'none'
+  }
 }
 
 export async function requestMagicLink(email: string): Promise<void> {
