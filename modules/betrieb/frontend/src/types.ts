@@ -255,6 +255,32 @@ export interface DutyChange {
   deleted_at: string | null
 }
 
+export type DutyRequestKind = 'wunsch' | 'abgabe' | 'tausch'
+export type DutyRequestStatus = 'offen' | 'bestaetigt' | 'abgelehnt' | 'zurueckgezogen'
+/** Freiwunsch oder Vorschlag (Abgabe, Tausch) einer Person; das Büro entscheidet (schema/0004). */
+export interface DutyRequest {
+  id: string
+  kind: DutyRequestKind
+  person_id: string
+  shift_id: string | null
+  date: string | null
+  type_id: string | null
+  to_person: string | null
+  other_shift_id: string | null
+  other_date: string | null
+  other_type_id: string | null
+  from_date: string | null
+  to_date: string | null
+  notes: string | null
+  status: DutyRequestStatus
+  decided_by: string | null
+  decided_at: string | null
+  decision_note: string | null
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
 export type HistoryAction = 'insert' | 'update' | 'delete'
 
 export interface DataHistory {

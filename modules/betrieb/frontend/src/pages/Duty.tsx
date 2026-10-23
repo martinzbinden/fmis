@@ -4,10 +4,10 @@ import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import { useStored } from '../components/DriveAssist'
 import { addDays, localToday as todayIso, conflictsFor, copyFromPrevious, endTime, hasConflict, isoWeek, mondayOf, slotsFor, suggest, weekDates, type Slot } from '../lib/duty'
-import { assignSlots, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveType, setSkill, type DutyData } from '../lib/dutyData'
-import type { DutyAbsenceKind, DutyPerson, DutyType } from '../types'
+import { assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
+import type { DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
 
-type Tab = 'woche' | 'meine' | 'abwesend' | 'einstellungen'
+type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'einstellungen'
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 const KIND: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', andere: 'abwesend' }
 const SEEN_KEY = 'wiesenjournal_duty_changes_seen'
@@ -52,6 +52,9 @@ function SlotRow({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; c
         </select>
       ) : (
         <span className={`text-sm font-medium ${pid ? 'text-gray-800' : 'text-red-700'}`}>{pid ? personName(d, pid) : 'offen'}</span>
+      )}
+      {d.requests.some((r) => r.status === 'offen' && (r.shift_id === s.id || r.other_shift_id === s.id)) && (
+        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Antrag offen</span>
       )}
       {c && hasConflict(c) && (
         <span className="w-full pl-5 text-xs text-amber-800">
@@ -182,7 +185,7 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
 }
 
 /** Eigene Dienste der nächsten 3 Wochen: abgeben oder tauschen. */
-function Mine({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refresh: () => void }) {
+function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boolean; canPropose: boolean; refresh: () => void }) {
   const self = me(d.people)
   const today = todayIso()
   const dates = Array.from({ length: 21 }, (_, i) => addDays(today, i))
@@ -193,6 +196,8 @@ function Mine({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refres
   const [note, setNote] = useState('')
   if (!self) return <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Dein Konto ist noch keiner Person zugeordnet. Unter «Einstellungen» bei deiner Person die E-Mail deines FMIS-Kontos eintragen.</p>
   const mine = slots.filter((s) => s.shift?.person_id === self.id)
+  // Wer den Plan nicht führt, schlägt nur vor; das Büro bestätigt (Tab «Anträge»)
+  const propose = !canWrite && canPropose
   return (
     <div className="space-y-2">
       <p className="text-sm text-gray-600">
@@ -202,6 +207,7 @@ function Mine({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refres
       <ul className="divide-y rounded-xl border bg-white">
         {mine.map((s) => {
           const candidates = d.people.filter((p) => p.active && p.id !== self.id && d.skills.some((k) => k.person_id === p.id && k.type_id === s.type.id))
+          const pending = d.requests.find((r) => r.status === 'offen' && r.shift_id === s.id)
           const theirs = to ? slots.filter((o) => o.shift?.person_id === to && o.date >= today && d.skills.some((k) => k.person_id === self.id && k.type_id === o.type.id)) : []
           return (
             <li key={s.id} className="space-y-2 p-2">
@@ -211,7 +217,8 @@ function Mine({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refres
                 <span className="flex-1 text-sm">
                   {s.type.start_time} · {s.type.name}
                 </span>
-                {canWrite && (
+                {pending && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Antrag offen</span>}
+                {(canWrite || propose) && !pending && (
                   <button
                     type="button"
                     className={btn}
@@ -222,7 +229,7 @@ function Mine({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refres
                       setNote('')
                     }}
                   >
-                    Tauschen / abgeben
+                    {propose ? 'Vorschlagen' : 'Tauschen / abgeben'}
                   </button>
                 )}
               </div>
@@ -231,7 +238,7 @@ function Mine({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refres
                   <label className="flex flex-wrap items-center gap-2">
                     an
                     <select className={field} value={to} onChange={(e) => setTo(e.target.value)}>
-                      <option value="">— Person wählen —</option>
+                      <option value="">{propose ? '— offen lassen —' : '— Person wählen —'}</option>
                       {candidates.map((p) => {
                         const cc = conflictsFor(p.id, s, slots, d.skills, d.absences)
                         return (
@@ -259,10 +266,28 @@ function Mine({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refres
                   <input className={`${field} w-full`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Bemerkung (optional)" />
                   <button
                     type="button"
-                    disabled={!to}
+                    disabled={propose ? !!back && !to : !to}
                     className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40"
                     onClick={() => {
                       const other = theirs.find((o) => o.id === back)
+                      if (propose) {
+                        void saveRequest({
+                          kind: other ? 'tausch' : 'abgabe',
+                          person_id: self.id,
+                          shift_id: s.id,
+                          date: s.date,
+                          type_id: s.type.id,
+                          to_person: to || null,
+                          other_shift_id: other?.id ?? null,
+                          other_date: other?.date ?? null,
+                          other_type_id: other?.type.id ?? null,
+                          notes: note || null,
+                        }).then(() => {
+                          setOpenId(null)
+                          refresh()
+                        })
+                        return
+                      }
                       void assignSlots([
                         { slot: s, personId: to, kind: other ? 'tausch' : 'abgabe', notes: note || null },
                         ...(other ? [{ slot: other, personId: self.id, kind: 'tausch' as const, notes: note || null }] : []),
@@ -272,15 +297,146 @@ function Mine({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refres
                       })
                     }}
                   >
-                    {back ? 'Tauschen' : 'Abgeben'}
+                    {propose ? (back ? 'Tausch vorschlagen' : 'Abgabe vorschlagen') : back ? 'Tauschen' : 'Abgeben'}
                   </button>
-                  <p className="text-xs text-gray-500">Wird sofort übernommen und erscheint für alle unter «Änderungen».</p>
+                  <p className="text-xs text-gray-500">
+                    {propose ? 'Das ist ein Vorschlag. Der Plan ändert sich erst, wenn das Büro bestätigt.' : 'Wird sofort übernommen und erscheint für alle unter «Änderungen».'}
+                  </p>
                 </div>
               )}
             </li>
           )
         })}
       </ul>
+    </div>
+  )
+}
+
+const STATUS_LABEL: Record<DutyRequestStatus, string> = { offen: 'offen', bestaetigt: 'bestätigt', abgelehnt: 'abgelehnt', zurueckgezogen: 'zurückgezogen' }
+const STATUS_CLASS: Record<DutyRequestStatus, string> = {
+  offen: 'bg-amber-100 text-amber-900',
+  bestaetigt: 'bg-emerald-100 text-emerald-800',
+  abgelehnt: 'bg-red-100 text-red-800',
+  zurueckgezogen: 'bg-gray-100 text-gray-600',
+}
+
+/** Antrag in einem Satz. */
+function describeRequest(d: DutyData, r: DutyRequest): string {
+  const name = personName(d, r.person_id)
+  const dutyName = (typeId: string | null) => d.types.find((t) => t.id === typeId)?.name ?? 'Dienst'
+  const range = r.from_date && r.to_date ? `${dm(r.from_date)}${r.to_date !== r.from_date ? `–${dm(r.to_date)}` : ''}` : ''
+  if (r.kind === 'wunsch') return `${name} wünscht frei: ${range}`
+  const mine = `${r.date ? dm(r.date) : ''} ${dutyName(r.type_id)}`
+  if (r.kind === 'abgabe') return `${name} gibt ab: ${mine}${r.to_person ? ` → ${personName(d, r.to_person)}` : ' (an wen auch immer)'}`
+  return `${name} tauscht: ${mine} ↔ ${personName(d, r.to_person)}: ${r.other_date ? dm(r.other_date) : ''} ${dutyName(r.other_type_id)}`
+}
+
+/** Freiwünsche und Vorschläge. Mitarbeitende stellen sie und ziehen sie zurück;
+ * das Büro bestätigt oder lehnt ab, erst die Bestätigung ändert den Plan. */
+function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boolean; canPropose: boolean; refresh: () => void }) {
+  const self = me(d.people)
+  const today = todayIso()
+  const [f, setF] = useState({ from_date: today, to_date: today, notes: '' })
+  const [rejectId, setRejectId] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const visible = d.requests.filter((r) => canWrite || r.person_id === self?.id)
+  const open = visible.filter((r) => r.status === 'offen')
+  const done = visible.filter((r) => r.status !== 'offen')
+  const run = (job: Promise<unknown>) => {
+    setErr(null)
+    job.then(refresh).catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+  }
+  return (
+    <div className="space-y-3">
+      {canPropose && !canWrite && (
+        <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
+          <h3 className="font-semibold text-gray-700">Freiwunsch eintragen</h3>
+          {!self ? (
+            <p className="text-amber-900">Dein Konto ist noch keiner Person zugeordnet. Das Büro trägt bei deiner Person die E-Mail deines FMIS-Kontos ein.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <input type="date" className={field} value={f.from_date} onChange={(e) => setF({ ...f, from_date: e.target.value, to_date: e.target.value > f.to_date ? e.target.value : f.to_date })} />
+                <span className="self-center">bis</span>
+                <input type="date" className={field} value={f.to_date} onChange={(e) => setF({ ...f, to_date: e.target.value })} />
+                <input className={`${field} min-w-0 flex-1`} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Bemerkung (optional)" />
+                <button
+                  type="button"
+                  className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40"
+                  disabled={f.to_date < f.from_date}
+                  onClick={() => run(saveRequest({ kind: 'wunsch', person_id: self.id, from_date: f.from_date, to_date: f.to_date, notes: f.notes.trim() || null }).then(() => setF({ ...f, notes: '' })))}
+                >
+                  Wunsch eintragen
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">Das Büro bestätigt. Bestätigte Wünsche erscheinen als Abwesenheit und werden beim Einteilen berücksichtigt. Tausch oder Abgabe eines Dienstes schlägst du unter «Meine Dienste» vor.</p>
+            </>
+          )}
+        </section>
+      )}
+      {err && <p className="rounded bg-red-50 px-2 py-1 text-sm text-red-800">{err}</p>}
+      <section className="space-y-1">
+        <h3 className="text-sm font-semibold text-gray-700">{canWrite ? 'Offene Anträge' : 'Meine offenen Anträge'}</h3>
+        <ul className="divide-y rounded-xl border bg-white text-sm">
+          {open.map((r) => {
+            const check = checkRequest(d, r)
+            return (
+              <li key={r.id} className="space-y-1.5 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1">{describeRequest(d, r)}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASS[r.status]}`}>{STATUS_LABEL[r.status]}</span>
+                </div>
+                {r.notes && <p className="text-xs text-gray-600">«{r.notes}»</p>}
+                {canWrite && check.notes.length > 0 && <p className="text-xs text-amber-800">⚠ {check.notes.join(' ')}</p>}
+                {canWrite ? (
+                  rejectId === r.id ? (
+                    <div className="flex flex-wrap gap-2">
+                      <input className={`${field} min-w-0 flex-1`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Grund (optional)" />
+                      <button type="button" className="rounded-lg bg-red-600 px-3 py-1.5 font-semibold text-white" onClick={() => { setRejectId(null); run(decideRequest(d, r, 'abgelehnt', reason)) }}>
+                        Ablehnen
+                      </button>
+                      <button type="button" className={btn} onClick={() => setRejectId(null)}>
+                        Abbrechen
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button type="button" className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40" disabled={!check.ok} onClick={() => run(decideRequest(d, r, 'bestaetigt'))}>
+                        Bestätigen
+                      </button>
+                      <button type="button" className={btn} onClick={() => { setRejectId(r.id); setReason('') }}>
+                        Ablehnen
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <button type="button" className={btn} onClick={() => run(withdrawRequest(r))}>
+                    Zurückziehen
+                  </button>
+                )}
+              </li>
+            )
+          })}
+          {open.length === 0 && <li className="px-3 py-2 text-gray-500">Keine offenen Anträge.</li>}
+        </ul>
+      </section>
+      {done.length > 0 && (
+        <section className="space-y-1">
+          <h3 className="text-sm font-semibold text-gray-700">Entschieden (30 Tage)</h3>
+          <ul className="divide-y rounded-xl border bg-white text-sm">
+            {done.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
+                <span className="min-w-0 flex-1">
+                  {describeRequest(d, r)}
+                  {r.decision_note ? ` · «${r.decision_note}»` : ''}
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASS[r.status]}`}>{STATUS_LABEL[r.status]}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   )
 }
@@ -626,6 +782,7 @@ function Settings({ d }: { d: DutyData }) {
 export default function Duty() {
   const canRead = useHasPermission('betrieb:dienste:read')
   const canWrite = useHasPermission('betrieb:dienste:write')
+  const canPropose = useHasPermission('betrieb:wuensche:write')
   const [tab, setTab] = useStored<Tab>('wiesenjournal_duty_tab', 'woche')
   const [monday, setMonday] = useState(() => mondayOf(todayIso()))
   const from = addDays(monday < todayIso() ? monday : todayIso(), -7)
@@ -635,6 +792,7 @@ export default function Duty() {
   const tabs: [Tab, string][] = [
     ['woche', 'Woche'],
     ['meine', 'Meine Dienste'],
+    ...(canWrite || canPropose ? ([['antraege', `Anträge${canWrite && data?.requests.some((r) => r.status === 'offen') ? ` (${data.requests.filter((r) => r.status === 'offen').length})` : ''}`]] as [Tab, string][]) : []),
     ['abwesend', 'Abwesend'],
     ...(canWrite ? ([['einstellungen', 'Einstellungen']] as [Tab, string][]) : []),
   ]
@@ -653,7 +811,9 @@ export default function Duty() {
       ) : tab === 'woche' ? (
         <Week d={data} monday={monday} setMonday={setMonday} canWrite={canWrite} refresh={refresh} />
       ) : tab === 'meine' ? (
-        <Mine d={data} canWrite={canWrite} refresh={refresh} />
+        <Mine d={data} canWrite={canWrite} canPropose={canPropose} refresh={refresh} />
+      ) : tab === 'antraege' ? (
+        <Requests d={data} canWrite={canWrite} canPropose={canPropose} refresh={refresh} />
       ) : tab === 'abwesend' ? (
         <Absences d={data} canWrite={canWrite} />
       ) : (

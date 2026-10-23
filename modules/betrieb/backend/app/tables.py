@@ -60,6 +60,11 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "shift_id", "date", "type_id", "from_person", "to_person", "kind", "changed_by",
         "changed_at", "notes", "updated_at", "deleted_at",
     ],
+    "duty_requests": [
+        "id", "kind", "person_id", "shift_id", "date", "type_id", "to_person", "other_shift_id",
+        "other_date", "other_type_id", "from_date", "to_date", "notes", "status", "decided_by", "decided_at", "decision_note",
+        "created_by", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at", "snapshot",
         "updated_at",
@@ -82,6 +87,9 @@ TABLE_AREA: dict[str, str] = {
     "duty_absences": "betrieb:dienste",
     "duty_shifts": "betrieb:dienste",
     "duty_changes": "betrieb:dienste",
+    # Wünsche/Vorschläge: eigener Bereich, damit Mitarbeitende nur dort schreiben
+    # (Prüfung der Zeilen: sync.py _guard)
+    "duty_requests": "betrieb:wuensche",
     "data_history": "betrieb:history",
 }
 

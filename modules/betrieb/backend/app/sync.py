@@ -17,6 +17,37 @@ pool = get_pool("betrieb")
 router = APIRouter()
 
 
+DIENSTE_WRITE = "betrieb:dienste:write"
+OFFENE_STATUS = ("offen", "zurueckgezogen")
+
+
+async def _guard(conn: Any, table: str, row: dict[str, Any], user: CurrentUser) -> str | None:
+    """Anträge (Wünsche, Abgabe, Tausch): Wer den Dienstplan nicht selbst führt
+    (kein betrieb:dienste:write), stellt nur Anträge für die EIGENE Person und
+    entscheidet nie darüber. Bestätigen und Ablehnen bleibt dem Büro."""
+    if table != "duty_requests" or DIENSTE_WRITE in user.permissions:
+        return None
+    own = await (
+        await conn.execute(
+            "select 1 from duty_people where id = %s and lower(email) = lower(%s) and deleted_at is null",
+            (row.get("person_id"), user.email),
+        )
+    ).fetchone()
+    if own is None:
+        return "Anträge nur für die eigene Person (E-Mail bei der Person eintragen lassen)"
+    if row.get("status") not in OFFENE_STATUS:
+        return "Bestätigen und Ablehnen macht das Büro"
+    if row.get("decided_by") or row.get("decided_at") or row.get("decision_note"):
+        return "Bestätigen und Ablehnen macht das Büro"
+    old = await (await conn.execute("select person_id, status from duty_requests where id = %s", (row.get("id"),))).fetchone()
+    if old is not None:
+        if str(old[0]) != str(row.get("person_id")):
+            return "Der Antrag gehört einer anderen Person"
+        if old[1] != "offen":
+            return "Der Antrag ist schon entschieden"
+    return None
+
+
 class PushRequest(BaseModel):
     tables: dict[str, list[dict[str, Any]]]
 
@@ -45,7 +76,7 @@ class HistoryResponse(BaseModel):
 @router.post("/sync/push", response_model=PushResponse)
 async def push(body: PushRequest, user: CurrentUser = Depends(require_auth), atomic: bool = False) -> PushResponse:
     # Zeilenweise (core/backend/fmis_core/sync_push.py): abgelehnte Zeilen blockieren den Rest nicht.
-    return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, TABLE_AREA, GEOMETRY_COLUMNS, atomic=atomic, frist_tables=FRIST_TABLES))
+    return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, TABLE_AREA, GEOMETRY_COLUMNS, atomic=atomic, frist_tables=FRIST_TABLES, guard=_guard))
 
 
 @router.get("/sync/pull", response_model=PullResponse)
