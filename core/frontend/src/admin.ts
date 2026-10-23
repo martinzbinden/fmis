@@ -51,10 +51,12 @@ export const ALL_PERMISSIONS = [
   'tiere:herden:read', 'tiere:herden:write',
   'tiere:history:read',
   'betrieb:dienste:read', 'betrieb:dienste:write',
+  'betrieb:wuensche:read', 'betrieb:wuensche:write',
   'betrieb:tracking:read', 'betrieb:tracking:write',
   'betrieb:history:read',
   'bau:projekte:read', 'bau:projekte:write',
   'bau:history:read',
+  'core:korrektur:write', // Einträge auch nach 10 Minuten noch ändern/stornieren
   'core:users:manage',
   'core:modules:manage',
 ] as const

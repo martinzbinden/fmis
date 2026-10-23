@@ -97,3 +97,10 @@ GEOMETRY_COLUMNS: dict[str, set[str]] = {
     "fertilization_entries": {"geometry"},
     "weed_observations": {"geometry"},
 }
+
+# Erfassungen mit Korrekturfrist (core/backend/fmis_core/sync_push.py): wer das Recht
+# «core:korrektur:write» nicht hat (Rolle Mitarbeit), ändert oder storniert sie nur
+# in den ersten 10 Minuten nach dem Eintrag. Bewusst nur einmalige Einträge, nicht
+# Stammdaten und nicht Zeilen, die im Alltag laufend nachgeführt werden (Tagesmeldung,
+# Wägesitzung, Spuren, Behandlungsjournal).
+FRIST_TABLES: set[str] = {"usage_entries", "fertilization_entries", "fertilization_shares", "weed_observations", "sowing_details"}

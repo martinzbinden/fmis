@@ -23,6 +23,9 @@ from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
 
 STAMP_COLUMN = "synced_at"
+# Wann die Zeile zum ERSTEN Mal beim Server ankam (nie überschrieben). Grundlage
+# der Korrekturfrist in sync_push.py: «innert 10 Minuten ändern/stornieren».
+FIRST_STAMP_COLUMN = "first_synced_at"
 
 
 async def ensure_sync_stamps(pool: AsyncConnectionPool, schema: str) -> None:
@@ -33,7 +36,16 @@ async def ensure_sync_stamps(pool: AsyncConnectionPool, schema: str) -> None:
                 create or replace function public.fmis_stamp_synced_at() returns trigger
                 language plpgsql as $$
                 begin
-                  new.synced_at := clock_timestamp();
+                  if tg_op = 'INSERT' then
+                    new.synced_at := clock_timestamp();
+                    new.first_synced_at := new.synced_at;
+                  elsif old.first_synced_at is null and new.first_synced_at is not null then
+                    -- Nachtrag der Spalte für bestehende Zeilen: kein neuer Sync-Stempel,
+                    -- sonst müssten alle Geräte einmal alles neu laden
+                    null;
+                  else
+                    new.synced_at := clock_timestamp();
+                  end if;
                   return new;
                 end $$
                 """
@@ -59,6 +71,8 @@ async def ensure_sync_stamps(pool: AsyncConnectionPool, schema: str) -> None:
                 # Bestehende Zeilen: bisheriger Zeitstempel (vor dem Trigger,
                 # sonst bekämen alle "jetzt")
                 await conn.execute(f"update {q} set {STAMP_COLUMN} = updated_at where {STAMP_COLUMN} is null")
+                await conn.execute(f"alter table {q} add column if not exists {FIRST_STAMP_COLUMN} timestamptz")
+                await conn.execute(f"update {q} set {FIRST_STAMP_COLUMN} = updated_at where {FIRST_STAMP_COLUMN} is null")
                 await conn.execute(f'create index if not exists "{table}_{STAMP_COLUMN}_idx" on {q} ({STAMP_COLUMN})')
                 await conn.execute(
                     f"create or replace trigger fmis_stamp_synced_at before insert or update on {q} "

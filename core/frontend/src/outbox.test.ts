@@ -1,6 +1,6 @@
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { clearSent, describeRejected, readOutbox } from './outbox'
+import { clearSent, describeRejected, readOutbox, revertRejected } from './outbox'
 
 const A = '11111111-1111-4111-8111-111111111111'
 const B = '22222222-2222-4222-8222-222222222222'
@@ -90,5 +90,37 @@ describe('describeRejected', () => {
     expect(describeRejected([{ table: 'tracks', id: A, reason: 'forbidden', detail: 'Keine Schreibrechte für tracks' }])).toContain(
       '1 Eintrag wurde vom Server abgelehnt — alle anderen Änderungen sind gesichert. tracks: fehlendes Schreibrecht',
     )
+  })
+})
+
+describe('revertRejected (Korrekturfrist)', () => {
+  const tables = { weighings: ['id', 'weight_kg', 'updated_at', 'deleted_at'] }
+  beforeAll(async () => {
+    await pg.exec('create table weighings (id uuid primary key, weight_kg numeric, updated_at timestamptz, deleted_at timestamptz)')
+  })
+
+  it('überschreibt die lokale Fassung mit dem Serverstand und leert den Outbox-Eintrag', async () => {
+    await pg.query("insert into weighings values ($1, 61, '2026-10-23T10:20:00Z', '2026-10-23T10:20:00Z')", [A])
+    await put('weighings', A, '2026-10-23T10:20:00Z')
+    const done = await revertRejected(
+      pg,
+      [{ table: 'weighings', id: A, reason: 'frist', detail: 'zu spät', current: { id: A, weight_kg: 58, updated_at: '2026-10-23T10:00:00Z', deleted_at: null } }],
+      tables,
+    )
+    expect(done).toHaveLength(1)
+    const { rows } = await pg.query<{ weight_kg: string; deleted_at: string | null }>('select weight_kg::text, deleted_at::text from weighings where id = $1', [A])
+    expect(rows[0]).toEqual({ weight_kg: '58', deleted_at: null })
+    expect(await ids()).toEqual([])
+  })
+
+  it('lässt andere Ablehnungen unberührt', async () => {
+    await put('weighings', B, '2026-10-23T10:20:00Z')
+    const done = await revertRejected(pg, [{ table: 'weighings', id: B, reason: 'forbidden', detail: 'x' }], tables)
+    expect(done).toEqual([])
+    expect(await ids()).toEqual([B])
+  })
+
+  it('meldet die Frist verständlich', () => {
+    expect(describeRejected([{ table: 'weighings', id: A, reason: 'frist', detail: 'Nach 10 Minuten nur das Büro' }])).toContain('zurückgenommen')
   })
 })

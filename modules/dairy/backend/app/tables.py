@@ -113,3 +113,10 @@ def table_area(key: str) -> dict[str, str]:
         "pedigree_performance": f"{key}:animals",
         "data_history": f"{key}:history",
     }
+
+# Erfassungen mit Korrekturfrist (core/backend/fmis_core/sync_push.py): wer das Recht
+# «core:korrektur:write» nicht hat (Rolle Mitarbeit), ändert oder storniert sie nur
+# in den ersten 10 Minuten nach dem Eintrag. Bewusst nur einmalige Einträge, nicht
+# Stammdaten und nicht Zeilen, die im Alltag laufend nachgeführt werden (Tagesmeldung,
+# Wägesitzung, Spuren, Behandlungsjournal).
+FRIST_TABLES: set[str] = {"matings", "births", "birth_offspring"}

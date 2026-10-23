@@ -7,7 +7,7 @@ from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.sync_push import push_rows
 from core.backend.fmis_core.sync_stamps import pull_cursor
-from .tables import SYNC_TABLES, table_area
+from .tables import FRIST_TABLES, SYNC_TABLES, table_area
 
 
 class PushRequest(BaseModel):
@@ -19,6 +19,8 @@ class RejectedRow(BaseModel):
     id: str
     reason: str  # forbidden | invalid | unknown_table
     detail: str
+    # Stand des Servers, wenn die Änderung wegen der Korrekturfrist abgelehnt wurde
+    current: dict[str, Any] | None = None
 
 
 class PushResponse(BaseModel):
@@ -54,7 +56,7 @@ def build_router(key: str) -> APIRouter:
     @router.post("/sync/push", response_model=PushResponse)
     async def push(body: PushRequest, user: CurrentUser = Depends(require_auth), atomic: bool = False) -> PushResponse:
         # Zeilenweise (core/backend/fmis_core/sync_push.py): abgelehnte Zeilen blockieren den Rest nicht.
-        return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, area.get, atomic=atomic))
+        return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, area.get, atomic=atomic, frist_tables=FRIST_TABLES))
 
     @router.get("/sync/pull", response_model=PullResponse)
     async def pull(since: str | None = None, user: CurrentUser = Depends(require_auth)) -> PullResponse:

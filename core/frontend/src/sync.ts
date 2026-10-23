@@ -1,6 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getToken, logout } from './auth'
-import { clearSent, describeRejected, readOutbox, type RejectedRow } from './outbox'
+import { clearSent, describeRejected, readOutbox, revertRejected, type RejectedRow } from './outbox'
 
 export type SyncStatus = 'offline' | 'synced' | 'syncing' | 'error'
 
@@ -196,6 +196,8 @@ export function createSyncClient(
     // Nur genau die gesendeten Stände quittieren (siehe outbox.ts)
     // (Zeilen unbekannter Tabellen wurden nicht gesendet und bleiben stehen.)
     await clearSent(pg, outbox.filter((e) => syncTables[e.table]), rejected)
+    // Nach Ablauf der Korrekturfrist abgelehnt: Änderung auf dem Gerät zurücknehmen
+    if (await revertRejected(pg, rejected, syncTables).then((r) => r.length > 0)) notifyDataChanged()
     return rejected
   }
 

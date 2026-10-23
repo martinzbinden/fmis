@@ -10,13 +10,33 @@ Jetzt: akzeptierte Zeilen werden committet, abgelehnte kommen mit Grund in
 `rejected` zurück. Der Client behält diese in der Outbox und zeigt sie an.
 """
 
-from typing import Any, Iterable, Mapping
+from typing import Any, Awaitable, Callable, Iterable, Mapping
 
 import psycopg
 from fastapi import HTTPException
 from psycopg_pool import AsyncConnectionPool
 
 from .auth import CurrentUser
+
+
+# Recht «nachträglich ändern/stornieren»: wer es nicht hat (Mitarbeit), darf
+# einen Eintrag der FRIST_TABLES nur während KORREKTUR_FRIST_MIN Minuten nach
+# seinem ersten Eintreffen auf dem Server ändern oder stornieren (Storno =
+# deleted_at setzen, also ebenfalls eine Änderung).
+KORREKTUR_PERMISSION = "core:korrektur:write"
+KORREKTUR_FRIST_MIN = 10
+
+# Prüfung einer einzelnen Zeile durch das Modul (z.B. Anträge im Dienstplan):
+# gibt einen Ablehnungsgrund zurück oder None. Läuft vor dem Schreiben.
+RowGuard = Callable[[Any, str, Mapping[str, Any], CurrentUser], Awaitable[str | None]]
+
+
+class _Veto(Exception):
+    def __init__(self, reason: str, detail: str, current: dict[str, Any] | None = None) -> None:
+        super().__init__(detail)
+        self.reason = reason
+        self.detail = detail
+        self.current = current
 
 
 def _reason(exc: psycopg.Error) -> str:
@@ -37,19 +57,28 @@ async def push_rows(
     area_of: Mapping[str, str] | Any,
     geometry_columns: Mapping[str, set[str]] | None = None,
     atomic: bool = False,
+    frist_tables: Iterable[str] = (),
+    guard: RowGuard | None = None,
 ) -> dict[str, Any]:
     """Schreibt `tables` zeilenweise. `area_of` ordnet jede Tabelle ihrem
     Rechtebereich zu (dict oder Funktion `table -> area | None`).
     `atomic=True` (Import, ?atomic=1): wird auch nur EINE Zeile abgelehnt, wird nichts
     geschrieben und mit 422 geantwortet — ein Import soll nie halb übernommen sein.
-    Rückgabe: {"accepted": {tabelle: anzahl}, "rejected": [{table, id, reason, detail}]}."""
+    `frist_tables`: Erfassungs-Tabellen mit Korrekturfrist (siehe KORREKTUR_PERMISSION).
+    `guard`: Zeilenprüfung des Moduls (siehe RowGuard).
+    Rückgabe: {"accepted": {tabelle: anzahl}, "rejected": [{table, id, reason, detail, current?}]}."""
     geometry_columns = geometry_columns or {}
     lookup = area_of if callable(area_of) else area_of.get
     accepted: dict[str, int] = {}
     rejected: list[dict[str, Any]] = []
 
-    def reject(table: str, row: Mapping[str, Any], reason: str, detail: str) -> None:
-        rejected.append({"table": table, "id": str(row.get("id")), "reason": reason, "detail": detail})
+    frist = set(frist_tables) if KORREKTUR_PERMISSION not in user.permissions else set()
+
+    def reject(table: str, row: Mapping[str, Any], reason: str, detail: str, current: dict[str, Any] | None = None) -> None:
+        entry: dict[str, Any] = {"table": table, "id": str(row.get("id")), "reason": reason, "detail": detail}
+        if current is not None:
+            entry["current"] = current
+        rejected.append(entry)
 
     async with pool.connection() as conn:
         # Äussere Transaktion eröffnen: `conn.transaction()` legt dann je
@@ -101,8 +130,16 @@ async def push_rows(
                 try:
                     # Savepoint: scheitert die Zeile, bleiben alle anderen gültig
                     async with conn.transaction():
+                        if table in frist:
+                            await _check_frist(conn, table, columns, geometry_cols, row)
+                        if guard is not None:
+                            why = await guard(conn, table, row, user)
+                            if why:
+                                raise _Veto("forbidden", why)
                         await conn.execute(sql, params)
                     count += 1
+                except _Veto as veto:
+                    reject(table, row, veto.reason, veto.detail, veto.current)
                 except psycopg.Error as exc:
                     reject(table, row, "invalid", _reason(exc))
             accepted[table] = count
@@ -111,3 +148,32 @@ async def push_rows(
             raise HTTPException(status_code=422, detail={"message": "Zeilen abgelehnt", "rejected": rejected[:50]})
         await conn.commit()
     return {"accepted": accepted, "rejected": rejected}
+
+
+async def _check_frist(conn: Any, table: str, columns: list[str], geometry_cols: set[str], row: Mapping[str, Any]) -> None:
+    """Wirft _Veto, wenn die Zeile schon länger als die Korrekturfrist auf dem
+    Server liegt und diese Fassung sie tatsächlich ändern würde (eine
+    wiederholte Zustellung desselben Stands bleibt wirkungslos und wird nicht
+    beanstandet). `current` ist der Stand des Servers, damit das Gerät seine
+    Änderung zurücknehmen kann."""
+    found = await (
+        await conn.execute(
+            f"""
+            select first_synced_at < clock_timestamp() - make_interval(mins => %s)
+                   and updated_at < %s::timestamptz
+            from "{table}" where id = %s
+            """,
+            (KORREKTUR_FRIST_MIN, row.get("updated_at"), row.get("id")),
+        )
+    ).fetchone()
+    if not found or not found[0]:
+        return
+    col_list = ", ".join(
+        f'ST_AsGeoJSON("{c}") as "{c}"' if c in geometry_cols else f'"{c}"' for c in columns
+    )
+    current = await (await conn.execute(f'select {col_list} from "{table}" where id = %s', (row.get("id"),))).fetchone()
+    raise _Veto(
+        "frist",
+        f"Nach {KORREKTUR_FRIST_MIN} Minuten kann nur noch das Büro ändern oder stornieren",
+        {c: (v.isoformat() if hasattr(v, "isoformat") else v) for c, v in zip(columns, current)} if current else None,
+    )

@@ -7,7 +7,7 @@ from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.sync_push import push_rows
 from core.backend.fmis_core.sync_stamps import pull_cursor
-from .tables import GEOMETRY_COLUMNS, SYNC_TABLES, TABLE_AREA
+from .tables import FRIST_TABLES, GEOMETRY_COLUMNS, SYNC_TABLES, TABLE_AREA
 
 # Eigener Pool mit search_path='fields,public' (siehe fmis_core/db.py) — die
 # untenstehenden Queries bleiben dadurch unqualifiziert (z.B.
@@ -27,6 +27,8 @@ class RejectedRow(BaseModel):
     id: str
     reason: str  # forbidden | invalid | unknown_table
     detail: str
+    # Stand des Servers, wenn die Änderung wegen der Korrekturfrist abgelehnt wurde
+    current: dict[str, Any] | None = None
 
 
 class PushResponse(BaseModel):
@@ -44,7 +46,7 @@ class HistoryResponse(BaseModel):
 @router.post("/sync/push", response_model=PushResponse)
 async def push(body: PushRequest, user: CurrentUser = Depends(require_auth), atomic: bool = False) -> PushResponse:
     # Zeilenweise (core/backend/fmis_core/sync_push.py): abgelehnte Zeilen blockieren den Rest nicht.
-    return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, TABLE_AREA, GEOMETRY_COLUMNS, atomic=atomic))
+    return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, TABLE_AREA, GEOMETRY_COLUMNS, atomic=atomic, frist_tables=FRIST_TABLES))
 
 
 @router.get("/sync/pull", response_model=PullResponse)
