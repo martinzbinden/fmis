@@ -338,6 +338,7 @@ export async function applyTreatments(db: PGlite, rows: CheckedRow[]): Promise<n
           antibiogram: v.antibiogram,
           case_id: stableUuid(v.case_key),
           import_key: v.import_key,
+          corrects_id: null,
         },
         { action: 'insert' },
       )

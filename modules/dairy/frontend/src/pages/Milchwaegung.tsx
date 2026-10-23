@@ -12,6 +12,7 @@ import { fmtDate, fmtDateTime, isoDate } from '../lib/format'
 import { speciesTerms } from '../lib/species'
 import type { Animal, MilkingBank, MilkingSlot } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
+import { notSupersededSql } from '../lib/journal'
 import { MILK_UNTIL_SQL } from '../lib/treatments'
 import NumberInput from '@fmis/core/NumberInput'
 
@@ -93,7 +94,7 @@ async function loadBanks(pg: PGlite, date: string): Promise<BankWithSlots[]> {
   >(
     `select s.*, a.id as a_id, a.name as a_name, a.lauf_nr as a_lauf_nr, a.ear_tag as a_ear_tag,
        (select max(${MILK_UNTIL_SQL}) from animal_journal j
-         where j.animal_id = s.animal_id and j.deleted_at is null) as withdrawal_until
+         where j.animal_id = s.animal_id and j.deleted_at is null and ${notSupersededSql('j')}) as withdrawal_until
      from milking_slots s left join animals a on a.id = s.animal_id
      where s.bank_id = any($1) and s.deleted_at is null order by s.position`,
     [banks.map((b) => b.id)],

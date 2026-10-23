@@ -98,8 +98,10 @@ const PHASE_CHIP: Record<ImportStatus['phase'], string> = {
  * stehen; die Importe laufen nacheinander (Warteschlange), mit Fortschritt. */
 export default function Upload({ modules }: { modules: ModuleDescriptor[] }) {
   const user = useAuthUser()
-  const importers = modules.filter((m) => m.importer && user?.permissions.includes(m.importer.permission))
-  const withoutRight = modules.filter((m) => m.importer && user && !user.permissions.includes(m.importer.permission))
+  // Importe brauchen zusätzlich das Recht «Daten importieren» (Mitarbeit hat es nicht; der Server verlangt es ebenfalls)
+  const mayImport = !!user?.permissions.includes('core:import:write')
+  const importers = modules.filter((m) => m.importer && mayImport && user?.permissions.includes(m.importer.permission))
+  const withoutRight = modules.filter((m) => m.importer && user && (!mayImport || !user.permissions.includes(m.importer.permission)))
   const [dragging, setDragging] = useState(false)
   const [batches, setBatches] = useState<Batch[]>([])
   const [runs, setRuns] = useState<Record<string, Run>>({})
@@ -189,6 +191,15 @@ export default function Upload({ modules }: { modules: ModuleDescriptor[] }) {
     for (const r of Object.values(runs)) m.set(r.batchId, [...(m.get(r.batchId) ?? []), r])
     return m
   }, [runs])
+
+  if (user && !mayImport) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-2 p-4 pb-24">
+        <h1 className="text-xl font-bold text-gray-800">Daten importieren</h1>
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Importe sind dem Büro vorbehalten. Mit deiner Rolle kannst du keine Daten importieren.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
@@ -391,7 +402,7 @@ export default function Upload({ modules }: { modules: ModuleDescriptor[] }) {
           ))}
         </ul>
         {withoutRight.length > 0 && (
-          <p className="mt-2 text-xs text-gray-500">Ohne Schreibrecht, darum nicht berücksichtigt: {withoutRight.map((m) => m.title).join(', ')}.</p>
+          <p className="mt-2 text-xs text-gray-500">Ohne Import- oder Schreibrecht, darum nicht berücksichtigt: {withoutRight.map((m) => m.title).join(', ')}.</p>
         )}
       </details>
     </div>

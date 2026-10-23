@@ -90,6 +90,8 @@ export interface AnimalJournalEntry {
   /** Präparate desselben Falls */
   case_id: string | null
   import_key: string | null
+  /** schema/0014: dieser Eintrag korrigiert den genannten (der bleibt unverändert stehen) */
+  corrects_id: string | null
 }
 
 /** Favorit: typische Behandlung mit einem oder mehreren Präparaten. */

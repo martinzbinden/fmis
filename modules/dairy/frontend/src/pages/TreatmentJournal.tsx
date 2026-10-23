@@ -3,11 +3,15 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { read, utils } from 'xlsx'
 import { useDb } from '@fmis/core/DbContext'
+import { useHasPermission } from '@fmis/core/AuthContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import { useQuery } from '../hooks/useQuery'
 import { softDeleteRow } from '../db/write'
 import { inTransaction } from '../db/transaction'
 import TreatmentItems, { emptyItem } from '../components/TreatmentItems'
+import TreatmentForm from '../components/TreatmentForm'
+import JournalForm from '../components/JournalForm'
+import { canChangeEntry, categoryIcon, supersededBy } from '../lib/journal'
 import { addDays, fmtDate, isoDate, localTodayIso } from '../lib/format'
 import { deleteTemplate, importTreatments, loadTreatmentContext, saveTemplate, type TreatmentContext } from '../lib/treatmentData'
 import { DEFAULT_WITHDRAWAL_FACTOR, parseCownect, parseItems, suggestTemplates, withdrawalUntil, type TemplateSuggestion } from '../lib/treatments'
@@ -22,6 +26,8 @@ interface Case {
   earTag: string
   date: string
   time: string | null
+  /** jüngster Eintrag des Falls */
+  lastDate: string
 }
 
 const n = (v: unknown) => (v == null ? null : Number(v))
@@ -39,7 +45,8 @@ async function loadJournal(db: Parameters<typeof loadTreatmentContext>[0]) {
     db.query<Row>(
       `select j.*, a.name as a_name, a.lauf_nr as a_lauf_nr, a.ear_tag as a_ear_tag
        from animal_journal j left join animals a on a.id = j.animal_id
-       where j.deleted_at is null and (j.category = 'behandlung' or j.source = 'import')
+       where j.deleted_at is null and (j.category = 'behandlung' or j.source = 'import'
+         or j.case_id in (select case_id from animal_journal where category = 'behandlung' and case_id is not null and deleted_at is null))
        order by j.entry_date desc, j.treatment_time desc nulls last`,
     ),
     loadTreatmentContext(db),
@@ -61,30 +68,39 @@ async function loadJournal(db: Parameters<typeof loadTreatmentContext>[0]) {
 function toCases(rows: Row[]): Case[] {
   const map = new Map<string, Case>()
   for (const r of rows) {
-    const key = r.case_id ?? r.id
+    // Fall = Tier + case_id: Folgebehandlungen und Verlauf gehören dazu
+    const key = r.case_id ? `${r.animal_id ?? r.ear_tag ?? ''}|${r.case_id}` : r.id
     let c = map.get(key)
     if (!c) {
       const tag = r.a_ear_tag ?? r.ear_tag ?? ''
       const name = r.a_name ?? r.animal_name
-      c = { key, rows: [], animalId: r.animal_id, label: [r.a_lauf_nr, name].filter(Boolean).join(' ') || shortEarTag(tag), earTag: tag, date: r.entry_date, time: r.treatment_time }
+      c = { key, rows: [], animalId: r.animal_id, label: [r.a_lauf_nr, name].filter(Boolean).join(' ') || shortEarTag(tag), earTag: tag, date: r.entry_date, time: r.treatment_time, lastDate: r.entry_date }
       map.set(key, c)
     }
     c.rows.push(r)
   }
-  return [...map.values()]
+  const byTime = (a: Row, b: Row) => a.entry_date.localeCompare(b.entry_date) || (a.treatment_time ?? '').localeCompare(b.treatment_time ?? '')
+  for (const c of map.values()) {
+    c.rows.sort(byTime)
+    c.date = c.rows[0].entry_date
+    c.time = c.rows[0].treatment_time
+    c.lastDate = c.rows[c.rows.length - 1].entry_date
+  }
+  return [...map.values()].sort((a, b) => b.lastDate.localeCompare(a.lastDate) || b.date.localeCompare(a.date))
 }
 
 const CSV_HEADER = [
   'Datum 1. Anwendung', 'Uhrzeit', 'Letzte Anwendung', 'Tier', 'Ohrmarke', 'Indikation / Befund', 'Organ / Position', 'Präparat (Handelsname)', 'Menge',
   'Anzahl Anwendungen', 'Absetzfrist Milch (Tage)', 'Absetzfrist Fleisch (Tage)', 'Faktor', 'Freigabe Milch', 'Freigabe Fleisch', 'Behandelt durch',
-  'Abgabestelle', 'Bemerkung',
+  'Abgabestelle', 'Bemerkung', 'Status',
 ]
-function csvLine(c: Case, r: Row): string[] {
+function csvLine(c: Case, r: Row, correctedBy: Row | undefined): string[] {
   return [
     fmtDate(r.entry_date), r.treatment_time ?? '', fmtDate(r.last_date ?? r.entry_date), c.label, c.earTag, r.diagnosis ?? '', r.body_system ?? '',
     r.medication ?? '', r.dose ?? '', String(r.applications ?? ''), String(r.withdrawal_milk_days ?? ''), String(r.withdrawal_meat_days ?? ''),
     String(r.withdrawal_factor ?? 1), fmtDate(release(r, 'milk')), fmtDate(release(r, 'meat')), r.administered_by ?? '', r.supplier ?? '',
     r.text !== [r.diagnosis, [r.medication, r.dose].filter(Boolean).join(' ')].filter(Boolean).join(' – ') ? r.text : '',
+    correctedBy ? `korrigiert am ${fmtDate(correctedBy.entry_date)}` : '',
   ]
 }
 
@@ -102,7 +118,7 @@ const PRINT_CSS = `
   #bj-print tr { break-inside: avoid; }
 }`
 
-function PrintTable({ cases, period }: { cases: Case[]; period: string }) {
+function PrintTable({ cases, period, superseded }: { cases: Case[]; period: string; superseded: Map<string, Row> }) {
   return createPortal(
     <div id="bj-print">
       <h1>Behandlungsjournal Tierarzneimittel</h1>
@@ -112,7 +128,7 @@ function PrintTable({ cases, period }: { cases: Case[]; period: string }) {
       <table>
         <thead>
           <tr>
-            {['1. Anw.', 'letzte', 'Tier', 'Ohrmarke', 'Indikation', 'Präparat', 'Menge', 'Anw.', 'Frist M/F', 'Freigabe Milch', 'Freigabe Fleisch', 'behandelt durch', 'Abgabestelle'].map((h) => (
+            {['1. Anw.', 'letzte', 'Tier', 'Ohrmarke', 'Indikation', 'Präparat', 'Menge', 'Anw.', 'Frist M/F', 'Freigabe Milch', 'Freigabe Fleisch', 'behandelt durch', 'Abgabestelle', 'Status'].map((h) => (
               <th key={h}>{h}</th>
             ))}
           </tr>
@@ -137,6 +153,7 @@ function PrintTable({ cases, period }: { cases: Case[]; period: string }) {
                 <td>{fmtDate(release(r, 'meat'))}</td>
                 <td>{r.administered_by}</td>
                 <td>{r.supplier}</td>
+                <td>{superseded.has(r.id) ? `korrigiert am ${fmtDate(superseded.get(r.id)!.entry_date)}` : r.corrects_id ? 'Korrektur' : ''}</td>
               </tr>
             )),
           )}
@@ -237,9 +254,15 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmCase, setConfirmCase] = useState<string | null>(null)
+  const canImport = useHasPermission('core:import:write')
+  const canCorrectLater = useHasPermission('core:korrektur:write')
+  // Folgebehandlung / Korrektur: Formular im Fall
+  const [formFor, setFormFor] = useState<{ key: string; kind: 'followup' } | { key: string; kind: 'correct'; row: Row } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const cases = useMemo(() => toCases(data?.journal ?? []), [data])
+  // korrigierte Einträge bleiben stehen, zählen aber nicht mehr (Absetzfristen, Favoriten-Vorschläge)
+  const superseded = useMemo(() => supersededBy(data?.journal ?? []), [data])
   const years = [...new Set(cases.map((c) => c.date.slice(0, 4)))].sort().reverse()
   const from = period === '12m' ? addDays(today, -365) : period === 'alle' ? '0000' : `${period}-01-01`
   const to = period === '12m' || period === 'alle' ? '9999' : `${period}-12-31`
@@ -254,6 +277,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
   const open = new Map<string, { label: string; animalId: string | null; milk: string | null; meat: string | null }>()
   for (const c of cases)
     for (const r of c.rows) {
+      if (superseded.has(r.id)) continue
       const milk = withdrawalUntil(r, 'milk')
       const meat = withdrawalUntil(r, 'meat')
       if ((!milk || milk < today) && (!meat || meat < today)) continue
@@ -267,8 +291,8 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
   const suggestions: TemplateSuggestion[] = useMemo(() => {
     if (!data) return []
     const have = new Set(data.ctx.templates.map((t) => t.title.toLowerCase()))
-    return suggestTemplates(data.journal).filter((s) => !have.has(s.title.toLowerCase()))
-  }, [data])
+    return suggestTemplates(data.journal.filter((j) => !superseded.has(j.id))).filter((s) => !have.has(s.title.toLowerCase()))
+  }, [data, superseded])
 
   async function onImport(file: File) {
     setBusy(true)
@@ -291,7 +315,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
 
   function exportCsv() {
     const esc = (v: string) => (/[;"\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-    const lines = shown.flatMap((c) => c.rows.map((r) => csvLine(c, r).map(esc).join(';')))
+    const lines = shown.flatMap((c) => c.rows.map((r) => csvLine(c, r, superseded.get(r.id)).map(esc).join(';')))
     const blob = new Blob(['﻿' + [CSV_HEADER.join(';'), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
@@ -299,6 +323,9 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
     link.click()
     URL.revokeObjectURL(link.href)
   }
+
+  /** Fall löschen nur, solange jeder Eintrag noch geändert werden darf (Frist, ausser mit Recht «Korrektur») */
+  const canDeleteCase = (c: Case) => c.rows.every((r) => canChangeEntry(r, canCorrectLater)) && c.rows.some((r) => r.source === 'manual')
 
   async function deleteCase(c: Case) {
     await inTransaction(db, async (tx) => {
@@ -311,7 +338,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
       <style>{PRINT_CSS}</style>
-      <PrintTable cases={shown} period={periodLabel} />
+      <PrintTable cases={shown} period={periodLabel} superseded={superseded} />
       <div>
         <Link to="../erfassen" relative="path" className="text-sm text-brand-700">
           ← Erfassen
@@ -332,9 +359,11 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
         <button type="button" className={btn} onClick={exportCsv}>
           CSV
         </button>
-        <button type="button" className={btn} disabled={busy} onClick={() => fileRef.current?.click()}>
-          {busy ? 'Importiere…' : 'cownect-Liste importieren'}
-        </button>
+        {canImport && (
+          <button type="button" className={btn} disabled={busy} onClick={() => fileRef.current?.click()}>
+            {busy ? 'Importiere…' : 'cownect-Liste importieren'}
+          </button>
+        )}
         <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => e.target.files?.[0] && void onImport(e.target.files[0])} />
       </div>
       {importMsg && <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">{importMsg}</p>}
@@ -377,13 +406,16 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
       <ul className="space-y-2">
         {shown.map((c) => {
           const first = c.rows[0]
+          const multi = c.rows.length > 1
+          const form = formFor?.key === c.key ? formFor : null
           return (
             <li key={c.key} className="rounded-lg bg-white p-3 text-sm shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-xs text-gray-500">
                     {fmtDate(c.date)}
-                    {c.time ? ` ${c.time}` : ''} ·{' '}
+                    {c.time ? ` ${c.time}` : ''}
+                    {c.lastDate !== c.date ? ` – ${fmtDate(c.lastDate)}` : ''} ·{' '}
                     {c.animalId ? (
                       <Link to={`../kuehe/${c.animalId}`} relative="path" className="font-semibold text-brand-700">
                         {c.label}
@@ -397,7 +429,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                   <div className="font-medium text-gray-800">{first.diagnosis ?? first.text}</div>
                   {first.body_system && <div className="text-xs text-gray-500">{first.body_system}</div>}
                 </div>
-                {first.source === 'manual' &&
+                {canDeleteCase(c) &&
                   (confirmCase === c.key ? (
                     <button type="button" onClick={() => void deleteCase(c)} className="shrink-0 rounded bg-red-600 px-2 py-1 text-xs text-white">
                       Wirklich löschen?
@@ -409,17 +441,25 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                   ))}
               </div>
               <ul className="mt-1 space-y-1">
-                {c.rows
-                  .filter((r) => r.medication)
-                  .map((r) => {
-                    const milk = release(r, 'milk')
-                    const meat = release(r, 'meat')
-                    return (
-                      <li key={r.id} className="border-l-2 border-brand-200 pl-2">
-                        <div className="text-gray-800">
-                          {r.medication}
-                          {r.critical_antibiotic && <span className="ml-1 rounded bg-red-100 px-1 text-xs text-red-800">kritisches Antibiotikum</span>}
-                        </div>
+                {c.rows.map((r) => {
+                  const correctedBy = superseded.get(r.id)
+                  const milk = correctedBy ? null : release(r, 'milk')
+                  const meat = correctedBy ? null : release(r, 'meat')
+                  return (
+                    <li key={r.id} className={`border-l-2 pl-2 ${correctedBy ? 'border-gray-300 opacity-60' : 'border-brand-200'}`}>
+                      <div className={`text-gray-800 ${correctedBy ? 'line-through' : ''}`}>
+                        {multi && (
+                          <span className="mr-1 text-xs text-gray-500 no-underline">
+                            {fmtDate(r.entry_date)}
+                            {r.treatment_time ? ` ${r.treatment_time}` : ''}
+                          </span>
+                        )}
+                        {r.medication ?? `${categoryIcon(r.category)} ${r.text}`}
+                        {r.critical_antibiotic && <span className="ml-1 rounded bg-red-100 px-1 text-xs text-red-800">kritisches Antibiotikum</span>}
+                        {correctedBy && <span className="ml-1 rounded bg-gray-200 px-1 text-xs text-gray-700 no-underline">korrigiert am {fmtDate(correctedBy.entry_date)}</span>}
+                        {r.corrects_id && <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-900">Korrektur</span>}
+                      </div>
+                      {r.medication && (
                         <div className="text-xs text-gray-600">
                           {[
                             r.dose,
@@ -430,21 +470,50 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                             .filter(Boolean)
                             .join(' · ')}
                         </div>
-                        {(milk || meat) && (
-                          <div className={`text-xs ${(milk && milk > today) || (meat && meat > today) ? 'font-medium text-red-700' : 'text-gray-500'}`}>
-                            Freigabe {milk ? `Milch ${fmtDate(milk)}` : ''}
-                            {milk && meat ? ', ' : ''}
-                            {meat ? `Fleisch ${fmtDate(meat)}` : ''}
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })}
+                      )}
+                      {(milk || meat) && (
+                        <div className={`text-xs ${(milk && milk > today) || (meat && meat > today) ? 'font-medium text-red-700' : 'text-gray-500'}`}>
+                          Freigabe {milk ? `Milch ${fmtDate(milk)}` : ''}
+                          {milk && meat ? ', ' : ''}
+                          {meat ? `Fleisch ${fmtDate(meat)}` : ''}
+                        </div>
+                      )}
+                      {r.source === 'manual' && !correctedBy && r.animal_id && (
+                        <button type="button" onClick={() => setFormFor({ key: c.key, kind: 'correct', row: r })} className="mt-0.5 text-xs text-brand-700 underline">
+                          Korrigieren
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
               <div className="mt-1 text-xs text-gray-500">
                 {[first.administered_by && `behandelt durch ${first.administered_by}`, first.supplier && `Abgabe ${first.supplier}`].filter(Boolean).join(' · ')}
                 {first.text && first.text !== first.diagnosis && !first.text.startsWith(first.diagnosis ?? '\u0000') ? ` · ${first.text}` : ''}
               </div>
+              {first.animal_id && first.case_id && !form && (
+                <button
+                  type="button"
+                  onClick={() => setFormFor({ key: c.key, kind: 'followup' })}
+                  className="mt-2 rounded-lg border border-brand-300 px-3 py-1 text-xs font-medium text-brand-700"
+                >
+                  ＋ Folgebehandlung / Verlauf
+                </button>
+              )}
+              {form && first.animal_id && (
+                <div className="mt-2 rounded-lg border border-gray-200 p-3">
+                  {form.kind === 'correct' && form.row.category !== 'behandlung' ? (
+                    <JournalForm key={form.row.id} animalIds={[first.animal_id]} corrects={form.row} onSaved={() => setFormFor(null)} />
+                  ) : form.kind === 'correct' ? (
+                    <TreatmentForm key={form.row.id} animalIds={[first.animal_id]} corrects={form.row} onSaved={() => setFormFor(null)} />
+                  ) : (
+                    <JournalForm key="followup" animalIds={[first.animal_id]} caseId={first.case_id!} defaultCategory="behandlung" onSaved={() => setFormFor(null)} />
+                  )}
+                  <button type="button" onClick={() => setFormFor(null)} className="mt-2 w-full text-sm text-gray-500">
+                    Abbrechen
+                  </button>
+                </div>
+              )}
             </li>
           )
         })}

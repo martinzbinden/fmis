@@ -32,7 +32,7 @@ export const SYNC_TABLES = {
     'withdrawal_meat_days', 'administered_by',
     'ear_tag', 'animal_name', 'treatment_time', 'last_date', 'applications', 'supplier',
     'body_system', 'withdrawal_factor', 'release_milk_date', 'release_meat_date',
-    'critical_antibiotic', 'antibiogram', 'case_id', 'import_key',
+    'critical_antibiotic', 'antibiogram', 'case_id', 'import_key', 'corrects_id',
   ],
   treatment_templates: [
     'id', 'title', 'body_system', 'diagnosis', 'items', 'supplier', 'notes', 'sort_order',

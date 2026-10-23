@@ -7,7 +7,15 @@ from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.sync_push import push_rows
 from core.backend.fmis_core.sync_stamps import pull_cursor
-from .tables import FRIST_TABLES, SYNC_TABLES, table_area
+from core.backend.fmis_core.sync_push import IMPORT_PERMISSION
+from .tables import FRIST_FILTERS, FRIST_TABLES, SYNC_TABLES, table_area
+
+
+async def _guard(conn: Any, table: str, row: dict[str, Any], user: CurrentUser) -> str | None:
+    """Importierte Journal-Einträge (cownect, Einfügen) sind dem Büro vorbehalten."""
+    if table == "animal_journal" and row.get("source") == "import" and IMPORT_PERMISSION not in user.permissions:
+        return "Importe sind dem Büro vorbehalten"
+    return None
 
 
 class PushRequest(BaseModel):
@@ -56,7 +64,7 @@ def build_router(key: str) -> APIRouter:
     @router.post("/sync/push", response_model=PushResponse)
     async def push(body: PushRequest, user: CurrentUser = Depends(require_auth), atomic: bool = False) -> PushResponse:
         # Zeilenweise (core/backend/fmis_core/sync_push.py): abgelehnte Zeilen blockieren den Rest nicht.
-        return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, area.get, atomic=atomic, frist_tables=FRIST_TABLES))
+        return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, area.get, atomic=atomic, frist_tables=FRIST_TABLES, frist_filters=FRIST_FILTERS, guard=_guard))
 
     @router.get("/sync/pull", response_model=PullResponse)
     async def pull(since: str | None = None, user: CurrentUser = Depends(require_auth)) -> PullResponse:

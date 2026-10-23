@@ -29,6 +29,7 @@ export default function Dashboard({
   modules: ModuleDescriptor[]
   onLoggedOut: () => void
 }) {
+  const canImport = useHasPermission('core:import:write')
   const tiles = (section: 'top' | 'maschinen') =>
     modules.flatMap((m) => (m.dashboardTiles ?? []).filter((t) => t.section === section).map(({ Tile }, i) => <Tile key={`${m.key}-${section}-${i}`} />))
 
@@ -38,9 +39,11 @@ export default function Dashboard({
         <span className="text-lg font-bold text-brand-800">FMIS</span>
         <div className="flex items-center gap-1">
           {modules.flatMap((m) => (m.quickLinks ?? []).map((l) => <QuickLinkIcon key={`${m.key}-${l.to}`} link={l} />))}
-          <Link to="/import" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" title="Daten importieren" aria-label="Daten importieren">
-            📥
-          </Link>
+          {canImport && (
+            <Link to="/import" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" title="Daten importieren" aria-label="Daten importieren">
+              📥
+            </Link>
+          )}
           <AdminMenu />
           <button
             type="button"
@@ -89,7 +92,7 @@ export default function Dashboard({
             })}
           </>
         )}
-        {modules.some((m) => m.importer) && (
+        {canImport && modules.some((m) => m.importer) && (
           <Link to="/import" className="mt-4 block rounded-xl bg-white p-4 text-center text-sm shadow-sm active:bg-gray-100">
             <span className="font-semibold text-brand-700">📥 Daten importieren</span>
             <span className="block text-xs text-gray-500">Herdebuch, TVD, Leistungsausweise, GELAN-Raumdaten … — Zuordnung automatisch</span>

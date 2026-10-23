@@ -20,6 +20,10 @@ export interface TreatmentInput {
   /** 2 = doppelte Absetzfrist (Bio) */
   factor: number
   notes: string | null
+  /** Folgebehandlung: Zeilen gehören zu diesem bestehenden Fall (nur bei genau einem Tier) */
+  caseId?: string
+  /** Korrektur: die erste Zeile ersetzt diesen Eintrag, der alte bleibt unverändert (schema/0014) */
+  correctsId?: string
 }
 
 const lastDateOf = (date: string, days: number | null) => {
@@ -32,8 +36,8 @@ const lastDateOf = (date: string, days: number | null) => {
 /** Zeilen einer Behandlung (je Tier × Präparat), Freigabedaten gerechnet. */
 export function treatmentRows(input: TreatmentInput, newId: () => string = () => crypto.randomUUID()) {
   return input.animalIds.flatMap((animalId) => {
-    const caseId = newId()
-    return input.items.map((it) => {
+    const caseId = input.animalIds.length === 1 && input.caseId ? input.caseId : newId()
+    return input.items.map((it, index) => {
       const last = lastDateOf(input.date, it.days)
       const fields = {
         category: 'behandlung' as const,
@@ -64,6 +68,7 @@ export function treatmentRows(input: TreatmentInput, newId: () => string = () =>
         antibiogram: null,
         case_id: caseId,
         import_key: null,
+        corrects_id: index === 0 && input.animalIds.length === 1 ? (input.correctsId ?? null) : null,
       }
     })
   })
@@ -122,6 +127,7 @@ export async function importTreatments(db: PGlite, items: ImportedTreatment[]): 
           antibiogram: it.antibiogram,
           case_id: stableUuid(it.case_key),
           import_key: it.import_key,
+          corrects_id: null,
         },
         { action: 'insert' },
       )

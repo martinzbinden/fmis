@@ -8,6 +8,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { computeFertility, type FertilityStatus, type MatingEvent, type Species } from './fertility'
 import { computeHerdPerformance, type PerformanceMetrics } from './herdPerformance'
 import { isoDate, num } from './format'
+import { notSupersededSql } from './journal'
 import { lactationDayAt } from './lactationDay'
 import { analyzeLactations, buildTestDayModel, type TestPoint } from './lactationCurves'
 import { trendsByAnimal, type LactationTrend } from './lactationTrend'
@@ -81,8 +82,8 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
     pg.query<Record<string, unknown>>('select * from matings where deleted_at is null'),
     pg.query<Record<string, unknown>>('select * from breeding_values where deleted_at is null order by eval_date'),
     pg.query<{ animal_id: string; entry_date: unknown; diagnosis: string | null }>(
-      `select animal_id, entry_date, max(diagnosis) as diagnosis from animal_journal
-       where deleted_at is null and category in ('krankheit', 'behandlung') and entry_date >= $1
+      `select animal_id, entry_date, max(diagnosis) as diagnosis from animal_journal j
+       where deleted_at is null and category in ('krankheit', 'behandlung') and entry_date >= $1 and ${notSupersededSql('j')}
        group by animal_id, entry_date`,
       [yearAgo],
     ),

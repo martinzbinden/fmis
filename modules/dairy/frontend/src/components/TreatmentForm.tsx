@@ -3,9 +3,10 @@ import { useDb } from '@fmis/core/DbContext'
 import { useQuery } from '../hooks/useQuery'
 import TreatmentItems, { emptyItem } from './TreatmentItems'
 import { localTodayIso } from '../lib/format'
+import { journalSummary } from '../lib/journal'
 import { loadTreatmentContext, saveTemplate, saveTreatment } from '../lib/treatmentData'
 import { DEFAULT_WITHDRAWAL_FACTOR, parseItems } from '../lib/treatments'
-import type { TemplateItem, TreatmentTemplate } from '../types'
+import type { AnimalJournalEntry, TemplateItem, TreatmentTemplate } from '../types'
 
 const LS = { by: 'dairy_journal_last_administered_by', supplier: 'dairy_treatment_supplier' }
 const load = (k: string) => {
@@ -24,22 +25,40 @@ const store = (k: string, v: string) => {
 }
 const nowTime = () => new Date().toTimeString().slice(0, 5)
 
+/** Präparat-Zeile eines bestehenden Eintrags (für die Korrektur vorausgefüllt). */
+function itemOf(e: AnimalJournalEntry): TemplateItem {
+  const days = e.last_date ? Math.round((Date.parse(e.last_date) - Date.parse(e.entry_date)) / 86_400_000) + 1 : 1
+  return { medication: e.medication ?? '', dose: e.dose ?? '', applications: e.applications, days, milk_days: e.withdrawal_milk_days, meat_days: e.withdrawal_meat_days }
+}
+
 /** Behandlung erfassen (Behandlungsjournal nach TAMV): Favorit wählen oder
  * frei, Indikation, Präparate mit Menge und Absetzfristen, Uhrzeit,
  * anwendende Person, Abgabestelle. Mehrere Tiere = je Tier ein Fall. */
-export default function TreatmentForm({ animalIds, onSaved }: { animalIds: string[]; onSaved: () => void }) {
+export default function TreatmentForm({
+  animalIds,
+  onSaved,
+  caseId,
+  corrects,
+}: {
+  animalIds: string[]
+  onSaved: () => void
+  /** Folgebehandlung: neue Zeilen kommen in diesen bestehenden Fall */
+  caseId?: string
+  /** Korrektur: ersetzt diesen Eintrag, der alte bleibt unverändert stehen */
+  corrects?: AnimalJournalEntry
+}) {
   const db = useDb()
   const { data: ctx } = useQuery(loadTreatmentContext)
-  const [date, setDate] = useState(localTodayIso)
-  const [time, setTime] = useState(nowTime)
-  const [diagnosis, setDiagnosis] = useState('')
-  const [bodySystem, setBodySystem] = useState('')
-  const [items, setItems] = useState<TemplateItem[]>([emptyItem()])
-  const [by, setBy] = useState(() => load(LS.by) ?? '')
-  const [supplier, setSupplier] = useState(() => load(LS.supplier) ?? '')
+  const [date, setDate] = useState(corrects?.entry_date ?? localTodayIso())
+  const [time, setTime] = useState(corrects ? (corrects.treatment_time ?? '') : nowTime())
+  const [diagnosis, setDiagnosis] = useState(corrects?.diagnosis ?? '')
+  const [bodySystem, setBodySystem] = useState(corrects?.body_system ?? '')
+  const [items, setItems] = useState<TemplateItem[]>(() => (corrects ? [itemOf(corrects)] : [emptyItem()]))
+  const [by, setBy] = useState(() => corrects?.administered_by ?? load(LS.by) ?? '')
+  const [supplier, setSupplier] = useState(() => corrects?.supplier ?? load(LS.supplier) ?? '')
   // Bio: immer verdoppelt vorbelegt, je Behandlung abwählbar (bewusst nicht gemerkt)
-  const [factor, setFactor] = useState(DEFAULT_WITHDRAWAL_FACTOR)
-  const [notes, setNotes] = useState('')
+  const [factor, setFactor] = useState(corrects?.withdrawal_factor ?? DEFAULT_WITHDRAWAL_FACTOR)
+  const [notes, setNotes] = useState(corrects && corrects.text !== journalSummary(corrects) ? corrects.text : '')
   const [favorite, setFavorite] = useState<{ on: boolean; title: string }>({ on: false, title: '' })
   const [templateId, setTemplateId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -85,6 +104,8 @@ export default function TreatmentForm({ animalIds, onSaved }: { animalIds: strin
         supplier: supplier.trim() || null,
         factor: f,
         notes: notes.trim() || null,
+        caseId: corrects?.case_id ?? caseId,
+        correctsId: corrects?.id,
       })
       if (favorite.on && favorite.title.trim())
         await saveTemplate(db, {
@@ -197,7 +218,7 @@ export default function TreatmentForm({ animalIds, onSaved }: { animalIds: strin
         disabled={saving || animalIds.length === 0}
         className="w-full rounded-lg bg-brand-700 py-3 text-base font-semibold text-white disabled:opacity-50"
       >
-        {saving ? 'Speichere…' : animalIds.length > 1 ? `Behandlung für ${animalIds.length} Tiere speichern` : 'Behandlung speichern'}
+        {saving ? 'Speichere…' : corrects ? 'Korrektur speichern' : caseId ? 'Folgebehandlung speichern' : animalIds.length > 1 ? `Behandlung für ${animalIds.length} Tiere speichern` : 'Behandlung speichern'}
       </button>
     </div>
   )

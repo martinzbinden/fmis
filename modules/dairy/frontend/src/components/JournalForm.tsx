@@ -5,18 +5,34 @@ import { inTransaction } from '../db/transaction'
 import { JOURNAL_CATEGORIES, journalSummary } from '../lib/journal'
 import { localTodayIso } from '../lib/format'
 import TreatmentForm from './TreatmentForm'
-import type { JournalCategory } from '../types'
+import type { AnimalJournalEntry, JournalCategory } from '../types'
 
 /** Journaleintrag für ein oder mehrere Tiere — Beobachtung, Krankheit,
  * Brunst, Klauen, Notiz; Behandlung im Behandlungsjournal-Formular
  * (TreatmentForm). Mehrere Tiere ergeben je einen Eintrag, z.B.
- * Klauenpflege der ganzen Gruppe. */
-export default function JournalForm({ animalIds, onSaved }: { animalIds: string[]; onSaved: () => void }) {
+ * Klauenpflege der ganzen Gruppe.
+ *
+ * Das Journal wird nur ergänzt: `caseId` hängt den neuen Eintrag an einen
+ * bestehenden Fall (Verlaufsbeobachtung, Folgebehandlung), `corrects` erfasst
+ * eine Korrektur als NEUEN Eintrag — der alte bleibt unverändert stehen. */
+export default function JournalForm({
+  animalIds,
+  onSaved,
+  caseId,
+  corrects,
+  defaultCategory = 'beobachtung',
+}: {
+  animalIds: string[]
+  onSaved: () => void
+  caseId?: string
+  corrects?: AnimalJournalEntry
+  defaultCategory?: JournalCategory
+}) {
   const db = useDb()
-  const [date, setDate] = useState(localTodayIso)
-  const [category, setCategory] = useState<JournalCategory>('beobachtung')
-  const [text, setText] = useState('')
-  const [diagnosis, setDiagnosis] = useState('')
+  const [date, setDate] = useState(corrects?.entry_date ?? localTodayIso())
+  const [category, setCategory] = useState<JournalCategory>(corrects?.category ?? defaultCategory)
+  const [text, setText] = useState(corrects && corrects.text !== journalSummary(corrects) ? corrects.text : '')
+  const [diagnosis, setDiagnosis] = useState(corrects?.diagnosis ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,6 +64,9 @@ export default function JournalForm({ animalIds, onSaved }: { animalIds: string[
             text: text.trim() || journalSummary(fields),
             ref_id: null,
             ...fields,
+            // Krankheit eröffnet einen Fall, an den sich Verlauf und Folgebehandlungen hängen lassen
+            case_id: corrects?.case_id ?? caseId ?? (category === 'krankheit' ? crypto.randomUUID() : null),
+            corrects_id: corrects?.id ?? null,
           })
         }
       })
@@ -65,7 +84,12 @@ export default function JournalForm({ animalIds, onSaved }: { animalIds: string[
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1.5">
+      {corrects && (
+        <p className="rounded-lg bg-amber-50 p-2 text-sm text-amber-900">
+          Korrektur zum Eintrag vom {corrects.entry_date}: Der ursprüngliche Eintrag bleibt unverändert stehen und wird als korrigiert markiert.
+        </p>
+      )}
+      <div className={`flex flex-wrap gap-1.5 ${corrects ? 'hidden' : ''}`}>
         {JOURNAL_CATEGORIES.map((c) => (
           <button
             key={c.key}
@@ -78,7 +102,7 @@ export default function JournalForm({ animalIds, onSaved }: { animalIds: string[
         ))}
       </div>
       {isTreatment ? (
-        <TreatmentForm animalIds={animalIds} onSaved={onSaved} />
+        <TreatmentForm animalIds={animalIds} onSaved={onSaved} caseId={caseId} corrects={corrects} />
       ) : (
         <>
           <label className="block text-sm text-gray-600">
@@ -102,7 +126,7 @@ export default function JournalForm({ animalIds, onSaved }: { animalIds: string[
             disabled={saving || animalIds.length === 0}
             className="w-full rounded-lg bg-brand-700 py-3 text-base font-semibold text-white disabled:opacity-50"
           >
-            {saving ? 'Speichere…' : animalIds.length > 1 ? `Für ${animalIds.length} Tiere speichern` : 'Speichern'}
+            {saving ? 'Speichere…' : corrects ? 'Korrektur speichern' : animalIds.length > 1 ? `Für ${animalIds.length} Tiere speichern` : 'Speichern'}
           </button>
         </>
       )}

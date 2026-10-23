@@ -31,7 +31,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "withdrawal_meat_days", "administered_by",
         "ear_tag", "animal_name", "treatment_time", "last_date", "applications", "supplier",
         "body_system", "withdrawal_factor", "release_milk_date", "release_meat_date",
-        "critical_antibiotic", "antibiogram", "case_id", "import_key",
+        "critical_antibiotic", "antibiogram", "case_id", "import_key", "corrects_id",
     ],
     "treatment_templates": [
         "id", "title", "body_system", "diagnosis", "items", "supplier", "notes", "sort_order",
@@ -118,5 +118,8 @@ def table_area(key: str) -> dict[str, str]:
 # «core:korrektur:write» nicht hat (Rolle Mitarbeit), ändert oder storniert sie nur
 # in den ersten 10 Minuten nach dem Eintrag. Bewusst nur einmalige Einträge, nicht
 # Stammdaten und nicht Zeilen, die im Alltag laufend nachgeführt werden (Tagesmeldung,
-# Wägesitzung, Spuren, Behandlungsjournal).
-FRIST_TABLES: set[str] = {"matings", "births", "birth_offspring"}
+# Wägesitzung, Spuren).
+FRIST_TABLES: set[str] = {"matings", "births", "birth_offspring", "animal_journal"}
+# Im Journal nur selbst erfasste Einträge: Notizen der Milchwägung (source 'milchwaegung')
+# werden dort bei jeder Änderung der Wägenotiz nachgeführt, Importe sind dem Büro vorbehalten.
+FRIST_FILTERS: dict[str, str] = {"animal_journal": "source = 'manual'"}

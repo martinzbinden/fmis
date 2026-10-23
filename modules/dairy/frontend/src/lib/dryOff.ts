@@ -3,6 +3,7 @@
 // Siehe schema/0012_dry_off.sql.
 
 import type { PGlite } from '@electric-sql/pglite'
+import { notSupersededSql } from './journal'
 
 /** SQL-Ausdruck: letzte Abkalbung/Ablammung/Geburt des Tiers <alias> (date oder null). */
 export function lastCalvingSql(alias = 'a'): string {
@@ -17,7 +18,7 @@ export function lastCalvingSql(alias = 'a'): string {
 export function isDrySql(alias = 'a'): string {
   return `exists (
     select 1 from animal_journal j
-    where j.animal_id = ${alias}.id and j.deleted_at is null and j.category = 'trocken'
+    where j.animal_id = ${alias}.id and j.deleted_at is null and j.category = 'trocken' and ${notSupersededSql('j')}
       and j.entry_date >= greatest(
         coalesce((select max(b.birth_date) from births b where b.dam_id = ${alias}.id and b.deleted_at is null), date '1900-01-01'),
         coalesce((select max(l.calving_date) from lactations l where l.animal_id = ${alias}.id and l.deleted_at is null), date '1900-01-01'),

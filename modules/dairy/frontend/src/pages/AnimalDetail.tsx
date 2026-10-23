@@ -1,11 +1,12 @@
 import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
+import { useHasPermission } from '@fmis/core/AuthContext'
 import { softDeleteRow } from '../db/write'
 import JournalForm from '../components/JournalForm'
-import { categoryIcon, categoryLabel, journalSummary } from '../lib/journal'
+import { canChangeEntry, categoryIcon, categoryLabel, groupCases, journalSummary, supersededBy } from '../lib/journal'
 import { withdrawalUntil } from '../lib/treatments'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useQuery } from '../hooks/useQuery'
@@ -432,79 +433,147 @@ function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
   )
 }
 
+/** Ein Journaleintrag. Korrigierte Einträge bleiben stehen (gedämpft, mit Verweis),
+ * die Korrektur ist ein eigener Eintrag. */
+function JournalEntryRow({
+  j,
+  correctedBy,
+  corrects,
+  canCorrect,
+  canDelete,
+  onCorrect,
+  onDelete,
+}: {
+  j: AnimalJournalEntry
+  correctedBy: AnimalJournalEntry | undefined
+  corrects: AnimalJournalEntry | undefined
+  canCorrect: boolean
+  canDelete: boolean
+  onCorrect: () => void
+  onDelete: () => Promise<void>
+}) {
+  const milk = correctedBy ? null : withdrawalUntil(j, 'milk')
+  const meat = correctedBy ? null : withdrawalUntil(j, 'meat')
+  return (
+    <li className={`py-2 ${correctedBy ? 'opacity-60' : ''}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <span className="text-xs text-gray-500">
+            {fmtDate(j.entry_date)}
+            {j.treatment_time ? ` ${j.treatment_time}` : ''} · {categoryIcon(j.category)} {categoryLabel(j.category)}
+            {j.source === 'import' ? ' · cownect' : ''}
+          </span>
+          {correctedBy && <span className="ml-1 rounded bg-gray-200 px-1 text-xs text-gray-700">korrigiert am {fmtDate(correctedBy.entry_date)}</span>}
+          {corrects && <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-900">Korrektur zum Eintrag vom {fmtDate(corrects.entry_date)}</span>}
+          <div className={`break-words text-gray-800 ${correctedBy ? 'line-through' : ''}`}>{j.text}</div>
+          {(() => {
+            // Ohne eigene Bemerkung steht die Zusammenfassung schon als Text da.
+            const own = j.text !== journalSummary(j)
+            const details = [
+              own && j.diagnosis,
+              own && [j.medication, j.dose].filter(Boolean).join(' '),
+              j.applications && j.applications > 1 && `${j.applications}×${j.last_date ? ` bis ${fmtDate(j.last_date)}` : ''}`,
+              j.administered_by && `durch ${j.administered_by}`,
+              j.supplier && `Abgabe ${j.supplier}`,
+            ].filter(Boolean)
+            return details.length > 0 && <div className="text-xs text-gray-600">{details.join(' · ')}</div>
+          })()}
+          {(milk || meat) && (
+            <div className="text-xs text-red-700">
+              Absetzfrist {milk ? `Milch bis ${fmtDate(milk)}` : ''}
+              {milk && meat ? ', ' : ''}
+              {meat ? `Fleisch bis ${fmtDate(meat)}` : ''}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {canCorrect && !correctedBy && (
+            <button type="button" onClick={onCorrect} className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700">
+              Korrigieren
+            </button>
+          )}
+          {canDelete && <DeleteButton onConfirm={onDelete} />}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+type JournalMode = { kind: 'new' } | { kind: 'case'; caseId: string } | { kind: 'correct'; entry: AnimalJournalEntry }
+
+/** Journal des Tiers: ein Fall = alle Einträge mit gleicher case_id (Befund,
+ * Folgebehandlungen, Verlauf), älteste zuerst. Das Journal wird nur ergänzt:
+ * Korrekturen und Folgeeinträge sind neue Einträge. Löschen nur kurz nach dem
+ * Eintrag (ausser mit Recht «Korrektur»). */
 function JournalSection({ animalId, journal }: { animalId: string; journal: AnimalJournalEntry[] }) {
   const db = useDb()
-  const [open, setOpen] = useState(false)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const canCorrectLater = useHasPermission('core:korrektur:write')
+  const [mode, setMode] = useState<JournalMode | null>(null)
+  const done = () => setMode(null)
+  const byId = useMemo(() => new Map(journal.map((j) => [j.id, j])), [journal])
+  const superseded = useMemo(() => supersededBy(journal), [journal])
+  const cases = useMemo(() => groupCases(journal), [journal])
+  const now = Date.now()
+  const form = mode && (
+    <div className="mb-3 rounded-lg border border-gray-200 p-3">
+      <JournalForm
+        key={mode.kind === 'correct' ? mode.entry.id : mode.kind === 'case' ? mode.caseId : 'new'}
+        animalIds={[animalId]}
+        onSaved={done}
+        caseId={mode.kind === 'case' ? mode.caseId : undefined}
+        corrects={mode.kind === 'correct' ? mode.entry : undefined}
+      />
+      <button type="button" onClick={done} className="mt-2 w-full text-sm text-gray-500">
+        Abbrechen
+      </button>
+    </div>
+  )
+  const row = (j: AnimalJournalEntry) => (
+    <JournalEntryRow
+      key={j.id}
+      j={j}
+      correctedBy={superseded.get(j.id)}
+      corrects={j.corrects_id ? byId.get(j.corrects_id) : undefined}
+      canCorrect={j.source === 'manual'}
+      canDelete={canChangeEntry(j, canCorrectLater, now)}
+      onCorrect={() => setMode({ kind: 'correct', entry: j })}
+      onDelete={() => softDeleteRow(db, 'animal_journal', j.id)}
+    />
+  )
   return (
     <Section title="Journal">
-      {open ? (
-        <div className="mb-3 rounded-lg border border-gray-200 p-3">
-          <JournalForm animalIds={[animalId]} onSaved={() => setOpen(false)} />
-          <button type="button" onClick={() => setOpen(false)} className="mt-2 w-full text-sm text-gray-500">
-            Abbrechen
-          </button>
-        </div>
-      ) : (
-        <button type="button" onClick={() => setOpen(true)} className="mb-2 w-full rounded-lg border border-dashed border-brand-300 py-2.5 text-sm font-medium text-brand-700">
+      {form ?? (
+        <button type="button" onClick={() => setMode({ kind: 'new' })} className="mb-2 w-full rounded-lg border border-dashed border-brand-300 py-2.5 text-sm font-medium text-brand-700">
           ＋ Beobachtung / Behandlung erfassen
         </button>
       )}
       {journal.length === 0 ? (
         <p className="text-sm text-gray-500">Keine Einträge.</p>
       ) : (
-        <ul className="divide-y text-sm">
-          {journal.map((j) => {
-            const milk = withdrawalUntil(j, 'milk')
-            const meat = withdrawalUntil(j, 'meat')
-            return (
-              <li key={j.id} className="py-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="text-xs text-gray-500">
-                      {fmtDate(j.entry_date)}
-                      {j.treatment_time ? ` ${j.treatment_time}` : ''} · {categoryIcon(j.category)} {categoryLabel(j.category)}
-                      {j.source === 'import' ? ' · cownect' : ''}
-                    </span>
-                    <div className="break-words text-gray-800">{j.text}</div>
-                    {(() => {
-                      // Ohne eigene Bemerkung steht die Zusammenfassung schon als Text da.
-                      const own = j.text !== journalSummary(j)
-                      const details = [
-                        own && j.diagnosis,
-                        own && [j.medication, j.dose].filter(Boolean).join(' '),
-                        j.applications && j.applications > 1 && `${j.applications}×${j.last_date ? ` bis ${fmtDate(j.last_date)}` : ''}`,
-                        j.administered_by && `durch ${j.administered_by}`,
-                        j.supplier && `Abgabe ${j.supplier}`,
-                      ].filter(Boolean)
-                      return details.length > 0 && <div className="text-xs text-gray-600">{details.join(' · ')}</div>
-                    })()}
-                    {(milk || meat) && (
-                      <div className="text-xs text-red-700">
-                        Absetzfrist {milk ? `Milch bis ${fmtDate(milk)}` : ''}
-                        {milk && meat ? ', ' : ''}
-                        {meat ? `Fleisch bis ${fmtDate(meat)}` : ''}
-                      </div>
-                    )}
+        <ul className="space-y-2 text-sm">
+          {cases.map((c) =>
+            c.isCase ? (
+              <li key={c.key} className="rounded-lg border border-gray-200 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Fall seit {fmtDate(c.startDate)} · {c.entries.length} {c.entries.length === 1 ? 'Eintrag' : 'Einträge'}
                   </div>
-                  {j.source === 'manual' &&
-                    (confirmId === j.id ? (
-                      <button
-                        type="button"
-                        onClick={() => void softDeleteRow(db, 'animal_journal', j.id).then(() => setConfirmId(null))}
-                        className="shrink-0 rounded bg-red-600 px-2 py-1 text-xs text-white"
-                      >
-                        Wirklich löschen?
-                      </button>
-                    ) : (
-                      <button type="button" onClick={() => setConfirmId(j.id)} className="shrink-0 px-1 text-gray-500" aria-label="löschen">
-                        ×
-                      </button>
-                    ))}
+                  <button
+                    type="button"
+                    onClick={() => setMode({ kind: 'case', caseId: c.entries[0].case_id! })}
+                    className="shrink-0 rounded border border-brand-300 px-2 py-0.5 text-xs font-medium text-brand-700"
+                  >
+                    ＋ Folgeeintrag
+                  </button>
                 </div>
+                <ul className="divide-y">{c.entries.map(row)}</ul>
               </li>
-            )
-          })}
+            ) : (
+              <li key={c.key} className="rounded-lg border border-gray-100 px-2">
+                <ul>{c.entries.map(row)}</ul>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </Section>

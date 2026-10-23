@@ -25,6 +25,7 @@ export default function Layout({
   onLoggedOut: () => void
 }) {
   const canViewHistory = useHasPermission(historyPermission)
+  const canImport = useHasPermission('core:import:write')
   const { status, error, pending } = useSyncStatus(sync)
 
   return (
@@ -38,9 +39,11 @@ export default function Layout({
         </div>
         <div className="flex items-center gap-1">
           <SyncStatusDot status={status} error={error} pending={pending} onSync={() => void sync.syncNow()} />
-          <NavLink to="/import" className="hidden min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 sm:grid" title="Daten importieren">
-            📥
-          </NavLink>
+          {canImport && (
+            <NavLink to="/import" className="hidden min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 sm:grid" title="Daten importieren">
+              📥
+            </NavLink>
+          )}
           {canViewHistory && (
             <NavLink to="verlauf" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100">
               📜

@@ -57,6 +57,7 @@ export const ALL_PERMISSIONS = [
   'bau:projekte:read', 'bau:projekte:write',
   'bau:history:read',
   'core:korrektur:write', // Einträge auch nach 10 Minuten noch ändern/stornieren
+  'core:import:write', // Daten importieren
   'core:users:manage',
   'core:modules:manage',
 ] as const

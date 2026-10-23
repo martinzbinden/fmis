@@ -24,6 +24,8 @@ from .auth import CurrentUser
 # seinem ersten Eintreffen auf dem Server ändern oder stornieren (Storno =
 # deleted_at setzen, also ebenfalls eine Änderung).
 KORREKTUR_PERMISSION = "core:korrektur:write"
+# Recht «Daten importieren»: Importe laufen als atomarer Push (?atomic=1)
+IMPORT_PERMISSION = "core:import:write"
 KORREKTUR_FRIST_MIN = 10
 
 # Prüfung einer einzelnen Zeile durch das Modul (z.B. Anträge im Dienstplan):
@@ -59,20 +61,27 @@ async def push_rows(
     atomic: bool = False,
     frist_tables: Iterable[str] = (),
     guard: RowGuard | None = None,
+    frist_filters: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Schreibt `tables` zeilenweise. `area_of` ordnet jede Tabelle ihrem
     Rechtebereich zu (dict oder Funktion `table -> area | None`).
     `atomic=True` (Import, ?atomic=1): wird auch nur EINE Zeile abgelehnt, wird nichts
     geschrieben und mit 422 geantwortet — ein Import soll nie halb übernommen sein.
     `frist_tables`: Erfassungs-Tabellen mit Korrekturfrist (siehe KORREKTUR_PERMISSION).
+    `frist_filters`: je Tabelle eine feste SQL-Bedingung, auf welche Zeilen die Frist gilt
+    (z.B. nur selbst erfasste, nicht importierte oder automatisch nachgeführte).
     `guard`: Zeilenprüfung des Moduls (siehe RowGuard).
+    `atomic` (Import) braucht IMPORT_PERMISSION.
     Rückgabe: {"accepted": {tabelle: anzahl}, "rejected": [{table, id, reason, detail, current?}]}."""
     geometry_columns = geometry_columns or {}
     lookup = area_of if callable(area_of) else area_of.get
     accepted: dict[str, int] = {}
     rejected: list[dict[str, Any]] = []
 
+    if atomic and IMPORT_PERMISSION not in user.permissions:
+        raise HTTPException(status_code=403, detail=f"Fehlende Berechtigung: {IMPORT_PERMISSION}")
     frist = set(frist_tables) if KORREKTUR_PERMISSION not in user.permissions else set()
+    filters = frist_filters or {}
 
     def reject(table: str, row: Mapping[str, Any], reason: str, detail: str, current: dict[str, Any] | None = None) -> None:
         entry: dict[str, Any] = {"table": table, "id": str(row.get("id")), "reason": reason, "detail": detail}
@@ -131,7 +140,7 @@ async def push_rows(
                     # Savepoint: scheitert die Zeile, bleiben alle anderen gültig
                     async with conn.transaction():
                         if table in frist:
-                            await _check_frist(conn, table, columns, geometry_cols, row)
+                            await _check_frist(conn, table, columns, geometry_cols, row, filters.get(table))
                         if guard is not None:
                             why = await guard(conn, table, row, user)
                             if why:
@@ -150,18 +159,19 @@ async def push_rows(
     return {"accepted": accepted, "rejected": rejected}
 
 
-async def _check_frist(conn: Any, table: str, columns: list[str], geometry_cols: set[str], row: Mapping[str, Any]) -> None:
+async def _check_frist(conn: Any, table: str, columns: list[str], geometry_cols: set[str], row: Mapping[str, Any], only_where: str | None = None) -> None:
     """Wirft _Veto, wenn die Zeile schon länger als die Korrekturfrist auf dem
     Server liegt und diese Fassung sie tatsächlich ändern würde (eine
     wiederholte Zustellung desselben Stands bleibt wirkungslos und wird nicht
     beanstandet). `current` ist der Stand des Servers, damit das Gerät seine
     Änderung zurücknehmen kann."""
+    extra = f" and ({only_where})" if only_where else ""
     found = await (
         await conn.execute(
             f"""
             select first_synced_at < clock_timestamp() - make_interval(mins => %s)
                    and updated_at < %s::timestamptz
-            from "{table}" where id = %s
+            from "{table}" where id = %s{extra}
             """,
             (KORREKTUR_FRIST_MIN, row.get("updated_at"), row.get("id")),
         )
