@@ -323,6 +323,8 @@ export interface DutyRequest {
   created_by: string | null
   updated_at: string
   deleted_at: string | null
+  /** bei kind 'wunsch': welche Abwesenheit (schema/0007); leer = frei */
+  absence_kind: DutyAbsenceKind | null
 }
 
 export type HistoryAction = 'insert' | 'update' | 'delete'

@@ -139,12 +139,12 @@ export function me(people: DutyPerson[]): DutyPerson | null {
 // nur in duty_requests schreiben (modules/betrieb/backend/app/sync.py).
 
 type RequestInput = Pick<DutyRequest, 'kind' | 'person_id'> &
-  Partial<Pick<DutyRequest, 'shift_id' | 'date' | 'type_id' | 'to_person' | 'other_shift_id' | 'other_date' | 'other_type_id' | 'from_date' | 'to_date' | 'notes'>>
+  Partial<Pick<DutyRequest, 'shift_id' | 'date' | 'type_id' | 'to_person' | 'other_shift_id' | 'other_date' | 'other_type_id' | 'from_date' | 'to_date' | 'notes' | 'absence_kind'>>
 
 const emptyRequest = (): Omit<DutyRequest, 'id' | 'kind' | 'person_id' | 'updated_at'> => ({
   shift_id: null, date: null, type_id: null, to_person: null, other_shift_id: null, other_date: null, other_type_id: null,
   from_date: null, to_date: null, notes: null, status: 'offen', decided_by: null, decided_at: null, decision_note: null,
-  created_by: null, deleted_at: null,
+  created_by: null, deleted_at: null, absence_kind: null,
 })
 
 export const saveRequest = (r: RequestInput) =>
@@ -193,7 +193,9 @@ export async function decideRequest(d: DutyData, r: DutyRequest, decision: 'best
     const check = checkRequest(d, r)
     if (!check.ok) throw new Error(check.notes.join(' ') || 'Antrag nicht mehr umsetzbar')
     if (r.kind === 'wunsch') {
-      await saveAbsence({ id: crypto.randomUUID(), person_id: r.person_id, from_date: r.from_date!, to_date: r.to_date!, kind: 'frei', notes: r.notes ? `Freiwunsch: ${r.notes}` : 'Freiwunsch' })
+      const kind = r.absence_kind ?? 'frei'
+      const label = kind === 'frei' ? 'Freiwunsch' : 'Antrag'
+      await saveAbsence({ id: crypto.randomUUID(), person_id: r.person_id, from_date: r.from_date!, to_date: r.to_date!, kind, notes: r.notes ? `${label}: ${r.notes}` : label })
     } else {
       const mine = slotById(d.types, d.shifts, r.type_id, r.date, r.shift_id)!
       if (r.kind === 'abgabe') {

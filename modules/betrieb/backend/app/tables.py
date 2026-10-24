@@ -75,7 +75,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     "duty_requests": [
         "id", "kind", "person_id", "shift_id", "date", "type_id", "to_person", "other_shift_id",
         "other_date", "other_type_id", "from_date", "to_date", "notes", "status", "decided_by", "decided_at", "decision_note",
-        "created_by", "updated_at", "deleted_at",
+        "created_by", "updated_at", "deleted_at", "absence_kind",
     ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at", "snapshot",
@@ -96,7 +96,8 @@ TABLE_AREA: dict[str, str] = {
     "duty_people": "betrieb:dienste",
     "duty_types": "betrieb:dienste",
     "duty_skills": "betrieb:dienste",
-    "duty_absences": "betrieb:dienste",
+    # Abwesenheiten: Mitarbeitende tragen «krank» für sich selbst ein (Prüfung: sync.py _guard)
+    "duty_absences": "betrieb:wuensche",
     "duty_shifts": "betrieb:dienste",
     "duty_changes": "betrieb:dienste",
     # Wünsche/Vorschläge: eigener Bereich, damit Mitarbeitende nur dort schreiben

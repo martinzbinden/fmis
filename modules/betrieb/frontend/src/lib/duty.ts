@@ -253,3 +253,27 @@ export function groupTypes<T extends Pick<DutyType, 'animal' | 'sort_order' | 'n
     })
     .sort((x, y) => rank(x.animal) - rank(y.animal) || (x.animal ?? '').localeCompare(y.animal ?? '', 'de-CH'))
 }
+
+// --- Kalender (Abwesenheiten) --------------------------------------------------
+
+/** Wochen eines Monats (Montag zuerst), Tage ausserhalb des Monats = null. month 1–12. */
+export function monthGrid(year: number, month: number): (string | null)[][] {
+  const first = `${year}-${String(month).padStart(2, '0')}-01`
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const cells: (string | null)[] = Array(weekdayIndex(first)).fill(null)
+  for (let d = 1; d <= days; d++) cells.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`)
+  while (cells.length % 7) cells.push(null)
+  return Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7))
+}
+
+/** Gewählte Tage zu zusammenhängenden Zeiträumen [von, bis] zusammenfassen. */
+export function runsOf(dates: Iterable<string>): [string, string][] {
+  const sorted = [...new Set(dates)].sort()
+  const out: [string, string][] = []
+  for (const d of sorted) {
+    const last = out[out.length - 1]
+    if (last && addDays(last[1], 1) === d) last[1] = d
+    else out.push([d, d])
+  }
+  return out
+}

@@ -25,8 +25,10 @@ async def _guard(conn: Any, table: str, row: dict[str, Any], user: CurrentUser) 
     """Anträge (Wünsche, Abgabe, Tausch): Wer den Dienstplan nicht selbst führt
     (kein betrieb:dienste:write), stellt nur Anträge für die EIGENE Person und
     entscheidet nie darüber. Bestätigen und Ablehnen bleibt dem Büro."""
-    if table != "duty_requests" or DIENSTE_WRITE in user.permissions:
+    if table not in ("duty_requests", "duty_absences") or DIENSTE_WRITE in user.permissions:
         return None
+    if table == "duty_absences":
+        return await _guard_absence(conn, row, user)
     own = await (
         await conn.execute(
             "select 1 from duty_people where id = %s and lower(email) = lower(%s) and deleted_at is null",
@@ -45,6 +47,31 @@ async def _guard(conn: Any, table: str, row: dict[str, Any], user: CurrentUser) 
             return "Der Antrag gehört einer anderen Person"
         if old[1] != "offen":
             return "Der Antrag ist schon entschieden"
+    return None
+
+
+async def _own_person(conn: Any, person_id: Any, user: CurrentUser) -> bool:
+    return (
+        await (
+            await conn.execute(
+                "select 1 from duty_people where id = %s and lower(email) = lower(%s) and deleted_at is null",
+                (person_id, user.email),
+            )
+        ).fetchone()
+    ) is not None
+
+
+async def _guard_absence(conn: Any, row: dict[str, Any], user: CurrentUser) -> str | None:
+    """Ohne Dienstplan-Recht: nur «krank» und nur für sich selbst (Ferien, Frei, Kurs
+    laufen als Antrag über duty_requests). Bestehende Einträge anderer oder anderer
+    Art bleiben unangetastet."""
+    if row.get("kind") != "krank":
+        return "Ferien, Frei und Kurs beantragen (das Büro bestätigt); direkt eintragen nur «krank»"
+    if not await _own_person(conn, row.get("person_id"), user):
+        return "Abwesenheit nur für die eigene Person"
+    old = await (await conn.execute("select person_id, kind from duty_absences where id = %s", (row.get("id"),))).fetchone()
+    if old is not None and (str(old[0]) != str(row.get("person_id")) or old[1] != "krank"):
+        return "Diese Abwesenheit ändert das Büro"
     return None
 
 

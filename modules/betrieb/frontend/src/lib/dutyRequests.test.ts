@@ -14,7 +14,7 @@ const data = (shifts: DutyShift[]): DutyData => ({ people: [person(ANNA, 'Anna')
 const req = (r: Partial<DutyRequest>): DutyRequest => ({
   id: 'r1', kind: 'abgabe', person_id: ANNA, shift_id: shiftId(T1, '2026-11-03', 0), date: '2026-11-03', type_id: T1, to_person: null,
   other_shift_id: null, other_date: null, other_type_id: null, from_date: null, to_date: null, notes: null, status: 'offen',
-  decided_by: null, decided_at: null, decision_note: null, created_by: null, updated_at: '', deleted_at: null, ...r,
+  decided_by: null, decided_at: null, decision_note: null, created_by: null, updated_at: '', deleted_at: null, absence_kind: null, ...r,
 })
 
 describe('slotById', () => {

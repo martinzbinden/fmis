@@ -6,10 +6,12 @@ import { useStored } from '../components/DriveAssist'
 import { addDays, localToday as todayIso, conflictsFor, copyFromPrevious, DEFAULT_SUMMER, endTime, groupTypes, hasConflict, hhmm, isoWeek, mondayOf, parseTimes, slotsFor, stringifyTimes, suggest, typeLabel, weekDates, type DayTime, type SeasonTimes, type Slot } from '../lib/duty'
 import TimeStrip, { TimeAxis } from '../components/TimeStrip'
 import Planning, { OfficeBar } from '../components/DutyPlanning'
+import AbsenceCalendar from '../components/AbsenceCalendar'
+import { isoDate } from '../lib/format'
 import { GENERATE_AHEAD_WEEKS, weekStates } from '../lib/dutyPlan'
 import { getSyncedDb } from '../db/access'
 import { adjustWeek, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
-import type { DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
+import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
 
 type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'planung' | 'einstellungen'
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
@@ -488,7 +490,7 @@ function describeRequest(d: DutyData, r: DutyRequest): string {
     return t ? typeLabel(t) : 'Dienst'
   }
   const range = r.from_date && r.to_date ? `${dm(r.from_date)}${r.to_date !== r.from_date ? `–${dm(r.to_date)}` : ''}` : ''
-  if (r.kind === 'wunsch') return `${name} wünscht frei: ${range}`
+  if (r.kind === 'wunsch') return `${name} beantragt ${r.absence_kind && r.absence_kind !== 'frei' ? KIND[r.absence_kind] : 'frei'}: ${range}`
   const mine = `${r.date ? dm(r.date) : ''} ${dutyName(r.type_id)}`
   if (r.kind === 'abgabe') return `${name} gibt ab: ${mine}${r.to_person ? ` → ${personName(d, r.to_person)}` : ' (an wen auch immer)'}`
   return `${name} tauscht: ${mine} ↔ ${personName(d, r.to_person)}: ${r.other_date ? dm(r.other_date) : ''} ${dutyName(r.other_type_id)}`
@@ -604,48 +606,21 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
   )
 }
 
-function Absences({ d, canWrite }: { d: DutyData; canWrite: boolean }) {
+function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refresh: () => void }) {
   const self = me(d.people)
-  const [f, setF] = useState({ person_id: self?.id ?? '', from_date: todayIso(), to_date: todayIso(), kind: 'ferien' as DutyAbsenceKind, notes: '' })
   const [confirmId, setConfirmId] = useState<string | null>(null)
-  const list = d.absences.filter((a) => a.to_date >= todayIso())
+  // alle Abwesenheiten (Jahresübersicht), nicht nur die des geladenen Zeitraums
+  const { data: all } = useQuery(async (pg) =>
+    (await pg.query<DutyAbsence>('select * from duty_absences where deleted_at is null order by from_date')).rows.map((a) => ({ ...a, from_date: isoDate(a.from_date)!, to_date: isoDate(a.to_date)! })),
+  )
+  const absences = all ?? d.absences
+  const list = absences.filter((a) => a.to_date >= todayIso())
+  // eigene Krankmeldung darf man selber löschen, alles andere das Büro
+  const mayDelete = (a: DutyAbsence) => canWrite || (!!self && a.person_id === self.id && a.kind === 'krank')
   return (
     <div className="space-y-3">
-      {canWrite && (
-        <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
-          <h3 className="font-semibold text-gray-700">Abwesenheit eintragen</h3>
-          <div className="flex flex-wrap gap-2">
-            <select className={field} value={f.person_id} onChange={(e) => setF({ ...f, person_id: e.target.value })}>
-              <option value="">— Person —</option>
-              {d.people.filter((p) => p.active).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <select className={field} value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value as DutyAbsenceKind })}>
-              {Object.entries(KIND).map(([k, l]) => (
-                <option key={k} value={k}>
-                  {l}
-                </option>
-              ))}
-            </select>
-            <input type="date" className={field} value={f.from_date} onChange={(e) => setF({ ...f, from_date: e.target.value, to_date: e.target.value > f.to_date ? e.target.value : f.to_date })} />
-            <span className="self-center">bis</span>
-            <input type="date" className={field} value={f.to_date} onChange={(e) => setF({ ...f, to_date: e.target.value })} />
-            <input className={`${field} min-w-0 flex-1`} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Bemerkung" />
-            <button
-              type="button"
-              className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40"
-              disabled={!f.person_id || f.to_date < f.from_date}
-              onClick={() => void saveAbsence({ id: crypto.randomUUID(), person_id: f.person_id, from_date: f.from_date, to_date: f.to_date, kind: f.kind, notes: f.notes.trim() || null }).then(() => setF({ ...f, notes: '' }))}
-            >
-              Eintragen
-            </button>
-          </div>
-          <p className="text-xs text-gray-500">Wer abwesend ist, wird beim Einteilen gewarnt und vom Vorschlag ausgelassen.</p>
-        </section>
-      )}
+      <AbsenceCalendar d={d} canWrite={canWrite} absences={absences} refresh={refresh} />
+      <h3 className="text-sm font-semibold text-gray-700">Kommende Abwesenheiten</h3>
       <ul className="divide-y rounded-xl border bg-white text-sm">
         {list.map((a) => (
           <li key={a.id} className="flex items-center gap-2 px-3 py-2">
@@ -654,7 +629,7 @@ function Absences({ d, canWrite }: { d: DutyData; canWrite: boolean }) {
               {a.to_date !== a.from_date ? `–${dm(a.to_date)}` : ''}
               {a.notes ? ` · ${a.notes}` : ''}
             </span>
-            {canWrite &&
+            {mayDelete(a) &&
               (confirmId === a.id ? (
                 <button type="button" className="rounded bg-red-600 px-2 py-1 text-xs text-white" onClick={() => void deleteAbsence(a.id).then(() => setConfirmId(null))}>
                   Wirklich löschen?
@@ -1143,7 +1118,7 @@ export default function Duty() {
       ) : shown === 'antraege' ? (
         <Requests d={data} canWrite={canWrite} canPropose={canPropose} refresh={refresh} />
       ) : shown === 'abwesend' ? (
-        <Absences d={data} canWrite={canWrite} />
+        <Absences d={data} canWrite={canWrite} refresh={refresh} />
       ) : shown === 'planung' ? (
         <Planning
           d={data}

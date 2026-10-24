@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { conflictsFor, copyFromPrevious, endTime, inMonthDayRange, isoWeek, isSummer, mondayOf, parseTimes, shiftId, slotsFor, slotsOn, stringifyTimes, suggest, timeOn, typeLabel, weekDates } from './duty'
+import { conflictsFor, copyFromPrevious, endTime, inMonthDayRange, isoWeek, isSummer, mondayOf, parseTimes, shiftId, slotsFor, slotsOn, stringifyTimes, suggest, timeOn, typeLabel, weekDates, monthGrid, runsOf } from './duty'
 import type { DutyAbsence, DutyPerson, DutyShift, DutySkill, DutyType } from '../types'
 
 const T = (id: string, name: string, start: string, dur: number, weekdays = '1111111'): DutyType => ({
@@ -121,3 +121,19 @@ describe('Saison und Zeiten je Wochentag', () => {
   })
 })
 
+
+describe('Kalender', () => {
+  it('Monatsraster beginnt am Montag', () => {
+    const g = monthGrid(2026, 11) // 1.11.2026 = Sonntag
+    expect(g[0]).toEqual([null, null, null, null, null, null, '2026-11-01'])
+    expect(g.flat().filter(Boolean)).toHaveLength(30)
+    expect(g.every((w) => w.length === 7)).toBe(true)
+  })
+  it('gewählte Tage werden zu Zeiträumen', () => {
+    expect(runsOf(['2026-11-12', '2026-11-10', '2026-11-11', '2026-11-20', '2026-11-30', '2026-12-01'])).toEqual([
+      ['2026-11-10', '2026-11-12'],
+      ['2026-11-20', '2026-11-20'],
+      ['2026-11-30', '2026-12-01'],
+    ])
+  })
+})

@@ -46,7 +46,7 @@ export const SYNC_TABLES = {
   duty_templates: ['id', 'name', 'valid_from', 'cycle_weeks', 'notes', 'updated_at', 'deleted_at'],
   duty_template_slots: ['id', 'template_id', 'week_no', 'weekday', 'type_id', 'slot', 'person_id', 'updated_at', 'deleted_at'],
   duty_weeks: ['id', 'week_start', 'status', 'generated_at', 'confirmed_by', 'confirmed_at', 'notes', 'updated_at', 'deleted_at'],
-  duty_requests: ['id', 'kind', 'person_id', 'shift_id', 'date', 'type_id', 'to_person', 'other_shift_id', 'other_date', 'other_type_id', 'from_date', 'to_date', 'notes', 'status', 'decided_by', 'decided_at', 'decision_note', 'created_by', 'updated_at', 'deleted_at'],
+  duty_requests: ['id', 'kind', 'person_id', 'shift_id', 'date', 'type_id', 'to_person', 'other_shift_id', 'other_date', 'other_type_id', 'from_date', 'to_date', 'notes', 'status', 'decided_by', 'decided_at', 'decision_note', 'created_by', 'updated_at', 'deleted_at', 'absence_kind'],
   duty_changes: ['id', 'shift_id', 'date', 'type_id', 'from_person', 'to_person', 'kind', 'changed_by', 'changed_at', 'notes', 'updated_at', 'deleted_at'],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
