@@ -5,10 +5,13 @@ import { useQuery } from '../hooks/useQuery'
 import { useStored } from '../components/DriveAssist'
 import { addDays, localToday as todayIso, conflictsFor, copyFromPrevious, DEFAULT_SUMMER, endTime, groupTypes, hasConflict, hhmm, isoWeek, mondayOf, parseTimes, slotsFor, stringifyTimes, suggest, typeLabel, weekDates, type DayTime, type SeasonTimes, type Slot } from '../lib/duty'
 import TimeStrip, { TimeAxis } from '../components/TimeStrip'
-import { assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
+import Planning, { OfficeBar } from '../components/DutyPlanning'
+import { GENERATE_AHEAD_WEEKS, weekStates } from '../lib/dutyPlan'
+import { getSyncedDb } from '../db/access'
+import { adjustWeek, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
 
-type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'einstellungen'
+type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'planung' | 'einstellungen'
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 const KIND: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', andere: 'abwesend' }
 const SEEN_KEY = 'wiesenjournal_duty_changes_seen'
@@ -82,6 +85,98 @@ function SlotRow({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; c
   )
 }
 
+/** Ein Platz in der Kalenderansicht: Person (Büro: Auswahl), rot = offen, gelb = Konflikt. */
+function SlotCell({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; canWrite: boolean }) {
+  const pid = s.shift?.person_id ?? null
+  const c = pid ? conflictsFor(pid, s, all, d.skills, d.absences) : null
+  const warn = !!c && hasConflict(c)
+  const why = c && warn ? [c.absent && `${personName(d, pid)} ist ${KIND[c.absent.kind]}`, c.overlap.length && `gleichzeitig: ${c.overlap.join(', ')}`, c.unskilled && 'nicht befähigt'].filter(Boolean).join(' · ') : ''
+  const pending = d.requests.some((r) => r.status === 'offen' && (r.shift_id === s.id || r.other_shift_id === s.id))
+  const tone = !pid ? 'border-red-300 bg-red-50 text-red-800' : warn ? 'border-amber-500 bg-amber-50' : 'border-gray-200 bg-white'
+  const skilled = d.people.filter((p) => p.active && d.skills.some((k) => k.person_id === p.id && k.type_id === s.type.id))
+  const options = pid && !skilled.some((p) => p.id === pid) ? [...skilled, ...d.people.filter((p) => p.id === pid)] : skilled
+  return (
+    <div className={`rounded border px-1 py-0.5 ${tone}`} title={[why, s.shift?.notes].filter(Boolean).join(' · ') || undefined}>
+      {canWrite ? (
+        <select value={pid ?? ''} onChange={(e) => void assignSlots([{ slot: s, personId: e.target.value || null }])} className="w-full bg-transparent text-xs" aria-label={`${typeLabel(s.type)} ${dm(s.date)}`}>
+          <option value="">— offen —</option>
+          {options.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <span className={`block truncate text-xs ${pid ? 'font-medium text-gray-800' : ''}`}>{pid ? personName(d, pid) : 'offen'}</span>
+      )}
+      {(s.shift?.notes || pending || warn) && (
+        <span className="block truncate text-[10px] leading-tight text-amber-800">{[pending && 'Antrag offen', warn && '⚠', s.shift?.notes].filter(Boolean).join(' · ')}</span>
+      )}
+    </div>
+  )
+}
+
+/** Wochenkalender: Dienste (nach Tierart) × Wochentage. */
+function WeekGrid({ d, dates, slots, canWrite }: { d: DutyData; dates: string[]; slots: Slot[]; canWrite: boolean }) {
+  const rows = groupTypes(d.types)
+    .flatMap((g) => g.types)
+    .filter((t) => slots.some((s) => s.type.id === t.id))
+  return (
+    <div className="overflow-x-auto rounded-xl border bg-white">
+      <table className="w-full min-w-[42rem] table-fixed text-sm">
+        <thead>
+          <tr className="bg-gray-50">
+            <th className="sticky left-0 z-10 w-32 bg-gray-50 px-2 py-1 text-left text-xs font-semibold text-gray-500">Dienst</th>
+            {dates.map((date) => (
+              <th key={date} className={`px-1 py-1 text-xs font-semibold ${date === todayIso() ? 'text-brand-700' : 'text-gray-700'}`}>
+                {dm(date)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((t) => (
+            <tr key={t.id} className="border-t align-top">
+              <td className="sticky left-0 z-10 bg-white px-2 py-1 text-xs leading-tight">
+                <span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: t.color ?? '#64748b' }} />
+                <TypeName t={t} />
+              </td>
+              {dates.map((date) => {
+                const here = slots.filter((s) => s.type.id === t.id && s.date === date)
+                return (
+                  <td key={date} className={`px-0.5 py-0.5 ${date === todayIso() ? 'bg-brand-50' : ''}`}>
+                    {here.length ? (
+                      <div className="space-y-0.5">
+                        <div className="text-[10px] tabular-nums text-gray-500">{here[0].type.start_time}–{endTime(here[0].type)}</div>
+                        {here.map((s) => (
+                          <SlotCell key={s.id} s={s} d={d} all={slots} canWrite={canWrite} />
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="block text-center text-xs text-gray-300">–</span>
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+          <tr className="border-t bg-gray-50 align-top">
+            <td className="sticky left-0 z-10 bg-gray-50 px-2 py-1 text-xs font-semibold text-gray-500">Abwesend</td>
+            {dates.map((date) => (
+              <td key={date} className="px-1 py-1 text-[11px] leading-tight text-gray-600">
+                {d.absences
+                  .filter((a) => a.from_date <= date && date <= a.to_date)
+                  .map((a) => `${personName(d, a.person_id)} (${KIND[a.kind]})`)
+                  .join(', ')}
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday: string; setMonday: (m: string) => void; canWrite: boolean; refresh: () => void }) {
   const dates = weekDates(monday)
   const slots = useMemo(() => slotsFor(d.types, d.shifts, dates), [d, monday])
@@ -109,6 +204,8 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
   })()
   const unseen = d.changes.filter((c) => c.changed_at > lastSeen)
   const [showChanges, setShowChanges] = useState(false)
+  const weekRow = d.weeks.find((w) => w.week_start === monday) ?? null
+  const [view, setView] = useStored<'kalender' | 'liste'>('betrieb_duty_view', 'kalender')
   const typeName = (id: string) => {
     const t = d.types.find((x) => x.id === id)
     return t ? typeLabel(t) : 'Dienst'
@@ -128,19 +225,61 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
             ›
           </button>
         </div>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${open ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
-          {open ? `${open} offen` : 'alles abgedeckt'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${open ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`}>
+            {open ? `${open} offen` : 'alles abgedeckt'}
+          </span>
+          <span className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-xs">
+            {(['kalender', 'liste'] as const).map((v) => (
+              <button key={v} type="button" onClick={() => setView(v)} className={`px-2 py-1 ${view === v ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
+                {v === 'kalender' ? 'Kalender' : 'Liste'}
+              </button>
+            ))}
+          </span>
+        </div>
       </div>
-      {canWrite && open > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={btn} disabled={busy} onClick={() => void run(copyFromPrevious(slots, prevSlots, d.skills, d.absences), 'Wie Vorwoche')}>
+      {weekRow && (
+        <p className={`rounded-lg px-2 py-1 text-sm ${weekRow.status === 'bestaetigt' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>
+          {weekRow.status === 'bestaetigt' ? '✓ Woche bestätigt' : 'Vorläufig: diese Woche ist noch nicht vom Büro bestätigt.'}
+        </p>
+      )}
+      {canWrite && (
+        <OfficeBar>
+          <button type="button" className={btn} disabled={busy || open === 0} onClick={() => void run(copyFromPrevious(slots, prevSlots, d.skills, d.absences), 'Wie Vorwoche')}>
             Wie Vorwoche
           </button>
-          <button type="button" className={btn} disabled={busy} onClick={() => void run(suggest(slots, d.people, d.skills, d.absences), 'Vorschlag')}>
+          <button type="button" className={btn} disabled={busy || open === 0} onClick={() => void run(suggest(slots, d.people, d.skills, d.absences), 'Vorschlag')}>
             Offene vorschlagen
           </button>
-        </div>
+          {d.templates.length > 0 && (
+            <button
+              type="button"
+              className={btn}
+              disabled={busy}
+              onClick={() => {
+                setBusy(true)
+                void getSyncedDb()
+                  .then((pg) => adjustWeek(pg, d, monday))
+                  .then((r) => setMsg(`An Standardplan und Abwesenheiten angepasst: ${r.changed} Dienste.${r.unfilled.length ? ` Offen: ${r.unfilled.join(' · ')}` : ''}`))
+                  .finally(() => {
+                    setBusy(false)
+                    refresh()
+                  })
+              }}
+            >
+              Standardplan/Abwesenheiten anwenden
+            </button>
+          )}
+          {weekRow?.status === 'bestaetigt' ? (
+            <button type="button" className={btn} disabled={busy} onClick={() => void setWeekStatus(d, monday, 'entwurf').then(refresh)}>
+              Zurück auf Entwurf
+            </button>
+          ) : (
+            <button type="button" className="rounded-lg bg-indigo-700 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40" disabled={busy} onClick={() => void setWeekStatus(d, monday, 'bestaetigt').then(refresh)}>
+              Woche bestätigen
+            </button>
+          )}
+        </OfficeBar>
       )}
       {msg && <p className="rounded bg-sky-50 px-2 py-1 text-sm text-sky-900">{msg}</p>}
 
@@ -175,7 +314,8 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
         </div>
       )}
 
-      {dates.map((date) => {
+      {view === 'kalender' && <WeekGrid d={d} dates={dates} slots={slots} canWrite={canWrite} />}
+      {view === 'liste' && dates.map((date) => {
         const day = slots.filter((s) => s.date === date)
         const away = d.absences.filter((a) => a.from_date <= date && date <= a.to_date)
         return (
@@ -963,36 +1103,56 @@ export default function Duty() {
   const [tab, setTab] = useStored<Tab>('wiesenjournal_duty_tab', 'woche')
   const [monday, setMonday] = useState(() => mondayOf(todayIso()))
   const from = addDays(monday < todayIso() ? monday : todayIso(), -7)
-  const to = addDays(monday > todayIso() ? monday : todayIso(), 28)
+  const near = addDays(monday > todayIso() ? monday : todayIso(), 28)
+  // Planung zeigt die Wochen bis zur Erzeugungsgrenze
+  const far = addDays(mondayOf(todayIso()), GENERATE_AHEAD_WEEKS * 7 + 6)
+  const to = tab === 'planung' && far > near ? far : near
   const { data, refresh } = useQuery((pg) => loadDuty(pg, from, to), [from, to])
+  const overdue = data && canWrite ? weekStates(data.weeks, todayIso()).filter((w) => w.overdue).length : 0
   if (!canRead) return <p className="p-4 text-sm text-gray-600">Keine Berechtigung für den Dienstplan.</p>
   const tabs: [Tab, string][] = [
     ['woche', 'Woche'],
     ['meine', 'Meine Dienste'],
     ...(canWrite || canPropose ? ([['antraege', `Anträge${canWrite && data?.requests.some((r) => r.status === 'offen') ? ` (${data.requests.filter((r) => r.status === 'offen').length})` : ''}`]] as [Tab, string][]) : []),
     ['abwesend', 'Abwesend'],
-    ...(canWrite ? ([['einstellungen', 'Einstellungen']] as [Tab, string][]) : []),
+    ...(canWrite
+      ? ([
+          ['planung', `Planung${overdue ? ` (${overdue} fällig)` : ''}`],
+          ['einstellungen', 'Einstellungen'],
+        ] as [Tab, string][])
+      : []),
   ]
+  // Reiter ohne Recht (z.B. auf einem geteilten Gerät gespeichert) zeigen die Woche
+  const shown: Tab = !canWrite && (tab === 'planung' || tab === 'einstellungen') ? 'woche' : tab
   return (
-    <div className="mx-auto max-w-2xl space-y-3 p-4 pb-24">
+    <div className={`mx-auto space-y-3 p-4 pb-24 ${shown === 'woche' ? 'max-w-6xl' : 'max-w-3xl'}`}>
       <h1 className="text-xl font-bold text-gray-800">Dienstplan</h1>
       <div className="flex gap-1 overflow-x-auto">
         {tabs.map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setTab(k)} className={`shrink-0 rounded-lg px-3 py-1.5 text-sm ${tab === k ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}>
+          <button key={k} type="button" onClick={() => setTab(k)} className={`shrink-0 rounded-lg px-3 py-1.5 text-sm ${shown === k ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}>
             {l}
           </button>
         ))}
       </div>
       {!data ? (
         <p className="text-sm text-gray-500">Lädt…</p>
-      ) : tab === 'woche' ? (
+      ) : shown === 'woche' ? (
         <Week d={data} monday={monday} setMonday={setMonday} canWrite={canWrite} refresh={refresh} />
-      ) : tab === 'meine' ? (
+      ) : shown === 'meine' ? (
         <Mine d={data} canWrite={canWrite} canPropose={canPropose} refresh={refresh} />
-      ) : tab === 'antraege' ? (
+      ) : shown === 'antraege' ? (
         <Requests d={data} canWrite={canWrite} canPropose={canPropose} refresh={refresh} />
-      ) : tab === 'abwesend' ? (
+      ) : shown === 'abwesend' ? (
         <Absences d={data} canWrite={canWrite} />
+      ) : shown === 'planung' ? (
+        <Planning
+          d={data}
+          refresh={refresh}
+          openWeek={(m) => {
+            setMonday(m)
+            setTab('woche')
+          }}
+        />
       ) : (
         <Settings d={data} />
       )}

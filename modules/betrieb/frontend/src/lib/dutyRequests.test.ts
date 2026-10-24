@@ -10,7 +10,7 @@ const BEAT = 'a0000000-0000-4000-8000-000000000002'
 const type = { id: T1, name: 'Melken', start_time: '06:00', duration_min: 60, weekdays: '1111111', active: true, color: null, description: null, sort_order: 1, updated_at: '', deleted_at: null } as DutyType
 const person = (id: string, name: string) => ({ id, name, email: null, color: null, active: true, sort_order: 1, notes: null, updated_at: '', deleted_at: null }) as DutyPerson
 const shift = (date: string, person_id: string | null): DutyShift => ({ id: shiftId(T1, date, 0), type_id: T1, date, slot: 0, person_id, notes: null, assigned_by: null, updated_at: '', deleted_at: null })
-const data = (shifts: DutyShift[]): DutyData => ({ people: [person(ANNA, 'Anna'), person(BEAT, 'Beat')], types: [type], skills: [], absences: [], shifts, changes: [], requests: [] })
+const data = (shifts: DutyShift[]): DutyData => ({ people: [person(ANNA, 'Anna'), person(BEAT, 'Beat')], types: [type], skills: [], absences: [], shifts, changes: [], requests: [], templates: [], templateSlots: [], weeks: [] })
 const req = (r: Partial<DutyRequest>): DutyRequest => ({
   id: 'r1', kind: 'abgabe', person_id: ANNA, shift_id: shiftId(T1, '2026-11-03', 0), date: '2026-11-03', type_id: T1, to_person: null,
   other_shift_id: null, other_date: null, other_type_id: null, from_date: null, to_date: null, notes: null, status: 'offen',

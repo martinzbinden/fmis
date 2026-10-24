@@ -18,6 +18,9 @@ const TABLE_LABEL: Record<string, string> = {
   duty_shifts: 'Einteilung',
   duty_changes: 'Diensttausch',
   duty_requests: 'Dienst-Antrag',
+  duty_templates: 'Standardplan',
+  duty_template_slots: 'Standardplan-Platz',
+  duty_weeks: 'Dienstwoche',
   machine_settings: 'Geräteeinstellung',
 }
 

@@ -265,6 +265,40 @@ export interface DutyChange {
   deleted_at: string | null
 }
 
+/** Standard-Wochenplan (schema/0006): gilt ab valid_from, bis eine spätere Version beginnt. */
+export interface DutyTemplate {
+  id: string
+  name: string
+  valid_from: string
+  cycle_weeks: number
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+export interface DutyTemplateSlot {
+  id: string
+  template_id: string
+  week_no: number
+  weekday: number
+  type_id: string
+  slot: number
+  person_id: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+export type DutyWeekStatus = 'entwurf' | 'bestaetigt'
+export interface DutyWeek {
+  id: string
+  week_start: string
+  status: DutyWeekStatus
+  generated_at: string | null
+  confirmed_by: string | null
+  confirmed_at: string | null
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
 export type DutyRequestKind = 'wunsch' | 'abgabe' | 'tausch'
 export type DutyRequestStatus = 'offen' | 'bestaetigt' | 'abgelehnt' | 'zurueckgezogen'
 /** Freiwunsch oder Vorschlag (Abgabe, Tausch) einer Person; das Büro entscheidet (schema/0004). */

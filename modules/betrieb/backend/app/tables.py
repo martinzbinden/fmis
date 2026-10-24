@@ -61,6 +61,17 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "shift_id", "date", "type_id", "from_person", "to_person", "kind", "changed_by",
         "changed_at", "notes", "updated_at", "deleted_at",
     ],
+    "duty_templates": [
+        "id", "name", "valid_from", "cycle_weeks", "notes", "updated_at", "deleted_at",
+    ],
+    "duty_template_slots": [
+        "id", "template_id", "week_no", "weekday", "type_id", "slot", "person_id", "updated_at",
+        "deleted_at",
+    ],
+    "duty_weeks": [
+        "id", "week_start", "status", "generated_at", "confirmed_by", "confirmed_at", "notes",
+        "updated_at", "deleted_at",
+    ],
     "duty_requests": [
         "id", "kind", "person_id", "shift_id", "date", "type_id", "to_person", "other_shift_id",
         "other_date", "other_type_id", "from_date", "to_date", "notes", "status", "decided_by", "decided_at", "decision_note",
@@ -91,6 +102,10 @@ TABLE_AREA: dict[str, str] = {
     # Wünsche/Vorschläge: eigener Bereich, damit Mitarbeitende nur dort schreiben
     # (Prüfung der Zeilen: sync.py _guard)
     "duty_requests": "betrieb:wuensche",
+    # Standardpläne und Wochenstatus führt das Büro; Mitarbeit liest (betrieb:dienste:read)
+    "duty_templates": "betrieb:dienste",
+    "duty_template_slots": "betrieb:dienste",
+    "duty_weeks": "betrieb:dienste",
     "data_history": "betrieb:history",
 }
 
