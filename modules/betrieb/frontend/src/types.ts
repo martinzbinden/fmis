@@ -194,6 +194,10 @@ export interface DutyPerson {
   notes: string | null
   updated_at: string
   deleted_at: string | null
+  /** Klasse im Stundenplan (WebUntis), z.B. NHB2026/29-Ru: Schultage kommen automatisch als Abwesenheit (schema/0010) */
+  school_class: string | null
+  /** Halbklasse für Kurse in Halbklassen; null = unbekannt */
+  school_half: 'A' | 'B' | null
 }
 export interface DutyType {
   id: string
@@ -229,7 +233,7 @@ export interface DutySkill {
   updated_at: string
   deleted_at: string | null
 }
-export type DutyAbsenceKind = 'ferien' | 'frei' | 'krank' | 'kurs' | 'andere'
+export type DutyAbsenceKind = 'ferien' | 'frei' | 'krank' | 'kurs' | 'schule' | 'andere'
 export interface DutyAbsence {
   id: string
   person_id: string
@@ -240,6 +244,11 @@ export interface DutyAbsence {
   created_by: string | null
   updated_at: string
   deleted_at: string | null
+  /** 'webuntis' = vom Stundenplan-Abgleich eingetragen (backend/app/school_timetable.py) */
+  source: string | null
+  import_key: string | null
+  /** seit diesem Tag nicht mehr im Stundenplan: das Büro prüft und löscht ggf. */
+  missing_since: string | null
 }
 export interface DutyShift {
   id: string

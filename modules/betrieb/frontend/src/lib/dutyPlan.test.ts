@@ -12,13 +12,13 @@ const type = (extra: Partial<DutyType> = {}): DutyType => ({
   id: T1, name: 'Melken morgens', animal: 'Kühe', start_time: '06:00', duration_min: 90, weekdays: '1111111', color: null, description: null, active: true,
   sort_order: 1, updated_at: '', deleted_at: null, active_from: null, active_to: null, summer_from: null, summer_to: null, times: null, ...extra,
 })
-const person = (id: string, name: string, sort = 0): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: sort, notes: null, updated_at: '', deleted_at: null })
+const person = (id: string, name: string, sort = 0): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: sort, notes: null, updated_at: '', deleted_at: null, school_class: null, school_half: null })
 const skill = (p: string): DutySkill => ({ id: `s${p}`, person_id: p, type_id: T1, updated_at: '', deleted_at: null })
 const tpl = (id: string, valid_from: string, cycle = 1): DutyTemplate => ({ id, name: id, valid_from, cycle_weeks: cycle, notes: null, updated_at: '', deleted_at: null })
 const tslot = (template_id: string, weekday: number, person_id: string | null, week_no = 0): DutyTemplateSlot => ({
   id: templateSlotId(template_id, week_no, weekday, T1, 0), template_id, week_no, weekday, type_id: T1, slot: 0, person_id, updated_at: '', deleted_at: null,
 })
-const absence = (person_id: string, from: string, to: string): DutyAbsence => ({ id: `a${person_id}${from}`, person_id, from_date: from, to_date: to, kind: 'ferien', notes: null, created_by: null, updated_at: '', deleted_at: null })
+const absence = (person_id: string, from: string, to: string): DutyAbsence => ({ id: `a${person_id}${from}`, person_id, from_date: from, to_date: to, kind: 'ferien', notes: null, created_by: null, updated_at: '', deleted_at: null, source: null, import_key: null, missing_since: null })
 
 const MONDAY = '2026-11-02'
 const base = { monday: MONDAY, types: [type()], people: [person(ANNA, 'Anna', 1), person(BEAT, 'Beat', 2), person(CARLA, 'Carla', 3)], skills: [skill(ANNA), skill(BEAT), skill(CARLA)], shifts: [] as DutyShift[], absences: [] as DutyAbsence[] }

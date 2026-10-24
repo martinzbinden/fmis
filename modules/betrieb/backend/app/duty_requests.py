@@ -27,7 +27,7 @@ FIXED = (
     "kind", "person_id", "shift_id", "date", "type_id", "to_person", "other_shift_id", "other_date",
     "other_type_id", "from_date", "to_date", "notes", "status", "created_by", "absence_kind",
 )
-KIND_LABEL = {"ferien": "Ferien", "frei": "frei", "krank": "krank", "kurs": "Kurs", "andere": "abwesend"}
+KIND_LABEL = {"ferien": "Ferien", "frei": "frei", "krank": "krank", "kurs": "Kurs", "schule": "Schule", "andere": "abwesend"}
 
 
 def _norm(v: Any) -> Any:

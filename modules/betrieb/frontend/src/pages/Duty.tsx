@@ -11,6 +11,7 @@ import AbsenceCalendar from '../components/AbsenceCalendar'
 import { isoDate } from '../lib/format'
 import { GENERATE_AHEAD_WEEKS, weekStates } from '../lib/dutyPlan'
 import { getSyncedDb } from '../db/access'
+import { syncClient } from '../db/sync'
 import PlanCreateDialog from '../components/PlanCreateDialog'
 import { loadPlan, type PlanTask } from '../lib/workPlan'
 import { adjustWeek, assignWork, respondRequest, saveSkills, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
@@ -18,7 +19,7 @@ import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequest
 
 type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'planung' | 'einstellungen'
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-const KIND: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', andere: 'abwesend' }
+const KIND: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', schule: 'Schule', andere: 'abwesend' }
 const SEEN_KEY = 'wiesenjournal_duty_changes_seen'
 const dm = (iso: string) => `${DAYS[(new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7]} ${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}.`
 const field = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
@@ -734,10 +735,14 @@ function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; re
   const [confirmId, setConfirmId] = useState<string | null>(null)
   // alle Abwesenheiten (Jahresübersicht), nicht nur die des geladenen Zeitraums
   const { data: all } = useQuery(async (pg) =>
-    (await pg.query<DutyAbsence>('select * from duty_absences where deleted_at is null order by from_date')).rows.map((a) => ({ ...a, from_date: isoDate(a.from_date)!, to_date: isoDate(a.to_date)! })),
+    (await pg.query<DutyAbsence>('select * from duty_absences where deleted_at is null order by from_date')).rows.map((a) => ({ ...a, from_date: isoDate(a.from_date)!, to_date: isoDate(a.to_date)!, missing_since: a.missing_since ? isoDate(a.missing_since) : null })),
   )
   const absences = all ?? d.absences
-  const list = absences.filter((a) => a.to_date >= todayIso())
+  const coming = absences.filter((a) => a.to_date >= todayIso())
+  // Schultage aus dem Stundenplan je Person zusammengefasst; einzeln nur, was nicht mehr im Stundenplan steht
+  const school = coming.filter((a) => a.source === 'webuntis' && !a.missing_since)
+  const list = coming.filter((a) => a.source !== 'webuntis' || a.missing_since)
+  const schoolBy = [...new Set(school.map((a) => a.person_id))].map((pid) => ({ pid, days: school.filter((a) => a.person_id === pid) }))
   // eigene Krankmeldung darf man selber löschen, alles andere das Büro
   const mayDelete = (a: DutyAbsence) => canWrite || (!!self && a.person_id === self.id && a.kind === 'krank')
   return (
@@ -745,12 +750,19 @@ function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; re
       <AbsenceCalendar d={d} canWrite={canWrite} absences={absences} refresh={refresh} />
       <h3 className="text-sm font-semibold text-gray-700">Kommende Abwesenheiten</h3>
       <ul className="divide-y rounded-xl border bg-white text-sm">
+        {schoolBy.map(({ pid, days }) => (
+          <li key={`schule-${pid}`} className="px-3 py-2">
+            <b>{personName(d, pid)}</b> · Schule ({days.length} {days.length === 1 ? 'Tag' : 'Tage'}, aus dem Stundenplan): {days.slice(0, 6).map((a) => dm(a.from_date)).join(', ')}
+            {days.length > 6 ? ' …' : ''}
+          </li>
+        ))}
         {list.map((a) => (
-          <li key={a.id} className="flex items-center gap-2 px-3 py-2">
+          <li key={a.id} className={`flex items-center gap-2 px-3 py-2 ${a.missing_since ? 'bg-amber-50' : ''}`}>
             <span className="flex-1">
               <b>{personName(d, a.person_id)}</b> · {KIND[a.kind]} · {dm(a.from_date)}
               {a.to_date !== a.from_date ? `–${dm(a.to_date)}` : ''}
               {a.notes ? ` · ${a.notes}` : ''}
+              {a.missing_since && <span className="block text-xs text-amber-900">⚠ seit {dm(a.missing_since)} nicht mehr im Stundenplan: prüfen und ggf. löschen</span>}
             </span>
             {mayDelete(a) &&
               (confirmId === a.id ? (
@@ -764,7 +776,7 @@ function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; re
               ))}
           </li>
         ))}
-        {list.length === 0 && <li className="px-3 py-2 text-gray-500">Keine kommenden Abwesenheiten.</li>}
+        {list.length === 0 && schoolBy.length === 0 && <li className="px-3 py-2 text-gray-500">Keine kommenden Abwesenheiten.</li>}
       </ul>
     </div>
   )
@@ -1039,6 +1051,78 @@ function Feeds({ d }: { d: DutyData }) {
   )
 }
 
+interface SchoolResult {
+  person: string
+  error?: string
+  days?: number
+  until?: string
+  added?: string[]
+  missing?: string[]
+  back?: string[]
+  hints?: string[]
+  conflicts?: string[]
+}
+
+/** Schultage aus dem Stundenplan (WebUntis): der Server gleicht jede Nacht ab, hier auf Knopfdruck
+ * (modules/betrieb/backend/app/school_timetable.py). */
+function SchoolSync() {
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState<SchoolResult[] | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  async function run() {
+    setBusy(true)
+    setErr(null)
+    try {
+      await syncClient.push() // eben geänderte Klasse zuerst an den Server
+      const r = await fetch(`${API_URL}/betrieb/duty/school-sync`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      })
+      if (!r.ok) throw new Error(`Server ${r.status}`)
+      setRes(await r.json())
+      await syncClient.pull()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const list = (xs: string[] | undefined) => (xs ?? []).map((x) => (/^\d{4}-/.test(x) ? dm(x) : x)).join(', ')
+  return (
+    <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-semibold text-gray-700">Schultage aus dem Stundenplan</h3>
+        <button type="button" className={btn} disabled={busy} onClick={() => void run()}>
+          {busy ? 'Ruft ab …' : 'Jetzt abrufen'}
+        </button>
+      </div>
+      <p className="text-xs text-gray-600">
+        Der Server liest jede Nacht den Stundenplan (Inforama, WebUntis) und trägt Schul- und ÜK-Tage als Abwesenheit «Schule» ein, ganztägig. Neue oder
+        weggefallene Tage meldet er dem Büro; gelöscht wird nichts automatisch. Kurse für eine Halbklasse kommen erst, wenn die Halbklasse eingestellt ist.
+      </p>
+      {res?.map((r) => (
+        <div key={r.person} className="rounded bg-gray-50 px-2 py-1 text-xs">
+          <b>{r.person}</b>:{' '}
+          {r.error ? (
+            <span className="text-red-700">{r.error}</span>
+          ) : (
+            <>
+              {r.days} Schultage ab heute{r.until ? ` (Stundenplan bis ${dm(r.until)})` : ''}
+              {r.added?.length ? ` · neu: ${list(r.added)}` : ' · nichts Neues'}
+              {r.missing?.length ? ` · nicht mehr im Stundenplan: ${list(r.missing)}` : ''}
+              {r.back?.length ? ` · wieder da: ${list(r.back)}` : ''}
+              {r.hints?.length ? ` · Halbklasse offen: ${list(r.hints)}` : ''}
+              {r.conflicts?.length ? <span className="text-red-700"> · schon eingeteilt: {list(r.conflicts)}</span> : ''}
+            </>
+          )}
+        </div>
+      ))}
+      {err && <p className="text-xs text-red-700">Geht nur mit Verbindung zum Server: {err}</p>}
+    </section>
+  )
+}
+
 function Settings({ d }: { d: DutyData }) {
   const [editType, setEditType] = useState<Partial<DutyType> | null>(null)
   const [newPerson, setNewPerson] = useState({ name: '', email: '' })
@@ -1068,7 +1152,16 @@ function Settings({ d }: { d: DutyData }) {
                   <label className="flex items-center gap-1">
                     <input type="checkbox" checked={editPerson.active} onChange={(e) => setEditPerson({ ...editPerson, active: e.target.checked })} /> aktiv
                   </label>
-                  <button type="button" className={btn} onClick={() => void savePerson({ ...editPerson, name: editPerson.name.trim(), email: editPerson.email?.trim() || null }).then(() => setEditPerson(null))}>
+                  <span className="flex w-full flex-wrap items-center gap-2 text-xs text-gray-600">
+                    Schule (Lehrling):
+                    <input className={field} value={editPerson.school_class ?? ''} onChange={(e) => setEditPerson({ ...editPerson, school_class: e.target.value })} placeholder="Klasse, z.B. NHB2026/29-Ru" aria-label="Klasse im Stundenplan" />
+                    <select className={field} value={editPerson.school_half ?? ''} onChange={(e) => setEditPerson({ ...editPerson, school_half: (e.target.value || null) as DutyPerson['school_half'] })} aria-label="Halbklasse">
+                      <option value="">Halbklasse unbekannt</option>
+                      <option value="A">Halbklasse A</option>
+                      <option value="B">Halbklasse B</option>
+                    </select>
+                  </span>
+                  <button type="button" className={btn} onClick={() => void savePerson({ ...editPerson, name: editPerson.name.trim(), email: editPerson.email?.trim() || null, school_class: editPerson.school_class?.trim() || null }).then(() => setEditPerson(null))}>
                     Speichern
                   </button>
                   {confirmP === p.id ? (
@@ -1084,6 +1177,12 @@ function Settings({ d }: { d: DutyData }) {
               ) : (
                 <button type="button" className="flex-1 text-left" onClick={() => setEditPerson(p)}>
                   <b className={p.active ? '' : 'text-gray-500 line-through'}>{p.name}</b> <span className="text-xs text-gray-500">{p.email ?? 'ohne FMIS-Konto'}</span>
+                  {p.school_class && (
+                    <span className="ml-1 text-xs text-amber-800">
+                      🎓 {p.school_class}
+                      {p.school_half ? ` · Halbklasse ${p.school_half}` : ' · Halbklasse ?'}
+                    </span>
+                  )}
                 </button>
               )}
             </li>
@@ -1097,7 +1196,7 @@ function Settings({ d }: { d: DutyData }) {
             className={btn}
             disabled={!newPerson.name.trim()}
             onClick={() =>
-              void savePerson({ id: crypto.randomUUID(), name: newPerson.name.trim(), email: newPerson.email.trim() || null, color: null, active: true, sort_order: people.length * 10, notes: null }).then(() =>
+              void savePerson({ id: crypto.randomUUID(), name: newPerson.name.trim(), email: newPerson.email.trim() || null, color: null, active: true, sort_order: people.length * 10, notes: null, school_class: null, school_half: null }).then(() =>
                 setNewPerson({ name: '', email: '' }),
               )
             }
@@ -1106,6 +1205,8 @@ function Settings({ d }: { d: DutyData }) {
           </button>
         </div>
       </section>
+
+      {people.some((p) => p.school_class) && <SchoolSync />}
 
       <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
         <div className="flex items-center justify-between">

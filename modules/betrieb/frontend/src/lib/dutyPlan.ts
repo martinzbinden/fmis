@@ -69,7 +69,7 @@ export interface PlanInput {
   adjustExisting?: boolean
 }
 
-const ABSENCE_LABEL: Record<string, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', andere: 'abwesend' }
+const ABSENCE_LABEL: Record<string, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', schule: 'Schule', andere: 'abwesend' }
 
 /** Eine Woche aus der Vorlage einteilen. Schon eingeteilte Plätze bleiben unberührt (ausser mit
  * adjustExisting bei Abwesenheit). Ist die Vorlagenperson abwesend, gleichzeitig eingeteilt oder nicht

@@ -6,7 +6,7 @@ const T = (id: string, name: string, start: string, dur: number, weekdays = '111
   id, name, start_time: start, duration_min: dur, weekdays, color: null, description: null, active: true, sort_order: 0, updated_at: '', deleted_at: null,
   animal: null, active_from: null, active_to: null, summer_from: null, summer_to: null, times: null,
 })
-const P = (id: string, name: string): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: 0, notes: null, updated_at: '', deleted_at: null })
+const P = (id: string, name: string): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: 0, notes: null, updated_at: '', deleted_at: null, school_class: null, school_half: null })
 const S = (person: string, type: string): DutySkill => ({ id: `${person}${type}`, person_id: person, type_id: type, updated_at: '', deleted_at: null })
 const kuehe = T('k', 'Melken Kühe morgens', '06:00', 90)
 const schafe = T('s', 'Melken Schafe morgens', '06:00', 75)
@@ -33,7 +33,7 @@ describe('Wochen', () => {
 describe('Konflikte und Vorschlag', () => {
   const people = [P('a', 'Anna'), P('b', 'Beat')]
   const skills = [S('a', 'k'), S('a', 's'), S('b', 'k'), S('b', 's'), S('b', 'c')]
-  const absences: DutyAbsence[] = [{ id: 'x', person_id: 'b', from_date: '2026-10-15', to_date: '2026-10-16', kind: 'ferien', notes: null, created_by: null, updated_at: '', deleted_at: null }]
+  const absences: DutyAbsence[] = [{ id: 'x', person_id: 'b', from_date: '2026-10-15', to_date: '2026-10-16', kind: 'ferien', notes: null, created_by: null, updated_at: '', deleted_at: null, source: null, import_key: null, missing_since: null }]
   const dates = weekDates('2026-10-12')
   it('gleichzeitig, abwesend, nicht befähigt', () => {
     const shift: DutyShift = { id: shiftId('k', '2026-10-12', 0), type_id: 'k', date: '2026-10-12', slot: 0, person_id: 'a', notes: null, assigned_by: null, updated_at: '', deleted_at: null }

@@ -53,7 +53,7 @@ export async function loadDuty(pg: PGlite, from: string, to: string): Promise<Du
     people: people.rows,
     types: types.rows.map((t) => ({ ...t, duration_min: Number(t.duration_min) })),
     skills: skills.rows,
-    absences: absences.rows.map((a) => ({ ...a, from_date: iso(a.from_date), to_date: iso(a.to_date) })),
+    absences: absences.rows.map((a) => ({ ...a, from_date: iso(a.from_date), to_date: iso(a.to_date), missing_since: a.missing_since ? iso(a.missing_since) : null })),
     shifts: shifts.rows.map((s) => ({ ...s, date: iso(s.date), slot: Number(s.slot) })),
     changes: changes.rows.map((c) => ({ ...c, date: iso(c.date), changed_at: (c.changed_at as unknown) instanceof Date ? (c.changed_at as unknown as Date).toISOString() : String(c.changed_at) })),
     requests: requests.rows.map((r) => ({
@@ -141,8 +141,8 @@ export async function saveSkills(skills: DutySkill[], wanted: Set<string>): Prom
   await upsertRows('duty_skills', [...removed, ...added] as never)
 }
 
-export const saveAbsence = (a: Omit<DutyAbsence, 'updated_at' | 'deleted_at' | 'created_by'> & { created_by?: string | null }) =>
-  upsertRow('duty_absences', { ...a, created_by: a.created_by ?? getCurrentUserEmail(), deleted_at: null } as never)
+export const saveAbsence = (a: Omit<DutyAbsence, 'updated_at' | 'deleted_at' | 'created_by' | 'source' | 'import_key' | 'missing_since'> & { created_by?: string | null }) =>
+  upsertRow('duty_absences', { source: null, import_key: null, missing_since: null, ...a, created_by: a.created_by ?? getCurrentUserEmail(), deleted_at: null } as never)
 export const deleteAbsence = (id: string) => softDeleteRow('duty_absences', id)
 
 /** Person zum angemeldeten Konto (über die E-Mail). */

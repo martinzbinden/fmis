@@ -39,7 +39,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "duty_people": [
         "id", "name", "email", "color", "active", "sort_order", "notes", "updated_at",
-        "deleted_at",
+        "deleted_at", "school_class", "school_half",
     ],
     "duty_types": [
         "id", "name", "start_time", "duration_min", "weekdays", "color", "description", "active",
@@ -51,7 +51,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "duty_absences": [
         "id", "person_id", "from_date", "to_date", "kind", "notes", "created_by", "updated_at",
-        "deleted_at",
+        "deleted_at", "source", "import_key", "missing_since",
     ],
     "duty_shifts": [
         "id", "type_id", "date", "slot", "person_id", "notes", "assigned_by", "updated_at",

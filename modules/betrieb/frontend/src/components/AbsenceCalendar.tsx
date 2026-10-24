@@ -3,8 +3,8 @@ import { localToday as todayIso, monthGrid, runsOf } from '../lib/duty'
 import { me, saveAbsence, saveRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest } from '../types'
 
-const KIND_LABEL: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', andere: 'abwesend' }
-const KIND_COLOR: Record<DutyAbsenceKind, string> = { ferien: '#0284c7', frei: '#059669', krank: '#dc2626', kurs: '#7c3aed', andere: '#6b7280' }
+const KIND_LABEL: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', schule: 'Schule', andere: 'abwesend' }
+const KIND_COLOR: Record<DutyAbsenceKind, string> = { ferien: '#0284c7', frei: '#059669', krank: '#dc2626', kurs: '#7c3aed', schule: '#d97706', andere: '#6b7280' }
 const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 const field = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
@@ -15,6 +15,8 @@ interface DayEntry {
   kind: DutyAbsenceKind
   /** beantragt, noch nicht bestätigt */
   pending: boolean
+  /** Schultag, der nicht mehr im Stundenplan steht */
+  missing?: boolean
 }
 
 const short = (name: string | undefined) => (name ?? '?').replace(/^TEST\s+/, '').split(/\s+/).slice(-1)[0]
@@ -43,7 +45,7 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
       for (let day = from; day <= to; day = new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10))
         map.set(day, [...(map.get(day) ?? []), e])
     }
-    for (const a of absences) if (!filter || a.person_id === filter) add(a.from_date, a.to_date, { person: d.people.find((p) => p.id === a.person_id), kind: a.kind, pending: false })
+    for (const a of absences) if (!filter || a.person_id === filter) add(a.from_date, a.to_date, { person: d.people.find((p) => p.id === a.person_id), kind: a.kind, pending: false, missing: !!a.missing_since })
     for (const r of d.requests as DutyRequest[])
       if (r.kind === 'wunsch' && r.status === 'offen' && r.from_date && r.to_date && (!filter || r.person_id === filter))
         add(r.from_date, r.to_date, { person: d.people.find((p) => p.id === r.person_id), kind: r.absence_kind ?? 'frei', pending: true })
@@ -141,9 +143,9 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
                   {(byDay.get(day) ?? []).slice(0, 4).map((e, k) => (
                     <span
                       key={k}
-                      className="mt-px block truncate rounded px-0.5 text-[10px] leading-tight text-white"
+                      className={`mt-px block truncate rounded px-0.5 text-[10px] leading-tight text-white ${e.missing ? 'line-through opacity-60' : ''}`}
                       style={e.pending ? { color: KIND_COLOR[e.kind], border: `1px dashed ${KIND_COLOR[e.kind]}`, background: 'white' } : { background: KIND_COLOR[e.kind] }}
-                      title={`${e.person?.name ?? '?'}: ${KIND_LABEL[e.kind]}${e.pending ? ' (beantragt)' : ''}`}
+                      title={`${e.person?.name ?? '?'}: ${KIND_LABEL[e.kind]}${e.pending ? ' (beantragt)' : ''}${e.missing ? ' (nicht mehr im Stundenplan)' : ''}`}
                     >
                       {short(e.person?.name)}
                     </span>
@@ -213,7 +215,7 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
               <span className="self-center font-medium">{self?.name}</span>
             )}
             <select className={field} value={kind} onChange={(e) => setKind(e.target.value as DutyAbsenceKind)} aria-label="Art">
-              {(Object.keys(KIND_LABEL) as DutyAbsenceKind[]).map((k) => (
+              {(Object.keys(KIND_LABEL) as DutyAbsenceKind[]).filter((k) => canWrite || k !== 'schule').map((k) => (
                 <option key={k} value={k}>
                   {KIND_LABEL[k]}
                 </option>

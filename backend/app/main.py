@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -20,6 +21,7 @@ from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
 from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
 from modules.betrieb.backend.app import machine_files as betrieb_machine_files
+from modules.betrieb.backend.app import school_timetable as betrieb_school
 from modules.betrieb.backend.app import sync as betrieb_sync
 from modules.tiere.backend.app import sync as tiere_sync
 from modules.bau.backend.app import sync as bau_sync
@@ -63,7 +65,10 @@ async def lifespan(app: FastAPI):
         created = await livestock_dev_seed.seed_if_empty(get_pool("livestock"))
         if created:
             logging.getLogger("uvicorn.error").info("DEV_SEED: %s Testtiere im Mastplaner angelegt", created)
+    # Schultage aus dem Stundenplan, jede Nacht (modules/betrieb/backend/app/school_timetable.py)
+    school = asyncio.create_task(betrieb_school.nightly())
     yield
+    school.cancel()
     await close_pools()
 
 
@@ -128,6 +133,11 @@ app.include_router(
 )
 # Kalender-Abo der Dienste: ohne Anmeldung, der geheime Link ist der Schutz
 app.include_router(betrieb_duty_feed.public_router, prefix="/betrieb")
+app.include_router(
+    betrieb_school.router,
+    prefix="/betrieb",
+    dependencies=[Depends(require_module_enabled("betrieb"))],
+)
 app.include_router(
     livestock_reader.router,
     prefix="/livestock",
