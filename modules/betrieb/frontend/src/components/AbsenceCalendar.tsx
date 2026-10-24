@@ -50,14 +50,20 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
     return map
   }, [absences, d.requests, d.people, filter])
 
-  const toggle = (day: string) => {
+  // zuletzt angetippter Tag: mit Shift-Klick den ganzen Zeitraum bis hierher wählen
+  const [anchor, setAnchor] = useState<string | null>(null)
+  const toggle = (day: string, shift: boolean) => {
     if (!canEnter) return
     setSel((s) => {
       const n = new Set(s)
-      if (n.has(day)) n.delete(day)
+      if (shift && anchor) {
+        const [from, to] = anchor <= day ? [anchor, day] : [day, anchor]
+        for (let x = from; x <= to; x = new Date(Date.parse(`${x}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) n.add(x)
+      } else if (n.has(day)) n.delete(day)
       else n.add(day)
       return n
     })
+    setAnchor(day)
   }
   const direct = canWrite || kind === 'krank'
   async function save() {
@@ -126,7 +132,7 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
                 <button
                   key={day}
                   type="button"
-                  onClick={() => toggle(day)}
+                  onClick={(e) => toggle(day, e.shiftKey)}
                   className={`min-h-16 bg-white p-0.5 text-left align-top ${sel.has(day) ? 'ring-2 ring-inset ring-indigo-500 !bg-indigo-50' : ''} ${day === today ? 'font-bold' : ''} ${i % 7 >= 5 ? 'bg-gray-50' : ''}`}
                   aria-pressed={sel.has(day)}
                   aria-label={`${Number(day.slice(8))}. ${MONTHS[ym.m - 1]}`}
@@ -192,7 +198,7 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
 
       {canEnter && view === 'monat' && (
         <div className={`space-y-2 rounded-lg p-2 ${sel.size ? 'bg-indigo-50' : 'bg-gray-50'}`}>
-          <p className="text-xs text-gray-600">{sel.size ? `${sel.size} ${sel.size === 1 ? 'Tag' : 'Tage'} gewählt.` : 'Tage im Kalender antippen, dann Art wählen und speichern.'}</p>
+          <p className="text-xs text-gray-600">{sel.size ? `${sel.size} ${sel.size === 1 ? 'Tag' : 'Tage'} gewählt.` : 'Tage im Kalender antippen (Shift-Klick: ganzer Zeitraum von–bis), dann Art wählen und speichern.'}</p>
           <div className="flex flex-wrap gap-2">
             {canWrite ? (
               <select className={field} value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Person">

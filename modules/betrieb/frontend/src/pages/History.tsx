@@ -21,6 +21,7 @@ const TABLE_LABEL: Record<string, string> = {
   duty_templates: 'Standardplan',
   duty_template_slots: 'Standardplan-Platz',
   duty_weeks: 'Dienstwoche',
+  work_assignments: 'Arbeit zugeteilt',
   machine_settings: 'Geräteeinstellung',
 }
 

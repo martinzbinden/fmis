@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { conflictsFor, copyFromPrevious, endTime, inMonthDayRange, isoWeek, isSummer, mondayOf, parseTimes, shiftId, slotsFor, slotsOn, stringifyTimes, suggest, timeOn, typeLabel, weekDates, monthGrid, runsOf } from './duty'
+import { conflictsFor, copyFromPrevious, endTime, inMonthDayRange, isoWeek, isSummer, mondayOf, parseTimes, shiftId, slotsFor, slotsOn, stringifyTimes, suggest, timeOn, typeLabel, weekDates, monthGrid, runsOf, toQuarters, fromQuarters, timeText, rangesOverlap } from './duty'
 import type { DutyAbsence, DutyPerson, DutyShift, DutySkill, DutyType } from '../types'
 
 const T = (id: string, name: string, start: string, dur: number, weekdays = '1111111'): DutyType => ({
@@ -88,15 +88,15 @@ describe('Saison und Zeiten je Wochentag', () => {
 
   it('Sommer und Winter mit eigenen Zeiten je Wochentag', () => {
     const times = stringifyTimes({
-      sommer: [[330, 90], null, null, null, null, null, null],
-      winter: [[390, 90], null, null, null, null, null, [480, 60]],
+      sommer: [[[330, 90]], null, null, null, null, null, null],
+      winter: [[[390, 90]], null, null, null, null, null, [[480, 60]]],
     })
     const t = { ...T('k', 'Melken morgens', '06:00', 75), times }
     // Mo 3.8.2026 (Sommer) = 05:30, Mo 7.12.2026 (Winter) = 06:30, Di = Standard, So Winter = 08:00
-    expect(timeOn(t, '2026-08-03')).toEqual({ start_time: '05:30', duration_min: 90 })
-    expect(timeOn(t, '2026-12-07')).toEqual({ start_time: '06:30', duration_min: 90 })
-    expect(timeOn(t, '2026-12-08')).toEqual({ start_time: '06:00', duration_min: 75 })
-    expect(timeOn(t, '2026-12-13')).toEqual({ start_time: '08:00', duration_min: 60 })
+    expect(timeOn(t, '2026-08-03')).toEqual({ start_time: '05:30', duration_min: 90, blocks: null })
+    expect(timeOn(t, '2026-12-07')).toEqual({ start_time: '06:30', duration_min: 90, blocks: null })
+    expect(timeOn(t, '2026-12-08')).toEqual({ start_time: '06:00', duration_min: 75, blocks: null })
+    expect(timeOn(t, '2026-12-13')).toEqual({ start_time: '08:00', duration_min: 60, blocks: null })
     // der Platz im Plan trägt die Zeit des Tages
     const slot = slotsFor([t], [], ['2026-12-07'])[0]
     expect(slot.type.start_time).toBe('06:30')
@@ -137,3 +137,28 @@ describe('Kalender', () => {
     ])
   })
 })
+
+describe('Lücken und Zeitschaltuhr', () => {
+  it('Viertelstunden ↔ Blöcke', () => {
+    const q = toQuarters([[360, 60], [1020, 45]])
+    expect(q.filter(Boolean)).toHaveLength(7)
+    expect(fromQuarters(q)).toEqual([[360, 60], [1020, 45]])
+  })
+  it('altes Format (ein Block je Tag) wird weiter gelesen', () => {
+    const t = parseTimes('{"sommer":[[330,90],null,null,null,null,null,null],"winter":[]}')
+    expect(t?.sommer[0]).toEqual([[330, 90]])
+  })
+  it('Dienst mit Lücke: Zeiten, Anzeige, Überschneidung', () => {
+    const times = stringifyTimes({ sommer: Array(7).fill([[420, 60], [1020, 60]]), winter: Array(7).fill(null) })
+    const t = { ...T('h', 'Hühner', '13:00', 60), times }
+    const on = timeOn(t, '2026-07-01')
+    expect(on.start_time).toBe('07:00')
+    expect(on.blocks).toEqual([[420, 60], [1020, 60]])
+    expect(timeText({ ...t, ...on })).toBe('07:00–08:00, 17:00–18:00')
+    const mittag = { ...T('m', 'Mittag', '12:00', 60) }
+    const abend = { ...T('a', 'Abend', '17:30', 30) }
+    expect(rangesOverlap({ ...t, ...on }, mittag)).toBe(false) // fällt in die Lücke
+    expect(rangesOverlap({ ...t, ...on }, abend)).toBe(true)
+  })
+})
+

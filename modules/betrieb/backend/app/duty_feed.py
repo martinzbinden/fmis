@@ -105,19 +105,34 @@ def _in_range(d: date, frm: str | None, to: str | None) -> bool:
     return frm <= md <= to if frm <= to else md >= frm or md <= to
 
 
-def effective_time(start_time: str, duration_min: int, times: str | None, summer_from: str | None, summer_to: str | None, d: date) -> tuple[str, int]:
-    """Beginn und Dauer an diesem Datum: Jahreszeit und Wochentag aus `times`
-    (JSON, siehe frontend lib/duty.ts parseTimes), sonst die Standardzeit."""
+def _blocks(entry: Any) -> list[tuple[int, int]]:
+    """Ein Tag aus `times`: früher [Beginn, Dauer], jetzt [[Beginn, Dauer], …] (Lücken)."""
+    if not isinstance(entry, list) or not entry:
+        return []
+    raw = entry if isinstance(entry[0], list) else [entry]
+    out = []
+    for b in raw:
+        try:
+            start, minutes = float(b[0]), float(b[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if minutes > 0 and 0 <= start < 1440:
+            out.append((int(round(start / 15) * 15), int(round(minutes / 15) * 15) or 15))
+    return sorted(out)
+
+
+def effective_blocks(start_time: str, duration_min: int, times: str | None, summer_from: str | None, summer_to: str | None, d: date) -> list[tuple[str, int]]:
+    """Zeitblöcke an diesem Datum (Beginn 'HH:MM', Dauer): Jahreszeit und Wochentag aus `times`
+    (JSON, siehe frontend lib/duty.ts parseTimes), sonst die Standardzeit. Mehrere = Dienst mit Lücke."""
     if times:
         try:
             season = "sommer" if _in_range(d, summer_from or "04-01", summer_to or "10-31") else "winter"
-            entry = json.loads(times).get(season, [])[d.weekday()]
-            if isinstance(entry, list) and len(entry) >= 2 and float(entry[1]) > 0 and 0 <= float(entry[0]) < 1440:
-                start = int(round(float(entry[0]) / 15) * 15)
-                return f"{start // 60 % 24:02d}:{start % 60:02d}", int(round(float(entry[1]) / 15) * 15) or 15
+            blocks = _blocks(json.loads(times).get(season, [])[d.weekday()])
+            if blocks:
+                return [(f"{s // 60 % 24:02d}:{s % 60:02d}", m) for s, m in blocks]
         except (ValueError, TypeError, IndexError, AttributeError):
             pass
-    return start_time, duration_min
+    return [(start_time, duration_min)]
 
 
 def _esc(text: str) -> str:
@@ -205,13 +220,14 @@ async def feed(token: str) -> Response:
         # wie im Plan: ausserhalb des Saisonfensters (oder inaktiv) gibt es den Dienst nicht
         if not r[14] or not _in_range(r[1], r[12], r[13]):
             continue
-        start, duration = effective_time(r[2], r[3], r[9], r[10], r[11], r[1])
-        shifts.append(
-            {
-                "id": str(r[0]), "date": r[1], "start_time": start, "duration_min": duration,
-                "type_name": f"{r[8]} · {r[4]}" if r[8] and str(r[8]).strip() else r[4],
-                "description": r[5], "notes": r[6], "person_name": r[7], "with_person": person_id is None,
-            }
-        )
+        # Dienst mit Lücke = mehrere Termine (eigene UID je Block)
+        for i, (start, duration) in enumerate(effective_blocks(r[2], r[3], r[9], r[10], r[11], r[1])):
+            shifts.append(
+                {
+                    "id": str(r[0]) if i == 0 else f"{r[0]}-{i}", "date": r[1], "start_time": start, "duration_min": duration,
+                    "type_name": f"{r[8]} · {r[4]}" if r[8] and str(r[8]).strip() else r[4],
+                    "description": r[5], "notes": r[6], "person_name": r[7], "with_person": person_id is None,
+                }
+            )
     name = f"Dienste {person_name}" if person_name else "Dienste Riedackerhof"
     return Response(content=build_ics(name, shifts, datetime.utcnow()), media_type="text/calendar; charset=utf-8")

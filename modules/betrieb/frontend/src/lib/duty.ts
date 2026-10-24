@@ -44,20 +44,50 @@ export function runsOn(type: Pick<DutyType, 'active' | 'active_from' | 'active_t
   return !!type.active && inMonthDayRange(iso, type.active_from, type.active_to)
 }
 
-/** Beginn und Dauer in Minuten ab 00:00; null = der Dienst-Standard (start_time/duration_min). */
-export type DayTime = [start: number, minutes: number] | null
+/** Ein Zeitblock: Beginn und Dauer in Minuten ab 00:00. */
+export type Block = [start: number, minutes: number]
+/** Zeitblöcke eines Tages (mehrere = Dienst mit Lücke); null = der Dienst-Standard (start_time/duration_min). */
+export type DayTime = Block[] | null
 export interface SeasonTimes {
   sommer: DayTime[]
   winter: DayTime[]
 }
 
 const STEP = 15
-const clampDay = (v: unknown): DayTime => {
-  if (!Array.isArray(v) || v.length < 2) return null
+export const QUARTERS = (24 * 60) / STEP
+
+/** Blöcke → 96 Viertelstunden (an/aus). */
+export function toQuarters(blocks: Block[] | null | undefined): boolean[] {
+  const q = Array<boolean>(QUARTERS).fill(false)
+  for (const [s, m] of blocks ?? []) for (let i = Math.floor(s / STEP); i < Math.min(QUARTERS, Math.ceil((s + m) / STEP)); i++) if (i >= 0) q[i] = true
+  return q
+}
+
+/** 96 Viertelstunden → zusammenhängende Blöcke (leer = []). */
+export function fromQuarters(q: boolean[]): Block[] {
+  const out: Block[] = []
+  for (let i = 0; i < QUARTERS; i++) {
+    if (!q[i]) continue
+    const last = out[out.length - 1]
+    if (last && last[0] + last[1] === i * STEP) last[1] += STEP
+    else out.push([i * STEP, STEP])
+  }
+  return out
+}
+
+const clampBlock = (v: unknown): Block | null => {
+  if (!Array.isArray(v) || v.length < 2 || Array.isArray(v[0])) return null
   const start = Number(v[0])
   const min = Number(v[1])
   if (!Number.isFinite(start) || !Number.isFinite(min) || min <= 0 || start < 0 || start >= 24 * 60) return null
   return [Math.round(start / STEP) * STEP, Math.round(min / STEP) * STEP || STEP]
+}
+/** Ein Tag: früher ein einzelnes [Beginn, Dauer], jetzt eine Liste von Blöcken. Überlappende werden vereint. */
+const clampDay = (v: unknown): DayTime => {
+  if (!Array.isArray(v) || v.length === 0) return null
+  const raw = Array.isArray(v[0]) ? v.map(clampBlock) : [clampBlock(v)]
+  const blocks = fromQuarters(toQuarters(raw.filter((b): b is Block => !!b)))
+  return blocks.length ? blocks : null
 }
 
 /** JSON aus der Spalte `times` lesen; Ungültiges gilt als «nicht gesetzt». */
@@ -74,22 +104,30 @@ export function parseTimes(json: string | null | undefined): SeasonTimes | null 
 }
 
 export const stringifyTimes = (t: SeasonTimes | null): string | null =>
-  t && (t.sommer.some(Boolean) || t.winter.some(Boolean)) ? JSON.stringify(t) : null
+  t && (t.sommer.some((d) => d?.length) || t.winter.some((d) => d?.length))
+    ? JSON.stringify({ sommer: t.sommer.map((d) => (d?.length ? d : null)), winter: t.winter.map((d) => (d?.length ? d : null)) })
+    : null
 
 export const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
-const toMin = (hm: string) => {
-  const [h, m] = hm.split(':').map(Number)
-  return (h || 0) * 60 + (m || 0)
-}
+/** «06:00–07:30, 16:00–17:00» */
+export const blocksText = (blocks: Block[]) => blocks.map(([s, m]) => `${hhmm(s)}–${s + m >= 24 * 60 ? '24:00' : hhmm(s + m)}`).join(', ')
 
-/** Beginn und Dauer des Dienstes an diesem Datum (Jahreszeit und Wochentag berücksichtigt). */
+/** Zeiten des Dienstes an diesem Datum (Jahreszeit und Wochentag berücksichtigt). Bei mehreren
+ * Blöcken: start_time = Beginn des ersten, duration_min = bis Ende des letzten, `blocks` = alle. */
 export function timeOn(
   type: Pick<DutyType, 'start_time' | 'duration_min' | 'times' | 'summer_from' | 'summer_to'>,
   iso: string,
-): { start_time: string; duration_min: number } {
+): { start_time: string; duration_min: number; blocks: Block[] | null } {
   const times = parseTimes(type.times)
   const entry = times?.[isSummer(iso, type) ? 'sommer' : 'winter'][weekdayIndex(iso)] ?? null
-  return entry ? { start_time: hhmm(entry[0]), duration_min: entry[1] } : { start_time: type.start_time, duration_min: type.duration_min }
+  if (!entry?.length) return { start_time: type.start_time, duration_min: type.duration_min, blocks: null }
+  const last = entry[entry.length - 1]
+  return { start_time: hhmm(entry[0][0]), duration_min: last[0] + last[1] - entry[0][0], blocks: entry.length > 1 ? entry : null }
+}
+
+/** Zeit für die Anzeige, mit Lücken: «06:00–07:30» oder «06:00–07:00, 17:00–18:00». */
+export function timeText(type: Pick<DutyType, 'start_time' | 'duration_min'> & { blocks?: Block[] | null }): string {
+  return type.blocks?.length ? blocksText(type.blocks) : `${type.start_time}–${endTime(type)}`
 }
 
 /** Tierart voran: «Kühe · Melken morgens». */
@@ -126,6 +164,12 @@ export function timeRange(type: Pick<DutyType, 'start_time' | 'duration_min'>): 
   return [s, s + Math.max(1, type.duration_min)]
 }
 export const overlaps = (a: [number, number], b: [number, number]) => a[0] < b[1] && b[0] < a[1]
+/** Zeitspannen eines Dienstes am Tag (mehrere bei Lücke). */
+export const rangesOf = (t: Pick<DutyType, 'start_time' | 'duration_min'> & { blocks?: Block[] | null }): [number, number][] =>
+  t.blocks?.length ? t.blocks.map(([s, m]) => [s, s + m] as [number, number]) : [timeRange(t)]
+/** Überschneiden sich zwei Dienste zeitlich (Lücken berücksichtigt)? */
+export const rangesOverlap = (a: Parameters<typeof rangesOf>[0], b: Parameters<typeof rangesOf>[0]) =>
+  rangesOf(a).some((x) => rangesOf(b).some((y) => overlaps(x, y)))
 export const endTime = (type: Pick<DutyType, 'start_time' | 'duration_min'>) => {
   const e = timeRange(type)[1]
   return `${String(Math.floor(e / 60) % 24).padStart(2, '0')}:${String(e % 60).padStart(2, '0')}`
@@ -173,9 +217,8 @@ export interface Conflict {
 }
 
 export function conflictsFor(personId: string, slot: Pick<Slot, 'type' | 'date' | 'id'>, all: Slot[], skills: DutySkill[], absences: DutyAbsence[]): Conflict {
-  const r = timeRange(slot.type)
   const overlap = all
-    .filter((o) => o.id !== slot.id && o.date === slot.date && o.shift?.person_id === personId && overlaps(r, timeRange(o.type)))
+    .filter((o) => o.id !== slot.id && o.date === slot.date && o.shift?.person_id === personId && rangesOverlap(slot.type, o.type))
     .map((o) => typeLabel(o.type))
   return { absent: absenceOn(personId, slot.date, absences), overlap, unskilled: !canDo(personId, slot.type.id, skills) }
 }

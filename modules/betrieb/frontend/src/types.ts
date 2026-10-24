@@ -219,6 +219,8 @@ export interface DutyType {
   summer_to: string | null
   /** JSON: Zeiten je Wochentag und Jahreszeit (siehe lib/duty.ts parseTimes) */
   times: string | null
+  /** nur im Plan berechnet (lib/duty.ts timeOn): Zeitblöcke des Tages, wenn der Dienst eine Lücke hat */
+  blocks?: [number, number][] | null
 }
 export interface DutySkill {
   id: string
@@ -294,6 +296,17 @@ export interface DutyWeek {
   generated_at: string | null
   confirmed_by: string | null
   confirmed_at: string | null
+  notes: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+/** Wer eine Arbeit aus dem Arbeitsplan macht (schema/0009); task_key = PlanTask.key. */
+export interface WorkAssignment {
+  id: string
+  task_key: string
+  task_date: string
+  person_id: string | null
   notes: string | null
   updated_at: string
   deleted_at: string | null

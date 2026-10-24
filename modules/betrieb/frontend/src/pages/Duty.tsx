@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { API_URL, getToken } from '@fmis/core/auth'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import { useStored } from '../components/DriveAssist'
-import { addDays, localToday as todayIso, conflictsFor, copyFromPrevious, DEFAULT_SUMMER, endTime, groupTypes, hasConflict, hhmm, isoWeek, mondayOf, parseTimes, slotsFor, stringifyTimes, suggest, typeLabel, weekDates, type DayTime, type SeasonTimes, type Slot } from '../lib/duty'
+import { absenceOn, addDays, localToday as todayIso, conflictsFor, copyFromPrevious, DEFAULT_SUMMER, endTime, groupTypes, hasConflict, hhmm, isoWeek, mondayOf, parseTimes, slotsFor, stringifyTimes, suggest, typeLabel, weekDates, type Block, type DayTime, type SeasonTimes, type Slot, timeText } from '../lib/duty'
 import TimeStrip, { TimeAxis } from '../components/TimeStrip'
 import Planning, { OfficeBar } from '../components/DutyPlanning'
 import AbsenceCalendar from '../components/AbsenceCalendar'
 import { isoDate } from '../lib/format'
 import { GENERATE_AHEAD_WEEKS, weekStates } from '../lib/dutyPlan'
 import { getSyncedDb } from '../db/access'
-import { adjustWeek, respondRequest, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
+import PlanCreateDialog from '../components/PlanCreateDialog'
+import { loadPlan, type PlanTask } from '../lib/workPlan'
+import { adjustWeek, assignWork, respondRequest, saveSkills, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
 
 type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'planung' | 'einstellungen'
@@ -50,7 +52,7 @@ function SlotRow({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; c
     <li className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 ${!pid ? 'bg-red-50' : ''}`}>
       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: s.type.color ?? '#64748b' }} />
       <span className="w-24 shrink-0 text-xs tabular-nums text-gray-500">
-        {s.type.start_time}–{endTime(s.type)}
+        {timeText(s.type)}
       </span>
       <span className="min-w-0 flex-1 text-sm text-gray-800">
         <TypeName t={s.type} />
@@ -119,8 +121,41 @@ function SlotCell({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; 
   )
 }
 
+/** Eine geplante Arbeit aus dem Arbeitsplan: wer sie macht (Büro: Auswahl). */
+function WorkCell({ task, d, canWrite }: { task: PlanTask; d: DutyData; canWrite: boolean }) {
+  const a = d.works.find((w) => w.task_key === task.key)
+  const pid = a?.person_id ?? null
+  const away = pid ? absenceOn(pid, task.date, d.absences) : null
+  const area = task.items.reduce((s, i) => s + (i.area_a ?? 0), 0)
+  return (
+    <div className={`rounded border px-1 py-0.5 ${away ? 'border-amber-500 bg-amber-50' : 'border-violet-200 bg-violet-50'}`} title={away ? `${personName(d, pid)} ist ${KIND[away.kind]}` : undefined}>
+      <Link to="/betrieb/arbeitsplan" className="block truncate text-[11px] font-medium text-violet-900 underline-offset-2 hover:underline">
+        🚜 {task.title}
+      </Link>
+      <span className="block truncate text-[10px] text-gray-500">
+        {task.items.length} {task.items.length === 1 ? 'Parzelle' : 'Parzellen'}
+        {area ? ` · ${(area / 100).toFixed(1)} ha` : ''}
+      </span>
+      {canWrite ? (
+        <select value={pid ?? ''} onChange={(e) => void assignWork(task.key, task.date, e.target.value || null)} className="w-full bg-transparent text-xs" aria-label={`${task.title}: wer`}>
+          <option value="">— niemand —</option>
+          {d.people
+            .filter((p) => p.active)
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+        </select>
+      ) : (
+        <span className="block truncate text-xs">{pid ? personName(d, pid) : 'noch niemand'}</span>
+      )}
+    </div>
+  )
+}
+
 /** Wochenkalender: Dienste (nach Tierart) × Wochentage. */
-function WeekGrid({ d, dates, slots, canWrite }: { d: DutyData; dates: string[]; slots: Slot[]; canWrite: boolean }) {
+function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork }: { d: DutyData; dates: string[]; slots: Slot[]; canWrite: boolean; tasks: PlanTask[]; onAddWork: ((date: string) => void) | null }) {
   const rows = groupTypes(d.types)
     .flatMap((g) => g.types)
     .filter((t) => slots.some((s) => s.type.id === t.id))
@@ -150,7 +185,7 @@ function WeekGrid({ d, dates, slots, canWrite }: { d: DutyData; dates: string[];
                   <td key={date} className={`px-0.5 py-0.5 ${date === todayIso() ? 'bg-brand-50' : ''}`}>
                     {here.length ? (
                       <div className="space-y-0.5">
-                        <div className="text-[10px] tabular-nums text-gray-500">{here[0].type.start_time}–{endTime(here[0].type)}</div>
+                        <div className="text-[10px] tabular-nums leading-tight text-gray-500">{timeText(here[0].type)}</div>
                         {here.map((s) => (
                           <SlotCell key={s.id} s={s} d={d} all={slots} canWrite={canWrite} />
                         ))}
@@ -163,6 +198,28 @@ function WeekGrid({ d, dates, slots, canWrite }: { d: DutyData; dates: string[];
               })}
             </tr>
           ))}
+          {(tasks.length > 0 || onAddWork) && (
+            <tr className="border-t-2 border-violet-200 align-top">
+              <td className="sticky left-0 z-10 bg-white px-2 py-1 text-xs leading-tight">
+                <b className="text-violet-800">Arbeiten</b>
+                <span className="block text-[10px] text-gray-500">aus dem Arbeitsplan</span>
+              </td>
+              {dates.map((date) => (
+                <td key={date} className="space-y-0.5 px-0.5 py-0.5">
+                  {tasks
+                    .filter((t) => t.date === date)
+                    .map((t) => (
+                      <WorkCell key={t.key} task={t} d={d} canWrite={canWrite} />
+                    ))}
+                  {onAddWork && (
+                    <button type="button" onClick={() => onAddWork(date)} className="w-full rounded border border-dashed border-violet-300 py-0.5 text-[11px] text-violet-700" aria-label={`Arbeit am ${dm(date)} planen`}>
+                      + Arbeit
+                    </button>
+                  )}
+                </td>
+              ))}
+            </tr>
+          )}
           <tr className="border-t bg-gray-50 align-top">
             <td className="sticky left-0 z-10 bg-gray-50 px-2 py-1 text-xs font-semibold text-gray-500">Abwesend</td>
             {dates.map((date) => (
@@ -208,6 +265,12 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
   const unseen = d.changes.filter((c) => c.changed_at > lastSeen)
   const [showChanges, setShowChanges] = useState(false)
   const weekRow = d.weeks.find((w) => w.week_start === monday) ?? null
+  // Arbeiten aus dem Arbeitsplan dieser Woche (geplante Einträge im Wiesenjournal)
+  const { data: tasks } = useQuery(() => loadPlan(monday).then((ts) => ts.filter((t) => t.date <= addDays(monday, 6))), [monday])
+  const canFert = useHasPermission('wiesenjournal:duengung:write')
+  const canUsage = useHasPermission('wiesenjournal:nutzung:write')
+  const canPlan = canFert || canUsage
+  const [planDate, setPlanDate] = useState<string | null>(null)
   const [view, setView] = useStored<'kalender' | 'liste'>('betrieb_duty_view', 'kalender')
   const typeName = (id: string) => {
     const t = d.types.find((x) => x.id === id)
@@ -317,7 +380,18 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
         </div>
       )}
 
-      {view === 'kalender' && <WeekGrid d={d} dates={dates} slots={slots} canWrite={canWrite} />}
+      {view === 'kalender' && <WeekGrid d={d} dates={dates} slots={slots} canWrite={canWrite} tasks={tasks ?? []} onAddWork={canWrite && canPlan ? setPlanDate : null} />}
+      {planDate && (
+        <PlanCreateDialog
+          seasonYear={Number(planDate.slice(0, 4))}
+          initialDate={planDate}
+          onClose={() => setPlanDate(null)}
+          onSaved={() => {
+            setPlanDate(null)
+            setMsg('Arbeit im Arbeitsplan gespeichert. Wer sie macht, wählst du hier in der Zeile «Arbeiten».')
+          }}
+        />
+      )}
       {view === 'liste' && dates.map((date) => {
         const day = slots.filter((s) => s.date === date)
         const away = d.absences.filter((a) => a.from_date <= date && date <= a.to_date)
@@ -331,6 +405,15 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
                 </span>
               )}
             </div>
+            {(tasks ?? []).filter((t) => t.date === date).length > 0 && (
+              <div className="space-y-1 border-b bg-violet-50/50 px-2 py-1">
+                {(tasks ?? [])
+                  .filter((t) => t.date === date)
+                  .map((t) => (
+                    <WorkCell key={t.key} task={t} d={d} canWrite={canWrite} />
+                  ))}
+              </div>
+            )}
             {day.length ? (
               <ul className="divide-y">
                 {day.map((s) => (
@@ -717,7 +800,6 @@ const minutesOf = (hm: string) => {
   const [h, m] = hm.split(':').map(Number)
   return (h || 0) * 60 + (m || 0)
 }
-const rangeText = (v: DayTime) => (v ? `${hhmm(v[0])}–${hhmm(Math.min(24 * 60, v[0] + v[1]))}` : '')
 
 function TypeEditor({ t, animals, onDone }: { t: Partial<DutyType>; animals: string[]; onDone: () => void }) {
   const initialTimes = parseTimes(t.times)
@@ -741,7 +823,7 @@ function TypeEditor({ t, animals, onDone }: { t: Partial<DutyType>; animals: str
   const [season, setSeason] = useState<'sommer' | 'winter'>('sommer')
   const [confirmDel, setConfirmDel] = useState(false)
   const toggleDay = (i: number) => setF({ ...f, weekdays: f.weekdays.slice(0, i) + (f.weekdays[i] === '0' ? '1' : '0') + f.weekdays.slice(i + 1) })
-  const ghost: DayTime = [minutesOf(f.start_time), Number(f.duration_min) || 60]
+  const ghost: Block[] = [[minutesOf(f.start_time), Number(f.duration_min) || 60]]
   const setDay = (sn: 'sommer' | 'winter', i: number, v: DayTime) => setTimes((all) => ({ ...all, [sn]: all[sn].map((x, j) => (j === i ? v : x)) }))
   const setAll = (sn: 'sommer' | 'winter', v: DayTime[]) => setTimes((all) => ({ ...all, [sn]: v }))
   return (
@@ -812,25 +894,22 @@ function TypeEditor({ t, animals, onDone }: { t: Partial<DutyType>; animals: str
                 <div className="min-w-0 flex-1">
                   <TimeAxis />
                 </div>
-                <span className="w-24 shrink-0" />
+                <span className="w-28 shrink-0" />
               </div>
-              {DAYS.map((dd, i) => {
-                const v = times[season][i]
-                return (
-                  <div key={dd} className="flex items-center gap-2">
-                    <span className="w-7 shrink-0 text-xs font-semibold text-gray-600">{dd}</span>
-                    <TimeStrip value={v} ghost={ghost} color={f.color} muted={f.weekdays[i] === '0'} onChange={(x) => setDay(season, i, x)} label={`${dd} ${season === 'sommer' ? 'Sommer' : 'Winter'}`} />
-                    <span className="flex w-24 shrink-0 items-center justify-between text-xs tabular-nums text-gray-600">
-                      {rangeText(v ?? ghost)}
-                      {v ? (
-                        <button type="button" className="px-1 text-gray-500" onClick={() => setDay(season, i, null)} aria-label={`${dd}: Standardzeit`} title="Standardzeit">
-                          ×
-                        </button>
-                      ) : null}
-                    </span>
-                  </div>
-                )
-              })}
+              {DAYS.map((dd, i) => (
+                <div key={dd} className="flex items-start gap-2">
+                  <span className="w-7 shrink-0 pt-2 text-xs font-semibold text-gray-600">{dd}</span>
+                  <TimeStrip
+                    value={times[season][i]}
+                    ghost={ghost}
+                    color={f.color}
+                    muted={f.weekdays[i] === '0'}
+                    onChange={(x) => setDay(season, i, x)}
+                    onReset={() => setDay(season, i, null)}
+                    label={`${dd} ${season === 'sommer' ? 'Sommer' : 'Winter'}`}
+                  />
+                </div>
+              ))}
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" className={btn} onClick={() => setAll(season, Array(7).fill(times[season][0] ?? ghost))}>
@@ -840,7 +919,7 @@ function TypeEditor({ t, animals, onDone }: { t: Partial<DutyType>; animals: str
                 {season === 'sommer' ? 'Sommer → Winter kopieren' : 'Winter → Sommer kopieren'}
               </button>
             </div>
-            <p className="text-xs text-gray-500">Ziehen = Zeit von–bis in 15-Minuten-Schritten, Tippen = 15 Minuten. Blass gestrichelt = Standardzeit. Tage ohne Dienst (grau) stellst du oben ein.</p>
+            <p className="text-xs text-gray-500">Wie bei einer Zeitschaltuhr: Viertelstunde antippen = ein/aus, Ziehen schaltet alle überstrichenen gleich. Lücken sind erlaubt (z.B. morgens und abends). Blass = Standardzeit. Tage ohne Dienst (grau) stellst du oben ein.</p>
           </>
         )}
       </div>
@@ -967,6 +1046,12 @@ function Settings({ d }: { d: DutyData }) {
   const [confirmP, setConfirmP] = useState<string | null>(null)
   const has = (pid: string, tid: string) => d.skills.some((s) => s.person_id === pid && s.type_id === tid)
   const orderedTypes = groupTypes(d.types).flatMap((g) => g.types)
+  // Matrix «Wer kann welchen Dienst?»: erst mit dem Stift bearbeiten, dann alles zusammen speichern oder verwerfen
+  const [skillDraft, setSkillDraft] = useState<Set<string> | null>(null)
+  const skillsDirty = !!skillDraft && (() => {
+    const now = new Set(d.skills.filter((k) => !k.deleted_at).map((k) => `${k.person_id}|${k.type_id}`))
+    return now.size !== skillDraft.size || [...skillDraft].some((x) => !now.has(x))
+  })()
   const animals = [...new Set(d.types.map((t) => t.animal?.trim()).filter((a): a is string => !!a))]
   const people = d.people
   return (
@@ -1062,7 +1147,28 @@ function Settings({ d }: { d: DutyData }) {
       </section>
 
       <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
-        <h3 className="font-semibold text-gray-700">Wer kann welchen Dienst?</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-semibold text-gray-700">Wer kann welchen Dienst?</h3>
+          {skillDraft ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40"
+                disabled={!skillsDirty}
+                onClick={() => void saveSkills(d.skills, skillDraft).then(() => setSkillDraft(null))}
+              >
+                Speichern
+              </button>
+              <button type="button" className={btn} onClick={() => setSkillDraft(null)}>
+                Verwerfen
+              </button>
+            </div>
+          ) : (
+            <button type="button" className={btn} onClick={() => setSkillDraft(new Set(d.skills.filter((k) => !k.deleted_at).map((k) => `${k.person_id}|${k.type_id}`)))} aria-label="Fähigkeiten bearbeiten" title="Bearbeiten">
+              ✏️ Bearbeiten
+            </button>
+          )}
+        </div>
         {people.length === 0 ? (
           <p className="text-gray-500">Zuerst Personen erfassen.</p>
         ) : (
@@ -1092,7 +1198,28 @@ function Settings({ d }: { d: DutyData }) {
                     <td className="py-1 pr-2 font-medium">{p.name}</td>
                     {orderedTypes.map((t) => (
                       <td key={t.id} className="text-center">
-                        <input type="checkbox" className="h-5 w-5" checked={has(p.id, t.id)} onChange={(e) => void setSkill(d.skills, p.id, t.id, e.target.checked)} aria-label={`${p.name}: ${typeLabel(t)}`} />
+                        {skillDraft ? (
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5"
+                            checked={skillDraft.has(`${p.id}|${t.id}`)}
+                            onChange={(e) =>
+                              setSkillDraft((cur) => {
+                                const n = new Set(cur)
+                                if (e.target.checked) n.add(`${p.id}|${t.id}`)
+                                else n.delete(`${p.id}|${t.id}`)
+                                return n
+                              })
+                            }
+                            aria-label={`${p.name}: ${typeLabel(t)}`}
+                          />
+                        ) : has(p.id, t.id) ? (
+                          <span className="text-base font-bold" style={{ color: t.color ?? undefined }} aria-label={`${p.name} kann ${typeLabel(t)}`}>
+                            ✓
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">·</span>
+                        )}
                       </td>
                     ))}
                   </tr>

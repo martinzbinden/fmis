@@ -18,7 +18,18 @@ const PLAN_USAGE = Object.keys(USAGE_TYPE_LABEL).filter((k) => !['weide', 'aufwu
 /** Arbeit im Arbeitsplan planen: Datum, Arbeit (Düngerart oder Nutzung),
  * Parzellen (Liste mit Suche oder Karte), Menge je ha → geplante Einträge
  * (Entwurf) im Wiesenjournal. */
-export default function PlanCreateDialog({ seasonYear, onClose, onSaved }: { seasonYear: number; onClose: () => void; onSaved: (date: string) => void }) {
+export default function PlanCreateDialog({
+  seasonYear,
+  onClose,
+  onSaved,
+  initialDate,
+}: {
+  seasonYear: number
+  onClose: () => void
+  onSaved: (date: string) => void
+  /** z.B. aus dem Dienstplan-Kalender: der angetippte Tag */
+  initialDate?: string
+}) {
   const { data } = useQuery(
     async () => {
       const wj = await getWiesenjournalDb()
@@ -30,7 +41,7 @@ export default function PlanCreateDialog({ seasonYear, onClose, onSaved }: { sea
     },
     [seasonYear],
   )
-  const [date, setDate] = useState(addDaysIso(todayIso(), 1))
+  const [date, setDate] = useState(initialDate ?? addDaysIso(todayIso(), 1))
   const [workKey, setWorkKey] = useState('')
   const [label, setLabel] = useState('')
   const [rate, setRate] = useState('')

@@ -5,7 +5,7 @@ import { getCurrentUserEmail, getViewedUserEmail } from '@fmis/core/auth'
 import { softDeleteRow, upsertRow, upsertRows } from '../db/write'
 import { isoDate } from './format'
 import { shiftId, slotsFor, timeOn, type Slot } from './duty'
-import type { DutyAbsence, DutyChange, DutyPerson, DutyRequest, DutyRequestKind, DutyShift, DutySkill, DutyTemplate, DutyTemplateSlot, DutyType, DutyWeek } from '../types'
+import type { DutyAbsence, DutyChange, DutyPerson, DutyRequest, DutyRequestKind, DutyShift, DutySkill, DutyTemplate, DutyTemplateSlot, DutyType, DutyWeek, WorkAssignment } from '../types'
 import { mondaysBetween, planWeek, templateSlotId, weekRowId, type PlanResult } from './dutyPlan'
 
 export interface DutyData {
@@ -22,13 +22,15 @@ export interface DutyData {
   templateSlots: DutyTemplateSlot[]
   /** Status je Woche (Entwurf/bestätigt) */
   weeks: DutyWeek[]
+  /** wer welche Arbeit aus dem Arbeitsplan macht */
+  works: WorkAssignment[]
 }
 
 const iso = (v: unknown) => isoDate(v)
 
 /** Alles für den Zeitraum [from, to] (Dienste, Abwesenheiten, Änderungen der letzten 30 Tage). */
 export async function loadDuty(pg: PGlite, from: string, to: string): Promise<DutyData> {
-  const [people, types, skills, absences, shifts, changes, requests, templates, templateSlots, weeks] = await Promise.all([
+  const [people, types, skills, absences, shifts, changes, requests, templates, templateSlots, weeks, works] = await Promise.all([
     pg.query<DutyPerson>('select * from duty_people where deleted_at is null order by sort_order, name'),
     pg.query<DutyType>('select * from duty_types where deleted_at is null order by sort_order, start_time, name'),
     pg.query<DutySkill>('select * from duty_skills where deleted_at is null'),
@@ -45,6 +47,7 @@ export async function loadDuty(pg: PGlite, from: string, to: string): Promise<Du
     pg.query<DutyTemplate>('select * from duty_templates where deleted_at is null order by valid_from desc'),
     pg.query<DutyTemplateSlot>('select * from duty_template_slots where deleted_at is null'),
     pg.query<DutyWeek>('select * from duty_weeks where deleted_at is null order by week_start'),
+    pg.query<WorkAssignment>('select * from work_assignments where deleted_at is null and task_date between $1 and $2', [from, to]),
   ])
   return {
     people: people.rows,
@@ -64,6 +67,7 @@ export async function loadDuty(pg: PGlite, from: string, to: string): Promise<Du
     templates: templates.rows.map((t) => ({ ...t, valid_from: iso(t.valid_from), cycle_weeks: Number(t.cycle_weeks) || 1 })),
     templateSlots: templateSlots.rows.map((s) => ({ ...s, week_no: Number(s.week_no), weekday: Number(s.weekday), slot: Number(s.slot) })),
     weeks: weeks.rows.map((w) => ({ ...w, week_start: iso(w.week_start) })),
+    works: works.rows.map((w) => ({ ...w, task_date: iso(w.task_date) })),
   }
 }
 
@@ -120,6 +124,21 @@ export async function setSkill(skills: DutySkill[], personId: string, typeId: st
   const existing = skills.find((s) => s.person_id === personId && s.type_id === typeId)
   if (on && !existing) await upsertRow('duty_skills', { id: crypto.randomUUID(), person_id: personId, type_id: typeId, deleted_at: null } as never)
   if (!on && existing) await softDeleteRow('duty_skills', existing.id)
+}
+
+/** Fähigkeiten in einem Zug setzen (Matrix): `wanted` = «personId|typeId» aller, die es künftig können. */
+export async function saveSkills(skills: DutySkill[], wanted: Set<string>): Promise<void> {
+  const live = skills.filter((s) => !s.deleted_at)
+  const have = new Set(live.map((s) => `${s.person_id}|${s.type_id}`))
+  const now = new Date().toISOString()
+  const removed = live.filter((s) => !wanted.has(`${s.person_id}|${s.type_id}`)).map((s) => ({ id: s.id, person_id: s.person_id, type_id: s.type_id, deleted_at: now }))
+  const added = [...wanted]
+    .filter((k) => !have.has(k))
+    .map((k) => {
+      const [person_id, type_id] = k.split('|')
+      return { id: crypto.randomUUID(), person_id, type_id, deleted_at: null }
+    })
+  await upsertRows('duty_skills', [...removed, ...added] as never)
 }
 
 export const saveAbsence = (a: Omit<DutyAbsence, 'updated_at' | 'deleted_at' | 'created_by'> & { created_by?: string | null }) =>
@@ -342,4 +361,10 @@ export async function setWeekStatus(d: DutyData, monday: string, status: 'entwur
     deleted_at: null,
   } as never)
 }
+
+// --- Arbeiten aus dem Arbeitsplan (schema/0009) --------------------------------
+
+/** Person für eine geplante Arbeit setzen (null = niemand). Eine Zeile je Arbeit (feste id aus dem Schlüssel). */
+export const assignWork = (taskKey: string, date: string, personId: string | null) =>
+  upsertRow('work_assignments', { id: shiftId(`work|${taskKey}`, date, 0), task_key: taskKey, task_date: date, person_id: personId, notes: null, deleted_at: null } as never)
 

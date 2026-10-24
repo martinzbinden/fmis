@@ -72,6 +72,9 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "week_start", "status", "generated_at", "confirmed_by", "confirmed_at", "notes",
         "updated_at", "deleted_at",
     ],
+    "work_assignments": [
+        "id", "task_key", "task_date", "person_id", "notes", "updated_at", "deleted_at",
+    ],
     "duty_requests": [
         "id", "kind", "person_id", "shift_id", "date", "type_id", "to_person", "other_shift_id",
         "other_date", "other_type_id", "from_date", "to_date", "notes", "status", "decided_by", "decided_at", "decision_note",
@@ -107,6 +110,7 @@ TABLE_AREA: dict[str, str] = {
     "duty_templates": "betrieb:dienste",
     "duty_template_slots": "betrieb:dienste",
     "duty_weeks": "betrieb:dienste",
+    "work_assignments": "betrieb:dienste",
     "data_history": "betrieb:history",
 }
 
