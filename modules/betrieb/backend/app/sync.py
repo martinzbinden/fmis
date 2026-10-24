@@ -7,6 +7,7 @@ from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.sync_push import push_rows
 from core.backend.fmis_core.sync_stamps import pull_cursor
+from . import duty_requests
 from .tables import FRIST_TABLES, GEOMETRY_COLUMNS, SYNC_TABLES, TABLE_AREA
 
 # Eigener Pool mit search_path='betrieb,public' (siehe fmis_core/db.py)
@@ -15,64 +16,6 @@ from .tables import FRIST_TABLES, GEOMETRY_COLUMNS, SYNC_TABLES, TABLE_AREA
 pool = get_pool("betrieb")
 
 router = APIRouter()
-
-
-DIENSTE_WRITE = "betrieb:dienste:write"
-OFFENE_STATUS = ("offen", "zurueckgezogen")
-
-
-async def _guard(conn: Any, table: str, row: dict[str, Any], user: CurrentUser) -> str | None:
-    """Anträge (Wünsche, Abgabe, Tausch): Wer den Dienstplan nicht selbst führt
-    (kein betrieb:dienste:write), stellt nur Anträge für die EIGENE Person und
-    entscheidet nie darüber. Bestätigen und Ablehnen bleibt dem Büro."""
-    if table not in ("duty_requests", "duty_absences") or DIENSTE_WRITE in user.permissions:
-        return None
-    if table == "duty_absences":
-        return await _guard_absence(conn, row, user)
-    own = await (
-        await conn.execute(
-            "select 1 from duty_people where id = %s and lower(email) = lower(%s) and deleted_at is null",
-            (row.get("person_id"), user.email),
-        )
-    ).fetchone()
-    if own is None:
-        return "Anträge nur für die eigene Person (E-Mail bei der Person eintragen lassen)"
-    if row.get("status") not in OFFENE_STATUS:
-        return "Bestätigen und Ablehnen macht das Büro"
-    if row.get("decided_by") or row.get("decided_at") or row.get("decision_note"):
-        return "Bestätigen und Ablehnen macht das Büro"
-    old = await (await conn.execute("select person_id, status from duty_requests where id = %s", (row.get("id"),))).fetchone()
-    if old is not None:
-        if str(old[0]) != str(row.get("person_id")):
-            return "Der Antrag gehört einer anderen Person"
-        if old[1] != "offen":
-            return "Der Antrag ist schon entschieden"
-    return None
-
-
-async def _own_person(conn: Any, person_id: Any, user: CurrentUser) -> bool:
-    return (
-        await (
-            await conn.execute(
-                "select 1 from duty_people where id = %s and lower(email) = lower(%s) and deleted_at is null",
-                (person_id, user.email),
-            )
-        ).fetchone()
-    ) is not None
-
-
-async def _guard_absence(conn: Any, row: dict[str, Any], user: CurrentUser) -> str | None:
-    """Ohne Dienstplan-Recht: nur «krank» und nur für sich selbst (Ferien, Frei, Kurs
-    laufen als Antrag über duty_requests). Bestehende Einträge anderer oder anderer
-    Art bleiben unangetastet."""
-    if row.get("kind") != "krank":
-        return "Ferien, Frei und Kurs beantragen (das Büro bestätigt); direkt eintragen nur «krank»"
-    if not await _own_person(conn, row.get("person_id"), user):
-        return "Abwesenheit nur für die eigene Person"
-    old = await (await conn.execute("select person_id, kind from duty_absences where id = %s", (row.get("id"),))).fetchone()
-    if old is not None and (str(old[0]) != str(row.get("person_id")) or old[1] != "krank"):
-        return "Diese Abwesenheit ändert das Büro"
-    return None
 
 
 class PushRequest(BaseModel):
@@ -103,7 +46,9 @@ class HistoryResponse(BaseModel):
 @router.post("/sync/push", response_model=PushResponse)
 async def push(body: PushRequest, user: CurrentUser = Depends(require_auth), atomic: bool = False) -> PushResponse:
     # Zeilenweise (core/backend/fmis_core/sync_push.py): abgelehnte Zeilen blockieren den Rest nicht.
-    return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, TABLE_AREA, GEOMETRY_COLUMNS, atomic=atomic, frist_tables=FRIST_TABLES, guard=_guard))
+    return PushResponse(**await push_rows(pool, body.tables, user, SYNC_TABLES, TABLE_AREA, GEOMETRY_COLUMNS, atomic=atomic, frist_tables=FRIST_TABLES, guard=duty_requests.guard,
+        after_write=duty_requests.after_write, watch=("duty_requests",),
+    ))
 
 
 @router.get("/sync/pull", response_model=PullResponse)

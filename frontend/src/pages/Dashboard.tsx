@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import AdminMenu from '@fmis/core/AdminMenu'
+import NotificationBell from '@fmis/core/NotificationBell'
 import { logout } from '@fmis/core/auth'
 import type { ModuleDescriptor, ModuleGroup, QuickLink } from '@fmis/core/ModuleDescriptor'
 
@@ -44,6 +45,7 @@ export default function Dashboard({
               📥
             </Link>
           )}
+          <NotificationBell />
           <AdminMenu />
           <button
             type="button"

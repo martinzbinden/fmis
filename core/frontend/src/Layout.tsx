@@ -4,6 +4,7 @@ import SyncStatusDot from './SyncStatusDot'
 import { logout } from './auth'
 import { useHasPermission } from './AuthContext'
 import AdminMenu from './AdminMenu'
+import NotificationBell from './NotificationBell'
 import { useSyncStatus } from './useSyncStatus'
 import type { ModuleDescriptor, NavItem } from './ModuleDescriptor'
 
@@ -49,6 +50,7 @@ export default function Layout({
               📜
             </NavLink>
           )}
+          <NotificationBell />
           <AdminMenu />
           <button
             type="button"

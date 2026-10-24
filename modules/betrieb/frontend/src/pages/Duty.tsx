@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { API_URL, getToken } from '@fmis/core/auth'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
@@ -10,7 +11,7 @@ import AbsenceCalendar from '../components/AbsenceCalendar'
 import { isoDate } from '../lib/format'
 import { GENERATE_AHEAD_WEEKS, weekStates } from '../lib/dutyPlan'
 import { getSyncedDb } from '../db/access'
-import { adjustWeek, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
+import { adjustWeek, respondRequest, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
 
 type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'planung' | 'einstellungen'
@@ -462,7 +463,11 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
                     {propose ? (back ? 'Tausch vorschlagen' : 'Abgabe vorschlagen') : back ? 'Tauschen' : 'Abgeben'}
                   </button>
                   <p className="text-xs text-gray-500">
-                    {propose ? 'Das ist ein Vorschlag. Der Plan ändert sich erst, wenn das Büro bestätigt.' : 'Wird sofort übernommen und erscheint für alle unter «Änderungen».'}
+                    {propose
+                      ? to
+                        ? `${personName(d, to)} muss zustimmen (Benachrichtigung). Mit der Zustimmung gilt es sofort, das Büro wird informiert.`
+                        : 'Ohne bestimmte Person entscheidet das Büro.'
+                      : 'Wird sofort übernommen und erscheint für alle unter «Änderungen».'}
                   </p>
                 </div>
               )}
@@ -472,6 +477,16 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
       </ul>
     </div>
   )
+}
+
+/** Stand der Zustimmung der Gegenpartei (Abtausch). */
+function CounterNote({ d, r }: { d: DutyData; r: DutyRequest }) {
+  const who = personName(d, r.to_person)
+  const soon = !!r.date && r.date <= addDays(todayIso(), 2)
+  if (r.counter_status === 'offen')
+    return <p className={`text-xs ${soon ? 'font-semibold text-red-700' : 'text-amber-800'}`}>wartet auf Zustimmung von {who}{soon ? ' — kurzfristig, ggf. Büro entscheidet' : ''}</p>
+  if (r.counter_status === 'abgelehnt') return <p className="text-xs font-semibold text-red-700">Konflikt: {who} hat abgelehnt — das Büro entscheidet</p>
+  return <p className="text-xs font-semibold text-red-700">{who} hat zugestimmt, aber der Plan hat sich geändert — das Büro entscheidet</p>
 }
 
 const STATUS_LABEL: Record<DutyRequestStatus, string> = { offen: 'offen', bestaetigt: 'bestätigt', abgelehnt: 'abgelehnt', zurueckgezogen: 'zurückgezogen' }
@@ -505,8 +520,10 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
   const [rejectId, setRejectId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [err, setErr] = useState<string | null>(null)
-  const visible = d.requests.filter((r) => canWrite || r.person_id === self?.id)
-  const open = visible.filter((r) => r.status === 'offen')
+  // an mich gerichtete Abtausche (ich bin die Gegenpartei) zuerst, mit Zustimmen/Ablehnen
+  const forMe = d.requests.filter((r) => r.status === 'offen' && r.counter_status === 'offen' && !!self && r.to_person === self.id)
+  const visible = d.requests.filter((r) => canWrite || r.person_id === self?.id || (!!self && r.to_person === self.id))
+  const open = visible.filter((r) => r.status === 'offen' && !forMe.includes(r))
   const done = visible.filter((r) => r.status !== 'offen')
   const run = (job: Promise<unknown>) => {
     setErr(null)
@@ -541,6 +558,28 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
         </section>
       )}
       {err && <p className="rounded bg-red-50 px-2 py-1 text-sm text-red-800">{err}</p>}
+      {forMe.length > 0 && (
+        <section className="space-y-1">
+          <h3 className="text-sm font-semibold text-gray-700">An dich: bitte zustimmen oder ablehnen</h3>
+          <ul className="divide-y rounded-xl border-2 border-sky-300 bg-white text-sm">
+            {forMe.map((r) => (
+              <li key={r.id} className="space-y-1.5 px-3 py-2">
+                <div>{describeRequest(d, r)}</div>
+                {r.notes && <p className="text-xs text-gray-600">«{r.notes}»</p>}
+                <div className="flex gap-2">
+                  <button type="button" className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white" onClick={() => run(respondRequest(r, true))}>
+                    Zustimmen
+                  </button>
+                  <button type="button" className={btn} onClick={() => run(respondRequest(r, false))}>
+                    Ablehnen
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500">Mit deiner Zustimmung gilt der Tausch sofort (beim nächsten Sync), das Büro wird informiert. Lehnst du ab, entscheidet das Büro.</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="space-y-1">
         <h3 className="text-sm font-semibold text-gray-700">{canWrite ? 'Offene Anträge' : 'Meine offenen Anträge'}</h3>
         <ul className="divide-y rounded-xl border bg-white text-sm">
@@ -553,6 +592,7 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASS[r.status]}`}>{STATUS_LABEL[r.status]}</span>
                 </div>
                 {r.notes && <p className="text-xs text-gray-600">«{r.notes}»</p>}
+                {r.counter_status && <CounterNote d={d} r={r} />}
                 {canWrite && check.notes.length > 0 && <p className="text-xs text-amber-800">⚠ {check.notes.join(' ')}</p>}
                 {canWrite ? (
                   rejectId === r.id ? (
@@ -1077,6 +1117,13 @@ export default function Duty() {
   const canPropose = useHasPermission('betrieb:wuensche:write')
   const [tab, setTab] = useStored<Tab>('wiesenjournal_duty_tab', 'woche')
   const [monday, setMonday] = useState(() => mondayOf(todayIso()))
+  // Link aus einer Benachrichtigung: /betrieb/dienste?tab=antraege
+  const { search } = useLocation()
+  useEffect(() => {
+    const t = new URLSearchParams(search).get('tab') as Tab | null
+    if (t && ['woche', 'meine', 'antraege', 'abwesend', 'planung', 'einstellungen'].includes(t)) setTab(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
   const from = addDays(monday < todayIso() ? monday : todayIso(), -7)
   const near = addDays(monday > todayIso() ? monday : todayIso(), 28)
   // Planung zeigt die Wochen bis zur Erzeugungsgrenze

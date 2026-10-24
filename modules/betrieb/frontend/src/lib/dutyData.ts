@@ -144,11 +144,22 @@ type RequestInput = Pick<DutyRequest, 'kind' | 'person_id'> &
 const emptyRequest = (): Omit<DutyRequest, 'id' | 'kind' | 'person_id' | 'updated_at'> => ({
   shift_id: null, date: null, type_id: null, to_person: null, other_shift_id: null, other_date: null, other_type_id: null,
   from_date: null, to_date: null, notes: null, status: 'offen', decided_by: null, decided_at: null, decision_note: null,
-  created_by: null, deleted_at: null, absence_kind: null,
+  created_by: null, deleted_at: null, absence_kind: null, counter_status: null, counter_at: null,
 })
 
+/** Antrag stellen. Abgabe/Tausch an eine bestimmte Person braucht deren Zustimmung (counter_status 'offen'). */
 export const saveRequest = (r: RequestInput) =>
-  upsertRow('duty_requests', { ...emptyRequest(), ...r, id: crypto.randomUUID(), created_by: getCurrentUserEmail() } as never)
+  upsertRow('duty_requests', {
+    ...emptyRequest(),
+    ...r,
+    counter_status: r.to_person && (r.kind === 'tausch' || r.kind === 'abgabe') ? 'offen' : null,
+    id: crypto.randomUUID(),
+    created_by: getCurrentUserEmail(),
+  } as never)
+
+/** Als Gegenpartei zustimmen oder ablehnen. Bei Zustimmung führt der Server den Tausch aus. */
+export const respondRequest = (r: DutyRequest, agree: boolean) =>
+  upsertRow('duty_requests', { ...r, counter_status: agree ? 'zugestimmt' : 'abgelehnt', counter_at: new Date().toISOString() } as never)
 
 /** Eigenen offenen Antrag zurückziehen. */
 export const withdrawRequest = (r: DutyRequest) =>

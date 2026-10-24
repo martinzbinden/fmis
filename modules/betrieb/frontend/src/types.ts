@@ -325,6 +325,9 @@ export interface DutyRequest {
   deleted_at: string | null
   /** bei kind 'wunsch': welche Abwesenheit (schema/0007); leer = frei */
   absence_kind: DutyAbsenceKind | null
+  /** Abtausch: Zustimmung der Gegenpartei (to_person); null = keine Gegenpartei (schema/0008) */
+  counter_status: 'offen' | 'zugestimmt' | 'abgelehnt' | null
+  counter_at: string | null
 }
 
 export type HistoryAction = 'insert' | 'update' | 'delete'

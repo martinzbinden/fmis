@@ -31,6 +31,9 @@ KORREKTUR_FRIST_MIN = 10
 # Prüfung einer einzelnen Zeile durch das Modul (z.B. Anträge im Dienstplan):
 # gibt einen Ablehnungsgrund zurück oder None. Läuft vor dem Schreiben.
 RowGuard = Callable[[Any, str, Mapping[str, Any], CurrentUser], Awaitable[str | None]]
+# Nach dem Schreiben einer Zeile (gleiche Transaktion), mit dem Stand davor (None = neu):
+# z.B. Benachrichtigungen oder serverseitige Folgeänderungen. Nur für `watch`-Tabellen.
+AfterWrite = Callable[[Any, str, Mapping[str, Any], dict[str, Any] | None, CurrentUser], Awaitable[None]]
 
 
 class _Veto(Exception):
@@ -62,6 +65,8 @@ async def push_rows(
     frist_tables: Iterable[str] = (),
     guard: RowGuard | None = None,
     frist_filters: Mapping[str, str] | None = None,
+    after_write: AfterWrite | None = None,
+    watch: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Schreibt `tables` zeilenweise. `area_of` ordnet jede Tabelle ihrem
     Rechtebereich zu (dict oder Funktion `table -> area | None`).
@@ -82,6 +87,7 @@ async def push_rows(
         raise HTTPException(status_code=403, detail=f"Fehlende Berechtigung: {IMPORT_PERMISSION}")
     frist = set(frist_tables) if KORREKTUR_PERMISSION not in user.permissions else set()
     filters = frist_filters or {}
+    watched = set(watch) if after_write else set()
 
     def reject(table: str, row: Mapping[str, Any], reason: str, detail: str, current: dict[str, Any] | None = None) -> None:
         entry: dict[str, Any] = {"table": table, "id": str(row.get("id")), "reason": reason, "detail": detail}
@@ -145,7 +151,11 @@ async def push_rows(
                             why = await guard(conn, table, row, user)
                             if why:
                                 raise _Veto("forbidden", why)
-                        await conn.execute(sql, params)
+                        old = await _row(conn, table, row.get("id")) if table in watched else None
+                        res = await conn.execute(sql, params)
+                        # nur wenn die Zeile wirklich geschrieben wurde (nicht ein älterer Stand)
+                        if table in watched and res.rowcount:
+                            await after_write(conn, table, params, old, user)
                     count += 1
                 except _Veto as veto:
                     reject(table, row, veto.reason, veto.detail, veto.current)
@@ -187,3 +197,12 @@ async def _check_frist(conn: Any, table: str, columns: list[str], geometry_cols:
         f"Nach {KORREKTUR_FRIST_MIN} Minuten kann nur noch das Büro ändern oder stornieren",
         {c: (v.isoformat() if hasattr(v, "isoformat") else v) for c, v in zip(columns, current)} if current else None,
     )
+
+
+async def _row(conn: Any, table: str, row_id: Any) -> dict[str, Any] | None:
+    cur = await conn.execute(f'select * from "{table}" where id = %s', (row_id,))
+    found = await cur.fetchone()
+    if found is None:
+        return None
+    return {d.name: v for d, v in zip(cur.description, found)}
+
