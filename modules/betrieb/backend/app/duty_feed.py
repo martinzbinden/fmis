@@ -7,6 +7,7 @@ Geheimnis und kann jederzeit gesperrt werden. Inhalt: eingeteilte Dienste
 von 30 Tagen zurück bis 180 Tage voraus, Ortszeit Europe/Zurich.
 """
 
+import json
 import secrets
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -96,6 +97,29 @@ END:STANDARD
 END:VTIMEZONE"""
 
 
+def _in_range(d: date, frm: str | None, to: str | None) -> bool:
+    """MM-DD von..bis inklusive; «von» nach «bis» heisst über den Jahreswechsel."""
+    if not frm or not to:
+        return True
+    md = d.strftime("%m-%d")
+    return frm <= md <= to if frm <= to else md >= frm or md <= to
+
+
+def effective_time(start_time: str, duration_min: int, times: str | None, summer_from: str | None, summer_to: str | None, d: date) -> tuple[str, int]:
+    """Beginn und Dauer an diesem Datum: Jahreszeit und Wochentag aus `times`
+    (JSON, siehe frontend lib/duty.ts parseTimes), sonst die Standardzeit."""
+    if times:
+        try:
+            season = "sommer" if _in_range(d, summer_from or "04-01", summer_to or "10-31") else "winter"
+            entry = json.loads(times).get(season, [])[d.weekday()]
+            if isinstance(entry, list) and len(entry) >= 2 and float(entry[1]) > 0 and 0 <= float(entry[0]) < 1440:
+                start = int(round(float(entry[0]) / 15) * 15)
+                return f"{start // 60 % 24:02d}:{start % 60:02d}", int(round(float(entry[1]) / 15) * 15) or 15
+        except (ValueError, TypeError, IndexError, AttributeError):
+            pass
+    return start_time, duration_min
+
+
 def _esc(text: str) -> str:
     return text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\r\n", "\\n").replace("\n", "\\n")
 
@@ -164,7 +188,8 @@ async def feed(token: str) -> Response:
         today = date.today()
         rows = await (
             await conn.execute(
-                """select s.id, s.date, t.start_time, t.duration_min, t.name, t.description, s.notes, p.name
+                """select s.id, s.date, t.start_time, t.duration_min, t.name, t.description, s.notes, p.name,
+                          t.animal, t.times, t.summer_from, t.summer_to, t.active_from, t.active_to, t.active
                    from duty_shifts s
                    join duty_types t on t.id = s.type_id
                    left join duty_people p on p.id = s.person_id
@@ -175,9 +200,18 @@ async def feed(token: str) -> Response:
                 (today - timedelta(days=30), today + timedelta(days=180), person_id, person_id),
             )
         ).fetchall()
-    shifts = [
-        {"id": str(r[0]), "date": r[1], "start_time": r[2], "duration_min": r[3], "type_name": r[4], "description": r[5], "notes": r[6], "person_name": r[7], "with_person": person_id is None}
-        for r in rows
-    ]
+    shifts = []
+    for r in rows:
+        # wie im Plan: ausserhalb des Saisonfensters (oder inaktiv) gibt es den Dienst nicht
+        if not r[14] or not _in_range(r[1], r[12], r[13]):
+            continue
+        start, duration = effective_time(r[2], r[3], r[9], r[10], r[11], r[1])
+        shifts.append(
+            {
+                "id": str(r[0]), "date": r[1], "start_time": start, "duration_min": duration,
+                "type_name": f"{r[8]} · {r[4]}" if r[8] and str(r[8]).strip() else r[4],
+                "description": r[5], "notes": r[6], "person_name": r[7], "with_person": person_id is None,
+            }
+        )
     name = f"Dienste {person_name}" if person_name else "Dienste Riedackerhof"
     return Response(content=build_ics(name, shifts, datetime.utcnow()), media_type="text/calendar; charset=utf-8")

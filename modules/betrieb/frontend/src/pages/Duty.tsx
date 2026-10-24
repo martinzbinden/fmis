@@ -3,7 +3,8 @@ import { API_URL, getToken } from '@fmis/core/auth'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import { useStored } from '../components/DriveAssist'
-import { addDays, localToday as todayIso, conflictsFor, copyFromPrevious, endTime, hasConflict, isoWeek, mondayOf, slotsFor, suggest, weekDates, type Slot } from '../lib/duty'
+import { addDays, localToday as todayIso, conflictsFor, copyFromPrevious, DEFAULT_SUMMER, endTime, groupTypes, hasConflict, hhmm, isoWeek, mondayOf, parseTimes, slotsFor, stringifyTimes, suggest, typeLabel, weekDates, type DayTime, type SeasonTimes, type Slot } from '../lib/duty'
+import TimeStrip, { TimeAxis } from '../components/TimeStrip'
 import { assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
 
@@ -14,6 +15,20 @@ const SEEN_KEY = 'wiesenjournal_duty_changes_seen'
 const dm = (iso: string) => `${DAYS[(new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7]} ${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}.`
 const field = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
 const btn = 'rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm active:bg-gray-100 disabled:opacity-40'
+
+/** Dienstname mit der Tierart voran, in der Farbe des Dienstes. */
+function TypeName({ t }: { t: Pick<DutyType, 'name' | 'animal' | 'color'> }) {
+  return (
+    <>
+      {t.animal?.trim() && (
+        <b className="mr-1" style={{ color: t.color ?? undefined }}>
+          {t.animal.trim()} ·
+        </b>
+      )}
+      {t.name}
+    </>
+  )
+}
 
 function personName(d: DutyData, id: string | null | undefined) {
   return d.people.find((p) => p.id === id)?.name ?? '–'
@@ -31,7 +46,9 @@ function SlotRow({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; c
       <span className="w-24 shrink-0 text-xs tabular-nums text-gray-500">
         {s.type.start_time}–{endTime(s.type)}
       </span>
-      <span className="min-w-0 flex-1 text-sm text-gray-800">{s.type.name}</span>
+      <span className="min-w-0 flex-1 text-sm text-gray-800">
+        <TypeName t={s.type} />
+      </span>
       {canWrite ? (
         <select
           value={pid ?? ''}
@@ -92,7 +109,10 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
   })()
   const unseen = d.changes.filter((c) => c.changed_at > lastSeen)
   const [showChanges, setShowChanges] = useState(false)
-  const typeName = (id: string) => d.types.find((t) => t.id === id)?.name ?? 'Dienst'
+  const typeName = (id: string) => {
+    const t = d.types.find((x) => x.id === id)
+    return t ? typeLabel(t) : 'Dienst'
+  }
 
   return (
     <div className="space-y-3">
@@ -215,7 +235,7 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
                 <span className="h-3 w-3 rounded-full" style={{ background: s.type.color ?? '#64748b' }} />
                 <span className="w-28 text-sm font-medium">{dm(s.date)}</span>
                 <span className="flex-1 text-sm">
-                  {s.type.start_time} · {s.type.name}
+                  {s.type.start_time} · {typeLabel(s.type)}
                 </span>
                 {pending && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Antrag offen</span>}
                 {(canWrite || propose) && !pending && (
@@ -257,7 +277,7 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
                         <option value="">nichts (nur abgeben)</option>
                         {theirs.map((o) => (
                           <option key={o.id} value={o.id}>
-                            {dm(o.date)} {o.type.start_time} {o.type.name}
+                            {dm(o.date)} {o.type.start_time} {typeLabel(o.type)}
                           </option>
                         ))}
                       </select>
@@ -323,7 +343,10 @@ const STATUS_CLASS: Record<DutyRequestStatus, string> = {
 /** Antrag in einem Satz. */
 function describeRequest(d: DutyData, r: DutyRequest): string {
   const name = personName(d, r.person_id)
-  const dutyName = (typeId: string | null) => d.types.find((t) => t.id === typeId)?.name ?? 'Dienst'
+  const dutyName = (typeId: string | null) => {
+    const t = d.types.find((x) => x.id === typeId)
+    return t ? typeLabel(t) : 'Dienst'
+  }
   const range = r.from_date && r.to_date ? `${dm(r.from_date)}${r.to_date !== r.from_date ? `–${dm(r.to_date)}` : ''}` : ''
   if (r.kind === 'wunsch') return `${name} wünscht frei: ${range}`
   const mine = `${r.date ? dm(r.date) : ''} ${dutyName(r.type_id)}`
@@ -509,27 +532,82 @@ function Absences({ d, canWrite }: { d: DutyData; canWrite: boolean }) {
   )
 }
 
-function TypeEditor({ t, onDone }: { t: Partial<DutyType>; onDone: () => void }) {
+const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
+
+/** Tag und Monat (MM-DD) wählen. */
+function MonthDay({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const [m, d] = value.split('-').map(Number)
+  const set = (mm: number, dd: number) => onChange(`${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`)
+  return (
+    <span className="inline-flex gap-1">
+      <select className={field} value={d} onChange={(e) => set(m, Number(e.target.value))} aria-label={`${label}, Tag`}>
+        {Array.from({ length: 31 }, (_, i) => i + 1).map((x) => (
+          <option key={x} value={x}>
+            {x}.
+          </option>
+        ))}
+      </select>
+      <select className={field} value={m} onChange={(e) => set(Number(e.target.value), d)} aria-label={`${label}, Monat`}>
+        {MONTHS.map((x, i) => (
+          <option key={x} value={i + 1}>
+            {x}
+          </option>
+        ))}
+      </select>
+    </span>
+  )
+}
+
+const minutesOf = (hm: string) => {
+  const [h, m] = hm.split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+const rangeText = (v: DayTime) => (v ? `${hhmm(v[0])}–${hhmm(Math.min(24 * 60, v[0] + v[1]))}` : '')
+
+function TypeEditor({ t, animals, onDone }: { t: Partial<DutyType>; animals: string[]; onDone: () => void }) {
+  const initialTimes = parseTimes(t.times)
   const [f, setF] = useState({
     name: t.name ?? '',
+    animal: t.animal ?? '',
     start_time: t.start_time ?? '06:00',
     duration_min: String(t.duration_min ?? 60),
     weekdays: t.weekdays ?? '1111111',
     color: t.color ?? '#2563eb',
     description: t.description ?? '',
     active: t.active ?? true,
+    windowOn: !!(t.active_from && t.active_to),
+    active_from: t.active_from ?? '03-01',
+    active_to: t.active_to ?? '10-31',
+    ownTimes: !!initialTimes,
+    summer_from: t.summer_from ?? DEFAULT_SUMMER.from,
+    summer_to: t.summer_to ?? DEFAULT_SUMMER.to,
   })
+  const [times, setTimes] = useState<SeasonTimes>(initialTimes ?? { sommer: Array(7).fill(null), winter: Array(7).fill(null) })
+  const [season, setSeason] = useState<'sommer' | 'winter'>('sommer')
   const [confirmDel, setConfirmDel] = useState(false)
   const toggleDay = (i: number) => setF({ ...f, weekdays: f.weekdays.slice(0, i) + (f.weekdays[i] === '0' ? '1' : '0') + f.weekdays.slice(i + 1) })
+  const ghost: DayTime = [minutesOf(f.start_time), Number(f.duration_min) || 60]
+  const setDay = (sn: 'sommer' | 'winter', i: number, v: DayTime) => setTimes((all) => ({ ...all, [sn]: all[sn].map((x, j) => (j === i ? v : x)) }))
+  const setAll = (sn: 'sommer' | 'winter', v: DayTime[]) => setTimes((all) => ({ ...all, [sn]: v }))
   return (
     <div className="space-y-2 rounded-lg bg-gray-50 p-2 text-sm">
       <div className="flex flex-wrap gap-2">
-        <input className={`${field} min-w-0 flex-1`} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Name, z.B. Melken Kühe abends" />
-        <input type="time" className={field} value={f.start_time} onChange={(e) => setF({ ...f, start_time: e.target.value })} />
+        <input className={`${field} w-28`} list="duty-animals" value={f.animal} onChange={(e) => setF({ ...f, animal: e.target.value })} placeholder="Tierart" aria-label="Tierart" />
+        <datalist id="duty-animals">
+          {animals.map((a) => (
+            <option key={a} value={a} />
+          ))}
+        </datalist>
+        <input className={`${field} min-w-0 flex-1`} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Dienst, z.B. Melken abends" />
+        <input type="color" className="h-9 w-10 rounded border border-gray-300" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} aria-label="Farbe" />
+      </div>
+      <p className="text-xs text-gray-500">Im Plan steht die Tierart vor dem Namen: «{typeLabel({ name: f.name || 'Dienst', animal: f.animal })}».</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-gray-600">Standardzeit</span>
+        <input type="time" step={900} className={field} value={f.start_time} onChange={(e) => setF({ ...f, start_time: e.target.value })} />
         <label className="flex items-center gap-1">
           <input className={`${field} w-20`} inputMode="numeric" value={f.duration_min} onChange={(e) => setF({ ...f, duration_min: e.target.value.replace(/\D/g, '') })} /> min
         </label>
-        <input type="color" className="h-9 w-10 rounded border border-gray-300" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} aria-label="Farbe" />
       </div>
       <div className="flex flex-wrap gap-1">
         {DAYS.map((dd, i) => (
@@ -541,6 +619,77 @@ function TypeEditor({ t, onDone }: { t: Partial<DutyType>; onDone: () => void })
           <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> aktiv
         </label>
       </div>
+
+      <div className="space-y-1 rounded-lg border border-gray-200 bg-white p-2">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={f.windowOn} onChange={(e) => setF({ ...f, windowOn: e.target.checked })} /> nicht ganzjährig: nur in einem Zeitraum
+        </label>
+        {f.windowOn && (
+          <div className="flex flex-wrap items-center gap-2 pl-6">
+            von <MonthDay value={f.active_from} onChange={(v) => setF({ ...f, active_from: v })} label="aktiv von" /> bis{' '}
+            <MonthDay value={f.active_to} onChange={(v) => setF({ ...f, active_to: v })} label="aktiv bis" />
+            <span className="text-xs text-gray-500">{f.active_from > f.active_to ? 'über den Jahreswechsel' : 'jedes Jahr'}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-2">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={f.ownTimes} onChange={(e) => setF({ ...f, ownTimes: e.target.checked })} /> Zeiten je Wochentag und Jahreszeit (Sommer/Winter)
+        </label>
+        {f.ownTimes && (
+          <>
+            <div className="flex flex-wrap items-center gap-2 pl-6">
+              Sommer von <MonthDay value={f.summer_from} onChange={(v) => setF({ ...f, summer_from: v })} label="Sommer von" /> bis{' '}
+              <MonthDay value={f.summer_to} onChange={(v) => setF({ ...f, summer_to: v })} label="Sommer bis" />
+              <span className="text-xs text-gray-500">übrige Zeit = Winter</span>
+            </div>
+            <div className="flex gap-1">
+              {(['sommer', 'winter'] as const).map((sn) => (
+                <button key={sn} type="button" onClick={() => setSeason(sn)} className={`rounded-lg px-3 py-1.5 ${season === sn ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}>
+                  {sn === 'sommer' ? '☀️ Sommer' : '❄️ Winter'}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-7 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <TimeAxis />
+                </div>
+                <span className="w-24 shrink-0" />
+              </div>
+              {DAYS.map((dd, i) => {
+                const v = times[season][i]
+                return (
+                  <div key={dd} className="flex items-center gap-2">
+                    <span className="w-7 shrink-0 text-xs font-semibold text-gray-600">{dd}</span>
+                    <TimeStrip value={v} ghost={ghost} color={f.color} muted={f.weekdays[i] === '0'} onChange={(x) => setDay(season, i, x)} label={`${dd} ${season === 'sommer' ? 'Sommer' : 'Winter'}`} />
+                    <span className="flex w-24 shrink-0 items-center justify-between text-xs tabular-nums text-gray-600">
+                      {rangeText(v ?? ghost)}
+                      {v ? (
+                        <button type="button" className="px-1 text-gray-500" onClick={() => setDay(season, i, null)} aria-label={`${dd}: Standardzeit`} title="Standardzeit">
+                          ×
+                        </button>
+                      ) : null}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={btn} onClick={() => setAll(season, Array(7).fill(times[season][0] ?? ghost))}>
+                Montag auf alle Tage
+              </button>
+              <button type="button" className={btn} onClick={() => setAll(season === 'sommer' ? 'winter' : 'sommer', [...times[season]])}>
+                {season === 'sommer' ? 'Sommer → Winter kopieren' : 'Winter → Sommer kopieren'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">Ziehen = Zeit von–bis in 15-Minuten-Schritten, Tippen = 15 Minuten. Blass gestrichelt = Standardzeit. Tage ohne Dienst (grau) stellst du oben ein.</p>
+          </>
+        )}
+      </div>
+
       <input className={`${field} w-full`} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Hinweis für den Kalender, z.B. Füttern, Eier ausnehmen" />
       <div className="flex flex-wrap gap-2">
         <button
@@ -551,6 +700,7 @@ function TypeEditor({ t, onDone }: { t: Partial<DutyType>; onDone: () => void })
             void saveType({
               id: t.id ?? crypto.randomUUID(),
               name: f.name.trim(),
+              animal: f.animal.trim() || null,
               start_time: f.start_time,
               duration_min: Number(f.duration_min) || 60,
               weekdays: f.weekdays,
@@ -558,6 +708,11 @@ function TypeEditor({ t, onDone }: { t: Partial<DutyType>; onDone: () => void })
               description: f.description.trim() || null,
               active: f.active,
               sort_order: t.sort_order ?? 100,
+              active_from: f.windowOn ? f.active_from : null,
+              active_to: f.windowOn ? f.active_to : null,
+              summer_from: f.ownTimes ? f.summer_from : null,
+              summer_to: f.ownTimes ? f.summer_to : null,
+              times: f.ownTimes ? stringifyTimes(times) : null,
             }).then(onDone)
           }
         >
@@ -577,7 +732,7 @@ function TypeEditor({ t, onDone }: { t: Partial<DutyType>; onDone: () => void })
             </button>
           ))}
       </div>
-      <p className="text-xs text-gray-500">Änderungen gelten auch für schon eingeteilte Dienste (Uhrzeit im Kalender). Saisonal: «aktiv» abwählen statt löschen.</p>
+      <p className="text-xs text-gray-500">Änderungen gelten auch für schon eingeteilte Dienste (Uhrzeit im Kalender). Ausserhalb des Zeitraums gibt es den Dienst nicht; eingeteilte Personen bleiben gespeichert.</p>
     </div>
   )
 }
@@ -656,6 +811,8 @@ function Settings({ d }: { d: DutyData }) {
   const [editPerson, setEditPerson] = useState<DutyPerson | null>(null)
   const [confirmP, setConfirmP] = useState<string | null>(null)
   const has = (pid: string, tid: string) => d.skills.some((s) => s.person_id === pid && s.type_id === tid)
+  const orderedTypes = groupTypes(d.types).flatMap((g) => g.types)
+  const animals = [...new Set(d.types.map((t) => t.animal?.trim()).filter((a): a is string => !!a))]
   const people = d.people
   return (
     <div className="space-y-3">
@@ -717,24 +874,36 @@ function Settings({ d }: { d: DutyData }) {
             + Dienst
           </button>
         </div>
-        {editType && !editType.id && <TypeEditor t={editType} onDone={() => setEditType(null)} />}
-        <ul className="divide-y">
-          {d.types.map((t) => (
-            <li key={t.id} className="py-1.5">
-              {editType?.id === t.id ? (
-                <TypeEditor t={t} onDone={() => setEditType(null)} />
-              ) : (
-                <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setEditType(t)}>
-                  <span className="h-3 w-3 rounded-full" style={{ background: t.color ?? '#64748b' }} />
-                  <span className={`flex-1 ${t.active ? '' : 'text-gray-500 line-through'}`}>{t.name}</span>
-                  <span className="text-xs tabular-nums text-gray-500">
-                    {t.start_time}–{endTime(t)} · {DAYS.filter((_, i) => t.weekdays[i] !== '0').join(' ')}
-                  </span>
-                </button>
-              )}
-            </li>
+        {editType && !editType.id && <TypeEditor t={editType} animals={animals} onDone={() => setEditType(null)} />}
+        <div className="space-y-2">
+          {groupTypes(d.types).map((g) => (
+            <div key={g.animal ?? '–'}>
+              <div className="mb-0.5 flex items-center gap-2 border-b pb-0.5 text-xs font-semibold uppercase tracking-wide text-gray-500" style={{ borderColor: g.color ?? undefined }}>
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: g.color ?? '#64748b' }} />
+                {g.animal ?? 'Übrige'}
+              </div>
+              <ul className="divide-y">
+                {g.types.map((t) => (
+                  <li key={t.id} className="py-1.5">
+                    {editType?.id === t.id ? (
+                      <TypeEditor t={t} animals={animals} onDone={() => setEditType(null)} />
+                    ) : (
+                      <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setEditType(t)}>
+                        <span className="h-3 w-3 rounded-full" style={{ background: t.color ?? '#64748b' }} />
+                        <span className={`flex-1 ${t.active ? '' : 'text-gray-500 line-through'}`}>{t.name}</span>
+                        <span className="text-right text-xs tabular-nums text-gray-500">
+                          {t.start_time}–{endTime(t)} · {DAYS.filter((_, i) => t.weekdays[i] !== '0').join(' ')}
+                          {t.active_from && t.active_to ? ` · ${t.active_from.slice(3)}.${t.active_from.slice(0, 2)}.–${t.active_to.slice(3)}.${t.active_to.slice(0, 2)}.` : ''}
+                          {t.times ? ' · Sommer/Winter' : ''}
+                        </span>
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       </section>
 
       <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
@@ -747,8 +916,16 @@ function Settings({ d }: { d: DutyData }) {
               <thead>
                 <tr>
                   <th />
-                  {d.types.map((t) => (
-                    <th key={t.id} className="px-1 pb-1 align-bottom font-medium text-gray-600">
+                  {groupTypes(d.types).map((g) => (
+                    <th key={g.animal ?? '–'} colSpan={g.types.length} className="border-l px-1 pb-0.5 text-left text-[11px] font-bold uppercase tracking-wide" style={{ color: g.color ?? undefined, borderColor: g.color ?? undefined }}>
+                      {g.animal ?? 'Übrige'}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  <th />
+                  {orderedTypes.map((t) => (
+                    <th key={t.id} className="border-l px-1 pb-1 align-bottom font-medium text-gray-600" style={{ borderColor: t.color ?? undefined }}>
                       <span className="block max-w-[5.5rem] leading-tight">{t.name}</span>
                     </th>
                   ))}
@@ -758,9 +935,9 @@ function Settings({ d }: { d: DutyData }) {
                 {people.filter((p) => p.active).map((p) => (
                   <tr key={p.id} className="border-t">
                     <td className="py-1 pr-2 font-medium">{p.name}</td>
-                    {d.types.map((t) => (
+                    {orderedTypes.map((t) => (
                       <td key={t.id} className="text-center">
-                        <input type="checkbox" className="h-5 w-5" checked={has(p.id, t.id)} onChange={(e) => void setSkill(d.skills, p.id, t.id, e.target.checked)} aria-label={`${p.name}: ${t.name}`} />
+                        <input type="checkbox" className="h-5 w-5" checked={has(p.id, t.id)} onChange={(e) => void setSkill(d.skills, p.id, t.id, e.target.checked)} aria-label={`${p.name}: ${typeLabel(t)}`} />
                       </td>
                     ))}
                   </tr>

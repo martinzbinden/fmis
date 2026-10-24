@@ -209,6 +209,16 @@ export interface DutyType {
   sort_order: number
   updated_at: string
   deleted_at: string | null
+  /** Tierart, steht vor dem Namen (schema/0005) */
+  animal: string | null
+  /** MM-DD: nur in diesem Zeitraum aktiv (leer = ganzjährig) */
+  active_from: string | null
+  active_to: string | null
+  /** MM-DD: Sommer (leer = 04-01 bis 10-31), sonst Winter */
+  summer_from: string | null
+  summer_to: string | null
+  /** JSON: Zeiten je Wochentag und Jahreszeit (siehe lib/duty.ts parseTimes) */
+  times: string | null
 }
 export interface DutySkill {
   id: string

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { conflictsFor, copyFromPrevious, endTime, isoWeek, mondayOf, shiftId, slotsFor, slotsOn, suggest, weekDates } from './duty'
+import { conflictsFor, copyFromPrevious, endTime, inMonthDayRange, isoWeek, isSummer, mondayOf, parseTimes, shiftId, slotsFor, slotsOn, stringifyTimes, suggest, timeOn, typeLabel, weekDates } from './duty'
 import type { DutyAbsence, DutyPerson, DutyShift, DutySkill, DutyType } from '../types'
 
 const T = (id: string, name: string, start: string, dur: number, weekdays = '1111111'): DutyType => ({
   id, name, start_time: start, duration_min: dur, weekdays, color: null, description: null, active: true, sort_order: 0, updated_at: '', deleted_at: null,
+  animal: null, active_from: null, active_to: null, summer_from: null, summer_to: null, times: null,
 })
 const P = (id: string, name: string): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: 0, notes: null, updated_at: '', deleted_at: null })
 const S = (person: string, type: string): DutySkill => ({ id: `${person}${type}`, person_id: person, type_id: type, updated_at: '', deleted_at: null })
@@ -67,3 +68,56 @@ describe('Konflikte und Vorschlag', () => {
     expect(res.every((r) => r.slot.shift === null)).toBe(true)
   })
 })
+
+describe('Saison und Zeiten je Wochentag', () => {
+  it('Zeitraum, auch über den Jahreswechsel', () => {
+    expect(inMonthDayRange('2026-06-15', '04-01', '10-31')).toBe(true)
+    expect(inMonthDayRange('2026-11-15', '04-01', '10-31')).toBe(false)
+    expect(inMonthDayRange('2026-12-24', '11-01', '03-31')).toBe(true)
+    expect(inMonthDayRange('2027-02-10', '11-01', '03-31')).toBe(true)
+    expect(inMonthDayRange('2026-07-01', '11-01', '03-31')).toBe(false)
+    expect(inMonthDayRange('2026-07-01', null, null)).toBe(true)
+  })
+
+  it('nicht ganzjährig aktiver Dienst gibt es nur im Fenster', () => {
+    const abends = { ...T('a', 'Melken abends', '17:00', 90), active_from: '03-01', active_to: '10-31' }
+    expect(slotsOn(abends, '2026-05-05')).toBe(1)
+    expect(slotsOn(abends, '2026-12-05')).toBe(0)
+    expect(slotsFor([abends], [], ['2026-05-05', '2026-12-05']).map((s) => s.date)).toEqual(['2026-05-05'])
+  })
+
+  it('Sommer und Winter mit eigenen Zeiten je Wochentag', () => {
+    const times = stringifyTimes({
+      sommer: [[330, 90], null, null, null, null, null, null],
+      winter: [[390, 90], null, null, null, null, null, [480, 60]],
+    })
+    const t = { ...T('k', 'Melken morgens', '06:00', 75), times }
+    // Mo 3.8.2026 (Sommer) = 05:30, Mo 7.12.2026 (Winter) = 06:30, Di = Standard, So Winter = 08:00
+    expect(timeOn(t, '2026-08-03')).toEqual({ start_time: '05:30', duration_min: 90 })
+    expect(timeOn(t, '2026-12-07')).toEqual({ start_time: '06:30', duration_min: 90 })
+    expect(timeOn(t, '2026-12-08')).toEqual({ start_time: '06:00', duration_min: 75 })
+    expect(timeOn(t, '2026-12-13')).toEqual({ start_time: '08:00', duration_min: 60 })
+    // der Platz im Plan trägt die Zeit des Tages
+    const slot = slotsFor([t], [], ['2026-12-07'])[0]
+    expect(slot.type.start_time).toBe('06:30')
+    expect(endTime(slot.type)).toBe('08:00')
+  })
+
+  it('eigene Sommerdefinition', () => {
+    const t = { ...T('k', 'x', '06:00', 60), summer_from: '05-15', summer_to: '09-15' }
+    expect(isSummer('2026-05-14', t)).toBe(false)
+    expect(isSummer('2026-07-01', t)).toBe(true)
+  })
+
+  it('Ungültiges in times gilt als nicht gesetzt', () => {
+    expect(parseTimes('kaputt')).toBeNull()
+    expect(parseTimes(null)).toBeNull()
+    expect(parseTimes('{"sommer":[[5000,60]],"winter":[]}')).toBeNull()
+  })
+
+  it('Tierart wird vorangestellt', () => {
+    expect(typeLabel({ name: 'Melken morgens', animal: 'Kühe' })).toBe('Kühe · Melken morgens')
+    expect(typeLabel({ name: 'Weidekontrolle Wyden', animal: null })).toBe('Weidekontrolle Wyden')
+  })
+})
+

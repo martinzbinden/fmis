@@ -26,9 +26,78 @@ export function isoWeek(iso: string): number {
   return 1 + Math.round(((thursday.getTime() - jan4.getTime()) / DAY - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7)
 }
 
-/** Anzahl Plätze dieses Diensttyps an einem Tag. */
-export function slotsOn(type: Pick<DutyType, 'weekdays' | 'active'>, iso: string): number {
-  if (!type.active) return 0
+// --- Saison und Zeiten je Wochentag (schema/0005) -----------------------------
+
+/** MM-DD liegt im Zeitraum von..bis (inklusive); «von» nach «bis» geht über den Jahreswechsel. */
+export function inMonthDayRange(iso: string, from: string | null | undefined, to: string | null | undefined): boolean {
+  if (!from || !to) return true
+  const md = iso.slice(5, 10)
+  return from <= to ? md >= from && md <= to : md >= from || md <= to
+}
+
+export const DEFAULT_SUMMER = { from: '04-01', to: '10-31' }
+export const isSummer = (iso: string, type: Pick<DutyType, 'summer_from' | 'summer_to'>) =>
+  inMonthDayRange(iso, type.summer_from ?? DEFAULT_SUMMER.from, type.summer_to ?? DEFAULT_SUMMER.to)
+
+/** Gibt es den Dienst an diesem Datum (aktiv und im Saisonfenster)? */
+export function runsOn(type: Pick<DutyType, 'active' | 'active_from' | 'active_to'>, iso: string): boolean {
+  return !!type.active && inMonthDayRange(iso, type.active_from, type.active_to)
+}
+
+/** Beginn und Dauer in Minuten ab 00:00; null = der Dienst-Standard (start_time/duration_min). */
+export type DayTime = [start: number, minutes: number] | null
+export interface SeasonTimes {
+  sommer: DayTime[]
+  winter: DayTime[]
+}
+
+const STEP = 15
+const clampDay = (v: unknown): DayTime => {
+  if (!Array.isArray(v) || v.length < 2) return null
+  const start = Number(v[0])
+  const min = Number(v[1])
+  if (!Number.isFinite(start) || !Number.isFinite(min) || min <= 0 || start < 0 || start >= 24 * 60) return null
+  return [Math.round(start / STEP) * STEP, Math.round(min / STEP) * STEP || STEP]
+}
+
+/** JSON aus der Spalte `times` lesen; Ungültiges gilt als «nicht gesetzt». */
+export function parseTimes(json: string | null | undefined): SeasonTimes | null {
+  if (!json) return null
+  try {
+    const v = JSON.parse(json) as { sommer?: unknown; winter?: unknown }
+    const week = (x: unknown): DayTime[] => Array.from({ length: 7 }, (_, i) => clampDay(Array.isArray(x) ? x[i] : null))
+    const out = { sommer: week(v.sommer), winter: week(v.winter) }
+    return out.sommer.some(Boolean) || out.winter.some(Boolean) ? out : null
+  } catch {
+    return null
+  }
+}
+
+export const stringifyTimes = (t: SeasonTimes | null): string | null =>
+  t && (t.sommer.some(Boolean) || t.winter.some(Boolean)) ? JSON.stringify(t) : null
+
+export const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+const toMin = (hm: string) => {
+  const [h, m] = hm.split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
+}
+
+/** Beginn und Dauer des Dienstes an diesem Datum (Jahreszeit und Wochentag berücksichtigt). */
+export function timeOn(
+  type: Pick<DutyType, 'start_time' | 'duration_min' | 'times' | 'summer_from' | 'summer_to'>,
+  iso: string,
+): { start_time: string; duration_min: number } {
+  const times = parseTimes(type.times)
+  const entry = times?.[isSummer(iso, type) ? 'sommer' : 'winter'][weekdayIndex(iso)] ?? null
+  return entry ? { start_time: hhmm(entry[0]), duration_min: entry[1] } : { start_time: type.start_time, duration_min: type.duration_min }
+}
+
+/** Tierart voran: «Kühe · Melken morgens». */
+export const typeLabel = (t: Pick<DutyType, 'name' | 'animal'>) => (t.animal?.trim() ? `${t.animal.trim()} · ${t.name}` : t.name)
+
+/** Anzahl Plätze dieses Diensttyps an einem Tag (0 = findet nicht statt). */
+export function slotsOn(type: Pick<DutyType, 'weekdays' | 'active'> & Partial<Pick<DutyType, 'active_from' | 'active_to'>>, iso: string): number {
+  if (!runsOn({ active: type.active, active_from: type.active_from ?? null, active_to: type.active_to ?? null }, iso)) return 0
   const n = Number(type.weekdays[weekdayIndex(iso)] ?? 0)
   return Number.isFinite(n) ? n : 0
 }
@@ -80,13 +149,19 @@ export interface Slot {
 export function slotsFor(types: DutyType[], shifts: DutyShift[], dates: string[]): Slot[] {
   const byId = new Map(shifts.filter((s) => !s.deleted_at && s.person_id).map((s) => [s.id, s]))
   const out: Slot[] = []
-  const sorted = [...types].filter((t) => !t.deleted_at).sort((a, b) => a.start_time.localeCompare(b.start_time) || a.sort_order - b.sort_order)
-  for (const date of dates)
-    for (const type of sorted)
-      for (let slot = 0; slot < slotsOn(type, date); slot++) {
+  const live = [...types].filter((t) => !t.deleted_at)
+  for (const date of dates) {
+    // Uhrzeit und Dauer gelten für DIESEN Tag (Jahreszeit, Wochentag): der Platz trägt einen Typ mit den Zeiten des Tages
+    const day = live
+      .filter((t) => slotsOn(t, date) > 0)
+      .map((t) => ({ type: { ...t, ...timeOn(t, date) }, n: slotsOn(t, date) }))
+      .sort((a, b) => a.type.start_time.localeCompare(b.type.start_time) || a.type.sort_order - b.type.sort_order)
+    for (const { type, n } of day)
+      for (let slot = 0; slot < n; slot++) {
         const id = shiftId(type.id, date, slot)
         out.push({ type, date, slot, id, shift: byId.get(id) ?? null })
       }
+  }
   return out
 }
 
@@ -101,7 +176,7 @@ export function conflictsFor(personId: string, slot: Pick<Slot, 'type' | 'date' 
   const r = timeRange(slot.type)
   const overlap = all
     .filter((o) => o.id !== slot.id && o.date === slot.date && o.shift?.person_id === personId && overlaps(r, timeRange(o.type)))
-    .map((o) => o.type.name)
+    .map((o) => typeLabel(o.type))
   return { absent: absenceOn(personId, slot.date, absences), overlap, unskilled: !canDo(personId, slot.type.id, skills) }
 }
 export const hasConflict = (c: Conflict) => !!c.absent || c.overlap.length > 0 || c.unskilled
@@ -157,4 +232,24 @@ export function copyFromPrevious(slots: Slot[], previous: Slot[], skills: DutySk
     out.push({ slot: slots[i], personId: pid })
   }
   return out
+}
+
+const ANIMAL_ORDER = ['Kühe', 'Schafe', 'Hühner']
+
+/** Dienste nach Tierart gruppiert (Kühe, Schafe, Hühner, übrige alphabetisch, ohne Tierart zuletzt),
+ * innerhalb der Gruppe nach sort_order. Die Gruppenfarbe ist die des ersten Dienstes. */
+export function groupTypes<T extends Pick<DutyType, 'animal' | 'sort_order' | 'name' | 'color'>>(types: T[]): { animal: string | null; color: string | null; types: T[] }[] {
+  const rank = (a: string | null) => {
+    if (!a) return 1000
+    const i = ANIMAL_ORDER.indexOf(a)
+    return i >= 0 ? i : 100
+  }
+  const map = new Map<string, T[]>()
+  for (const t of types) map.set(t.animal?.trim() || '', [...(map.get(t.animal?.trim() || '') ?? []), t])
+  return [...map.entries()]
+    .map(([a, list]) => {
+      const sorted = [...list].sort((x, y) => x.sort_order - y.sort_order || x.name.localeCompare(y.name, 'de-CH'))
+      return { animal: a || null, color: sorted[0]?.color ?? null, types: sorted }
+    })
+    .sort((x, y) => rank(x.animal) - rank(y.animal) || (x.animal ?? '').localeCompare(y.animal ?? '', 'de-CH'))
 }

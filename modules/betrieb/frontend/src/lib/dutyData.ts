@@ -4,7 +4,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail, getViewedUserEmail } from '@fmis/core/auth'
 import { softDeleteRow, upsertRow, upsertRows } from '../db/write'
 import { isoDate } from './format'
-import { shiftId, slotsFor, type Slot } from './duty'
+import { shiftId, slotsFor, timeOn, type Slot } from './duty'
 import type { DutyAbsence, DutyChange, DutyPerson, DutyRequest, DutyRequestKind, DutyShift, DutySkill, DutyType } from '../types'
 
 export interface DutyData {
@@ -146,7 +146,7 @@ export function slotById(types: DutyType[], shifts: DutyShift[], typeId: string 
   const type = types.find((t) => t.id === typeId)
   if (!type) return null
   for (let i = 0; i < 20; i++) {
-    if (shiftId(type.id, date, i) === id) return slotsFor([type], shifts, [date]).find((s) => s.slot === i) ?? { type, date, slot: i, id, shift: null }
+    if (shiftId(type.id, date, i) === id) return slotsFor([type], shifts, [date]).find((s) => s.slot === i) ?? { type: { ...type, ...timeOn(type, date) }, date, slot: i, id, shift: null }
   }
   return null
 }

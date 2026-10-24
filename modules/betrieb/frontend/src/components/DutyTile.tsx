@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { getSyncedDb as getDb } from '../db/access'
 import { subscribeDataChanged } from '../db/write'
-import { addDays, endTime, localToday as todayIso, slotsFor } from '../lib/duty'
+import { addDays, endTime, localToday as todayIso, slotsFor, typeLabel } from '../lib/duty'
 import { loadDuty, me } from '../lib/dutyData'
 
 interface TileData {
@@ -30,7 +30,7 @@ export default function DutyTile() {
             setD({
               today: slots
                 .filter((s) => s.date === todayIso())
-                .map((s) => ({ time: `${s.type.start_time}–${endTime(s.type)}`, name: s.type.name, person: name(s.shift?.person_id), color: s.type.color, mine: !!self && s.shift?.person_id === self.id })),
+                .map((s) => ({ time: `${s.type.start_time}–${endTime(s.type)}`, name: typeLabel(s.type), person: name(s.shift?.person_id), color: s.type.color, mine: !!self && s.shift?.person_id === self.id })),
               open7: slots.filter((s) => !s.shift?.person_id).length,
             })
         })

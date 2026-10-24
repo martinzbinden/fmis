@@ -43,7 +43,8 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "duty_types": [
         "id", "name", "start_time", "duration_min", "weekdays", "color", "description", "active",
-        "sort_order", "updated_at", "deleted_at",
+        "sort_order", "updated_at", "deleted_at", "animal", "active_from", "active_to",
+        "summer_from", "summer_to", "times",
     ],
     "duty_skills": [
         "id", "person_id", "type_id", "updated_at", "deleted_at",
