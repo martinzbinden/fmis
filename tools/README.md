@@ -49,3 +49,13 @@ Eigenständige Hilfsskripte, kein Teil der laufenden App.
   zuordnen" zusammengeführt werden. `--dry-run`, `--report CSV` (Zuordnung +
   Heuristik-Entscheide), `--mapping JSON`, idempotent, schützt in der App
   bearbeitete Zeilen (`--force`). Braucht openpyxl.
+
+- **`leitungskataster_pdf.py`** — Leitungskataster-Auszug (PDF aus dem
+  Geoportal des Kantons Bern, je Werk eine PDF-Ebene als Rasterbild) in eine
+  Grundlage für die Karte der Bauprojekte umwandeln: Ebenen auslesen, über
+  das 100-m-Kreuznetz in LV95 einpassen (`--kreuz E,N` = Kreuz unten links,
+  aus der Randbeschriftung abgelesen), Weiss transparent machen, in die
+  Kartenprojektion umrechnen. Ergebnis ist ein ZIP (manifest.json + PNG je
+  nicht leerer Ebene), das in FMIS unter Bauprojekte → Karte → 🗂️ →
+  «Grundlage hinzufügen» hochgeladen wird. Braucht mutool, poppler,
+  GDAL, Pillow und numpy.

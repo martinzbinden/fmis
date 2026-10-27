@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Circle, CircleMarker, GeoJSON, MapContainer, Marker, Polygon, Polyline, TileLayer, Tooltip, WMSTileLayer, useMap, useMapEvents } from 'react-leaflet'
+import { Circle, CircleMarker, GeoJSON, ImageOverlay, MapContainer, Marker, Pane, Polygon, Polyline, TileLayer, Tooltip, WMSTileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { BACKGROUND_LAYERS, CADASTRE_WMS, SWISSTOPO_ATTRIBUTION, swisstopoUrl, type BackgroundKey } from '@fmis/core/swisstopo'
@@ -10,7 +10,8 @@ import { boundsOf, parseGeometry, type Geom } from '../lib/geometry'
 import { accuracyClass } from '../lib/survey'
 import DraftLayer from './DraftLayer'
 import type { Fix } from '../lib/useGeolocation'
-import type { BauFeature, SurveyPoint } from '../types'
+import { overlayUrl } from '../lib/overlays'
+import type { BauFeature, BauOverlay, SurveyPoint } from '../types'
 
 export type MapMode = 'view' | 'draw' | 'edit' | 'measure'
 
@@ -71,6 +72,23 @@ function MapEvents({ onClick, onZoom, onCursor }: { onClick: (c: LngLat) => void
   return null
 }
 
+/** Ebene einer Grundlage (Leitungskataster …): Bild vom Server bzw. aus dem Cache. */
+function OverlayImage({ o }: { o: BauOverlay }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    overlayUrl(o.id).then(
+      (u) => alive && setUrl(u),
+      () => undefined, // ohne Netz und noch nie geladen: einfach nicht zeigen
+    )
+    return () => {
+      alive = false
+    }
+  }, [o.id])
+  const bounds = useMemo<L.LatLngBoundsExpression>(() => [[o.south, o.west], [o.north, o.east]], [o.south, o.west, o.north, o.east])
+  return url ? <ImageOverlay url={url} bounds={bounds} opacity={o.opacity} interactive={false} /> : null
+}
+
 export default function BauMap({
   features,
   points,
@@ -88,6 +106,7 @@ export default function BauMap({
   measure,
   onMeasure,
   onCursor,
+  overlays = [],
 }: {
   features: BauFeature[]
   points: SurveyPoint[]
@@ -108,6 +127,8 @@ export default function BauMap({
   onMeasure: (coords: LngLat[]) => void
   /** Zeiger (Desktop) bzw. Kartenmitte (Touch) — für «Hier setzen» */
   onCursor: (c: LngLat) => void
+  /** eingeblendete Grundlagen (Leitungskataster …), nur Anzeige */
+  overlays?: BauOverlay[]
 }) {
   const touch = isTouch()
   const [zoom, setZoom] = useState(16)
@@ -160,6 +181,13 @@ export default function BauMap({
               </Polygon>
             ) : null
           })}
+
+        {/* Grundlagen über Hintergrund und Parzellen, unter den Projektobjekten */}
+        <Pane name="grundlagen" style={{ zIndex: 350 }}>
+          {overlays.map((o) => (
+            <OverlayImage key={o.id} o={o} />
+          ))}
+        </Pane>
 
         <MapEvents
           onClick={onClick}

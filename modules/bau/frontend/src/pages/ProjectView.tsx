@@ -15,6 +15,7 @@ import { useQuery } from '../hooks/useQuery'
 import { CATEGORIES, FEATURE_STATUS_LABEL, PROJECT_STATUS_LABEL } from '../lib/categories'
 import { deleteProject, loadProject, saveFeature, updateGeometry } from '../lib/data'
 import { boundsOf, fmtLength, lengthM, parseGeometry, type Geom } from '../lib/geometry'
+import { groupOverlays, loadOverlays, removeOverlayGroup, uploadOverlayZip } from '../lib/overlays'
 import { useGeolocation } from '../lib/useGeolocation'
 
 type Tab = 'karte' | 'objekte' | 'einmessen' | 'export'
@@ -27,6 +28,8 @@ const TABS: { key: Tab; icon: string; label: string }[] = [
 ]
 
 const LAYERS_KEY = 'bau_map_layers_v1'
+// ein-/ausgeblendete Grundlagen je Ebene (sonst gilt die Vorgabe der Ebene)
+const OVERLAYS_KEY = 'bau_overlays_v1'
 const DEFAULT_LAYERS: MapLayers = { cadastre: false, cultures: false, labels: true, points: true, discarded: false }
 
 function loadLayers(): { background: BackgroundKey; layers: MapLayers } {
@@ -63,6 +66,36 @@ export default function ProjectView() {
   const [background, setBackground] = useState<BackgroundKey>(initial.background)
   const [layers, setLayers] = useState<MapLayers>(initial.layers)
   const [layersOpen, setLayersOpen] = useState(false)
+  const { data: overlayRows } = useQuery(loadOverlays, [])
+  const overlayGroups = useMemo(() => groupOverlays(overlayRows ?? []), [overlayRows])
+  const [overlayOn, setOverlayOn] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(OVERLAYS_KEY) ?? '{}') as Record<string, boolean>
+    } catch {
+      return {}
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem(OVERLAYS_KEY, JSON.stringify(overlayOn))
+    } catch {
+      // nur eine Bequemlichkeit
+    }
+  }, [overlayOn])
+  const shownOverlays = useMemo(() => (overlayRows ?? []).filter((o) => overlayOn[o.id] ?? o.visible), [overlayRows, overlayOn])
+  const [overlayBusy, setOverlayBusy] = useState(false)
+  const [confirmGroup, setConfirmGroup] = useState<string | null>(null)
+  async function addOverlay(file: File) {
+    setOverlayBusy(true)
+    try {
+      const n = await uploadOverlayZip(file)
+      notifySuccess(`Grundlage mit ${n} ${n === 1 ? 'Ebene' : 'Ebenen'} hinzugefügt.`)
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setOverlayBusy(false)
+    }
+  }
   useEffect(() => {
     try {
       localStorage.setItem(LAYERS_KEY, JSON.stringify({ background, layers }))
@@ -246,6 +279,7 @@ export default function ProjectView() {
           draftType={draftType}
           background={background}
           layers={layers}
+          overlays={shownOverlays}
           position={fix}
           fitKey={fitKey}
           flyTo={flyTo}
@@ -291,7 +325,7 @@ export default function ProjectView() {
         </div>
 
         {layersOpen && mode === 'view' && (
-          <div className="absolute right-16 top-2 z-[700] w-60 space-y-2 rounded-xl bg-white p-3 text-sm shadow-lg">
+          <div className="absolute right-16 top-2 z-[700] max-h-[calc(100%-1rem)] w-64 space-y-2 overflow-y-auto rounded-xl bg-white p-3 text-sm shadow-lg">
             <div className="grid grid-cols-3 gap-1">
               {(Object.keys(BACKGROUND_LAYERS) as BackgroundKey[]).map((k) => (
                 <button key={k} type="button" onClick={() => setBackground(k)} className={`min-h-12 rounded-lg border px-1 text-[12px] leading-tight ${background === k ? 'border-brand-600 bg-brand-100 font-semibold' : 'border-gray-300'}`}>
@@ -313,6 +347,35 @@ export default function ProjectView() {
                 {label}
               </label>
             ))}
+            {overlayGroups.map((g) => (
+              <div key={g.id} className="space-y-1 border-t pt-2">
+                <div className="text-xs font-semibold text-gray-700">{g.name}</div>
+                {g.layers.map((o) => (
+                  <label key={o.id} className="flex min-h-11 items-center gap-3">
+                    <input type="checkbox" className="h-5 w-5" checked={overlayOn[o.id] ?? o.visible} onChange={(e) => setOverlayOn((v) => ({ ...v, [o.id]: e.target.checked }))} />
+                    <span className="h-1.5 w-5 rounded-full" style={{ background: o.color ?? '#6b7280' }} aria-hidden />
+                    {o.name}
+                  </label>
+                ))}
+                <p className="text-[11px] leading-snug text-gray-500">{g.source ?? 'Nur Anzeige.'} Nicht bearbeitbar, Lage nicht verbindlich: vor dem Graben beim Werk nachfragen.</p>
+                {canWrite &&
+                  (confirmGroup === g.id ? (
+                    <button type="button" className="rounded bg-red-600 px-2 py-1 text-xs text-white" onClick={() => void removeOverlayGroup(g.layers).then(() => setConfirmGroup(null))}>
+                      Wirklich entfernen?
+                    </button>
+                  ) : (
+                    <button type="button" className="text-xs text-red-700 underline" onClick={() => setConfirmGroup(g.id)}>
+                      Grundlage entfernen
+                    </button>
+                  ))}
+              </div>
+            ))}
+            {canWrite && (
+              <label className={`flex min-h-11 cursor-pointer items-center gap-2 border-t pt-2 text-sm text-brand-700 ${overlayBusy ? 'opacity-50' : ''}`}>
+                ＋ Grundlage hinzufügen (ZIP)
+                <input type="file" accept=".zip,application/zip" className="sr-only" disabled={overlayBusy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void addOverlay(f) }} />
+              </label>
+            )}
           </div>
         )}
 

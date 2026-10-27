@@ -83,3 +83,26 @@ export interface DataHistory {
   snapshot: string
   updated_at: string
 }
+
+/** Grundlage (schema/0003_overlays.sql), z.B. eine Ebene des Leitungskatasters: nur Anzeige. */
+export interface BauOverlay {
+  id: string
+  group_id: string
+  group_name: string
+  kind: string
+  name: string
+  color: string | null
+  south: number
+  west: number
+  north: number
+  east: number
+  opacity: number
+  /** standardmässig eingeblendet */
+  visible: boolean
+  sort_order: number
+  source: string | null
+  size_bytes: number | null
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}

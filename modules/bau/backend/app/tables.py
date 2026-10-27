@@ -17,6 +17,11 @@ SYNC_TABLES: dict[str, list[str]] = {
         "altitude_m", "depth_cm", "note", "measured_at", "measured_by", "updated_at",
         "deleted_at",
     ],
+    "overlays": [
+        "id", "group_id", "group_name", "kind", "name", "color", "south", "west", "north", "east",
+        "opacity", "visible", "sort_order", "source", "size_bytes", "created_by", "updated_at",
+        "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at", "snapshot",
         "updated_at",
@@ -27,6 +32,8 @@ TABLE_AREA: dict[str, str] = {
     "projects": "bau:projekte",
     "features": "bau:projekte",
     "survey_points": "bau:projekte",
+    # Grundlagen (Leitungskataster …): alle lesen, hochladen/entfernen wer Projekte bearbeitet
+    "overlays": "bau:projekte",
     "data_history": "bau:history",
 }
 

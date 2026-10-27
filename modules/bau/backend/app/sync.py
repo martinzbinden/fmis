@@ -7,6 +7,7 @@ from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.sync_push import push_rows
 from core.backend.fmis_core.sync_stamps import pull_cursor
+from . import overlays
 from .tables import FRIST_TABLES, GEOMETRY_COLUMNS, SYNC_TABLES, TABLE_AREA
 
 # Eigener Pool mit search_path='bau,public' (siehe fmis_core/db.py)
@@ -15,6 +16,8 @@ from .tables import FRIST_TABLES, GEOMETRY_COLUMNS, SYNC_TABLES, TABLE_AREA
 pool = get_pool("bau")
 
 router = APIRouter()
+# Grundlagen (Leitungskataster …): Hochladen und Bilder, unter /sync/ wegen Traefik
+router.include_router(overlays.router)
 
 
 class PushRequest(BaseModel):

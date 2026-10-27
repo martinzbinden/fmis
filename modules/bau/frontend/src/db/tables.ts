@@ -16,6 +16,11 @@ export const SYNC_TABLES = {
     'altitude_m', 'depth_cm', 'note', 'measured_at', 'measured_by', 'updated_at',
     'deleted_at',
   ],
+  overlays: [
+    'id', 'group_id', 'group_name', 'kind', 'name', 'color', 'south', 'west', 'north', 'east',
+    'opacity', 'visible', 'sort_order', 'source', 'size_bytes', 'created_by', 'updated_at',
+    'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at', 'snapshot',
     'updated_at',
@@ -30,5 +35,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   projects: new Set(['start_date', 'end_date']),
   features: new Set(),
   survey_points: new Set(),
+  overlays: new Set(),
   data_history: new Set(),
 }
