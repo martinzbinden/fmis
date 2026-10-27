@@ -11,12 +11,14 @@ import NewObjectDialog, { type NewObjectSpec } from '../components/NewObjectDial
 import ObjectsPanel from '../components/ObjectsPanel'
 import ProjectForm from '../components/ProjectForm'
 import SurveyPanel from '../components/SurveyPanel'
+import VariantsDialog from '../components/VariantsDialog'
 import { useQuery } from '../hooks/useQuery'
 import { CATEGORIES, FEATURE_STATUS_LABEL, PROJECT_STATUS_LABEL } from '../lib/categories'
 import { deleteProject, loadProject, saveFeature, updateGeometry } from '../lib/data'
 import { boundsOf, fmtLength, lengthM, parseGeometry, type Geom } from '../lib/geometry'
 import { groupOverlays, loadOverlays, removeOverlayGroup, uploadOverlayZip } from '../lib/overlays'
 import { useGeolocation } from '../lib/useGeolocation'
+import { defaultView, inView, type VariantView } from '../lib/variants'
 
 type Tab = 'karte' | 'objekte' | 'einmessen' | 'export'
 
@@ -56,7 +58,19 @@ export default function ProjectView() {
   const canWrite = useHasPermission('bau:projekte:write')
   const { data, loading } = useQuery((pg) => loadProject(pg, id!), [id])
   const project = data?.project ?? null
-  const features = useMemo(() => data?.features ?? [], [data])
+  const allFeatures = useMemo(() => data?.features ?? [], [data])
+  const variants = useMemo(() => data?.variants ?? [], [data])
+  // Variante auf Karte, Liste, Einmessen und Export: beim Öffnen die gewählte, sonst alle
+  const [view, setView] = useState<VariantView>('alle')
+  const viewFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!data?.project || viewFor.current === data.project.id) return
+    viewFor.current = data.project.id
+    setView(defaultView(data.project, data.variants))
+  }, [data])
+  const shownView: VariantView = view === 'alle' || variants.some((v) => v.id === view) ? view : 'alle'
+  const features = useMemo(() => allFeatures.filter((f) => inView(f, shownView)), [allFeatures, shownView])
+  const viewVariant = variants.find((v) => v.id === shownView) ?? null
   const points = useMemo(() => data?.points ?? [], [data])
 
   const tab = (TABS.find((t) => t.key === params.get('t'))?.key ?? 'karte') as Tab
@@ -120,7 +134,7 @@ export default function ProjectView() {
   const cursor = useRef<LngLat | null>(null)
   const touch = isTouch()
 
-  const [dialog, setDialog] = useState<null | 'project' | 'new' | 'import'>(null)
+  const [dialog, setDialog] = useState<null | 'project' | 'new' | 'import' | 'variants'>(null)
   const [locating, setLocating] = useState(false)
   const { fix, error: gpsError } = useGeolocation(tab === 'einmessen' || locating)
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number; n: number } | null>(null)
@@ -201,8 +215,8 @@ export default function ProjectView() {
     const g = draftGeom()
     try {
       if (draftTarget.kind === 'new') {
-        const sort = features.reduce((m, f) => Math.max(m, f.sort_order), 0) + 1
-        const newId = await saveFeature(project.id, { category: draftTarget.spec.category, status: 'geplant', label: draftTarget.spec.label, geometry: g }, undefined, sort)
+        const sort = allFeatures.reduce((m, f) => Math.max(m, f.sort_order), 0) + 1
+        const newId = await saveFeature(project.id, { category: draftTarget.spec.category, status: 'geplant', label: draftTarget.spec.label, geometry: g, variant_id: viewVariant?.id ?? null }, undefined, sort)
         notifySuccess('Objekt gespeichert.')
         setSelectedId(newId)
         setSurveyTarget(newId) // das frisch gezeichnete Objekt ist das Ziel beim Einmessen
@@ -258,6 +272,7 @@ export default function ProjectView() {
             {PROJECT_STATUS_LABEL[project.status]}
             {project.contractor ? ` · ${project.contractor}` : ''}
             {features.length ? ` · ${features.length} Objekte` : ''}
+            {viewVariant ? ` · Variante ${viewVariant.name}` : ''}
           </div>
         </div>
         {canWrite && (
@@ -266,6 +281,36 @@ export default function ProjectView() {
           </button>
         )}
       </header>
+
+      {(variants.length > 0 || canWrite) && (
+        <div className="flex items-center gap-1.5 overflow-x-auto border-b bg-white px-2 py-1 text-sm" role="toolbar" aria-label="Varianten">
+          {variants.length > 0 && (
+            <button type="button" disabled={drawing || measuring} onClick={() => setView('alle')} className={`min-h-9 shrink-0 rounded-full border px-3 ${shownView === 'alle' ? 'border-brand-600 bg-brand-100 font-semibold' : 'border-gray-300'}`}>
+              Alle
+            </button>
+          )}
+          {variants.map((v) => {
+            const chosen = project.chosen_variant_id === v.id
+            const dropped = !!project.chosen_variant_id && !chosen
+            return (
+              <button
+                key={v.id}
+                type="button"
+                disabled={drawing || measuring}
+                onClick={() => setView(v.id)}
+                title={v.notes ?? undefined}
+                className={`min-h-9 shrink-0 rounded-full border px-3 ${shownView === v.id ? 'border-brand-600 bg-brand-100 font-semibold' : 'border-gray-300'} ${dropped ? 'text-gray-500 line-through' : ''}`}
+              >
+                {v.name}
+                {chosen ? ' ✓' : ''}
+              </button>
+            )
+          })}
+          <button type="button" onClick={() => setDialog('variants')} disabled={drawing || measuring} className="min-h-9 shrink-0 rounded-full border border-dashed border-gray-400 px-3 text-gray-700">
+            {variants.length ? '⚖ Vergleich / Varianten' : '＋ Variante'}
+          </button>
+        </div>
+      )}
 
       <div className="relative min-h-0 flex-1">
         <BauMap
@@ -432,6 +477,9 @@ export default function ProjectView() {
                     ? 'Punkt ziehen = verschieben · Punkt antippen = löschen · kleinen Kreis ziehen oder antippen = neuer Punkt.'
                     : 'Punkt ziehen = verschieben · Punkt anklicken = löschen · auf der Linie ziehen = neuer Punkt.'
                 : touch ? 'Karte verschieben, bis das Fadenkreuz am richtigen Ort steht, dann «Hier setzen».' : 'In die Karte klicken, um Punkte zu setzen.'}{' '}
+              {mode === 'draw' && variants.length > 0 && (
+                <span className="block text-xs text-gray-600">{viewVariant ? `Neues Objekt nur in Variante ${viewVariant.name}.` : 'Neues Objekt gilt für alle Varianten.'}</span>
+              )}
               <b>
                 {draftType === 'Point' ? (draft.length ? '1 Punkt' : 'noch kein Punkt') : `${draft.length} Punkte`}
                 {draftType !== 'Point' && draft.length > 1 ? ` · ${fmtLength(lineLengthM(draftType === 'Polygon' ? [...draft, draft[0]] : draft))}` : ''}
@@ -497,6 +545,7 @@ export default function ProjectView() {
                 onImport={() => setDialog('import')}
                 onEditGeometry={startEdit}
                 onSurvey={() => setTab('einmessen')}
+                variants={variants}
               />
             )}
             {tab === 'einmessen' && (
@@ -529,14 +578,17 @@ export default function ProjectView() {
           onClose={() => setDialog(null)}
           onSaved={() => setDialog(null)}
           onDelete={async () => {
-            if (!confirm(`Projekt «${project.name}» mit ${features.length} Objekt(en) und ${points.length} Messpunkt(en) löschen?`)) return
-            await deleteProject(project, features, points)
+            if (!confirm(`Projekt «${project.name}» mit ${allFeatures.length} Objekt(en) und ${points.length} Messpunkt(en) löschen?`)) return
+            await deleteProject(project, allFeatures, points, variants)
             navigate('/bau')
           }}
         />
       )}
       {dialog === 'new' && <NewObjectDialog onClose={() => setDialog(null)} onStart={startDraw} />}
-      {dialog === 'import' && <ImportDialog projectId={project.id} existing={features} onClose={() => setDialog(null)} />}
+      {dialog === 'import' && <ImportDialog projectId={project.id} existing={allFeatures} variantId={viewVariant?.id ?? null} onClose={() => setDialog(null)} />}
+      {dialog === 'variants' && (
+        <VariantsDialog project={project} variants={variants} features={allFeatures} points={points} canWrite={canWrite} onClose={() => setDialog(null)} onShow={setView} />
+      )}
     </div>
   )
 }

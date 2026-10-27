@@ -5,12 +5,15 @@
 SYNC_TABLES: dict[str, list[str]] = {
     "projects": [
         "id", "name", "description", "status", "location", "start_date", "end_date",
-        "contractor", "notes", "created_by", "updated_at", "deleted_at",
+        "contractor", "notes", "created_by", "updated_at", "deleted_at", "chosen_variant_id",
+    ],
+    "variants": [
+        "id", "project_id", "name", "notes", "sort_order", "created_by", "updated_at", "deleted_at",
     ],
     "features": [
         "id", "project_id", "category", "status", "label", "geometry", "plan_geometry",
         "material", "diameter_mm", "depth_cm", "notes", "sort_order", "created_by",
-        "updated_at", "deleted_at",
+        "updated_at", "deleted_at", "variant_id",
     ],
     "survey_points": [
         "id", "project_id", "feature_id", "point_no", "seq", "lat", "lng", "accuracy_m",
@@ -30,6 +33,7 @@ SYNC_TABLES: dict[str, list[str]] = {
 
 TABLE_AREA: dict[str, str] = {
     "projects": "bau:projekte",
+    "variants": "bau:projekte",
     "features": "bau:projekte",
     "survey_points": "bau:projekte",
     # Grundlagen (Leitungskataster …): alle lesen, hochladen/entfernen wer Projekte bearbeitet

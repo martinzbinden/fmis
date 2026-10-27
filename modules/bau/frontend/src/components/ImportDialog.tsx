@@ -14,7 +14,7 @@ import type { BauFeature, FeatureCategory } from '../types'
 const TYPE_LABEL = { LineString: 'Linie', Point: 'Punkt', Polygon: 'Fläche' } as const
 
 /** KML/KMZ/GeoJSON einlesen: zeigt vorher, was neu ist und was schon im Projekt liegt (nichts wird ersetzt oder gelöscht). */
-export default function ImportDialog({ projectId, existing, onClose }: { projectId: string; existing: BauFeature[]; onClose: () => void }) {
+export default function ImportDialog({ projectId, existing, variantId = null, onClose }: { projectId: string; existing: BauFeature[]; variantId?: string | null; onClose: () => void }) {
   const [items, setItems] = useState<ImportedFeature[] | null>(null)
   const [fileName, setFileName] = useState('')
   const [cats, setCats] = useState<Record<number, FeatureCategory>>({})
@@ -44,7 +44,7 @@ export default function ImportDialog({ projectId, existing, onClose }: { project
   async function run() {
     if (!plan) return
     const withCats = plan.toAdd.map((f) => ({ ...f, category: catOf(f) }))
-    const r = await importFeatures(projectId, existing, withCats)
+    const r = await importFeatures(projectId, existing, withCats, variantId)
     notifySuccess(`${r.added} Objekt${r.added === 1 ? '' : 'e'} importiert${r.skipped ? `, ${r.skipped} schon vorhanden` : ''}.`)
     onClose()
   }

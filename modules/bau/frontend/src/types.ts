@@ -29,6 +29,8 @@ export interface Project {
   created_by: string | null
   updated_at: string
   deleted_at: string | null
+  /** gewählte Variante (schema/0004); die übrigen gelten als verworfen */
+  chosen_variant_id: string | null
 }
 
 export interface BauFeature {
@@ -44,6 +46,20 @@ export interface BauFeature {
   material: string | null
   diameter_mm: number | null
   depth_cm: number | null
+  notes: string | null
+  sort_order: number
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+  /** Variante (schema/0004); null = gehört zu allen Varianten */
+  variant_id: string | null
+}
+
+/** Variante eines Projekts, z.B. eine andere Trasse (schema/0004_variants.sql). */
+export interface Variant {
+  id: string
+  project_id: string
+  name: string
   notes: string | null
   sort_order: number
   created_by: string | null

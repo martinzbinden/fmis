@@ -4,12 +4,13 @@
 export const SYNC_TABLES = {
   projects: [
     'id', 'name', 'description', 'status', 'location', 'start_date', 'end_date',
-    'contractor', 'notes', 'created_by', 'updated_at', 'deleted_at',
+    'contractor', 'notes', 'created_by', 'updated_at', 'deleted_at', 'chosen_variant_id',
   ],
+  variants: ['id', 'project_id', 'name', 'notes', 'sort_order', 'created_by', 'updated_at', 'deleted_at'],
   features: [
     'id', 'project_id', 'category', 'status', 'label', 'geometry', 'plan_geometry',
     'material', 'diameter_mm', 'depth_cm', 'notes', 'sort_order', 'created_by',
-    'updated_at', 'deleted_at',
+    'updated_at', 'deleted_at', 'variant_id',
   ],
   survey_points: [
     'id', 'project_id', 'feature_id', 'point_no', 'seq', 'lat', 'lng', 'accuracy_m',
@@ -33,6 +34,7 @@ export type SyncTable = keyof typeof SYNC_TABLES
 // serialisiert sie als YYYY-MM-DD.
 export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   projects: new Set(['start_date', 'end_date']),
+  variants: new Set(),
   features: new Set(),
   survey_points: new Set(),
   overlays: new Set(),

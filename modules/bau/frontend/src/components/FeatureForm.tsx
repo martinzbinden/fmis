@@ -4,7 +4,7 @@ import NumberInput from '@fmis/core/NumberInput'
 import { CATEGORIES, CATEGORY_ORDER, FEATURE_STATUS_LABEL, FEATURE_STATUS_ORDER } from '../lib/categories'
 import { duplicateFeature, removeFeature, saveFeature } from '../lib/data'
 import { areaM2, fmtArea, fmtLength, lengthM, parseGeometry } from '../lib/geometry'
-import type { BauFeature, FeatureCategory, FeatureStatus, SurveyPoint } from '../types'
+import type { BauFeature, FeatureCategory, FeatureStatus, SurveyPoint, Variant } from '../types'
 
 const field = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-base'
 const label = 'mb-1 block text-xs font-medium text-gray-700'
@@ -18,9 +18,12 @@ export default function FeatureForm({
   onBack,
   onSurvey,
   onDeleted,
+  variants = [],
 }: {
   feature: BauFeature
   points: SurveyPoint[]
+  /** Varianten des Projekts (leer = keine Auswahl) */
+  variants?: Variant[]
   canWrite: boolean
   onEditGeometry: () => void
   onBack: () => void
@@ -35,6 +38,7 @@ export default function FeatureForm({
     diameter: feature.diameter_mm != null ? String(feature.diameter_mm) : '',
     depth: feature.depth_cm != null ? String(feature.depth_cm) : '',
     notes: feature.notes ?? '',
+    variant: feature.variant_id ?? '',
   })
   const set = (p: Partial<typeof f>) => setF((x) => ({ ...x, ...p }))
   const g = parseGeometry(feature.geometry)
@@ -53,6 +57,7 @@ export default function FeatureForm({
         diameter_mm: n(f.diameter),
         depth_cm: n(f.depth),
         notes: f.notes.trim() || null,
+        variant_id: f.variant || null,
       },
       feature,
     )
@@ -123,6 +128,20 @@ export default function FeatureForm({
           <NumberInput className={field} disabled={!canWrite} value={f.depth} onChange={(e) => set({ depth: e.target.value })} />
         </label>
       </div>
+
+      {variants.length > 0 && (
+        <label className="block">
+          <span className={label}>Variante</span>
+          <select className={field} disabled={!canWrite} value={f.variant} onChange={(e) => set({ variant: e.target.value })}>
+            <option value="">alle Varianten (gemeinsam)</option>
+            {variants.map((v) => (
+              <option key={v.id} value={v.id}>
+                nur {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <label className="block">
         <span className={label}>Notiz</span>

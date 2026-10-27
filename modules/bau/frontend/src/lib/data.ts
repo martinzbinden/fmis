@@ -8,7 +8,7 @@ import { parseGeometry, stringifyGeometry, lengthM, type Geom } from './geometry
 import { planImport } from './importPlan'
 import type { ImportedFeature } from './kml'
 import { lineFromPoints, nextPointNo, nextSeq } from './survey'
-import type { BauFeature, FeatureCategory, FeatureStatus, Project, ProjectStatus, SurveyPoint } from '../types'
+import type { BauFeature, FeatureCategory, FeatureStatus, Project, ProjectStatus, SurveyPoint, Variant } from '../types'
 
 const dates = (r: Project): Project => ({ ...r, start_date: isoDate(r.start_date), end_date: isoDate(r.end_date) })
 const feature = (r: BauFeature): BauFeature => ({ ...r, diameter_mm: num(r.diameter_mm), depth_cm: num(r.depth_cm) })
@@ -35,7 +35,8 @@ export async function loadProjects(pg: PGlite): Promise<ProjectSummary[]> {
   ])
   const feats = f.rows.map(feature)
   return p.rows.map(dates).map((proj) => {
-    const mine = feats.filter((x) => x.project_id === proj.id && x.status !== 'verworfen')
+    // bei gewählter Variante zählen nur die gemeinsamen und deren Objekte
+    const mine = feats.filter((x) => x.project_id === proj.id && x.status !== 'verworfen' && (!proj.chosen_variant_id || !x.variant_id || x.variant_id === proj.chosen_variant_id))
     return {
       ...proj,
       objectCount: mine.length,
@@ -49,15 +50,17 @@ export interface ProjectData {
   project: Project | null
   features: BauFeature[]
   points: SurveyPoint[]
+  variants: Variant[]
 }
 
 export async function loadProject(pg: PGlite, id: string): Promise<ProjectData> {
-  const [p, f, s] = await Promise.all([
+  const [p, f, s, v] = await Promise.all([
     pg.query<Project>('select * from projects where id = $1 and deleted_at is null', [id]),
     pg.query<BauFeature>('select * from features where project_id = $1 and deleted_at is null order by sort_order, label', [id]),
     pg.query<SurveyPoint>('select * from survey_points where project_id = $1 and deleted_at is null order by point_no', [id]),
+    pg.query<Variant>('select * from variants where project_id = $1 and deleted_at is null order by sort_order, name', [id]),
   ])
-  return { project: p.rows[0] ? dates(p.rows[0]) : null, features: f.rows.map(feature), points: s.rows.map(point) }
+  return { project: p.rows[0] ? dates(p.rows[0]) : null, features: f.rows.map(feature), points: s.rows.map(point), variants: v.rows.map((x) => ({ ...x, sort_order: Number(x.sort_order) })) }
 }
 
 // ---------------------------------------------------------------- Projekte
@@ -70,10 +73,43 @@ export async function saveProject(input: ProjectInput, existing?: Project): Prom
   return id
 }
 
-export async function deleteProject(p: Project, features: BauFeature[], points: SurveyPoint[]): Promise<void> {
+export async function deleteProject(p: Project, features: BauFeature[], points: SurveyPoint[], variants: Variant[] = []): Promise<void> {
   for (const s of points) await softDeleteRow('survey_points', s.id)
   for (const f of features) await softDeleteRow('features', f.id)
+  for (const v of variants) await softDeleteRow('variants', v.id)
   await softDeleteRow('projects', p.id)
+}
+
+// ---------------------------------------------------------------- Varianten
+
+/** Neue Variante; mit `copyFrom` werden deren eigene Objekte als Ausgangspunkt kopiert (ohne Messpunkte). */
+export async function addVariant(projectId: string, name: string, notes: string | null, existing: Variant[], features: BauFeature[], copyFrom?: string): Promise<string> {
+  const id = crypto.randomUUID()
+  const me = getCurrentUserEmail()
+  await upsertRow('variants', { id, project_id: projectId, name, notes, sort_order: existing.reduce((m, v) => Math.max(m, v.sort_order), 0) + 1, created_by: me } as never)
+  if (copyFrom) {
+    const rows = features
+      .filter((f) => f.variant_id === copyFrom)
+      .map((f) => ({ ...f, id: crypto.randomUUID(), variant_id: id, status: f.status === 'verworfen' ? 'verworfen' : 'geplant', plan_geometry: null, created_by: me }))
+    if (rows.length) await upsertRows('features', rows as never)
+  }
+  return id
+}
+
+export async function renameVariant(v: Variant, name: string, notes: string | null): Promise<void> {
+  await upsertRow('variants', { ...v, name, notes } as never)
+}
+
+/** Variante samt ihren eigenen Objekten (und deren Messpunkten) löschen; gemeinsame Objekte bleiben. */
+export async function removeVariant(p: Project, v: Variant, features: BauFeature[], points: SurveyPoint[]): Promise<void> {
+  for (const f of features.filter((x) => x.variant_id === v.id)) await removeFeature(f, points)
+  await softDeleteRow('variants', v.id)
+  if (p.chosen_variant_id === v.id) await chooseVariant(p, null)
+}
+
+/** Variante festlegen (null = Wahl aufheben). Die Objekte selbst bleiben unverändert. */
+export async function chooseVariant(p: Project, variantId: string | null): Promise<void> {
+  await upsertRow('projects', { ...p, chosen_variant_id: variantId } as never)
 }
 
 // ---------------------------------------------------------------- Objekte
@@ -87,6 +123,8 @@ export interface FeatureInput {
   diameter_mm?: number | null
   depth_cm?: number | null
   notes?: string | null
+  /** Variante; undefined = unverändert (neu: alle Varianten) */
+  variant_id?: string | null
 }
 
 export async function saveFeature(projectId: string, input: FeatureInput, existing?: BauFeature, sortOrder = 0): Promise<string> {
@@ -98,6 +136,7 @@ export async function saveFeature(projectId: string, input: FeatureInput, existi
     depth_cm: null,
     notes: null,
     sort_order: sortOrder,
+    variant_id: null,
     ...(existing ?? {}),
     id,
     project_id: projectId,
@@ -109,6 +148,7 @@ export async function saveFeature(projectId: string, input: FeatureInput, existi
     ...(input.diameter_mm !== undefined ? { diameter_mm: input.diameter_mm } : {}),
     ...(input.depth_cm !== undefined ? { depth_cm: input.depth_cm } : {}),
     ...(input.notes !== undefined ? { notes: input.notes } : {}),
+    ...(input.variant_id !== undefined ? { variant_id: input.variant_id } : {}),
     created_by: existing?.created_by ?? getCurrentUserEmail(),
   } as BauFeature
   await upsertRow('features', row as never)
@@ -137,6 +177,7 @@ export async function importFeatures(
   projectId: string,
   existing: BauFeature[],
   imported: ImportedFeature[],
+  variantId: string | null = null,
 ): Promise<{ added: number; skipped: number }> {
   const { toAdd, skipped } = planImport(existing, imported)
   const me = getCurrentUserEmail()
@@ -155,6 +196,7 @@ export async function importFeatures(
     notes: f.description || null,
     sort_order: start + i + 1,
     created_by: me,
+    variant_id: variantId,
   }))
   if (rows.length) await upsertRows('features', rows as never)
   return { added: rows.length, skipped: skipped.length }

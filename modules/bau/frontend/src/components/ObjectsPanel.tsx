@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { CATEGORIES, CATEGORY_ORDER, FEATURE_STATUS_LABEL } from '../lib/categories'
 import { fmtArea, fmtLength, areaM2, lengthM, parseGeometry } from '../lib/geometry'
-import type { BauFeature, FeatureCategory, SurveyPoint } from '../types'
+import type { BauFeature, FeatureCategory, SurveyPoint, Variant } from '../types'
 import FeatureForm from './FeatureForm'
 
 const STATUS_DOT: Record<BauFeature['status'], string> = {
@@ -24,8 +24,10 @@ export default function ObjectsPanel({
   onImport,
   onEditGeometry,
   onSurvey,
+  variants = [],
 }: {
   features: BauFeature[]
+  variants?: Variant[]
   points: SurveyPoint[]
   selectedId: string | null
   onSelect: (id: string | null) => void
@@ -58,6 +60,7 @@ export default function ObjectsPanel({
         onBack={() => onSelect(null)}
         onSurvey={onSurvey}
         onDeleted={() => onSelect(null)}
+        variants={variants}
       />
     )
   }
@@ -120,6 +123,7 @@ export default function ObjectsPanel({
                   <span className="flex items-center gap-1.5 text-xs text-gray-600">
                     <span className={`h-2 w-2 rounded-full ${STATUS_DOT[f.status]}`} />
                     {FEATURE_STATUS_LABEL[f.status]} · {meta.label}
+                    {variants.length > 0 ? ` · ${variants.find((v) => v.id === f.variant_id)?.name ?? 'alle Varianten'}` : ''}
                     {g?.type === 'Polygon' ? ` · ${fmtArea(areaM2(g))}` : g?.type === 'LineString' ? ` · ${fmtLength(lengthM(g))}` : ''}
                   </span>
                 </span>

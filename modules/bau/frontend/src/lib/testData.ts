@@ -15,6 +15,7 @@ export const base = {
   updated_at: '2026-10-19T10:00:00Z',
   deleted_at: null,
   plan_geometry: null,
+  variant_id: null,
 }
 
 export const lineGeom = { type: 'LineString', coordinates: [ll(2597000, 1182000), ll(2597100, 1182000), ll(2597100, 1182050)] }
