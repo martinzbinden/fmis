@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Circle, CircleMarker, GeoJSON, ImageOverlay, MapContainer, Marker, Pane, Polygon, Polyline, TileLayer, Tooltip, WMSTileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -21,6 +21,8 @@ export interface MapLayers {
   labels: boolean
   points: boolean
   discarded: boolean
+  /** Grundlagen (Leitungskataster) verbreitert und weiss abgesetzt */
+  emphasize: boolean
 }
 
 const ll = (c: LngLat): [number, number] => [c[1], c[0]]
@@ -72,21 +74,36 @@ function MapEvents({ onClick, onZoom, onCursor }: { onClick: (c: LngLat) => void
   return null
 }
 
+/** Auf dem Luftbild gehen die feinen Linien des Leitungskatasters unter: in der Bildschirmdarstellung
+ * um gut 1 px in der Farbe der Ebene verbreitern und mit einem weissen Rand absetzen. */
+const emphasis = (color: string | null) => {
+  const c = color ?? '#374151'
+  return `drop-shadow(1px 0 0 ${c}) drop-shadow(0 1px 0 ${c}) drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff)`
+}
+
 /** Ebene einer Grundlage (Leitungskataster …): Bild vom Server bzw. aus dem Cache. */
-function OverlayImage({ o }: { o: BauOverlay }) {
+function OverlayImage({ o, emphasize, bold }: { o: BauOverlay; emphasize: boolean; bold: boolean }) {
   const [url, setUrl] = useState<string | null>(null)
+  const ref = useRef<L.ImageOverlay | null>(null)
+  const filter = emphasize ? emphasis(o.color) : ''
+  const applyFilter = () => {
+    const el = ref.current?.getElement()
+    if (el) el.style.filter = filter
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(applyFilter, [filter, url])
   useEffect(() => {
     let alive = true
-    overlayUrl(o.id).then(
+    overlayUrl(o.id, bold).then(
       (u) => alive && setUrl(u),
       () => undefined, // ohne Netz und noch nie geladen: einfach nicht zeigen
     )
     return () => {
       alive = false
     }
-  }, [o.id])
+  }, [o.id, bold])
   const bounds = useMemo<L.LatLngBoundsExpression>(() => [[o.south, o.west], [o.north, o.east]], [o.south, o.west, o.north, o.east])
-  return url ? <ImageOverlay url={url} bounds={bounds} opacity={o.opacity} interactive={false} /> : null
+  return url ? <ImageOverlay ref={ref} url={url} bounds={bounds} opacity={o.opacity} interactive={false} eventHandlers={{ add: applyFilter, load: applyFilter }} /> : null
 }
 
 export default function BauMap({
@@ -107,6 +124,7 @@ export default function BauMap({
   onMeasure,
   onCursor,
   overlays = [],
+  emphasizeOverlays = true,
 }: {
   features: BauFeature[]
   points: SurveyPoint[]
@@ -129,6 +147,8 @@ export default function BauMap({
   onCursor: (c: LngLat) => void
   /** eingeblendete Grundlagen (Leitungskataster …), nur Anzeige */
   overlays?: BauOverlay[]
+  /** Linien der Grundlagen verbreitern und weiss absetzen (für das Luftbild) */
+  emphasizeOverlays?: boolean
 }) {
   const touch = isTouch()
   const [zoom, setZoom] = useState(16)
@@ -185,7 +205,7 @@ export default function BauMap({
         {/* Grundlagen über Hintergrund und Parzellen, unter den Projektobjekten */}
         <Pane name="grundlagen" style={{ zIndex: 350 }}>
           {overlays.map((o) => (
-            <OverlayImage key={o.id} o={o} />
+            <OverlayImage key={o.id} o={o} emphasize={emphasizeOverlays} bold={emphasizeOverlays && zoom < 18} />
           ))}
         </Pane>
 

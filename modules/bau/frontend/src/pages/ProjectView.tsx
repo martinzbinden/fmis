@@ -30,7 +30,7 @@ const TABS: { key: Tab; icon: string; label: string }[] = [
 const LAYERS_KEY = 'bau_map_layers_v1'
 // ein-/ausgeblendete Grundlagen je Ebene (sonst gilt die Vorgabe der Ebene)
 const OVERLAYS_KEY = 'bau_overlays_v1'
-const DEFAULT_LAYERS: MapLayers = { cadastre: false, cultures: false, labels: true, points: true, discarded: false }
+const DEFAULT_LAYERS: MapLayers = { cadastre: false, cultures: false, labels: true, points: true, discarded: false, emphasize: true }
 
 function loadLayers(): { background: BackgroundKey; layers: MapLayers } {
   try {
@@ -280,6 +280,7 @@ export default function ProjectView() {
           background={background}
           layers={layers}
           overlays={shownOverlays}
+          emphasizeOverlays={layers.emphasize}
           position={fix}
           fitKey={fitKey}
           flyTo={flyTo}
@@ -357,6 +358,10 @@ export default function ProjectView() {
                     {o.name}
                   </label>
                 ))}
+                <label className="flex min-h-11 items-center gap-3">
+                  <input type="checkbox" className="h-5 w-5" checked={layers.emphasize} onChange={(e) => setLayers((l) => ({ ...l, emphasize: e.target.checked }))} />
+                  Linien hervorheben
+                </label>
                 <p className="text-[11px] leading-snug text-gray-500">{g.source ?? 'Nur Anzeige.'} Nicht bearbeitbar, Lage nicht verbindlich: vor dem Graben beim Werk nachfragen.</p>
                 {canWrite &&
                   (confirmGroup === g.id ? (

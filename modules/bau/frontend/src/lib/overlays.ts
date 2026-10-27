@@ -38,15 +38,32 @@ const imageUrl = (id: string) => `${API_URL}/bau/sync/overlays/${id}`
 const CACHE = 'fmis-bau-overlays'
 const objectUrls = new Map<string, Promise<string>>()
 
-/** Bild als Object-URL für die Karte. */
-export function overlayUrl(id: string): Promise<string> {
-  let p = objectUrls.get(id)
+/** Bild als Object-URL für die Karte. `bold`: Linien verbreitert für die Übersicht — beim
+ * Verkleinern mittelt der Browser die feinen Linien sonst fast weg. */
+export function overlayUrl(id: string, bold = false): Promise<string> {
+  const key = bold ? `${id}:bold` : id
+  let p = objectUrls.get(key)
   if (!p) {
-    p = fetchImage(id).then((blob) => URL.createObjectURL(blob))
-    p.catch(() => objectUrls.delete(id))
-    objectUrls.set(id, p)
+    p = fetchImage(id)
+      .then((blob) => (bold ? thicken(blob) : blob))
+      .then((blob) => URL.createObjectURL(blob))
+    p.catch(() => objectUrls.delete(key))
+    objectUrls.set(key, p)
   }
   return p
+}
+
+/** Linien um ~3 Bildpunkte (rund 0.4 m) verbreitern: das Bild kreisförmig versetzt übereinander zeichnen. */
+async function thicken(blob: Blob, r = 3): Promise<Blob> {
+  const img = await createImageBitmap(blob)
+  const canvas = document.createElement('canvas')
+  canvas.width = img.width
+  canvas.height = img.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return blob
+  for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) if (dx * dx + dy * dy <= r * r) ctx.drawImage(img, dx, dy)
+  const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  return out ?? blob
 }
 
 async function fetchImage(id: string): Promise<Blob> {
