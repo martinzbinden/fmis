@@ -96,7 +96,8 @@ function featureDescription(f: BauFeature, g: Geom | null): string {
 }
 
 /** KML eines Projekts: Stil je Kategorie, Attribute in der Beschreibung. */
-export function buildKml(projectName: string, features: BauFeature[], points: SurveyPoint[] = []): string {
+/** `extra`: weitere KML-Ordner (Grundlagen), vor dem Dokumentende eingefügt. */
+export function buildKml(projectName: string, features: BauFeature[], points: SurveyPoint[] = [], extra = ''): string {
   const used = CATEGORY_ORDER.filter((c) => features.some((f) => f.category === c))
   const styles = used
     .map((c) => {
@@ -121,5 +122,13 @@ export function buildKml(projectName: string, features: BauFeature[], points: Su
         )
         .join('\n')}</Folder>`
     : ''
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${escapeXml(projectName)}</name>${styles}\n${marks}\n${pts}</Document></kml>\n`
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${escapeXml(projectName)}</name>${styles}\n${marks}\n${pts}${extra ? `\n${extra}` : ''}</Document></kml>\n`
+}
+
+/** Grundlage Kulturflächen als KML-Ordner (nur Umriss, grün gestrichelt wie in der Karte). */
+export function culturesKml(cultures: { name: string; geometry: Geom }[]): string {
+  if (!cultures.length) return ''
+  return `<Folder><name>Kulturflächen</name><Style id="kultur"><LineStyle><color>ff4aa316</color><width>1</width></LineStyle><PolyStyle><fill>0</fill></PolyStyle></Style>\n${cultures
+    .map((c) => `<Placemark><name>${escapeXml(c.name)}</name><styleUrl>#kultur</styleUrl>${geometryKml(c.geometry)}</Placemark>`)
+    .join('\n')}</Folder>`
 }

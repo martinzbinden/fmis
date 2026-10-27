@@ -1,7 +1,7 @@
 // GeoJSON lesen und schreiben (WGS84, alle Attribute).
 
 import { CATEGORY_ORDER, FEATURE_STATUS_ORDER, guessCategory } from './categories'
-import { lengthM, normalizeGeometry, parseGeometry } from './geometry'
+import { lengthM, normalizeGeometry, parseGeometry, type Geom } from './geometry'
 import type { ImportedFeature } from './kml'
 import type { BauFeature, FeatureCategory, FeatureStatus, SurveyPoint } from '../types'
 
@@ -57,7 +57,8 @@ export function statusOf(v: unknown): FeatureStatus {
 }
 
 /** GeoJSON mit allen Attributen; Messpunkte als Points (feature = 'messpunkt'). */
-export function buildGeoJson(projectName: string, features: BauFeature[], points: SurveyPoint[] = []): string {
+/** `cultures`: Kulturflächen als Grundlage (feature = «grundlage»). */
+export function buildGeoJson(projectName: string, features: BauFeature[], points: SurveyPoint[] = [], cultures: { name: string; geometry: Geom }[] = []): string {
   const fs = features.flatMap((f) => {
     const g = parseGeometry(f.geometry)
     if (!g) return []
@@ -95,5 +96,6 @@ export function buildGeoJson(projectName: string, features: BauFeature[], points
       measured_by: p.measured_by,
     },
   }))
-  return JSON.stringify({ type: 'FeatureCollection', name: projectName, features: [...fs, ...ps] }, null, 1)
+  const cs = cultures.map((c) => ({ type: 'Feature', geometry: c.geometry, properties: { feature: 'grundlage', grundlage: 'Kulturfläche', label: c.name } }))
+  return JSON.stringify({ type: 'FeatureCollection', name: projectName, features: [...fs, ...ps, ...cs] }, null, 1)
 }

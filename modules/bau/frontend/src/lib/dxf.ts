@@ -17,6 +17,8 @@ export interface DxfOptions {
   statusLayers?: boolean
   /** Texthöhe in Metern (Zeichnungseinheit) */
   textHeight?: number
+  /** Grundlagen als Polylinien auf eigenem Layer, z.B. Kulturflächen (WGS84-Ringe) */
+  extra?: { layer: string; aci: number; rings: LngLat[][] }[]
 }
 
 const NL = '\r\n'
@@ -95,6 +97,10 @@ export function buildDxf(features: BauFeature[], points: SurveyPoint[] = [], opt
         }
       }
     }
+  }
+  for (const x of opts.extra ?? []) {
+    const layer = useLayer(x.layer, x.aci)
+    for (const r of x.rings) ents.push({ kind: 'poly', layer, pts: r.map(lv), closed: true })
   }
   const ptsSorted = [...points].sort((a, b) => a.point_no - b.point_no)
   for (const sp of ptsSorted) {

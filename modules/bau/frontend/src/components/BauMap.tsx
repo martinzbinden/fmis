@@ -125,6 +125,7 @@ export default function BauMap({
   onCursor,
   overlays = [],
   emphasizeOverlays = true,
+  area = null,
 }: {
   features: BauFeature[]
   points: SurveyPoint[]
@@ -149,6 +150,8 @@ export default function BauMap({
   overlays?: BauOverlay[]
   /** Linien der Grundlagen verbreitern und weiss absetzen (für das Luftbild) */
   emphasizeOverlays?: boolean
+  /** Gebiet des Exports (Ecken WGS84), gestrichelt */
+  area?: LngLat[] | null
 }) {
   const touch = isTouch()
   const [zoom, setZoom] = useState(16)
@@ -208,6 +211,8 @@ export default function BauMap({
             <OverlayImage key={o.id} o={o} emphasize={emphasizeOverlays} bold={emphasizeOverlays && zoom < 18} />
           ))}
         </Pane>
+
+        {area && <Polygon positions={area.map(ll)} pathOptions={{ color: '#111827', weight: 2, dashArray: '8 6', fill: false }} interactive={false} />}
 
         <MapEvents
           onClick={onClick}

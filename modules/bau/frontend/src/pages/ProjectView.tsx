@@ -19,6 +19,7 @@ import { boundsOf, fmtLength, lengthM, parseGeometry, type Geom } from '../lib/g
 import { groupOverlays, loadOverlays, removeOverlayGroup, uploadOverlayZip } from '../lib/overlays'
 import { useGeolocation } from '../lib/useGeolocation'
 import { defaultView, inView, type VariantView } from '../lib/variants'
+import { areaCorners, type Area } from '../lib/basemapExport'
 
 type Tab = 'karte' | 'objekte' | 'einmessen' | 'export'
 
@@ -97,6 +98,7 @@ export default function ProjectView() {
     }
   }, [overlayOn])
   const shownOverlays = useMemo(() => (overlayRows ?? []).filter((o) => overlayOn[o.id] ?? o.visible), [overlayRows, overlayOn])
+  const [exportArea, setExportArea] = useState<Area | null>(null)
   const [overlayBusy, setOverlayBusy] = useState(false)
   const [confirmGroup, setConfirmGroup] = useState<string | null>(null)
   async function addOverlay(file: File) {
@@ -326,6 +328,7 @@ export default function ProjectView() {
           layers={layers}
           overlays={shownOverlays}
           emphasizeOverlays={layers.emphasize}
+          area={tab === 'export' && exportArea ? areaCorners(exportArea) : null}
           position={fix}
           fitKey={fitKey}
           flyTo={flyTo}
@@ -551,7 +554,7 @@ export default function ProjectView() {
             {tab === 'einmessen' && (
               <SurveyPanel projectId={project.id} features={features} points={points} targetId={surveyTarget} onTarget={setSurveyTarget} fix={fix} gpsError={gpsError} canWrite={canWrite} />
             )}
-            {tab === 'export' && <ExportPanel project={project} features={features} points={points} exportSel={exportSel} />}
+            {tab === 'export' && <ExportPanel project={project} features={features} points={points} exportSel={exportSel} onArea={setExportArea} />}
           </div>
         )}
       </div>
