@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Circle, CircleMarker, GeoJSON, MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip, WMSTileLayer, useMap, useMapEvents } from 'react-leaflet'
+import { Circle, CircleMarker, GeoJSON, MapContainer, Marker, Polygon, Polyline, TileLayer, Tooltip, WMSTileLayer, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { BACKGROUND_LAYERS, CADASTRE_WMS, SWISSTOPO_ATTRIBUTION, swisstopoUrl, type BackgroundKey } from '@fmis/core/swisstopo'
@@ -8,6 +8,7 @@ import { loadFieldsBackground, type FieldsBackgroundFeature } from '@fmis/wiesen
 import { CATEGORIES } from '../lib/categories'
 import { boundsOf, parseGeometry, type Geom } from '../lib/geometry'
 import { accuracyClass } from '../lib/survey'
+import DraftLayer from './DraftLayer'
 import type { Fix } from '../lib/useGeolocation'
 import type { BauFeature, SurveyPoint } from '../types'
 
@@ -34,22 +35,6 @@ function featureIcon(f: BauFeature, selected: boolean): L.DivIcon {
     html: `<div style="width:${size}px;height:${size}px;border-radius:${square ? '6px' : '50%'};background:#fff;border:3px solid ${m.color};display:flex;align-items:center;justify-content:center;font-size:${selected ? 18 : 14}px;box-shadow:0 1px 4px rgba(0,0,0,.4)">${m.icon}</div>`,
   })
 }
-
-const vertexIcon = (n: number, touch: boolean) =>
-  L.divIcon({
-    className: '',
-    iconSize: [touch ? 30 : 20, touch ? 30 : 20],
-    iconAnchor: [touch ? 15 : 10, touch ? 15 : 10],
-    html: `<div style="width:100%;height:100%;border-radius:50%;background:#fff;border:3px solid #0e7490;display:flex;align-items:center;justify-content:center;font:700 10px sans-serif;color:#0e7490">${n}</div>`,
-  })
-
-const midIcon = (touch: boolean) =>
-  L.divIcon({
-    className: '',
-    iconSize: [touch ? 22 : 14, touch ? 22 : 14],
-    iconAnchor: [touch ? 11 : 7, touch ? 11 : 7],
-    html: '<div style="width:100%;height:100%;border-radius:50%;background:rgba(14,116,144,.35);border:2px solid #0e7490"></div>',
-  })
 
 const isTouch = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 
@@ -241,54 +226,7 @@ export default function BauMap({
           })}
 
         {/* Entwurf: Zeichnen oder Stützpunkte bearbeiten */}
-        {(mode === 'draw' || mode === 'edit') && draft.length > 0 && (
-          <>
-            {draftType !== 'Point' && draft.length > 1 && (
-              draftType === 'Polygon' ? <Polygon positions={draft.map(ll)} pathOptions={{ color: '#0e7490', weight: 3, dashArray: '6 6', fillOpacity: 0.15 }} interactive={false} /> : <Polyline positions={draft.map(ll)} pathOptions={{ color: '#0e7490', weight: 4, dashArray: '6 6' }} interactive={false} />
-            )}
-            {draft.map((c, i) => (
-              <Marker
-                key={`v${i}-${editing ? c.join() : ''}`}
-                position={ll(c)}
-                icon={vertexIcon(i + 1, touch)}
-                draggable={editing}
-                eventHandlers={{
-                  dragend: (e) => {
-                    const p = (e.target as L.Marker).getLatLng()
-                    onDraftChange(draft.map((x, k) => (k === i ? ([p.lng, p.lat] as LngLat) : x)))
-                  },
-                }}
-              >
-                {editing && draftType !== 'Point' && (
-                  <Popup>
-                    <button
-                      type="button"
-                      className="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white"
-                      onClick={() => draft.length > (draftType === 'Polygon' ? 3 : 2) && onDraftChange(draft.filter((_, k) => k !== i))}
-                    >
-                      Stützpunkt {i + 1} entfernen
-                    </button>
-                  </Popup>
-                )}
-              </Marker>
-            ))}
-            {/* Zwischenpunkte: antippen fügt einen Stützpunkt ein */}
-            {editing &&
-              draftType !== 'Point' &&
-              draft.slice(0, draftType === 'Polygon' ? draft.length : draft.length - 1).map((c, i) => {
-                const n = draft[(i + 1) % draft.length]
-                const mid: LngLat = [(c[0] + n[0]) / 2, (c[1] + n[1]) / 2]
-                return (
-                  <Marker
-                    key={`m${i}`}
-                    position={ll(mid)}
-                    icon={midIcon(touch)}
-                    eventHandlers={{ click: () => onDraftChange([...draft.slice(0, i + 1), mid, ...draft.slice(i + 1)]) }}
-                  />
-                )
-              })}
-          </>
-        )}
+        {(mode === 'draw' || mode === 'edit') && <DraftLayer draft={draft} draftType={draftType} editing={editing} touch={touch} onChange={onDraftChange} />}
 
         {mode === 'measure' && measure.length > 0 && (
           <>

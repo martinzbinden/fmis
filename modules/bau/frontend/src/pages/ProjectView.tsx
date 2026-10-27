@@ -80,6 +80,8 @@ export default function ProjectView() {
   const [mode, setMode] = useState<MapMode>('view')
   const [draft, setDraft] = useState<LngLat[]>([])
   const [draftType, setDraftType] = useState<Geom['type']>('LineString')
+  // frühere Stände des Entwurfs für «Rückgängig» (Zeichnen und Bearbeiten)
+  const [undo, setUndo] = useState<LngLat[][]>([])
   const [draftTarget, setDraftTarget] = useState<{ kind: 'new'; spec: NewObjectSpec } | { kind: 'edit'; id: string } | null>(null)
   const [measure, setMeasure] = useState<LngLat[]>([])
   const cursor = useRef<LngLat | null>(null)
@@ -122,6 +124,7 @@ export default function ProjectView() {
     setDraftTarget({ kind: 'new', spec })
     setDraftType(spec.type)
     setDraft([])
+    setUndo([])
     setSelectedId(null)
     setMode('draw')
     setTab('karte')
@@ -134,6 +137,7 @@ export default function ProjectView() {
     setDraftTarget({ kind: 'edit', id: selected.id })
     setDraftType(g.type)
     setDraft(g.type === 'Point' ? [g.coordinates] : g.type === 'LineString' ? g.coordinates : g.coordinates[0].slice(0, -1))
+    setUndo([])
     setMode('edit')
     setTab('karte')
   }
@@ -141,7 +145,19 @@ export default function ProjectView() {
   function cancelDraft() {
     setMode('view')
     setDraft([])
+    setUndo([])
     setDraftTarget(null)
+  }
+
+  function changeDraft(next: LngLat[]) {
+    setUndo((u) => [...u, draft])
+    setDraft(next)
+  }
+
+  function undoDraft() {
+    if (!undo.length) return
+    setDraft(undo[undo.length - 1])
+    setUndo((u) => u.slice(0, -1))
   }
 
   const minPts = draftType === 'Point' ? 1 : draftType === 'LineString' ? 2 : 3
@@ -172,7 +188,7 @@ export default function ProjectView() {
     const c = cursor.current
     if (!c) return
     if (mode === 'measure') setMeasure((m) => [...m, c])
-    else if (mode === 'draw') setDraft((d) => (draftType === 'Point' ? [c] : [...d, c]))
+    else if (mode === 'draw') changeDraft(draftType === 'Point' ? [c] : [...draft, c])
   }
 
   // Ändert sich der Schlüssel, zoomt die Karte auf das ganze Projekt (beim Laden und per Knopf)
@@ -226,7 +242,7 @@ export default function ProjectView() {
           onSelect={(fid) => select(fid)}
           mode={mode}
           draft={draft}
-          onDraftChange={setDraft}
+          onDraftChange={changeDraft}
           draftType={draftType}
           background={background}
           layers={layers}
@@ -341,7 +357,13 @@ export default function ProjectView() {
         {drawing && (
           <div className="absolute inset-x-2 bottom-2 z-[700] space-y-2 rounded-xl bg-white p-3 shadow-lg">
             <div className="text-sm text-gray-800">
-              {mode === 'edit' ? 'Stützpunkte ziehen, Kreis in der Mitte eines Stücks antippen = Punkt einfügen, Punkt antippen = entfernen.' : touch ? 'Karte verschieben, bis das Fadenkreuz am richtigen Ort steht, dann «Hier setzen».' : 'In die Karte klicken, um Punkte zu setzen.'}{' '}
+              {mode === 'edit'
+                ? draftType === 'Point'
+                  ? 'Punkt an den richtigen Ort ziehen.'
+                  : touch
+                    ? 'Punkt ziehen = verschieben · Punkt antippen = löschen · kleinen Kreis ziehen oder antippen = neuer Punkt.'
+                    : 'Punkt ziehen = verschieben · Punkt anklicken = löschen · auf der Linie ziehen = neuer Punkt.'
+                : touch ? 'Karte verschieben, bis das Fadenkreuz am richtigen Ort steht, dann «Hier setzen».' : 'In die Karte klicken, um Punkte zu setzen.'}{' '}
               <b>
                 {draftType === 'Point' ? (draft.length ? '1 Punkt' : 'noch kein Punkt') : `${draft.length} Punkte`}
                 {draftType !== 'Point' && draft.length > 1 ? ` · ${fmtLength(lineLengthM(draftType === 'Polygon' ? [...draft, draft[0]] : draft))}` : ''}
@@ -353,8 +375,8 @@ export default function ProjectView() {
                   ＋ Hier setzen
                 </button>
               )}
-              {mode === 'draw' && (
-                <button type="button" className="min-h-12 rounded-lg border border-gray-300 px-3 text-sm disabled:opacity-40" disabled={draft.length === 0} onClick={() => setDraft((d) => d.slice(0, -1))}>
+              {(mode === 'draw' || draftType !== 'Point') && (
+                <button type="button" className="min-h-12 rounded-lg border border-gray-300 px-3 text-sm disabled:opacity-40" disabled={undo.length === 0} onClick={undoDraft}>
                   ↶ Rückgängig
                 </button>
               )}
