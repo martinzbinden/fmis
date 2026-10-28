@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareRounds, examiners, fmtDuration, fromWeeks, groupRounds, isYoung, matchAnimals, summarize, toWeeks, uniqueMatch } from './pregnancy'
+import { compareRounds, examiners, fmtDuration, fromWeeks, groupRounds, isYoung, latestPregnancy, matchAnimals, monthsBetween, summarize, toWeeks, uniqueMatch } from './pregnancy'
 import type { Animal } from '../types'
 
 const a = (id: string, ear_tag: string, lauf_nr: string | null = null): Animal => ({
@@ -65,5 +65,15 @@ describe('isYoung', () => {
     expect(isYoung({ birth_date: '2026-03-28' }, '2026-10-28')).toBe(false)
     expect(isYoung({ birth_date: '2025-01-06' }, '2026-10-28')).toBe(false)
     expect(isYoung({ birth_date: null }, '2026-10-28')).toBe(false)
+  })
+})
+
+describe('latestPregnancy', () => {
+  const c = (check_date: string, result: 'ja' | 'nein', method: 'auge' | 'ultraschall', recorded_at: string) => ({ check_date, result, method, recorded_at, examiner: null, weeks: null })
+  it('nimmt das neueste Ergebnis nach der Geburt, am gleichen Tag die genauere Methode', () => {
+    const checks = [c('2026-10-28', 'ja', 'ultraschall', '2026-10-28T15:00:00Z'), c('2026-10-28', 'nein', 'auge', '2026-10-28T16:00:00Z'), c('2025-10-01', 'nein', 'ultraschall', '2025-10-01T10:00:00Z')]
+    expect(latestPregnancy(checks, '2026-01-10')?.result).toBe('ja')
+    expect(latestPregnancy(checks.slice(2), '2026-01-10')).toBeNull()
+    expect(monthsBetween('2025-05-29', '2026-10-28')).toBe(16)
   })
 })

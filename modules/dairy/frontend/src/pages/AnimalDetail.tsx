@@ -10,7 +10,7 @@ import { canChangeEntry, categoryIcon, categoryLabel, groupCases, journalSummary
 import { withdrawalUntil } from '../lib/treatments'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useQuery } from '../hooks/useQuery'
-import { loadHerdContext, latestValues, type AnimalContext } from '../lib/herdContext'
+import { cullingInput, loadHerdContext, type AnimalContext } from '../lib/herdContext'
 import { cullingReasons, fmtCells, type CullingReason } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
@@ -176,18 +176,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const a = ctx.animal
   const f = ctx.fertility
   const p = ctx.performance
-  const reasons = a.sex !== 'm' ? cullingReasons({
-    species,
-    fertility: f,
-    performance: p,
-    currentLactationScc: ctx.currentLactationScc,
-    currentLactationTests: ctx.currentLactationTests,
-    breedingValues: latestValues(ctx.breedingValues),
-    lactationNumber: ctx.lactationNumber,
-    recentOffspring: ctx.births.slice(-2).flatMap((b) => b.offspring),
-    healthEvents12m: ctx.healthEvents12m,
-    trend: ctx.trend,
-  }, thresholds) : []
+  const reasons = a.sex !== 'm' ? cullingReasons(cullingInput(ctx, species), thresholds) : []
   const ageYears = a.birth_date ? ((Date.now() - Date.parse(a.birth_date)) / (365.25 * 86_400_000)).toFixed(1) : null
   const offspringKey = animalKey(a.ear_tag) ?? a.ear_tag
   const sccLimit = thresholds.sccHighTest

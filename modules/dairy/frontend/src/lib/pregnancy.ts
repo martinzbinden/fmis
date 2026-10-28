@@ -43,6 +43,45 @@ export function isYoung(a: Pick<Animal, 'birth_date'>, refIso: string, months = 
   return b > limit
 }
 
+/** Ganze Monate von `fromIso` bis `toIso` (z.B. Alter am Stichtag). */
+export function monthsBetween(fromIso: string, toIso: string): number {
+  const [y1, m1, d1] = fromIso.split('-').map(Number)
+  const [y2, m2, d2] = toIso.split('-').map(Number)
+  return (y2 - y1) * 12 + (m2 - m1) - (d2 < d1 ? 1 : 0)
+}
+
+/** Massgebliches Untersuchungsergebnis eines Tiers (für die Ausmerzliste). */
+export interface PregnancyStatus {
+  result: PregnancyResult
+  date: string
+  examiner: string | null
+  method: PregnancyMethod | null
+  weeks: number | null
+}
+
+const METHOD_RANK: Record<PregnancyMethod, number> = { ultraschall: 3, farbtupfer: 2, auge: 1 }
+
+/** Neuestes Ergebnis nach `sinceIso` (z.B. letzte Geburt; ältere gelten für die
+ * damalige Trächtigkeit). Am gleichen Tag gilt die genauere Methode
+ * (Ultraschall vor Farbtupfer vor Auge), dann der spätere Eintrag. */
+export function latestPregnancy(
+  checks: Pick<PregnancyCheck, 'check_date' | 'result' | 'recorded_at' | 'examiner' | 'method' | 'weeks'>[],
+  sinceIso: string | null,
+): PregnancyStatus | null {
+  let best: (typeof checks)[number] | null = null
+  const rank = (c: (typeof checks)[number]) => (c.method ? METHOD_RANK[c.method] : 0)
+  for (const c of checks) {
+    if (sinceIso && c.check_date <= sinceIso) continue
+    if (
+      !best ||
+      c.check_date > best.check_date ||
+      (c.check_date === best.check_date && (rank(c) > rank(best) || (rank(c) === rank(best) && c.recorded_at > best.recorded_at)))
+    )
+      best = c
+  }
+  return best ? { result: best.result, date: best.check_date, examiner: best.examiner, method: best.method, weeks: best.weeks } : null
+}
+
 /** Ergebnisse je Ergebnisart für einen Tag (jedes Tier zählt mit seinem letzten Eintrag). */
 export function summarize(checks: Pick<PregnancyCheck, 'animal_id' | 'result' | 'recorded_at'>[]): Record<PregnancyResult, number> {
   const last = new Map<string, Pick<PregnancyCheck, 'result' | 'recorded_at'>>()

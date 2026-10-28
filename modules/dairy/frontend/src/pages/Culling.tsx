@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '../hooks/useQuery'
-import { loadHerdContext, latestValues } from '../lib/herdContext'
+import { cullingInput, loadHerdContext, latestValues } from '../lib/herdContext'
 import TrendBadge from '../components/TrendBadge'
 import type { LactationTrend } from '../lib/lactationTrend'
 import { cullingReasons, fmtCells, reasonScore, type CullingReason, type CullingThresholds } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
-import { todayIso } from '../lib/format'
+import { fmtDate, todayIso } from '../lib/format'
+import { RESULT_LABEL, type PregnancyStatus } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { ReasonChips } from './AnimalDetail'
 import { animalLabel } from '@fmis/core/earTag'
@@ -30,6 +31,9 @@ const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: nu
   { key: 'healthEvents12m', label: 'Krankheits-/Behandlungstage in 12 Mt. ab (0 = aus)' },
   { key: 'trendFalling', label: 'Leistung fällt seit … Laktationen in Folge (0 = aus)' },
   { key: 'runningBelowOwn', label: 'Laufende Laktation Punkte unter eigenem Mittel ab (0 = aus)' },
+  { key: 'emptyAgeMonths', label: 'Leer, noch nie geboren, älter als … Monate (0 = aus)' },
+  { key: 'emptyOldLactation', label: 'Leer und Leistung abnehmend ab Laktation (0 = aus)' },
+  { key: 'emptyFirstPerfRel', label: 'Leer in 1. Laktation, Leistung unter (0 = aus)', step: 0.05 },
 ]
 
 interface Row {
@@ -44,6 +48,7 @@ interface Row {
   performanceRel: number | null
   totalBv: number | null
   trend: LactationTrend | undefined
+  pregnancy: PregnancyStatus | null
 }
 
 function csvEscape(v: unknown): string {
@@ -62,24 +67,10 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   const rows = useMemo<Row[]>(() => {
     if (!data) return []
     return [...data.values()]
-      .filter((c) => c.animal.status === 'aktiv' && c.animal.sex !== 'm' && (c.lactationNumber ?? 0) > 0)
+      .filter((c) => c.animal.status === 'aktiv' && c.animal.sex !== 'm' && ((c.lactationNumber ?? 0) > 0 || c.pregnancy != null))
       .map((c) => {
         const bv = latestValues(c.breedingValues)
-        const reasons = cullingReasons(
-          {
-            species,
-            fertility: c.fertility,
-            performance: c.performance,
-            currentLactationScc: c.currentLactationScc,
-            currentLactationTests: c.currentLactationTests,
-            breedingValues: bv,
-            lactationNumber: c.lactationNumber,
-            recentOffspring: c.births.slice(-2).flatMap((b) => b.offspring),
-            healthEvents12m: c.healthEvents12m,
-            trend: c.trend,
-          },
-          thresholds,
-        )
+        const reasons = cullingReasons(cullingInput(c, species), thresholds)
         return {
           id: c.animal.id,
           label: animalLabel(c.animal),
@@ -92,6 +83,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           performanceRel: c.performance?.performance_rel_stage ?? c.performance?.performance_rel ?? null,
           totalBv: species === 'sheep' ? (bv.gzw ?? null) : (bv.iset ?? null),
           trend: c.trend,
+          pregnancy: c.pregnancy,
         }
       })
       .sort((a, b) => b.score - a.score || b.reasons.length - a.reasons.length || a.label.localeCompare(b.label))
@@ -101,7 +93,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   const visible = showAll ? rows : flagged
 
   function exportCsv() {
-    const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Tendenz je Lakt.', 'Gründe']
+    const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Tendenz je Lakt.', 'Trächtigkeit', 'Gründe']
     const lines = visible.map((r) =>
       [
         r.laufNr,
@@ -113,6 +105,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
         r.performanceRel,
         r.totalBv,
         r.trend?.slope != null ? Math.round(r.trend.slope * 100) : null,
+        r.pregnancy ? `${RESULT_LABEL[r.pregnancy.result]} ${r.pregnancy.date}` : null,
         r.reasons.map((x) => x.text).join(' | '),
       ]
         .map(csvEscape)
@@ -196,7 +189,8 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
               )}
             </div>
             <div className="mt-1 text-xs text-gray-500">
-              {r.lactation ? `${r.lactation}. Laktation` : ''}
+              {r.lactation ? `${r.lactation}. Laktation` : 'noch nicht gemolken'}
+              {r.pregnancy ? ` · ${RESULT_LABEL[r.pregnancy.result]}${r.pregnancy.weeks != null && r.pregnancy.result === 'ja' ? ` (${Math.round(r.pregnancy.weeks)} Wo.)` : ''} am ${fmtDate(r.pregnancy.date)}` : ''}
               {r.sccGeo12m != null ? ` · Zellzahl Ø ${fmtCells(r.sccGeo12m)}` : ''}
               {r.performanceRel != null ? ` · Leistung ${Math.round(r.performanceRel * 100)} %` : ''}
               {r.totalBv != null ? ` · ${species === 'sheep' ? 'GZW' : 'ISET'} ${r.totalBv}` : ''}{' '}

@@ -12,7 +12,9 @@ import { notSupersededSql } from './journal'
 import { lactationDayAt } from './lactationDay'
 import { analyzeLactations, buildTestDayModel, type TestPoint } from './lactationCurves'
 import { trendsByAnimal, type LactationTrend } from './lactationTrend'
-import type { Animal } from '../types'
+import { latestPregnancy, monthsBetween, type PregnancyStatus } from './pregnancy'
+import type { CullingInput } from './culling'
+import type { Animal, PregnancyCheck } from '../types'
 
 export interface BreedingValueEntry {
   value: number
@@ -64,11 +66,15 @@ export interface AnimalContext {
   healthEvents12m: { date: string; diagnosis: string | null }[]
   /** Tendenz über die Laktationen (lib/lactationTrend.ts; F+E, ohne erste Wägung). */
   trend: LactationTrend | undefined
+  /** Trächtigkeitsuntersuchung seit der letzten Geburt (null = keine). */
+  pregnancy: PregnancyStatus | null
+  /** Alter in ganzen Monaten (null = Geburtsdatum unbekannt). */
+  ageMonths: number | null
 }
 
 export async function loadHerdContext(pg: PGlite, species: Species, today: string): Promise<Map<string, AnimalContext>> {
   const yearAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 365 * 86_400_000).toISOString().slice(0, 10)
-  const [animals, lactations, tests, births, offspring, matings, bvs, health] = await Promise.all([
+  const [animals, lactations, tests, births, offspring, matings, bvs, health, pregnancy] = await Promise.all([
     pg.query<Animal>('select * from animals where deleted_at is null'),
     pg.query<Record<string, unknown>>(
       'select animal_id, lactation_number, closure_type, milk_kg, fat_kg, protein_kg, days_in_milk, calving_date from lactations where deleted_at is null',
@@ -87,6 +93,7 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
        group by animal_id, entry_date`,
       [yearAgo],
     ),
+    pg.query<PregnancyCheck>('select * from pregnancy_checks where deleted_at is null'),
   ])
 
   const byAnimal = <T>(rows: T[], key: (r: T) => string) => {
@@ -194,6 +201,16 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
     return c == null || c.every((x) => x >= 7)
   })
 
+  const checksByAnimal = byAnimal(
+    pregnancy.rows.map((c) => ({
+      ...c,
+      check_date: isoDate(c.check_date)!,
+      weeks: num(c.weeks),
+      recorded_at: (c.recorded_at as unknown) instanceof Date ? (c.recorded_at as unknown as Date).toISOString() : String(c.recorded_at),
+    })),
+    (c) => c.animal_id,
+  )
+
   const out = new Map<string, AnimalContext>()
   for (const a of animals.rows) {
     const animal = { ...a, birth_date: isoDate(a.birth_date), entry_date: isoDate(a.entry_date), exit_date: isoDate(a.exit_date) }
@@ -208,7 +225,9 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
     const lastBirth = fertility.last_birth
     const lactNumbers = (lactationsByAnimal.get(a.id) ?? []).map((l) => num(l.lactation_number) ?? 0)
     const parities = animalBirths.map((b) => b.parity ?? 0)
-    const maxLact = Math.max(0, ...lactNumbers, ...parities)
+    // Milchwägungen tragen die Laktationsnummer auch dann, wenn (noch) keine Laktation abgeschlossen ist
+    const testLacts = (testsByAnimal.get(a.id) ?? []).map((t) => num(t.lactation_number) ?? 0)
+    const maxLact = Math.max(0, ...lactNumbers, ...parities, ...testLacts)
     out.set(a.id, {
       animal,
       births: animalBirths,
@@ -227,9 +246,29 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
       lactationNumber: maxLact || null,
       healthEvents12m: (healthByAnimal.get(a.id) ?? []).map((h) => ({ date: isoDate(h.entry_date)!, diagnosis: h.diagnosis })),
       trend: trends.get(a.id),
+      pregnancy: latestPregnancy(checksByAnimal.get(a.id) ?? [], lastBirth),
+      ageMonths: animal.birth_date ? monthsBetween(animal.birth_date, today) : null,
     })
   }
   return out
+}
+
+/** Eingabe für lib/culling.ts cullingReasons (Ausmerzliste und Tierdetail). */
+export function cullingInput(ctx: AnimalContext, species: Species): CullingInput {
+  return {
+    species,
+    fertility: ctx.fertility,
+    performance: ctx.performance,
+    currentLactationScc: ctx.currentLactationScc,
+    currentLactationTests: ctx.currentLactationTests,
+    breedingValues: latestValues(ctx.breedingValues),
+    lactationNumber: ctx.lactationNumber,
+    recentOffspring: ctx.births.slice(-2).flatMap((b) => b.offspring),
+    healthEvents12m: ctx.healthEvents12m,
+    trend: ctx.trend,
+    pregnancy: ctx.pregnancy,
+    ageMonths: ctx.ageMonths,
+  }
 }
 
 /** Nur die Werte je Merkmal — Eingabe für lib/culling.ts. */

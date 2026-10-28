@@ -6,6 +6,7 @@
 import type { FertilityStatus, Species } from './fertility'
 import type { PerformanceMetrics } from './herdPerformance'
 import { levelSeries, type LactationTrend } from './lactationTrend'
+import { METHOD_LABEL, type PregnancyStatus } from './pregnancy'
 
 export interface CullingThresholds {
   /** ZKZ/ZLZ des letzten abgeschlossenen Zyklus über … Tage */
@@ -42,6 +43,12 @@ export interface CullingThresholds {
   trendFalling: number
   /** laufende Laktation mindestens … Prozentpunkte unter dem eigenen Mittel (0 = aus) */
   runningBelowOwn: number
+  /** leer und noch nie geboren, älter als … Monate (0 = aus) */
+  emptyAgeMonths: number
+  /** leer, ab … Laktationen, Leistung abnehmend (0 = aus) */
+  emptyOldLactation: number
+  /** leer in der ersten Laktation, Leistung unter … (1.00 = Schnitt der Gleichaltrigen, 0 = aus) */
+  emptyFirstPerfRel: number
 }
 
 export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
@@ -63,6 +70,9 @@ export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
     healthEvents12m: 3,
     trendFalling: 2,
     runningBelowOwn: 15,
+    emptyAgeMonths: 26,
+    emptyOldLactation: 5,
+    emptyFirstPerfRel: 1,
   },
   sheep: {
     intervalDays: 400,
@@ -82,6 +92,9 @@ export const DEFAULT_THRESHOLDS: Record<Species, CullingThresholds> = {
     healthEvents12m: 2,
     trendFalling: 2,
     runningBelowOwn: 15,
+    emptyAgeMonths: 16,
+    emptyOldLactation: 4,
+    emptyFirstPerfRel: 1,
   },
 }
 
@@ -112,6 +125,10 @@ export interface CullingInput {
   healthEvents12m?: { date: string; diagnosis: string | null }[]
   /** Tendenz über die Laktationen (lib/lactationTrend.ts). */
   trend?: LactationTrend
+  /** Trächtigkeitsuntersuchung seit der letzten Geburt (lib/pregnancy.ts latestPregnancy). */
+  pregnancy?: PregnancyStatus | null
+  /** Alter in ganzen Monaten am Stichtag. */
+  ageMonths?: number | null
 }
 
 /** Zellzahl in 1000/ml als ausgeschriebene Zahl mit Schweizer Tausender-
@@ -236,6 +253,37 @@ export function cullingReasons(input: CullingInput, t: CullingThresholds): Culli
     }
   }
 
+  const pr = input.pregnancy
+  if (pr && pr.result !== 'ja') {
+    const who = [pr.method ? METHOD_LABEL[pr.method] : null, pr.examiner, fmtShortDate(pr.date)].filter(Boolean).join(', ')
+    if (pr.result === 'unsicher') {
+      reasons.push({ area: 'fruchtbarkeit', weight: 0, text: `Trächtigkeit unsicher (${who})` })
+    } else {
+      const lact = input.lactationNumber ?? 0
+      const age = input.ageMonths
+      // abnehmend: fällt seit mindestens einer Laktation, Tendenz fallend oder laufende Laktation ≥ 10 Punkte unter dem eigenen Mittel
+      const run = tr?.running
+      const pct = (v: number) => `${Math.round(v * 100)} %`
+      const falling =
+        (tr?.fallingStreak ?? 0) >= 1
+          ? `fällt seit ${tr!.fallingStreak} Laktation${tr!.fallingStreak === 1 ? '' : 'en'}`
+          : tr?.direction === 'fallend'
+            ? 'Tendenz fallend'
+            : run?.ownMean != null && run.tests >= 2 && run.ownMean - run.level >= 0.1
+              ? `laufende Laktation ${pct(run.level)} der Herde statt ${pct(run.ownMean)}`
+              : null
+      let text: string | null = null
+      if (lact === 0 && t.emptyAgeMonths > 0 && age != null && age > t.emptyAgeMonths) {
+        text = `leer mit ${age} Monaten, noch nie ${input.species === 'sheep' ? 'abgelammt' : 'abgekalbt'}`
+      } else if (t.emptyOldLactation > 0 && lact >= t.emptyOldLactation && falling) {
+        text = `leer in der ${lact}. Laktation, Leistung abnehmend – ${falling}`
+      } else if (lact === 1 && t.emptyFirstPerfRel > 0 && perfRel != null && perfRel < t.emptyFirstPerfRel) {
+        text = `leer, erste Laktation unter dem Schnitt (${Math.round(perfRel * 100)} % der Gleichaltrigen)`
+      }
+      reasons.push(text ? { area: 'fruchtbarkeit', weight: 3, text: `${text} (${who})` } : { area: 'fruchtbarkeit', weight: 1, text: `leer (${who})` })
+    }
+  }
+
   const events = input.healthEvents12m ?? []
   if (t.healthEvents12m > 0 && events.length >= t.healthEvents12m) {
     const diagnoses = [...new Set(events.map((e) => e.diagnosis).filter(Boolean))].slice(0, 3).join(', ')
@@ -247,6 +295,11 @@ export function cullingReasons(input: CullingInput, t: CullingThresholds): Culli
   }
 
   return reasons
+}
+
+function fmtShortDate(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${Number(d)}.${Number(m)}.${y.slice(2)}`
 }
 
 export function reasonScore(reasons: CullingReason[]): number {

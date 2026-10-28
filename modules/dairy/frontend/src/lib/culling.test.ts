@@ -101,3 +101,32 @@ describe('cullingReasons', () => {
     expect(reasons.map((r) => r.text)).toEqual(['2 von 3 Nachkommen tot (letzte zwei Geburten)'])
   })
 })
+
+describe('Trächtigkeit in der Ausmerzliste', () => {
+  const t = DEFAULT_THRESHOLDS.sheep
+  const leer = { result: 'nein' as const, date: '2026-10-28', examiner: 'Tierarzt', method: 'ultraschall' as const, weeks: null }
+  const ewe = (o: Partial<CullingInput>) => cow({ species: 'sheep', fertility: computeFertility([], [], 'sheep', '2026-10-28'), ...o })
+  const trend = (fallingStreak: number) => ({ levels: [], slope: null, direction: null, fallingStreak, running: null })
+
+  it('Jungtier über 16 Monate, noch nie abgelammt und leer', () => {
+    const r = cullingReasons(ewe({ lactationNumber: null, ageMonths: 19, pregnancy: leer }), t)
+    expect(r).toEqual([expect.objectContaining({ weight: 3, text: 'leer mit 19 Monaten, noch nie abgelammt (Ultraschall, Tierarzt, 28.10.26)' })])
+    expect(cullingReasons(ewe({ lactationNumber: null, ageMonths: 15, pregnancy: leer }), t)[0].weight).toBe(1)
+  })
+
+  it('alt, Leistung abnehmend und leer', () => {
+    expect(cullingReasons(ewe({ lactationNumber: 5, trend: trend(1), pregnancy: leer }), t).find((x) => x.area === 'fruchtbarkeit')?.weight).toBe(3)
+    expect(cullingReasons(ewe({ lactationNumber: 5, trend: trend(0), pregnancy: leer }), t).find((x) => x.area === 'fruchtbarkeit')?.weight).toBe(1)
+  })
+
+  it('erste Laktation unter dem Schnitt und leer', () => {
+    const perf = (rel: number) => ({ performance_rel: rel } as CullingInput['performance'])
+    expect(cullingReasons(ewe({ lactationNumber: 1, performance: perf(0.9), pregnancy: leer }), t).find((x) => x.area === 'fruchtbarkeit')?.weight).toBe(3)
+    expect(cullingReasons(ewe({ lactationNumber: 1, performance: perf(1.1), pregnancy: leer }), t).find((x) => x.area === 'fruchtbarkeit')?.weight).toBe(1)
+  })
+
+  it('trächtig gibt keinen Grund, unsicher nur einen Hinweis', () => {
+    expect(cullingReasons(ewe({ pregnancy: { ...leer, result: 'ja' } }), t)).toEqual([])
+    expect(reasonScore(cullingReasons(ewe({ pregnancy: { ...leer, result: 'unsicher' } }), t))).toBe(0)
+  })
+})
