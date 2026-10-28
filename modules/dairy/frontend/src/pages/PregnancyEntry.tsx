@@ -4,12 +4,13 @@ import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getCurrentUserEmail, getToken } from '@fmis/core/auth'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
+import FooterBar from '@fmis/core/FooterBar'
 import NumberInput from '@fmis/core/NumberInput'
 import { notifyError } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import { softDeleteRow, upsertRow } from '../db/write'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
-import { examiners, fmtDuration, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
+import { examiners, fmtDuration, fmtTimeRange, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
 import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
@@ -380,7 +381,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium text-gray-900">{roundTitle(r)}</span>
                       <span className="block text-xs text-gray-600">
-                        {r.count} {r.count === 1 ? 'Tier' : 'Tiere'}: {r.results.ja} trächtig, {r.results.nein} leer, {r.results.unsicher} unsicher
+                        {fmtTimeRange(r.first, r.last)} Uhr · {r.count} {r.count === 1 ? 'Tier' : 'Tiere'}: {r.results.ja} trächtig, {r.results.nein} leer, {r.results.unsicher} unsicher
                       </span>
                     </span>
                     <span className="shrink-0 text-sm font-medium text-brand-700">fortsetzen ›</span>
@@ -396,7 +397,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
+    <div className="mx-auto max-w-lg space-y-3 p-3 pb-36">
       <h1 className="text-xl font-bold text-gray-900">Trächtigkeit</h1>
 
       <section className="overflow-hidden rounded-2xl border-2 border-brand-700 bg-white shadow-lg">
@@ -512,13 +513,19 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-2 text-sm">
-        <span className={`rounded-full px-2.5 py-1 ${BADGE.ja}`}>trächtig {sum.ja}</span>
-        <span className={`rounded-full px-2.5 py-1 ${BADGE.nein}`}>leer {sum.nein}</span>
-        <span className={`rounded-full px-2.5 py-1 ${BADGE.unsicher}`}>unsicher {sum.unsicher}</span>
-        <span className="rounded-full bg-white px-2.5 py-1 text-gray-700">noch offen {open} von {animals.length} {terms.plural}</span>
-        {lambs > 0 && <span className="px-1 py-1 text-gray-500">{lambs} {speciesOf(moduleKey) === 'sheep' ? 'Lämmer' : 'Kälber'} unter 7 Mt. ausgeblendet</span>}
-      </div>
+      <FooterBar>
+        <span className={`rounded-full px-2.5 py-0.5 font-semibold ${BADGE.ja}`}>✓ {sum.ja} trächtig</span>
+        <span className={`rounded-full px-2.5 py-0.5 font-semibold ${BADGE.nein}`}>✗ {sum.nein} leer</span>
+        <span className={`rounded-full px-2.5 py-0.5 font-semibold ${BADGE.unsicher}`}>? {sum.unsicher} unsicher</span>
+        <span className="px-1 text-gray-700">
+          offen {open}/{animals.length}
+        </span>
+      </FooterBar>
+      {lambs > 0 && (
+        <p className="px-1 text-sm text-gray-500">
+          {lambs} {speciesOf(moduleKey) === 'sheep' ? 'Lämmer' : 'Kälber'} unter 7 Mt. ausgeblendet
+        </p>
+      )}
 
       <ul className="divide-y rounded-xl bg-white shadow-sm">
         {ofRound.map((c) => {

@@ -27,6 +27,13 @@ export function uniqueMatch(animals: Animal[], input: string): Animal | null {
   return m.length === 1 ? m[0] : null
 }
 
+/** Uhrzeit von–bis eines Durchgangs, z.B. "16:15–16:47" (Ortszeit). */
+export function fmtTimeRange(first: string, last: string): string {
+  const t = (iso: string) => new Date(iso).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })
+  const [a, b] = [t(first), t(last)]
+  return a === b ? a : `${a}–${b}`
+}
+
 /** Lämmer jünger als `months` Monate am Stichtag (ohne Geburtsdatum: kein Lamm). */
 export function isYoung(a: Pick<Animal, 'birth_date'>, refIso: string, months = 7): boolean {
   const b = isoDate(a.birth_date)
@@ -60,7 +67,8 @@ export interface PregnancyRound {
 export interface RoundSummary extends PregnancyRound {
   count: number
   results: Record<PregnancyResult, number>
-  /** letzter Eintrag (ISO) */
+  /** erster und letzter Eintrag (ISO) */
+  first: string
   last: string
 }
 
@@ -76,6 +84,7 @@ export function groupRounds(checks: Pick<PregnancyCheck, 'animal_id' | 'check_da
   return [...groups.entries()]
     .map(([id, g]) => {
       const newest = g.reduce((a, b) => (a.recorded_at > b.recorded_at ? a : b))
+      const oldest = g.reduce((a, b) => (a.recorded_at < b.recorded_at ? a : b))
       return {
         id,
         date: newest.check_date,
@@ -84,6 +93,7 @@ export function groupRounds(checks: Pick<PregnancyCheck, 'animal_id' | 'check_da
         unit: newest.duration_unit ?? 'wochen',
         count: new Set(g.map((c) => c.animal_id)).size,
         results: summarize(g),
+        first: oldest.recorded_at,
         last: newest.recorded_at,
       }
     })

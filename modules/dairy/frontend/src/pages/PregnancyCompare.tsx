@@ -4,7 +4,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { shortEarTag } from '@fmis/core/earTag'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate, isoDate, num } from '../lib/format'
-import { compareRounds, fmtDuration, groupRounds, METHOD_LABEL, RESULT_LABEL } from '../lib/pregnancy'
+import { compareRounds, fmtDuration, fmtTimeRange, groupRounds, METHOD_LABEL, RESULT_LABEL } from '../lib/pregnancy'
 import type { Animal, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 async function loadData(pg: PGlite) {
@@ -82,6 +82,7 @@ export default function PregnancyCompare() {
                 <span className="block font-semibold">
                   {fmtDate(r.date)} {r.method ? METHOD_ICON[r.method] : ''}
                 </span>
+                <span className="block text-xs opacity-90">{fmtTimeRange(r.first, r.last)}</span>
                 <span className="block text-xs opacity-90">
                   {r.examiner || 'ohne Angabe'} · {r.count} {r.count === 1 ? 'Tier' : 'Tiere'}
                 </span>
@@ -115,6 +116,7 @@ export default function PregnancyCompare() {
                   {columns.map((c) => (
                     <th key={c.id} className="min-w-[5.5rem] px-2 py-2 text-center align-bottom font-normal text-gray-800">
                       <span className="block font-semibold">{fmtDate(c.date)}</span>
+                      <span className="block text-xs text-gray-600">{fmtTimeRange(c.first, c.last)}</span>
                       <span className="block text-xs">{c.examiner || 'ohne Angabe'}</span>
                       <span className="block text-xs text-gray-600">{c.method ? `${METHOD_ICON[c.method]} ${METHOD_LABEL[c.method]}` : ''}</span>
                     </th>

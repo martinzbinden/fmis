@@ -7,6 +7,7 @@ import AdminMenu from './AdminMenu'
 import NotificationBell from './NotificationBell'
 import { useSyncStatus } from './useSyncStatus'
 import type { ModuleDescriptor, NavItem } from './ModuleDescriptor'
+import { FOOTER_SLOT_ID } from './FooterBar'
 
 export default function Layout({
   children,
@@ -70,26 +71,30 @@ export default function Layout({
 
       <main className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom,0px))]">{children}</main>
 
-      <nav
-        className="fixed bottom-0 left-0 right-0 z-20 grid border-t bg-white pb-[env(safe-area-inset-bottom,0px)]"
-        style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
-      >
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === ''}
-            className={({ isActive }) =>
-              `flex flex-col items-center justify-center gap-0.5 py-2 text-xs ${
-                isActive ? 'text-brand-700 font-semibold' : 'text-gray-500'
-              }`
-            }
-          >
-            <span className="text-xl leading-none">{item.icon}</span>
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
+      <div className="fixed bottom-0 left-0 right-0 z-20">
+        {/* Platz für laufende Zwischenstände über dem Menü (core/FooterBar.tsx) */}
+        <div id={FOOTER_SLOT_ID} />
+        <nav
+          className="grid border-t bg-white pb-[env(safe-area-inset-bottom,0px)]"
+          style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+        >
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === ''}
+              className={({ isActive }) =>
+                `flex flex-col items-center justify-center gap-0.5 py-2 text-xs ${
+                  isActive ? 'text-brand-700 font-semibold' : 'text-gray-500'
+                }`
+              }
+            >
+              <span className="text-xl leading-none">{item.icon}</span>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
     </div>
   )
 }
