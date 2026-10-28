@@ -216,3 +216,19 @@ export interface DataHistory {
   snapshot: string
   updated_at: string
 }
+
+/** Trächtigkeitsuntersuchung (schema/0015_pregnancy_checks.sql) */
+export type PregnancyResult = 'ja' | 'nein' | 'unsicher'
+export interface PregnancyCheck {
+  id: string
+  animal_id: string
+  check_date: string
+  result: PregnancyResult
+  weeks: number | null
+  source: 'manual' | 'reader'
+  notes: string | null
+  recorded_at: string
+  created_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}

@@ -13,6 +13,7 @@ import Culling from './pages/Culling'
 import Erfassen from './pages/Erfassen'
 import BirthEntry from './pages/BirthEntry'
 import MatingEntry from './pages/MatingEntry'
+import PregnancyEntry from './pages/PregnancyEntry'
 import JournalEntry from './pages/JournalEntry'
 import TreatmentJournal from './pages/TreatmentJournal'
 import { treatmentPasteImporter } from './lib/pasteTreatments'
@@ -59,6 +60,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'erfassen', element: <Erfassen moduleKey={key} /> },
       { path: 'geburt', element: <BirthEntry moduleKey={key} /> },
       { path: 'belegung', element: <MatingEntry moduleKey={key} /> },
+      { path: 'traechtigkeit', element: <PregnancyEntry moduleKey={key} /> },
       { path: 'journal', element: <JournalEntry moduleKey={key} /> },
       { path: 'behandlungen', element: <TreatmentJournal moduleKey={key} /> },
       { path: 'anpaarung', element: <MatingPlanner moduleKey={key} /> },

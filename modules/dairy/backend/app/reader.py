@@ -346,6 +346,72 @@ def build_reader_router(key: str) -> APIRouter:
         await _close_bank(sess)
         return sess.state(active=True)
 
+    @router.get("/reader/scan")
+    async def scan(
+        user: CurrentUser = Depends(require_permission(f"{key}:animals:write")),
+        _reader_ok: CurrentUser = Depends(require_reader_enabled(key)),
+    ) -> StreamingResponse:
+        """SSE: gelesene Ohrmarken, solange der Browser zuhört — für Erfassungen wie die
+        Trächtigkeit (keine Wägungssitzung, nichts wird geschrieben). Schliesst der Browser
+        die Verbindung, gibt der Server das Lesegerät wieder frei. Nicht während einer
+        Milchwägung (das Gerät ist exklusiv)."""
+        sess = _sessions.get(key)
+        if sess and sess.task and not sess.task.done():
+            raise HTTPException(status_code=409, detail="Das Lesegerät ist in der Milchwägung belegt")
+        host, port = await get_reader_settings(key)
+
+        def sse(payload: dict) -> str:
+            return f"data: {json.dumps(payload)}\n\n"
+
+        async def lookup(long_tag: str) -> dict:
+            candidate, core = reader_tag_candidates(long_tag)
+            async with pool.connection() as conn:
+                animal = await (await conn.execute(
+                    "select id, ear_tag from animals where deleted_at is null and "
+                    "(ear_tag in (%s, %s) or (%s::text is not null and ear_tag ~ ('^CH113' || %s::text || '[0-9]$'))) "
+                    "order by status = 'aktiv' desc limit 1",
+                    (candidate, long_tag, core, core),
+                )).fetchone()
+            return {"tag": long_tag, "ear_tag": animal[1] if animal else candidate, "animal_id": str(animal[0]) if animal else None}
+
+        async def stream():
+            queue: asyncio.Queue = asyncio.Queue()
+
+            async def pump() -> None:
+                try:
+                    async with acquire_reader(host, port, keepalive=True) as conn:
+                        try:
+                            await conn.send_command("XGMEMINFO", timeout=5.0)
+                        except ReaderError as exc:
+                            await queue.put({"error": f"Der Leser antwortet nicht ({exc}) — AgriLink-/WLAN-Modus am Gerät prüfen"})
+                            return
+                        await queue.put({"ready": True})
+                        async for long_tag in conn.live_reads():
+                            await queue.put(await lookup(long_tag))
+                except asyncio.CancelledError:
+                    raise
+                except (ReaderBusyError, ReaderError, OSError) as exc:
+                    await queue.put({"error": str(exc)})
+                except Exception as exc:  # noqa: BLE001
+                    await queue.put({"error": f"Unerwarteter Fehler: {exc}"})
+                await queue.put({"closed": True})
+
+            task = asyncio.create_task(pump())
+            try:
+                while True:
+                    try:
+                        item = await asyncio.wait_for(queue.get(), timeout=20)
+                    except asyncio.TimeoutError:
+                        yield ": ping\n\n"  # Heartbeat gegen Proxy-Timeouts
+                        continue
+                    yield sse(item)
+                    if "closed" in item:
+                        return
+            finally:
+                task.cancel()  # Browser weg: Leser freigeben
+
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     @router.get("/reader/session/events")
     async def session_events(user: CurrentUser = Depends(require_auth)) -> StreamingResponse:
         """SSE: ein Event pro Änderung (neue Lesung, Bankwechsel, Fehler) —

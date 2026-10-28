@@ -47,6 +47,10 @@ export const SYNC_TABLES = {
     'sire_ear_tag', 'sire_name', 'sire_breed', 'source', 'import_key', 'notes',
     'updated_at', 'deleted_at',
   ],
+  pregnancy_checks: [
+    'id', 'animal_id', 'check_date', 'result', 'weeks', 'source', 'notes', 'recorded_at',
+    'created_by', 'updated_at', 'deleted_at',
+  ],
   births: [
     'id', 'dam_id', 'birth_date', 'parity', 'sire_key', 'sire_ear_tag', 'sire_name',
     'ease', 'conception_date', 'source', 'import_key', 'notes', 'updated_at', 'deleted_at',
@@ -94,6 +98,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   treatment_templates: new Set(),
   pedigree: new Set(['birth_date']),
   matings: new Set(['service_date', 'service_to']),
+  pregnancy_checks: new Set(['check_date']),
   births: new Set(['birth_date', 'conception_date']),
   birth_offspring: new Set(),
   breeding_values: new Set(['eval_date']),
