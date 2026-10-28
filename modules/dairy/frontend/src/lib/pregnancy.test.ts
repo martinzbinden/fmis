@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareRounds, examiners, fmtDuration, fromWeeks, groupRounds, isYoung, latestPregnancy, matchAnimals, monthsBetween, summarize, toWeeks, uniqueMatch } from './pregnancy'
+import { agreement, classifyAgreement, compareRounds, examiners, fmtDuration, fromWeeks, groupRounds, isYoung, latestPregnancy, matchAnimals, monthsBetween, summarize, toWeeks, uniqueMatch } from './pregnancy'
 import type { Animal } from '../types'
 
 const a = (id: string, ear_tag: string, lauf_nr: string | null = null): Animal => ({
@@ -75,5 +75,22 @@ describe('latestPregnancy', () => {
     expect(latestPregnancy(checks, '2026-01-10')?.result).toBe('ja')
     expect(latestPregnancy(checks.slice(2), '2026-01-10')).toBeNull()
     expect(monthsBetween('2025-05-29', '2026-10-28')).toBe(16)
+  })
+})
+
+describe('agreement', () => {
+  it('zählt gleich, falsch positiv und falsch negativ gegen den Massstab', () => {
+    expect(classifyAgreement('ja', 'nein')).toBe('fp')
+    expect(classifyAgreement('nein', 'ja')).toBe('fn')
+    expect(classifyAgreement('unsicher', 'ja')).toBe('unsicher')
+    expect(classifyAgreement(undefined, 'ja')).toBe('nur_eine')
+    const r = agreement([['ja', 'ja'], ['ja', 'ja'], ['ja', 'ja'], ['nein', 'nein'], ['ja', 'nein'], ['nein', 'ja'], ['unsicher', 'ja'], ['ja', undefined]])
+    expect(r).toMatchObject({ both: 7, tp: 3, tn: 1, fp: 1, fn: 1, unsicher: 1, nur_eine: 1 })
+    expect(r.agreeRate).toBeCloseTo(4 / 6)
+    expect(r.sensitivity).toBeCloseTo(3 / 4)
+    expect(r.specificity).toBeCloseTo(1 / 2)
+  })
+  it('liefert null ohne eindeutige Paare', () => {
+    expect(agreement([['unsicher', 'ja']]).agreeRate).toBeNull()
   })
 })

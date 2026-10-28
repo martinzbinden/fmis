@@ -59,7 +59,7 @@ export interface PregnancyStatus {
   weeks: number | null
 }
 
-const METHOD_RANK: Record<PregnancyMethod, number> = { ultraschall: 3, farbtupfer: 2, auge: 1 }
+export const METHOD_RANK: Record<PregnancyMethod, number> = { ultraschall: 3, farbtupfer: 2, auge: 1 }
 
 /** Neuestes Ergebnis nach `sinceIso` (z.B. letzte Geburt; ältere gelten für die
  * damalige Trächtigkeit). Am gleichen Tag gilt die genauere Methode
@@ -193,4 +193,47 @@ export function compareRounds<C extends CompareCheck>(checks: C[], roundIds: str
     const results = new Set(cells.filter((c): c is C => !!c).map((c) => c.result))
     return { animal_id, cells, differs: results.size > 1 }
   })
+}
+
+/** Einordnung eines Tiers beim Abgleich Prüfung gegen Massstab (z.B. Auge gegen Ultraschall). */
+export type AgreementClass = 'tp' | 'tn' | 'fp' | 'fn' | 'unsicher' | 'nur_eine'
+
+export function classifyAgreement(test: PregnancyResult | undefined, ref: PregnancyResult | undefined): AgreementClass {
+  if (!test || !ref) return 'nur_eine'
+  if (test === 'unsicher' || ref === 'unsicher') return 'unsicher'
+  if (test === 'ja') return ref === 'ja' ? 'tp' : 'fp'
+  return ref === 'nein' ? 'tn' : 'fn'
+}
+
+export interface Agreement {
+  /** in beiden Durchgängen untersucht */
+  both: number
+  tp: number
+  tn: number
+  /** Prüfung trächtig, Massstab leer */
+  fp: number
+  /** Prüfung leer, Massstab trächtig */
+  fn: number
+  unsicher: number
+  nur_eine: number
+  /** gleich / eindeutig in beiden (ohne unsicher), null ohne eindeutige Paare */
+  agreeRate: number | null
+  /** erkannte Trächtige: tp / (tp + fn) */
+  sensitivity: number | null
+  /** erkannte Leere: tn / (tn + fp) */
+  specificity: number | null
+}
+
+/** Vergleich zweier Durchgänge: `test` wird am Massstab `ref` gemessen. */
+export function agreement(pairs: [PregnancyResult | undefined, PregnancyResult | undefined][]): Agreement {
+  const n: Record<AgreementClass, number> = { tp: 0, tn: 0, fp: 0, fn: 0, unsicher: 0, nur_eine: 0 }
+  for (const [t, r] of pairs) n[classifyAgreement(t, r)]++
+  const rate = (a: number, b: number) => (b > 0 ? a / b : null)
+  return {
+    ...n,
+    both: pairs.length - n.nur_eine,
+    agreeRate: rate(n.tp + n.tn, n.tp + n.tn + n.fp + n.fn),
+    sensitivity: rate(n.tp, n.tp + n.fn),
+    specificity: rate(n.tn, n.tn + n.fp),
+  }
 }

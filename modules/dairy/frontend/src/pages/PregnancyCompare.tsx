@@ -4,7 +4,8 @@ import type { PGlite } from '@electric-sql/pglite'
 import { shortEarTag } from '@fmis/core/earTag'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate, isoDate, num } from '../lib/format'
-import { compareRounds, fmtDuration, fmtTimeRange, groupRounds, METHOD_LABEL, RESULT_LABEL } from '../lib/pregnancy'
+import { agreement, classifyAgreement, compareRounds, fmtDuration, fmtTimeRange, groupRounds, METHOD_LABEL, METHOD_RANK, RESULT_LABEL } from '../lib/pregnancy'
+import type { AgreementClass, RoundSummary } from '../lib/pregnancy'
 import type { Animal, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 async function loadData(pg: PGlite) {
@@ -30,6 +31,11 @@ const ICON: Record<PregnancyResult, { icon: string; cls: string }> = {
 }
 const METHOD_ICON: Record<PregnancyMethod, string> = { auge: '👁', farbtupfer: '🎨', ultraschall: '🔊' }
 
+const roundLabel = (r: RoundSummary) =>
+  `${fmtDate(r.date)} ${fmtTimeRange(r.first, r.last)} · ${r.examiner || 'ohne Angabe'}${r.method ? ` · ${METHOD_ICON[r.method]} ${METHOD_LABEL[r.method]}` : ''}`
+
+type Filter = 'diff' | 'gleich' | AgreementClass | null
+
 /** Trächtigkeits-Durchgänge nebeneinander, z.B. eigene Einschätzung gegen den Ultraschall des Tierarztes. */
 export default function PregnancyCompare() {
   const { data } = useQuery(loadData)
@@ -37,7 +43,8 @@ export default function PregnancyCompare() {
   const checks = useMemo(() => data?.checks ?? [], [data])
   const rounds = useMemo(() => groupRounds(checks), [checks])
   const [picked, setPicked] = useState<string[] | null>(null)
-  const [onlyDiff, setOnlyDiff] = useState(false)
+  const [filter, setFilter] = useState<Filter>(null)
+  const [refPick, setRefPick] = useState<string | null>(null)
   // Standard: die zwei neuesten Durchgänge; Spalten zeitlich geordnet (ältester links)
   const selected = (picked ?? rounds.slice(0, 2).map((r) => r.id)).filter((id) => rounds.some((r) => r.id === id))
   const columns = rounds.filter((r) => selected.includes(r.id)).reverse()
@@ -51,7 +58,22 @@ export default function PregnancyCompare() {
   }, [checks, animals, columns.map((c) => c.id).join()])
   const both = rows.filter((r) => r.cells.filter(Boolean).length > 1)
   const differing = rows.filter((r) => r.differs).length
-  const shown = onlyDiff ? rows.filter((r) => r.differs) : rows
+
+  // Auswertung bei genau zwei Durchgängen: Massstab ist standardmässig die genauere Methode, sonst der spätere
+  const pair = columns.length === 2
+  const rank = (r: RoundSummary) => (r.method ? METHOD_RANK[r.method] : 0)
+  const refIdx = !pair ? -1 : refPick && columns.some((c) => c.id === refPick) ? columns.findIndex((c) => c.id === refPick) : rank(columns[0]) > rank(columns[1]) ? 0 : 1
+  const testIdx = 1 - refIdx
+  const classOf = (cells: (PregnancyCheck | undefined)[]) => classifyAgreement(cells[testIdx]?.result, cells[refIdx]?.result)
+  const stats = pair ? agreement(rows.map((r) => [r.cells[testIdx]?.result, r.cells[refIdx]?.result])) : null
+  const activeFilter: Filter = !pair && filter !== 'diff' ? null : filter
+  const matches = (r: (typeof rows)[number]) => {
+    if (activeFilter === 'diff') return r.differs
+    const k = classOf(r.cells)
+    return activeFilter === 'gleich' ? k === 'tp' || k === 'tn' : k === activeFilter
+  }
+  const shown = activeFilter === null ? rows : rows.filter(matches)
+  const pct = (v: number | null) => (v == null ? '–' : `${Math.round(v * 100)} %`)
 
   function toggle(id: string) {
     setPicked(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
@@ -95,6 +117,65 @@ export default function PregnancyCompare() {
 
       {columns.length > 0 && (
         <>
+          {stats && (
+            <section className="space-y-2 rounded-xl bg-white p-3 shadow-sm" aria-label="Auswertung">
+              <h2 className="font-semibold text-gray-900">Auswertung</h2>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="text-gray-800">
+                    <span className="text-gray-600">Geprüft:</span> {roundLabel(columns[testIdx])}
+                  </p>
+                  <p className="text-gray-800">
+                    <span className="text-gray-600">Massstab:</span> <b>{roundLabel(columns[refIdx])}</b>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRefPick(columns[testIdx].id)
+                    setFilter(null)
+                  }}
+                  className="min-h-11 shrink-0 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-medium text-gray-800"
+                >
+                  ⇄ tauschen
+                </button>
+              </div>
+              <p className="text-sm text-gray-800">
+                {stats.both} {stats.both === 1 ? 'Tier' : 'Tiere'} in beiden Durchgängen
+                {stats.nur_eine > 0 && <span className="text-gray-600"> · {stats.nur_eine} nur in einem</span>}
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {(
+                  [
+                    { key: 'gleich', label: 'gleich', value: stats.tp + stats.tn, sub: `${pct(stats.agreeRate)} · ${stats.tp} trächtig, ${stats.tn} leer`, tone: 'border-green-600 text-green-800' },
+                    { key: 'fp', label: 'falsch positiv', value: stats.fp, sub: 'trächtig beurteilt, aber leer', tone: 'border-red-600 text-red-800' },
+                    { key: 'fn', label: 'falsch negativ', value: stats.fn, sub: 'leer beurteilt, aber trächtig', tone: 'border-red-600 text-red-800' },
+                    { key: 'unsicher', label: 'unsicher', value: stats.unsicher, sub: 'in einem der beiden', tone: 'border-amber-500 text-amber-800' },
+                  ] as const
+                ).map((t) => {
+                  const on = activeFilter === t.key
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setFilter(on ? null : t.key)}
+                      className={`min-h-11 rounded-xl border-2 px-3 py-2 text-left ${t.tone} ${on ? 'bg-gray-100 ring-2 ring-brand-700' : 'bg-white'}`}
+                    >
+                      <span className="block text-xs font-semibold uppercase tracking-wide">{t.label}</span>
+                      <span className="block text-2xl font-bold tabular-nums leading-tight">{t.value}</span>
+                      <span className="block text-xs text-gray-700">{t.sub}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-sm text-gray-800">
+                Trächtige erkannt: <b>{pct(stats.sensitivity)}</b> ({stats.tp} von {stats.tp + stats.fn}) · Leere erkannt: <b>{pct(stats.specificity)}</b> ({stats.tn} von {stats.tn + stats.fp})
+              </p>
+              <p className="text-xs text-gray-600">Ohne unsichere Ergebnisse gerechnet. Kachel antippen, um die Tiere in der Tabelle zu zeigen.</p>
+            </section>
+          )}
+
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-gray-800">
               {rows.length} {rows.length === 1 ? 'Tier' : 'Tiere'}{columns.length > 1 ? `, ${both.length} in mehreren Durchgängen: ${both.length - both.filter((r) => r.differs).length} gleich, ` : ''}
@@ -102,11 +183,12 @@ export default function PregnancyCompare() {
             </span>
             {columns.length > 1 && (
               <label className="ml-auto flex min-h-11 items-center gap-2">
-                <input type="checkbox" className="h-5 w-5" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} />
+                <input type="checkbox" className="h-5 w-5" checked={activeFilter === 'diff'} onChange={(e) => setFilter(e.target.checked ? 'diff' : null)} />
                 nur Abweichungen
               </label>
             )}
           </div>
+          {columns.length > 2 && <p className="px-1 text-xs text-gray-600">Für die Auswertung (falsch positiv/negativ) genau zwei Durchgänge wählen.</p>}
 
           <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
             <table className="w-full border-collapse text-sm">
@@ -152,7 +234,7 @@ export default function PregnancyCompare() {
                 {shown.length === 0 && (
                   <tr>
                     <td colSpan={columns.length + 1} className="px-3 py-3 text-gray-700">
-                      {onlyDiff ? 'Keine Abweichungen.' : 'Keine Einträge.'}
+                      {activeFilter ? 'Keine Tiere in dieser Auswahl.' : 'Keine Einträge.'}
                     </td>
                   </tr>
                 )}
