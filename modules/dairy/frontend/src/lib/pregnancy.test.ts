@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareRounds, examiners, fmtDuration, fromWeeks, groupRounds, matchAnimals, summarize, toWeeks, uniqueMatch } from './pregnancy'
+import { compareRounds, examiners, fmtDuration, fromWeeks, groupRounds, isYoung, matchAnimals, summarize, toWeeks, uniqueMatch } from './pregnancy'
 import type { Animal } from '../types'
 
 const a = (id: string, ear_tag: string, lauf_nr: string | null = null): Animal => ({
@@ -56,5 +56,14 @@ describe('Tier über die Ohrmarke finden', () => {
       ['2', 'janein', true],
       ['3', '-unsicher', false],
     ])
+  })
+})
+
+describe('isYoung', () => {
+  it('blendet Lämmer unter 7 Monaten am Stichtag aus', () => {
+    expect(isYoung({ birth_date: '2026-04-01' }, '2026-10-28')).toBe(true)
+    expect(isYoung({ birth_date: '2026-03-28' }, '2026-10-28')).toBe(false)
+    expect(isYoung({ birth_date: '2025-01-06' }, '2026-10-28')).toBe(false)
+    expect(isYoung({ birth_date: null }, '2026-10-28')).toBe(false)
   })
 })

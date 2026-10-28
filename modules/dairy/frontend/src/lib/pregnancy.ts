@@ -1,6 +1,7 @@
 // Trächtigkeit erfassen (pages/PregnancyEntry.tsx): Tier über die letzten Ziffern der Ohrmarke finden.
 
 import { shortEarTag } from '@fmis/core/earTag'
+import { isoDate } from './format'
 import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 export const RESULT_LABEL: Record<PregnancyResult, string> = { ja: 'trächtig', nein: 'leer', unsicher: 'unsicher' }
@@ -24,6 +25,15 @@ export function uniqueMatch(animals: Animal[], input: string): Animal | null {
   if (q.length < 3) return null
   const m = animals.filter((a) => tagDigits(a).endsWith(q))
   return m.length === 1 ? m[0] : null
+}
+
+/** Lämmer jünger als `months` Monate am Stichtag (ohne Geburtsdatum: kein Lamm). */
+export function isYoung(a: Pick<Animal, 'birth_date'>, refIso: string, months = 7): boolean {
+  const b = isoDate(a.birth_date)
+  if (!b) return false
+  const [y, m, d] = refIso.split('-').map(Number)
+  const limit = new Date(Date.UTC(y, m - 1 - months, d)).toISOString().slice(0, 10)
+  return b > limit
 }
 
 /** Ergebnisse je Ergebnisart für einen Tag (jedes Tier zählt mit seinem letzten Eintrag). */

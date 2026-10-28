@@ -9,8 +9,8 @@ import { notifyError } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import { softDeleteRow, upsertRow } from '../db/write'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
-import { examiners, fmtDuration, fromWeeks, groupRounds, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
-import { speciesTerms } from '../lib/species'
+import { examiners, fmtDuration, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
+import { speciesOf, speciesTerms } from '../lib/species'
 import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 async function loadData(pg: PGlite) {
@@ -73,8 +73,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const terms = speciesTerms(moduleKey)
   const { data } = useQuery(loadData)
-  const animals = useMemo(() => data?.animals ?? [], [data])
-  const byId = useMemo(() => new Map(animals.map((a) => [a.id, a])), [animals])
+  const allAnimals = useMemo(() => data?.animals ?? [], [data])
+  const byId = useMemo(() => new Map(allAnimals.map((a) => [a.id, a])), [allAnimals])
   const checks = useMemo(() => data?.checks ?? [], [data])
   const rounds = useMemo(() => groupRounds(checks), [checks])
   const knownExaminers = useMemo(() => examiners(checks), [checks])
@@ -91,6 +91,10 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   }
   const last = readJson<{ examiner: string | null; method: PregnancyMethod | null; unit?: DurationUnit }>(lastKey(moduleKey))
   const [startDate, setStartDate] = useState(localTodayIso)
+  // Lämmer unter 7 Monaten (am Datum des Durchgangs) gehören nicht in die Untersuchung
+  const refDate = round?.date ?? startDate
+  const animals = useMemo(() => allAnimals.filter((a) => !isYoung(a, refDate)), [allAnimals, refDate])
+  const lambs = allAnimals.length - animals.length
   const [startExaminer, setStartExaminer] = useState(() => last?.examiner ?? '')
   const [startMethod, setStartMethod] = useState<PregnancyMethod | null>(() => last?.method ?? null)
   const [startUnit, setStartUnit] = useState<DurationUnit>(() => last?.unit ?? 'wochen')
@@ -513,6 +517,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         <span className={`rounded-full px-2.5 py-1 ${BADGE.nein}`}>leer {sum.nein}</span>
         <span className={`rounded-full px-2.5 py-1 ${BADGE.unsicher}`}>unsicher {sum.unsicher}</span>
         <span className="rounded-full bg-white px-2.5 py-1 text-gray-700">noch offen {open} von {animals.length} {terms.plural}</span>
+        {lambs > 0 && <span className="px-1 py-1 text-gray-500">{lambs} {speciesOf(moduleKey) === 'sheep' ? 'Lämmer' : 'Kälber'} unter 7 Mt. ausgeblendet</span>}
       </div>
 
       <ul className="divide-y rounded-xl bg-white shadow-sm">
