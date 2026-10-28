@@ -3,7 +3,7 @@
 // entscheidet der Inhalt:
 // - Herdebuch-Export (b<nr>.K04 …, je Betrieb ein Satz): Tiernummern ab
 //   Stelle 23 — Schweizer Rinder "CH120…", Schafe "CH113…" u.a.
-// - TVD-Tierbestand (Excel mit Spalte «Ohrmarkennummer»): Spalten wie
+// - TVD-Tierbestand (Excel mit Spalte «Ohrmarkennummer» bzw. «Ohrmarken-Nr.»): Spalten wie
 //   «Erstablammung» bzw. «Erstabkalbung», sonst die Ohrmarken (Rinder
 //   CH120…, Schafe kurz "CH" + 8 Ziffern).
 // - SMG-Abstammungs- und Leistungsausweis (PDF): immer Schafe.
@@ -56,7 +56,7 @@ function readTvdList(data: ArrayBuffer): { headers: string[]; earTags: string[] 
     const cells = Object.keys(sheet).filter((k) => !k.startsWith('!'))
     const headerCells = cells.filter((k) => utils.decode_cell(k).r === 0)
     const headers = headerCells.map((k) => String(sheet[k].v ?? '').trim())
-    const col = headerCells.find((k) => String(sheet[k].v ?? '').trim() === 'Ohrmarkennummer')
+    const col = headerCells.find((k) => ['Ohrmarkennummer', 'Ohrmarken-Nr.'].includes(String(sheet[k].v ?? '').trim()))
     if (!col) return null
     const c = utils.decode_cell(col).c
     const earTags = cells

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchAnimals, summarize, uniqueMatch } from './pregnancy'
+import { examiners, groupRounds, matchAnimals, summarize, uniqueMatch } from './pregnancy'
 import type { Animal } from '../types'
 
 const a = (id: string, ear_tag: string, lauf_nr: string | null = null): Animal => ({
@@ -24,5 +24,19 @@ describe('Tier über die Ohrmarke finden', () => {
       { animal_id: '1', result: 'ja', recorded_at: '2026-10-28T08:05:00Z' },
       { animal_id: '2', result: 'nein', recorded_at: '2026-10-28T08:01:00Z' },
     ])).toEqual({ ja: 1, nein: 1, unsicher: 0 })
+  })
+  it('fasst Durchgänge zusammen, neuester zuerst', () => {
+    const c = (animal_id: string, result: 'ja' | 'nein', recorded_at: string, round_id: string | null, examiner: string | null) =>
+      ({ animal_id, result, recorded_at, round_id, examiner, check_date: recorded_at.slice(0, 10), method: null })
+    const checks = [
+      c('1', 'ja', '2026-10-28T08:00:00Z', 'r1', 'Martin Zbinden'),
+      c('2', 'nein', '2026-10-28T08:01:00Z', 'r1', 'Martin Zbinden'),
+      c('1', 'nein', '2026-10-28T15:00:00Z', 'r2', 'Tierarzt'),
+      c('3', 'ja', '2026-10-20T15:00:00Z', null, null),
+    ]
+    const r = groupRounds(checks)
+    expect(r.map((x) => [x.id, x.count])).toEqual([['r2', 1], ['r1', 2], ['tag:2026-10-20', 1]])
+    expect(r[1].results).toEqual({ ja: 1, nein: 1, unsicher: 0 })
+    expect(examiners(checks)).toEqual(['Tierarzt', 'Martin Zbinden'])
   })
 })

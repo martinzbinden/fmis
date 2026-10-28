@@ -74,16 +74,19 @@ export async function parseTierbestand(file: File): Promise<TvdAnimal[]> {
 
   return rows
     .map((row): TvdAnimal | null => {
-      const ear_tag = String(row['Ohrmarkennummer'] ?? '').trim()
+      // Zwei TVD-Exporte: «Tierbestand» (Ohrmarkennummer, Abgangsdatum) und
+      // «Bestandsverlauf Übersicht» (Ohrmarken-Nr., Todesdatum, Geschlecht klein geschrieben)
+      const ear_tag = String(row['Ohrmarkennummer'] ?? row['Ohrmarken-Nr.'] ?? '').trim()
       if (!ear_tag) return null
-      const geschlecht = String(row['Geschlecht'] ?? '').trim()
-      const exit_date = excelDateToIso(row['Abgangsdatum'])
+      const geschlecht = String(row['Geschlecht'] ?? '').trim().toLowerCase()
+      const exit_date = excelDateToIso(row['Abgangsdatum'] ?? row['Todesdatum'])
+      const breed = row['Rasse '] ?? row['Rasse']
       return {
         ear_tag,
-        name: row['Tiername'] ? String(row['Tiername']).trim() : null,
-        breed_code: row['Rasse '] ? String(row['Rasse ']).trim() : null,
+        name: row['Tiername'] ?? row['Name'] ? String(row['Tiername'] ?? row['Name']).trim() || null : null,
+        breed_code: breed ? String(breed).trim() : null,
         birth_date: excelDateToIso(row['Geburtsdatum']),
-        sex: geschlecht === 'Weiblich' ? 'w' : geschlecht === 'Männlich' ? 'm' : null,
+        sex: geschlecht === 'weiblich' ? 'w' : geschlecht === 'männlich' ? 'm' : null,
         status: exit_date ? 'abgegangen' : 'aktiv',
         entry_date: excelDateToIso(row['Zugangsdatum']),
         exit_date,

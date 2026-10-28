@@ -219,6 +219,8 @@ export interface DataHistory {
 
 /** Trächtigkeitsuntersuchung (schema/0015_pregnancy_checks.sql) */
 export type PregnancyResult = 'ja' | 'nein' | 'unsicher'
+/** schema/0016_pregnancy_rounds.sql */
+export type PregnancyMethod = 'auge' | 'farbtupfer' | 'ultraschall'
 export interface PregnancyCheck {
   id: string
   animal_id: string
@@ -231,4 +233,8 @@ export interface PregnancyCheck {
   created_by: string | null
   updated_at: string
   deleted_at: string | null
+  /** Durchgang: gleiche Person und Methode (schema/0016) */
+  round_id: string | null
+  examiner: string | null
+  method: PregnancyMethod | null
 }
