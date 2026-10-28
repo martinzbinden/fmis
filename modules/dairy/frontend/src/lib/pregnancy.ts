@@ -1,7 +1,7 @@
 // Trächtigkeit erfassen (pages/PregnancyEntry.tsx): Tier über die letzten Ziffern der Ohrmarke finden.
 
 import { shortEarTag } from '@fmis/core/earTag'
-import type { Animal, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
+import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 export const RESULT_LABEL: Record<PregnancyResult, string> = { ja: 'trächtig', nein: 'leer', unsicher: 'unsicher' }
 export const METHOD_LABEL: Record<PregnancyMethod, string> = { auge: 'Auge', farbtupfer: 'Farbtupfer', ultraschall: 'Ultraschall' }
@@ -44,6 +44,8 @@ export interface PregnancyRound {
   date: string
   examiner: string | null
   method: PregnancyMethod | null
+  /** Dauer in Wochen oder Tagen erfassen */
+  unit: DurationUnit
 }
 export interface RoundSummary extends PregnancyRound {
   count: number
@@ -53,7 +55,7 @@ export interface RoundSummary extends PregnancyRound {
 }
 
 /** Durchgänge aus den Einträgen, neuester zuerst. Einträge ohne round_id (ältere App) je Tag. */
-export function groupRounds(checks: Pick<PregnancyCheck, 'animal_id' | 'check_date' | 'result' | 'recorded_at' | 'round_id' | 'examiner' | 'method'>[]): RoundSummary[] {
+export function groupRounds(checks: Pick<PregnancyCheck, 'animal_id' | 'check_date' | 'result' | 'recorded_at' | 'round_id' | 'examiner' | 'method' | 'duration_unit'>[]): RoundSummary[] {
   const groups = new Map<string, typeof checks>()
   for (const c of checks) {
     const id = c.round_id ?? `tag:${c.check_date}`
@@ -69,6 +71,7 @@ export function groupRounds(checks: Pick<PregnancyCheck, 'animal_id' | 'check_da
         date: newest.check_date,
         examiner: newest.examiner,
         method: newest.method,
+        unit: newest.duration_unit ?? 'wochen',
         count: new Set(g.map((c) => c.animal_id)).size,
         results: summarize(g),
         last: newest.recorded_at,
@@ -85,4 +88,50 @@ export function examiners(checks: Pick<PregnancyCheck, 'examiner' | 'recorded_at
     if (e && !out.includes(e)) out.push(e)
   }
   return out
+}
+
+/** Eingabe in Wochen bzw. Tagen → gespeicherte Wochen (null bei leer/ungültig). */
+export function toWeeks(input: string, unit: DurationUnit): number | null {
+  const v = Number(input.trim().replace(',', '.'))
+  if (!input.trim() || !Number.isFinite(v) || v <= 0) return null
+  return unit === 'tage' ? v / 7 : v
+}
+
+/** Gespeicherte Wochen → Wert fürs Eingabefeld in der gewählten Einheit. */
+export function fromWeeks(weeks: number | null, unit: DurationUnit): string {
+  if (weeks == null) return ''
+  return unit === 'tage' ? String(Math.round(weeks * 7)) : String(Math.round(weeks * 10) / 10)
+}
+
+/** Kurzanzeige der Dauer, z.B. «8 Wo.» oder «45 T.». */
+export function fmtDuration(weeks: number | null, unit: DurationUnit | null): string | null {
+  if (weeks == null) return null
+  return unit === 'tage' ? `${Math.round(weeks * 7)} T.` : `${fromWeeks(weeks, 'wochen')} Wo.`
+}
+
+export type CompareCheck = Pick<PregnancyCheck, 'animal_id' | 'check_date' | 'result' | 'weeks' | 'recorded_at' | 'round_id' | 'duration_unit'>
+export interface CompareRow<C extends CompareCheck = CompareCheck> {
+  animal_id: string
+  /** je Durchgang (in der Reihenfolge von roundIds) der letzte Eintrag oder undefined */
+  cells: (C | undefined)[]
+  /** Ergebnisse der Durchgänge, in denen das Tier untersucht wurde, stimmen nicht überein */
+  differs: boolean
+}
+
+/** Tiere × Durchgänge zum Abgleich (z.B. eigene Einschätzung gegen Ultraschall des Tierarztes). */
+export function compareRounds<C extends CompareCheck>(checks: C[], roundIds: string[]): CompareRow<C>[] {
+  const roundOf = (c: CompareCheck) => c.round_id ?? `tag:${c.check_date}`
+  const byAnimal = new Map<string, (C | undefined)[]>()
+  for (const c of checks) {
+    const i = roundIds.indexOf(roundOf(c))
+    if (i < 0) continue
+    const cells = byAnimal.get(c.animal_id) ?? roundIds.map(() => undefined)
+    const prev = cells[i]
+    if (!prev || prev.recorded_at < c.recorded_at) cells[i] = c
+    byAnimal.set(c.animal_id, cells)
+  }
+  return [...byAnimal.entries()].map(([animal_id, cells]) => {
+    const results = new Set(cells.filter((c): c is C => !!c).map((c) => c.result))
+    return { animal_id, cells, differs: results.size > 1 }
+  })
 }

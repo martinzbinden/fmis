@@ -221,6 +221,7 @@ export interface DataHistory {
 export type PregnancyResult = 'ja' | 'nein' | 'unsicher'
 /** schema/0016_pregnancy_rounds.sql */
 export type PregnancyMethod = 'auge' | 'farbtupfer' | 'ultraschall'
+export type DurationUnit = 'wochen' | 'tage'
 export interface PregnancyCheck {
   id: string
   animal_id: string
@@ -237,4 +238,6 @@ export interface PregnancyCheck {
   round_id: string | null
   examiner: string | null
   method: PregnancyMethod | null
+  /** Eingabe/Anzeige der Dauer (schema/0017), null = Wochen */
+  duration_unit: DurationUnit | null
 }

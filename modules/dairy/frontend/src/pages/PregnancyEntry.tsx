@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getCurrentUserEmail, getToken } from '@fmis/core/auth'
 import { useDb } from '@fmis/core/DbContext'
@@ -8,9 +9,9 @@ import { notifyError } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import { softDeleteRow, upsertRow } from '../db/write'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
-import { examiners, groupRounds, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
+import { examiners, fmtDuration, fromWeeks, groupRounds, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
-import type { Animal, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
+import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 async function loadData(pg: PGlite) {
   const [animals, checks] = await Promise.all([
@@ -34,7 +35,8 @@ const RESULTS: { key: PregnancyResult; label: string; icon: string; cls: string 
   { key: 'unsicher', label: 'unsicher', icon: '?', cls: 'bg-amber-500 text-white active:bg-amber-600' },
 ]
 const BADGE: Record<PregnancyResult, string> = { ja: 'bg-green-100 text-green-800', nein: 'bg-gray-200 text-gray-800', unsicher: 'bg-amber-100 text-amber-900' }
-const WEEKS = [4, 6, 8, 10, 12, 14, 16, 18, 20]
+const DURATION_CHIPS: Record<DurationUnit, number[]> = { wochen: [4, 6, 8, 10, 12, 14, 16, 18, 20], tage: [30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140] }
+const UNIT_LABEL: Record<DurationUnit, string> = { wochen: 'Wochen', tage: 'Tage' }
 const label = (a: Animal | undefined) => (a ? `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTag(a.ear_tag)}${a.name ? ` ${a.name}` : ''}` : 'unbekanntes Tier')
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })
 const METHODS: { key: PregnancyMethod; icon: string }[] = [
@@ -78,16 +80,20 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   const knownExaminers = useMemo(() => examiners(checks), [checks])
 
   // ---- Durchgang
-  const [round, setRoundState] = useState<PregnancyRound | null>(() => readJson<PregnancyRound>(roundKey(moduleKey)))
+  const [round, setRoundState] = useState<PregnancyRound | null>(() => {
+    const r = readJson<PregnancyRound>(roundKey(moduleKey))
+    return r ? { ...r, unit: r.unit ?? 'wochen' } : null
+  })
   function setRound(r: PregnancyRound | null) {
     setRoundState(r)
     writeJson(roundKey(moduleKey), r)
-    if (r) writeJson(lastKey(moduleKey), { examiner: r.examiner, method: r.method })
+    if (r) writeJson(lastKey(moduleKey), { examiner: r.examiner, method: r.method, unit: r.unit })
   }
-  const last = readJson<{ examiner: string | null; method: PregnancyMethod | null }>(lastKey(moduleKey))
+  const last = readJson<{ examiner: string | null; method: PregnancyMethod | null; unit?: DurationUnit }>(lastKey(moduleKey))
   const [startDate, setStartDate] = useState(localTodayIso)
   const [startExaminer, setStartExaminer] = useState(() => last?.examiner ?? '')
   const [startMethod, setStartMethod] = useState<PregnancyMethod | null>(() => last?.method ?? null)
+  const [startUnit, setStartUnit] = useState<DurationUnit>(() => last?.unit ?? 'wochen')
   // Vorbelegung aus dem letzten Eintrag, falls dieses Gerät noch nichts gespeichert hat
   useEffect(() => {
     if (last || !rounds.length) return
@@ -129,15 +135,15 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
 
   function start() {
     if (!startMethod) return
-    setRound({ id: crypto.randomUUID(), date: startDate, examiner: startExaminer.trim() || null, method: startMethod })
+    setRound({ id: crypto.randomUUID(), date: startDate, examiner: startExaminer.trim() || null, method: startMethod, unit: startUnit })
     setEditRound(false)
     setTimeout(() => input.current?.focus(), 0)
   }
   /** Person/Methode eines laufenden Durchgangs ändern: gilt für alle seine Einträge. */
   async function changeRound() {
     if (!round || !startMethod) return
-    const next = { ...round, examiner: startExaminer.trim() || null, method: startMethod }
-    for (const c of ofRound) await upsertRow(db, 'pregnancy_checks', { ...c, round_id: c.round_id ?? round.id, examiner: next.examiner, method: next.method })
+    const next = { ...round, examiner: startExaminer.trim() || null, method: startMethod, unit: startUnit }
+    for (const c of ofRound) await upsertRow(db, 'pregnancy_checks', { ...c, round_id: c.round_id ?? round.id, examiner: next.examiner, method: next.method, duration_unit: next.unit })
     setRound(next)
     setEditRound(false)
   }
@@ -159,7 +165,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     if (!animal || !round || saving) return
     setSaving(true)
     try {
-      const w = weeks.trim() ? Number(weeks.replace(',', '.')) : null
+      const w = toWeeks(weeks, round.unit)
       // Gleiches Tier im gleichen Durchgang: Eintrag korrigieren statt doppelt
       const base = inRound ?? { id: crypto.randomUUID(), recorded_at: new Date().toISOString(), created_by: getCurrentUserEmail(), notes: null }
       await upsertRow(db, 'pregnancy_checks', {
@@ -167,11 +173,12 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         animal_id: animal.id,
         check_date: round.date,
         result,
-        weeks: w != null && Number.isFinite(w) ? w : (inRound?.weeks ?? null),
+        weeks: w ?? inRound?.weeks ?? null,
         source: fromReader ? 'reader' : 'manual',
         round_id: inRound?.round_id ?? round.id,
         examiner: round.examiner,
         method: round.method,
+        duration_unit: round.unit,
         deleted_at: null,
       })
       showFlash(`${label(animal)}: ${RESULT_LABEL[result]}${inRound ? ' (korrigiert)' : ''}`)
@@ -263,13 +270,12 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   const [confirmDel, setConfirmDel] = useState(false)
   function startEdit(c: PregnancyCheck) {
     setEditId(c.id)
-    setEditWeeks(c.weeks != null ? String(c.weeks) : '')
+    setEditWeeks(fromWeeks(c.weeks, c.duration_unit ?? 'wochen'))
     setConfirmDel(false)
   }
   async function saveEdit(result: PregnancyResult) {
     if (!editing) return
-    const w = editWeeks.trim() ? Number(editWeeks.replace(',', '.')) : null
-    await upsertRow(db, 'pregnancy_checks', { ...editing, result, weeks: w != null && Number.isFinite(w) ? w : null })
+    await upsertRow(db, 'pregnancy_checks', { ...editing, result, weeks: toWeeks(editWeeks, editing.duration_unit ?? 'wochen') })
     setEditId(null)
   }
 
@@ -323,6 +329,16 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
           ))}
         </div>
       </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-gray-800">Trächtigkeitsdauer in</span>
+        <div className="flex rounded-xl border-2 border-gray-400 p-0.5" role="radiogroup" aria-label="Einheit der Trächtigkeitsdauer">
+          {(['wochen', 'tage'] as const).map((u) => (
+            <button key={u} type="button" role="radio" aria-checked={startUnit === u} onClick={() => setStartUnit(u)} className={`min-h-11 rounded-lg px-4 text-base font-semibold ${startUnit === u ? 'bg-brand-700 text-white' : 'text-gray-800'}`}>
+              {UNIT_LABEL[u]}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="flex gap-2">
         {editRound && (
           <button type="button" className="min-h-12 rounded-xl border-2 border-gray-400 bg-white px-4 text-base" onClick={() => setEditRound(false)}>
@@ -355,7 +371,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                   <button
                     type="button"
                     className="flex min-h-12 w-full items-center gap-2 px-3 py-1.5 text-left active:bg-gray-50"
-                    onClick={() => setRound({ id: r.id, date: r.date, examiner: r.examiner, method: r.method })}
+                    onClick={() => setRound({ id: r.id, date: r.date, examiner: r.examiner, method: r.method, unit: r.unit })}
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium text-gray-900">{roundTitle(r)}</span>
@@ -368,6 +384,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                 </li>
               ))}
             </ul>
+            <CompareLink />
           </section>
         )}
       </div>
@@ -392,6 +409,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
             onClick={() => {
               setStartExaminer(round.examiner ?? '')
               setStartMethod(round.method)
+              setStartUnit(round.unit)
               setEditRound(true)
             }}
           >
@@ -461,20 +479,20 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                 <div className="text-sm text-gray-200">
                   {fromReader ? '📡 vom Lesegerät · ' : ''}
                   {inRound
-                    ? `in diesem Durchgang schon: ${RESULT_LABEL[inRound.result]}${inRound.weeks != null ? `, ${inRound.weeks} Wo.` : ''} — wird korrigiert`
+                    ? `in diesem Durchgang schon: ${RESULT_LABEL[inRound.result]}${inRound.weeks != null ? `, ${fmtDuration(inRound.weeks, inRound.duration_unit)}` : ''} — wird korrigiert`
                     : previous
-                      ? `zuletzt ${fmtDate(previous.check_date)}: ${RESULT_LABEL[previous.result]}${previous.method ? ` (${METHOD_LABEL[previous.method]})` : ''}`
+                      ? `zuletzt ${fmtDate(previous.check_date)}: ${RESULT_LABEL[previous.result]}${previous.weeks != null ? `, ${fmtDuration(previous.weeks, previous.duration_unit)}` : ''}${previous.method ? ` (${METHOD_LABEL[previous.method]})` : ''}`
                       : 'noch keine Untersuchung'}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1" aria-label="Trächtigkeitsdauer in Wochen (optional)">
-                <span className="shrink-0 text-xs font-medium text-gray-800">Wochen</span>
-                {WEEKS.map((w) => (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1" aria-label={`Trächtigkeitsdauer in ${UNIT_LABEL[round.unit]} (optional)`}>
+                <span className="shrink-0 text-xs font-medium text-gray-800">{UNIT_LABEL[round.unit]}</span>
+                {DURATION_CHIPS[round.unit].map((w) => (
                   <button key={w} type="button" className={chip(weeks === String(w))} onClick={() => setWeeks(weeks === String(w) ? '' : String(w))}>
                     {w}
                   </button>
                 ))}
-                <NumberInput className="min-h-11 w-16 shrink-0 rounded-lg border-2 border-gray-400 px-2 text-base" value={weeks} onChange={(e) => setWeeks(e.target.value)} placeholder="…" aria-label="Wochen" />
+                <NumberInput className="min-h-11 w-16 shrink-0 rounded-lg border-2 border-gray-400 px-2 text-base" value={weeks} onChange={(e) => setWeeks(e.target.value)} placeholder="…" aria-label={UNIT_LABEL[round.unit]} />
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {RESULTS.map((r) => (
@@ -505,8 +523,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
               <li key={c.id} className="space-y-2 bg-brand-50 p-3">
                 <div className="font-semibold">{label(a)}</div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-700">Wochen</span>
-                  <NumberInput className="min-h-11 w-20 rounded-lg border border-gray-300 px-2 text-base" value={editWeeks} onChange={(e) => setEditWeeks(e.target.value)} aria-label="Wochen" />
+                  <span className="text-sm text-gray-700">{UNIT_LABEL[c.duration_unit ?? 'wochen']}</span>
+                  <NumberInput className="min-h-11 w-20 rounded-lg border border-gray-300 px-2 text-base" value={editWeeks} onChange={(e) => setEditWeeks(e.target.value)} aria-label={UNIT_LABEL[c.duration_unit ?? 'wochen']} />
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {RESULTS.map((r) => (
@@ -537,7 +555,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
               <button type="button" className="flex min-h-12 w-full items-center gap-2 px-3 py-1 text-left active:bg-gray-50" onClick={() => startEdit(c)}>
                 <span className="w-11 shrink-0 text-xs tabular-nums text-gray-600">{hhmm(c.recorded_at)}</span>
                 <span className="min-w-0 flex-1 truncate">{label(a)}</span>
-                {c.weeks != null && <span className="text-sm tabular-nums text-gray-700">{c.weeks} Wo.</span>}
+                {c.weeks != null && <span className="text-sm tabular-nums text-gray-700">{fmtDuration(c.weeks, c.duration_unit)}</span>}
                 {c.source === 'reader' && <span aria-label="vom Lesegerät">📡</span>}
                 <span className={`rounded-full px-2 py-0.5 text-sm font-medium ${BADGE[c.result]}`}>{RESULT_LABEL[c.result]}</span>
               </button>
@@ -547,6 +565,16 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         {ofRound.length === 0 && <li className="px-3 py-3 text-sm text-gray-700">In diesem Durchgang noch nichts erfasst.</li>}
       </ul>
       {ofRound.length > 0 && <p className="px-1 text-xs text-gray-600">Eintrag antippen zum Ändern oder Löschen.</p>}
+      {rounds.length > 1 && <CompareLink />}
     </div>
+  )
+}
+
+function CompareLink() {
+  return (
+    <Link to="vergleich" relative="path" className="flex min-h-12 items-center justify-between rounded-xl border-2 border-gray-300 bg-white px-3 font-medium text-brand-800 active:bg-gray-50">
+      Frühere Beurteilungen vergleichen
+      <span aria-hidden>›</span>
+    </Link>
   )
 }
