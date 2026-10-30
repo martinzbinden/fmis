@@ -337,7 +337,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                   <div className="text-xs text-gray-600">
                     Vater {b.sire_name ?? pedigreeByKey.get(b.sire_key ?? '')?.name ?? b.sire_ear_tag ?? 'unbekannt'} ·{' '}
                     {b.offspring
-                      .map((o) => `${o.sex === 'w' ? '♀' : o.sex === 'm' ? '♂' : '?'}${o.stillborn || o.died_24h ? '†' : ''}${o.ear_tag ? ` ${shortEarTag(o.ear_tag)}` : ''}`)
+                      .map((o) => `${o.sex === 'w' ? '♀' : o.sex === 'm' ? '♂' : '?'}${o.stillborn || o.died_24h || o.died_on ? '†' : ''}${o.ear_tag ? ` ${shortEarTag(o.ear_tag)}` : o.stillborn || o.died_24h || o.died_on ? '' : ' 🏷️ offen'}`)
                       .join(', ')}
                   </div>
                 </li>

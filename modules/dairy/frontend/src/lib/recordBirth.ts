@@ -10,6 +10,8 @@ export interface OffspringInput {
   sex: 'w' | 'm' | null
   fate: OffspringFate
   birth_weight_kg: number | null
+  /** lebend, Ohrmarke wird später nachgetragen (Pendenz, pages/EarTagPending.tsx) */
+  tag_later?: boolean
 }
 
 export interface BirthInput {
@@ -37,7 +39,7 @@ export function validateBirth(input: BirthInput, existing: Animal[]): string | n
   const existingByKey = new Map(existing.map((a) => [animalKey(a.ear_tag), a]))
   for (const [i, o] of input.offspring.entries()) {
     const key = animalKey(o.ear_tag)
-    if (o.fate === 'lebend' && !key) return `Nachkomme ${i + 1}: Ohrmarke fehlt.`
+    if (o.fate === 'lebend' && !key && !o.tag_later) return `Nachkomme ${i + 1}: Ohrmarke fehlt – eintragen oder «später» wählen.`
     if (!key) continue
     if (keys.has(key)) return `Ohrmarke ${o.ear_tag} doppelt erfasst.`
     keys.add(key)
@@ -71,24 +73,7 @@ export async function recordBirth(pg: PGlite, input: BirthInput): Promise<{ birt
     notes: input.notes,
   })
 
-  const { rows: pedRows } = await pg.query<{ animal_key: string }>('select animal_key from pedigree where deleted_at is null')
-  const known = new Set(pedRows.map((r) => r.animal_key))
-  const ensurePedigree = async (key: string, row: Record<string, unknown>) => {
-    if (known.has(key)) return
-    known.add(key)
-    await upsertRow(pg, 'pedigree', {
-      id: crypto.randomUUID(),
-      animal_key: key,
-      sire_key: null,
-      dam_key: null,
-      breed_code: null,
-      name: null,
-      birth_date: null,
-      sex: null,
-      source: 'manual',
-      ...row,
-    })
-  }
+  const ensurePedigree = await pedigreeEnsurer(pg)
   await ensurePedigree(damKey, {
     ear_tag: input.dam.ear_tag,
     name: input.dam.name,
@@ -114,31 +99,65 @@ export async function recordBirth(pg: PGlite, input: BirthInput): Promise<{ birt
       died_24h: o.fate === 'verendet',
       birth_weight_kg: o.birth_weight_kg,
       import_key: `${birthKey}|${key ?? `#${i}`}`,
+      died_on: null,
     })
     if (o.fate !== 'lebend' || !earTag || !key) continue
-    const animalId = crypto.randomUUID()
-    newAnimalIds.push(animalId)
-    await upsertRow(pg, 'animals', {
-      id: animalId,
-      ear_tag: earTag,
-      name: null,
-      breed_code: input.dam.breed_code,
-      birth_date: input.birth_date,
-      sex: o.sex,
-      status: 'aktiv',
-      entry_date: input.birth_date,
-      exit_date: null,
-      notes: null,
-      lauf_nr: null,
-    })
-    await ensurePedigree(key, {
-      ear_tag: earTag,
-      sire_key: sireKey,
-      dam_key: damKey,
-      breed_code: input.dam.breed_code,
-      birth_date: input.birth_date,
-      sex: o.sex,
-    })
+    newAnimalIds.push(await addOffspringAnimal(pg, ensurePedigree, { earTag, key, sex: o.sex, birth_date: input.birth_date, dam: input.dam, sireKey }))
   }
   return { birthId, newAnimalIds }
+}
+
+type EnsurePedigree = (key: string, row: Record<string, unknown>) => Promise<void>
+
+/** Legt Stammbaum-Einträge nur an, wenn es den Schlüssel noch nicht gibt. */
+export async function pedigreeEnsurer(pg: PGlite): Promise<EnsurePedigree> {
+  const { rows } = await pg.query<{ animal_key: string }>('select animal_key from pedigree where deleted_at is null')
+  const known = new Set(rows.map((r) => r.animal_key))
+  return async (key, row) => {
+    if (known.has(key)) return
+    known.add(key)
+    await upsertRow(pg, 'pedigree', {
+      id: crypto.randomUUID(),
+      animal_key: key,
+      sire_key: null,
+      dam_key: null,
+      breed_code: null,
+      name: null,
+      birth_date: null,
+      sex: null,
+      source: 'manual',
+      ...row,
+    })
+  }
+}
+
+/** Lebender Nachkomme mit Ohrmarke → Tier im Bestand und im Stammbaum. */
+export async function addOffspringAnimal(
+  pg: PGlite,
+  ensurePedigree: EnsurePedigree,
+  o: { earTag: string; key: string; sex: 'w' | 'm' | null; birth_date: string; dam: Pick<Animal, 'ear_tag' | 'breed_code'>; sireKey: string | null },
+): Promise<string> {
+  const animalId = crypto.randomUUID()
+  await upsertRow(pg, 'animals', {
+    id: animalId,
+    ear_tag: o.earTag,
+    name: null,
+    breed_code: o.dam.breed_code,
+    birth_date: o.birth_date,
+    sex: o.sex,
+    status: 'aktiv',
+    entry_date: o.birth_date,
+    exit_date: null,
+    notes: null,
+    lauf_nr: null,
+  })
+  await ensurePedigree(o.key, {
+    ear_tag: o.earTag,
+    sire_key: o.sireKey,
+    dam_key: animalKey(o.dam.ear_tag) ?? o.dam.ear_tag,
+    breed_code: o.dam.breed_code,
+    birth_date: o.birth_date,
+    sex: o.sex,
+  })
+  return animalId
 }

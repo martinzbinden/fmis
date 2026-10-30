@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { compactEarTag, validateBirth, type BirthInput } from './recordBirth'
+import { checkEarTag, daysSince } from './earTagPending'
 import { journalSummary, withdrawalEnd } from './journal'
 import { cullingReasons, DEFAULT_THRESHOLDS } from './culling'
 import { computeFertility } from './fertility'
@@ -23,7 +24,10 @@ const birth = (offspring: BirthInput['offspring']): BirthInput => ({
 
 describe('validateBirth', () => {
   it('verlangt bei lebenden Lämmern eine Ohrmarke', () => {
-    expect(validateBirth(birth([{ ear_tag: '', sex: 'w', fate: 'lebend', birth_weight_kg: null }]), [])).toBe('Nachkomme 1: Ohrmarke fehlt.')
+    expect(validateBirth(birth([{ ear_tag: '', sex: 'w', fate: 'lebend', birth_weight_kg: null }]), [])).toBe('Nachkomme 1: Ohrmarke fehlt – eintragen oder «später» wählen.')
+  })
+  it('erlaubt lebende Lämmer ohne Ohrmarke, wenn sie später nachgetragen wird', () => {
+    expect(validateBirth(birth([{ ear_tag: '', sex: 'w', fate: 'lebend', birth_weight_kg: null, tag_later: true }]), [])).toBeNull()
   })
   it('erlaubt tote Lämmer ohne Ohrmarke', () => {
     expect(validateBirth(birth([{ ear_tag: '', sex: null, fate: 'totgeboren', birth_weight_kg: null }]), [])).toBeNull()
@@ -74,5 +78,23 @@ describe('Journal', () => {
       DEFAULT_THRESHOLDS.sheep,
     )
     expect(reasons.map((r) => r.text)).toEqual(['2 Krankheits-/Behandlungstage in 12 Monaten (Mastitis, Moderhinke)'])
+  })
+})
+
+describe('Ohrmarke nachtragen', () => {
+  const p = { birth_date: '2027-01-20' }
+  it('verknüpft mit einem Tier gleichen Geburtsdatums (z.B. aus dem TVD-Import)', () => {
+    const tvd = animal('CH113212345678', { birth_date: '2027-01-20' })
+    expect(checkEarTag(p, 'CH 2123.4567', [tvd])).toEqual({ existing: tvd })
+  })
+  it('lehnt eine Ohrmarke eines anderen Tiers ab', () => {
+    const other = animal('CH113212345678', { birth_date: '2024-02-01', lauf_nr: '401' })
+    expect(checkEarTag(p, 'CH21234567', [other])).toEqual({ error: 'Ohrmarke CH21234567 gibt es schon (401).' })
+  })
+  it('neue Ohrmarke legt ein neues Tier an', () => {
+    expect(checkEarTag(p, 'CH21234567', [])).toEqual({ existing: null })
+  })
+  it('zählt die Tage seit der Geburt', () => {
+    expect(daysSince('2027-01-20', '2027-02-19')).toBe(30)
   })
 })

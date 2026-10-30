@@ -8,12 +8,13 @@ import AnimalPicker from '../components/AnimalPicker'
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
 import { recordBirth, validateBirth, type OffspringFate, type OffspringInput } from '../lib/recordBirth'
+import { loadPendingOffspring } from '../lib/earTagPending'
 import { isoDate, localTodayIso, num } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import type { Animal } from '../types'
 
 async function loadData(pg: PGlite) {
-  const [animals, sires, lastMatings, births] = await Promise.all([
+  const [animals, sires, lastMatings, births, pending] = await Promise.all([
     pg.query<Animal>('select * from animals where deleted_at is null order by lauf_nr nulls last, ear_tag'),
     loadSireOptions(pg),
     pg.query<{ animal_id: string; service_date: unknown; sire_key: string | null; sire_ear_tag: string | null; sire_name: string | null }>(
@@ -23,16 +24,18 @@ async function loadData(pg: PGlite) {
     pg.query<{ dam_id: string; birth_date: unknown; parity: unknown }>(
       'select dam_id, birth_date, parity from births where deleted_at is null',
     ),
+    loadPendingOffspring(pg),
   ])
   return {
     animals: animals.rows,
     sires,
     lastMating: new Map(lastMatings.rows.map((m) => [m.animal_id, { ...m, service_date: isoDate(m.service_date)! }])),
     births: births.rows.map((b) => ({ dam_id: b.dam_id, birth_date: isoDate(b.birth_date)!, parity: num(b.parity) })),
+    pendingCount: pending.length,
   }
 }
 
-const EMPTY_OFFSPRING: OffspringInput = { ear_tag: '', sex: null, fate: 'lebend', birth_weight_kg: null }
+const EMPTY_OFFSPRING: OffspringInput = { ear_tag: '', sex: null, fate: 'lebend', birth_weight_kg: null, tag_later: false }
 
 const FATES: { key: OffspringFate; label: string }[] = [
   { key: 'lebend', label: 'lebend' },
@@ -53,7 +56,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   const [offspring, setOffspring] = useState<OffspringInput[]>([{ ...EMPTY_OFFSPRING }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<{ damId: string; count: number } | null>(null)
+  const [done, setDone] = useState<{ damId: string; count: number; later: number } | null>(null)
 
   const females = useMemo(() => (data?.animals ?? []).filter((a) => a.status === 'aktiv' && a.sex !== 'm'), [data])
   const dam = females.find((a) => a.id === damIds[0])
@@ -98,7 +101,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
     setError(null)
     try {
       const result = await inTransaction(db, (tx) => recordBirth(tx, input))
-      setDone({ damId: dam.id, count: result.newAnimalIds.length })
+      setDone({ damId: dam.id, count: result.newAnimalIds.length, later: offspring.filter((o) => o.fate === 'lebend' && o.tag_later && !o.ear_tag.trim()).length })
       setDamIds([])
       setOffspring([{ ...EMPTY_OFFSPRING }])
       setNotes('')
@@ -117,9 +120,23 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
     <div className="mx-auto max-w-lg space-y-4 p-4 pb-24">
       <h1 className="text-xl font-bold text-gray-800">{word.event} erfassen</h1>
 
+      {(data?.pendingCount ?? 0) > 0 && (
+        <Link to="../ohrmarken" relative="path" className="flex min-h-11 items-center justify-between gap-2 rounded-lg border-2 border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span>
+            🏷️ <b>{data!.pendingCount}</b> {data!.pendingCount === 1 ? word.young : word.youngPl} ohne Ohrmarke
+          </span>
+          <span className="font-semibold">nachtragen ›</span>
+        </Link>
+      )}
+
       {done && (
         <div className="rounded-lg bg-green-50 p-3 text-sm text-green-900">
           Gespeichert{done.count > 0 ? ` — ${done.count} ${done.count === 1 ? word.young : word.youngPl} im Bestand angelegt` : ''}.{' '}
+          {done.later > 0 && (
+            <>
+              {done.later} {done.later === 1 ? word.young : word.youngPl} ohne Ohrmarke → Pendenz.{' '}
+            </>
+          )}
           <Link to={`../kuehe/${done.damId}`} relative="path" className="font-medium text-brand-700">
             Zur {word.mother}
           </Link>
@@ -203,14 +220,28 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                 </button>
               ))}
             </div>
+            {o.fate === 'lebend' && (
+              <button
+                type="button"
+                aria-pressed={!!o.tag_later}
+                onClick={() => patch(i, { tag_later: !o.tag_later, ear_tag: '' })}
+                className={`w-full rounded-lg py-2 text-sm ${o.tag_later ? 'bg-amber-500 font-semibold text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                🏷️ Ohrmarke später nachtragen
+              </button>
+            )}
             <div className="grid grid-cols-3 gap-2">
-              <input
-                value={o.ear_tag}
-                onChange={(e) => patch(i, { ear_tag: e.target.value })}
-                placeholder={o.fate === 'lebend' ? 'Ohrmarke (Pflicht)' : 'Ohrmarke (falls markiert)'}
-                autoCapitalize="characters"
-                className={`col-span-2 ${input}`}
-              />
+              {o.fate === 'lebend' && o.tag_later ? (
+                <p className="col-span-2 content-center rounded-lg bg-amber-50 px-3 text-sm text-amber-900">Ohrmarke offen (Pendenz)</p>
+              ) : (
+                <input
+                  value={o.ear_tag}
+                  onChange={(e) => patch(i, { ear_tag: e.target.value })}
+                  placeholder={o.fate === 'lebend' ? 'Ohrmarke' : 'Ohrmarke (falls markiert)'}
+                  autoCapitalize="characters"
+                  className={`col-span-2 ${input}`}
+                />
+              )}
               <input
                 value={o.birth_weight_kg ?? ''}
                 onChange={(e) => patch(i, { birth_weight_kg: e.target.value ? Number(e.target.value.replace(',', '.')) : null })}

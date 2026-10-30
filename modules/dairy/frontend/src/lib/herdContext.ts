@@ -29,6 +29,8 @@ export interface OffspringRow {
   sex: 'w' | 'm' | null
   stillborn: boolean
   died_24h: boolean
+  /** vor dem Markieren verendet (schema/0018) */
+  died_on: string | null
   birth_weight_kg: number | null
 }
 
@@ -120,6 +122,7 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
         sex: (o.sex as 'w' | 'm') ?? null,
         stillborn: Boolean(o.stillborn),
         died_24h: Boolean(o.died_24h),
+        died_on: isoDate(o.died_on),
         birth_weight_kg: num(o.birth_weight_kg),
       })),
     })),
