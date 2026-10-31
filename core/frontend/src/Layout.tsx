@@ -32,14 +32,16 @@ export default function Layout({
 
   return (
     <div data-module={moduleKey} className="flex min-h-screen flex-col bg-gray-50">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-3 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))]">
-        <div className="flex items-center gap-2">
-          <NavLink to="/dashboard" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" title="Zur Übersicht">
+      {/* Am Handy (375 px) muss alles in eine Zeile passen: Titel kürzt sich, Abmelden
+          gibt es dort auf der Übersicht (🏠) statt hier. */}
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-1 border-b bg-white px-2 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))] sm:px-3">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+          <NavLink to="/dashboard" className="grid min-h-12 min-w-12 shrink-0 place-items-center rounded-full text-xl active:bg-gray-100" title="Zur Übersicht" aria-label="Zur Übersicht">
             🏠
           </NavLink>
-          <span className="text-lg font-bold text-brand-800">{title}</span>
+          <span className="truncate text-base font-bold text-brand-800 sm:text-lg">{title}</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center sm:gap-1">
           <SyncStatusDot status={status} error={error} pending={pending} onSync={() => void sync.syncNow()} />
           {canImport && (
             <NavLink to="/import" className="hidden min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 sm:grid" title="Daten importieren">
@@ -61,10 +63,9 @@ export default function Layout({
             }}
             title="Abmelden"
             aria-label="Abmelden"
-            className="grid min-h-12 min-w-12 place-items-center rounded-full text-xs text-gray-600 active:bg-gray-100 sm:px-3"
+            className="hidden min-h-12 min-w-12 place-items-center rounded-full px-3 text-xs text-gray-600 active:bg-gray-100 sm:grid"
           >
-            <span aria-hidden className="text-xl sm:hidden">🚪</span>
-            <span className="hidden sm:inline">Abmelden</span>
+            Abmelden
           </button>
         </div>
       </header>
@@ -84,13 +85,13 @@ export default function Layout({
               to={item.to}
               end={item.to === ''}
               className={({ isActive }) =>
-                `flex flex-col items-center justify-center gap-0.5 py-2 text-xs ${
+                `flex min-w-0 flex-col items-center justify-center gap-0.5 py-2 text-[11px] sm:text-xs ${
                   isActive ? 'text-brand-700 font-semibold' : 'text-gray-500'
                 }`
               }
             >
               <span className="text-xl leading-none">{item.icon}</span>
-              {item.label}
+              <span className="max-w-full truncate px-0.5">{item.label}</span>
             </NavLink>
           ))}
         </nav>
