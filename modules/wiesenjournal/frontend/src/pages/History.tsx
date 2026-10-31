@@ -1,4 +1,8 @@
 import { useMemo, useState } from 'react'
+import HistoryUndoButton from '@fmis/core/HistoryUndoButton'
+import { TABLE_LABELS } from '@fmis/core/undo'
+import { SessionUndoList } from '@fmis/core/UndoBar'
+import { restoreRowState } from '../db/write'
 import { useServerHistory } from '@fmis/core/historyApi'
 import { fmtDateTime } from '../lib/format'
 import type { DataHistory, HistoryAction } from '../types'
@@ -82,6 +86,7 @@ export default function History() {
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
       <h1 className="text-xl font-bold text-gray-800">Verlauf</h1>
+      <SessionUndoList source={'wiesenjournal'} title="In dieser Sitzung" />
 
       <div className="flex gap-2">
         <select
@@ -92,7 +97,7 @@ export default function History() {
           <option value="">Alle Bereiche</option>
           {availableTables.map((t) => (
             <option key={t} value={t}>
-              {TABLE_LABEL[t] ?? t}
+              {TABLE_LABEL[t] ?? TABLE_LABELS[t] ?? t}
             </option>
           ))}
         </select>
@@ -126,15 +131,18 @@ export default function History() {
           <li key={entry.id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-gray-500">
-                {TABLE_LABEL[entry.table_name] ?? entry.table_name}
+                {TABLE_LABEL[entry.table_name] ?? TABLE_LABELS[entry.table_name] ?? entry.table_name}
               </span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ACTION_COLOR[entry.action]}`}>
                 {ACTION_LABEL[entry.action]}
               </span>
             </div>
             <div className="mt-1 font-semibold text-gray-800">{label}</div>
-            <div className="mt-1 text-xs text-gray-500">
-              {fmtDateTime(entry.changed_at)} · {entry.changed_by ?? 'unbekannt'}
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+              <span>
+                {fmtDateTime(entry.changed_at)} · {entry.changed_by ?? 'unbekannt'}
+              </span>
+              <HistoryUndoButton moduleKey={'wiesenjournal'} entry={entry} restore={restoreRowState} />
             </div>
           </li>
         ))}

@@ -1,6 +1,9 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { SYNC_TABLES, type SyncTable } from './tables'
 import { getCurrentUserEmail } from '@fmis/core/auth'
+import { schemaOf } from '@fmis/core/db'
+import { recordUndo, type UndoChange, type UndoRestore } from '@fmis/core/undo'
+import { inTransaction, onTransactionCommit, undoBufferOf } from './transaction'
 
 // Simpler Pub/Sub, damit Seiten nach lokalen Schreibungen oder einem Pull neu
 // laden können, ohne auf pglite Live-Queries angewiesen zu sein.
@@ -72,12 +75,6 @@ type HistoryAction = 'insert' | 'update' | 'delete'
 
 /** PGlite oder eine laufende Transaktion — beide haben query(). */
 type Queryable = Pick<PGlite, 'query'>
-/** Aufrufer, die schon eine Transaktion offen haben (pg.transaction(tx => upsertRow(tx, …))),
- * reichen deren tx herein — die hat kein transaction() und schreibt direkt mit. */
-function inTx<R>(pg: PGlite, fn: (q: Queryable) => Promise<R>): Promise<R> {
-  return typeof (pg as Partial<PGlite>).transaction === 'function' ? pg.transaction(fn) : fn(pg)
-}
-
 type RowOf<T extends SyncTable> = Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string }
 
 /**
@@ -121,7 +118,7 @@ async function recordHistory(
  */
 export async function upsertRow<T extends SyncTable>(pg: PGlite, table: T, row: RowOf<T>, options?: { action?: HistoryAction }): Promise<void> {
   await ready(pg)
-  await inTx(pg, (tx) => writeRow(tx, table, row, options?.action))
+  await inTransaction(pg, (tx) => writeRow(tx, table, row, options?.action))
   notifyDataChanged()
 }
 
@@ -130,21 +127,20 @@ export async function upsertRow<T extends SyncTable>(pg: PGlite, table: T, row: 
 export async function upsertRows<T extends SyncTable>(pg: PGlite, table: T, rows: RowOf<T>[]): Promise<void> {
   if (rows.length === 0) return
   await ready(pg)
-  await inTx(pg, async (tx) => {
+  await inTransaction(pg, async (tx) => {
     for (const row of rows) await writeRow(tx, table, row)
   })
   notifyDataChanged()
 }
 
-async function writeRow<T extends SyncTable>(pg: Queryable, table: T, row: RowOf<T>, forcedAction?: HistoryAction): Promise<void> {
+async function writeRow<T extends SyncTable>(pg: PGlite, table: T, row: RowOf<T>, forcedAction?: HistoryAction): Promise<void> {
   const columns = SYNC_TABLES[table] as readonly string[]
   const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
 
-  let action = forcedAction
-  if (!action) {
-    const { rows: existing } = await pg.query(`select 1 from "${table}" where id = $1`, [row.id])
-    action = existing.length > 0 ? 'update' : 'insert'
-  }
+  // Stand davor: für den Verlauf (insert/update) und für «Rückgängig»
+  const { rows: existing } = await pg.query<Record<string, unknown>>(`select * from "${table}" where id = $1`, [row.id])
+  const before = existing[0] ?? null
+  const action = forcedAction ?? (before ? 'update' : 'insert')
 
   const colList = columns.map((c) => `"${c}"`).join(', ')
   const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
@@ -170,8 +166,31 @@ async function writeRow<T extends SyncTable>(pg: Queryable, table: T, row: RowOf
   // wäre (kommt im normalen Betrieb nie vor, recordHistory() umgeht upsertRow).
   if (table !== 'data_history') {
     await recordHistory(pg, table, row.id, action, stamped)
+    undoBufferOf(pg)?.push({ table, id: row.id, kind: action, before })
   }
 }
+
+/** Stellt die Stände vor einer Aktion wieder her (core/undo.ts): war die Zeile
+ * neu, wird sie gelöscht, sonst kommt der alte Stand zurück. */
+function restoreFor(root: PGlite): UndoRestore {
+  return async (changes: UndoChange[]) => {
+    await ready(root)
+    await inTransaction(root, async (tx) => {
+      for (const c of changes) {
+        const table = c.table as SyncTable
+        if (c.before) {
+          await writeRow(tx, table, { ...c.before, id: c.id } as never)
+          continue
+        }
+        const { rows } = await tx.query<Record<string, unknown>>(`select * from "${table}" where id = $1`, [c.id])
+        if (rows[0] && !rows[0].deleted_at) await writeRow(tx, table, { ...rows[0], id: c.id, deleted_at: new Date().toISOString() } as never, 'delete')
+      }
+    })
+    notifyDataChanged()
+  }
+}
+
+onTransactionCommit((root, changes) => recordUndo(schemaOf(root) ?? 'dairy', restoreFor(root), changes))
 
 /** Soft-Delete: setzt deleted_at und stösst die Zeile erneut in die Outbox. */
 export async function softDeleteRow(pg: PGlite, table: SyncTable, id: string): Promise<void> {
@@ -183,7 +202,7 @@ export async function softDeleteRows(pg: PGlite, table: SyncTable, ids: string[]
   if (ids.length === 0) return
   await ready(pg)
   let changed = false
-  await inTx(pg, async (tx) => {
+  await inTransaction(pg, async (tx) => {
     for (const id of ids) {
       const { rows } = await tx.query<Record<string, unknown>>(`select * from "${table}" where id = $1`, [id])
       if (rows.length === 0) continue
@@ -192,4 +211,21 @@ export async function softDeleteRows(pg: PGlite, table: SyncTable, ids: string[]
     }
   })
   if (changed) notifyDataChanged()
+}
+
+
+/** Admins im Protokoll (core/HistoryUndoButton): eine Zeile auf einen früheren
+ * Stand setzen; state = null löscht sie. Über den normalen Schreibweg, also mit
+ * Verlauf und Sync — und in dieser Sitzung wieder rückgängig zu machen. */
+export async function restoreRowState(pg: PGlite, table: string, id: string, state: Record<string, unknown> | null): Promise<void> {
+  if (!(table in SYNC_TABLES) || table === 'data_history') throw new Error(`Bereich ${table} lässt sich nicht zurücknehmen.`)
+  const t = table as SyncTable
+  await ready(pg)
+  await inTransaction(pg, async (tx) => {
+    const { rows } = await tx.query<Record<string, unknown>>(`select * from "${t}" where id = $1`, [id])
+    const current = rows[0] ?? null
+    if (state) await writeRow(tx, t, { ...(current ?? {}), ...state, id } as never)
+    else if (current && !current.deleted_at) await writeRow(tx, t, { ...current, id, deleted_at: new Date().toISOString() } as never, 'delete')
+  })
+  notifyDataChanged()
 }

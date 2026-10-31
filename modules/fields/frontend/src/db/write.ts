@@ -2,6 +2,8 @@ import type { PGlite } from '@electric-sql/pglite'
 import { getDb } from './pglite'
 import { SYNC_TABLES, type SyncTable } from './tables'
 import { getCurrentUserEmail } from '@fmis/core/auth'
+import { schemaOf } from '@fmis/core/db'
+import { recordUndo, type UndoChange } from '@fmis/core/undo'
 
 // Simpler Pub/Sub, damit Seiten nach lokalen Schreibungen oder einem Pull neu
 // laden können, ohne auf pglite Live-Queries angewiesen zu sein.
@@ -107,7 +109,8 @@ export async function upsertRow<T extends SyncTable>(
 ): Promise<void> {
   const pg = options?.pg ?? (await ready())
   // EINE Transaktion: sonst schreibt pglite jede der fünf Queries einzeln nach IndexedDB
-  await pg.transaction((tx) => writeRow(tx, table, row, options?.action))
+  const change = await pg.transaction((tx) => writeRow(tx, table, row, options?.action))
+  reportUndo(pg, [change])
   notifyDataChanged()
 }
 
@@ -116,15 +119,14 @@ async function writeRow<T extends SyncTable>(
   table: T,
   row: Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string },
   forcedAction?: HistoryAction,
-): Promise<void> {
+): Promise<UndoChange | null> {
   const columns = SYNC_TABLES[table] as readonly string[]
   const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
 
-  let action = forcedAction
-  if (!action) {
-    const { rows: existing } = await pg.query(`select 1 from "${table}" where id = $1`, [row.id])
-    action = existing.length > 0 ? 'update' : 'insert'
-  }
+  // Stand davor: für den Verlauf (insert/update) und für «Rückgängig»
+  const { rows: existing } = await pg.query<Record<string, unknown>>(`select * from "${table}" where id = $1`, [row.id])
+  const before = existing[0] ?? null
+  const action = forcedAction ?? (before ? 'update' : 'insert')
 
   const colList = columns.map((c) => `"${c}"`).join(', ')
   const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
@@ -148,9 +150,33 @@ async function writeRow<T extends SyncTable>(
 
   // Guard gegen versehentliche Rekursion, falls table_name mal 'data_history'
   // wäre (kommt im normalen Betrieb nie vor, recordHistory() umgeht upsertRow).
-  if (table !== 'data_history') {
-    await recordHistory(pg, table, row.id, action, stamped)
-  }
+  if (table === 'data_history') return null
+  await recordHistory(pg, table, row.id, action, stamped)
+  return { table, id: row.id, kind: action, before }
+}
+
+/** Nach dem Commit an «Rückgängig» melden (core/undo.ts) — nur für die Datenbank
+ * des Geräts, nicht für flüchtige Import-Sitzungen. */
+function reportUndo(pg: PGlite, changes: (UndoChange | null)[]): void {
+  const source = schemaOf(pg)
+  const done = changes.filter((c): c is UndoChange => c != null)
+  if (source && done.length > 0) recordUndo(source, (cs) => restoreChanges(pg, cs), done)
+}
+
+/** War die Zeile neu, wird sie gelöscht, sonst kommt der alte Stand zurück. */
+async function restoreChanges(pg: PGlite, changes: UndoChange[]): Promise<void> {
+  await pg.transaction(async (tx) => {
+    for (const c of changes) {
+      const table = c.table as SyncTable
+      if (c.before) {
+        await writeRow(tx, table, { ...c.before, id: c.id } as never)
+        continue
+      }
+      const { rows } = await tx.query<Record<string, unknown>>(`select * from "${table}" where id = $1`, [c.id])
+      if (rows[0] && !rows[0].deleted_at) await writeRow(tx, table, { ...rows[0], id: c.id, deleted_at: new Date().toISOString() } as never, 'delete')
+    }
+  })
+  notifyDataChanged()
 }
 
 /** Soft-Delete: setzt deleted_at und stösst die Zeile via upsertRow erneut in die Outbox. */
@@ -166,4 +192,23 @@ export async function softDeleteRow(table: SyncTable, id: string): Promise<void>
     { ...rows[0], id, deleted_at: new Date().toISOString() } as never,
     { action: 'delete' },
   )
+}
+
+
+/** Admins im Protokoll (core/HistoryUndoButton): eine Zeile auf einen früheren
+ * Stand setzen; state = null löscht sie. Über den normalen Schreibweg, also mit
+ * Verlauf und Sync — und in dieser Sitzung wieder rückgängig zu machen. */
+export async function restoreRowState(table: string, id: string, state: Record<string, unknown> | null): Promise<void> {
+  if (!(table in SYNC_TABLES) || table === 'data_history') throw new Error(`Bereich ${table} lässt sich nicht zurücknehmen.`)
+  const t = table as SyncTable
+  const pg = await ready()
+  const change = await pg.transaction(async (tx) => {
+    const { rows } = await tx.query<Record<string, unknown>>(`select * from "${t}" where id = $1`, [id])
+    const current = rows[0] ?? null
+    if (state) return writeRow(tx, t, { ...(current ?? {}), ...state, id } as never)
+    if (current && !current.deleted_at) return writeRow(tx, t, { ...current, id, deleted_at: new Date().toISOString() } as never, 'delete')
+    return null
+  })
+  reportUndo(pg, [change])
+  notifyDataChanged()
 }

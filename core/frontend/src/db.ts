@@ -28,6 +28,13 @@ function getSharedDb(): Promise<PGlite> {
 }
 
 const scopedByKey = new Map<string, PGlite>()
+const schemaByClient = new WeakMap<object, string>()
+
+/** Schema (= Modul-Instanz, z.B. "dairy_schafe") eines Clients aus getModuleDb —
+ * für «Rückgängig» (core/undo.ts), damit Schritte ihrem Modul zugeordnet sind. */
+export function schemaOf(pg: object): string | undefined {
+  return schemaByClient.get(pg)
+}
 
 /**
  * Isolierter "Schema-Client" für EIN Modul (bzw. eine Modul-Instanz wie
@@ -78,6 +85,7 @@ function scopeToSchema(pg: PGlite, schema: string): PGlite {
 
   const typed = scoped as unknown as PGlite
   scopedByKey.set(schema, typed)
+  schemaByClient.set(typed, schema)
   return typed
 }
 

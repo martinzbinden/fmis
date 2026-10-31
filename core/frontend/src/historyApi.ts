@@ -26,11 +26,12 @@ export interface HistoryEntry {
  */
 export async function fetchHistory(
   moduleKey: string,
-  options: { limit?: number; before?: string } = {},
+  options: { limit?: number; before?: string; rowId?: string } = {},
 ): Promise<HistoryEntry[]> {
   const params = new URLSearchParams()
   if (options.limit) params.set('limit', String(options.limit))
   if (options.before) params.set('before', options.before)
+  if (options.rowId) params.set('row_id', options.rowId)
   const query = params.toString()
   const res = await fetch(`${API_URL}/${moduleKey}/sync/history${query ? `?${query}` : ''}`, {
     headers: { Authorization: `Bearer ${getToken()}` },

@@ -85,6 +85,7 @@ async def pull(since: str | None = None, user: CurrentUser = Depends(require_aut
 async def history(
     limit: int = 300,
     before: str | None = None,
+    row_id: str | None = None,
     user: CurrentUser = Depends(require_auth),
 ) -> HistoryResponse:
     """Der Änderungsverlauf, gelesen statt synchronisiert — siehe den Hinweis
@@ -98,13 +99,20 @@ async def history(
     col_list = ", ".join(f'"{c}"' for c in columns)
     capped = max(1, min(limit, 1000))
     sql = f'select {col_list} from "data_history"'
+    conditions: list[str] = []
     params: tuple = ()
     if before:
         # Weiterblättern über den Zeitstempel statt über OFFSET: der Verlauf
         # wächst vorne, ein OFFSET würde beim Nachladen Zeilen doppelt zeigen
         # oder überspringen.
-        sql += " where changed_at < %s"
-        params = (before,)
+        conditions.append("changed_at < %s")
+        params += (before,)
+    if row_id:
+        # Verlauf EINER Zeile — für «Rückgängig» im Protokoll (Stand davor)
+        conditions.append("row_id = %s")
+        params += (row_id,)
+    if conditions:
+        sql += " where " + " and ".join(conditions)
     sql += f" order by changed_at desc limit {capped}"
 
     async with pool.connection() as conn:

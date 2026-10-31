@@ -8,6 +8,7 @@ import NotificationBell from './NotificationBell'
 import { useSyncStatus } from './useSyncStatus'
 import type { ModuleDescriptor, NavItem } from './ModuleDescriptor'
 import { FOOTER_SLOT_ID } from './FooterBar'
+import UndoBar from './UndoBar'
 
 export default function Layout({
   children,
@@ -73,6 +74,8 @@ export default function Layout({
       <main className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom,0px))]">{children}</main>
 
       <div className="fixed bottom-0 left-0 right-0 z-20">
+        {/* «Gespeichert · Rückgängig» nach jeder Eingabe (core/undo.ts) */}
+        <UndoBar />
         {/* Platz für laufende Zwischenstände über dem Menü (core/FooterBar.tsx) */}
         <div id={FOOTER_SLOT_ID} />
         <nav
