@@ -16,7 +16,7 @@ function settingsKey(moduleKey: string) {
   return `${moduleKey}_lamb_selection`
 }
 
-function loadSettings(moduleKey: string): SelectionSettings {
+export function loadSettings(moduleKey: string): SelectionSettings {
   try {
     const raw = localStorage.getItem(settingsKey(moduleKey))
     if (raw) return { ...DEFAULT_SELECTION_SETTINGS, ...(JSON.parse(raw) as Partial<SelectionSettings>) }

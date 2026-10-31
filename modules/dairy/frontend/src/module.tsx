@@ -13,6 +13,7 @@ import Culling from './pages/Culling'
 import Erfassen from './pages/Erfassen'
 import BirthEntry from './pages/BirthEntry'
 import EarTagPending from './pages/EarTagPending'
+import SlaughterLambs from './pages/SlaughterLambs'
 import MatingEntry from './pages/MatingEntry'
 import PregnancyEntry from './pages/PregnancyEntry'
 import PregnancyCompare from './pages/PregnancyCompare'
@@ -59,6 +60,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'kuehe', element: <Animals moduleKey={key} /> },
       { path: 'kuehe/:id', element: <AnimalDetail moduleKey={key} /> },
       { path: 'ausmerzen', element: <Culling moduleKey={key} /> },
+      { path: 'ausmerzen/laemmer', element: <SlaughterLambs moduleKey={key} /> },
       { path: 'erfassen', element: <Erfassen moduleKey={key} /> },
       { path: 'geburt', element: <BirthEntry moduleKey={key} /> },
       { path: 'ohrmarken', element: <EarTagPending moduleKey={key} /> },

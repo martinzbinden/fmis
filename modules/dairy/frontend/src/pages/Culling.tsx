@@ -138,7 +138,12 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Ausmerzliste</h1>
-        <div className="flex gap-2 print:hidden">
+        <div className="flex flex-wrap gap-2 print:hidden">
+          {species === 'sheep' && (
+            <Link to="laemmer" className="rounded border border-brand-700 px-2 py-1 text-xs font-medium text-brand-700">
+              🐑 Lämmer zum Schlachttermin
+            </Link>
+          )}
           <button type="button" onClick={() => setShowSettings((v) => !v)} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
             ⚙️ Schwellen
           </button>
