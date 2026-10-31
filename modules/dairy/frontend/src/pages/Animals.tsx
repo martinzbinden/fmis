@@ -7,7 +7,7 @@ import { fmtDate } from '../lib/format'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
 import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { matchRead, readDigits, useTagReader } from '@fmis/core/tagReader'
-import TagReaderButton from '@fmis/core/TagReaderButton'
+import { TagReaderPanel, TagReaderToggle } from '@fmis/core/TagReaderButton'
 import { loadInbreeding } from '../lib/pedigreeData'
 
 async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
@@ -73,31 +73,24 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
     <div className={`mx-auto space-y-6 p-4 pb-24 ${view === 'list' ? 'max-w-5xl' : 'max-w-2xl'}`}>
       <h1 className="text-xl font-bold text-gray-800">Tiere</h1>
 
-      <Link to="/import" className="block rounded-lg bg-white p-4 text-sm shadow-sm active:bg-gray-50">
-        <span className="font-semibold text-brand-700">📥 Daten importieren</span>
-        <span className="block text-xs text-gray-500">
-          Herdebuch-Export, TVD-Tierbestand{moduleKey === 'dairy' ? '' : ', SMG-Leistungsausweise'} — auf der zentralen Upload-Seite, die
-          Dateien werden der richtigen Herde automatisch zugeordnet.
-        </span>
-      </Link>
-
-      <div className="grid grid-cols-2 gap-2">
-        <Link to="../tierinfo" relative="path" className="rounded-lg bg-white p-3 text-sm shadow-sm active:bg-gray-50">
+      <div className="flex gap-2">
+        <Link to="../tierinfo" relative="path" className="min-w-0 flex-1 rounded-lg bg-white p-3 text-sm shadow-sm active:bg-gray-50">
           <span className="font-semibold text-brand-700">🔎 Tier-Info</span>
           <span className="block text-xs text-gray-500">Nummer tippen oder lesen</span>
         </Link>
-        <Link to="../merklisten" relative="path" className="rounded-lg bg-white p-3 text-sm shadow-sm active:bg-gray-50">
+        <Link to="../merklisten" relative="path" className="min-w-0 flex-1 rounded-lg bg-white p-3 text-sm shadow-sm active:bg-gray-50">
           <span className="font-semibold text-brand-700">📋 Merklisten</span>
           <span className="block text-xs text-gray-500">z.B. Ausmerzen prüfen</span>
         </Link>
+        {allAnimals.length > 0 && <TagReaderToggle reader={reader} className="min-h-full" />}
       </div>
+      <TagReaderPanel reader={reader} hint="Lesung filtert die Liste" />
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && allAnimals.length === 0 && (
         <p className="text-center text-gray-500">Noch keine Tiere importiert.</p>
       )}
 
-      {allAnimals.length > 0 && <TagReaderButton reader={reader} hint="Lesung filtert die Liste" />}
       {allAnimals.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -166,6 +159,14 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
           </li>
         ))}
       </ul>
+
+      <Link to="/import" className="mt-6 block rounded-lg bg-white p-4 text-sm shadow-sm active:bg-gray-50">
+        <span className="font-semibold text-brand-700">📥 Daten importieren</span>
+        <span className="block text-xs text-gray-500">
+          Herdebuch-Export, TVD-Tierbestand{moduleKey === 'dairy' ? '' : ', SMG-Leistungsausweise'} — auf der zentralen Upload-Seite, die
+          Dateien werden der richtigen Herde automatisch zugeordnet.
+        </span>
+      </Link>
     </div>
   )
 }
