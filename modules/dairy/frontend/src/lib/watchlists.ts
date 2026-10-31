@@ -71,39 +71,89 @@ export async function saveWatchlist(pg: PGlite, list: Watchlist): Promise<void> 
   await upsertRow(pg, 'watchlists', { ...list })
 }
 
+// Speichern je Liste nacheinander: ein doppelter Tipp auf «hinzufügen» startete sonst zwei
+// Durchläufe, die beide «noch nicht auf der Liste» sahen und jedes Tier zweimal eintrugen.
+const listQueue = new Map<string, Promise<unknown>>()
+function serialPerList<T>(listId: string, fn: () => Promise<T>): Promise<T> {
+  const next = (listQueue.get(listId) ?? Promise.resolve()).catch(() => undefined).then(fn)
+  listQueue.set(listId, next)
+  return next
+}
+
 /** Tier auf die Liste setzen; steht es schon (offen) darauf, wird nur der Grund ergänzt. */
-export async function addToWatchlist(pg: PGlite, listId: string, animalIds: string[], reason: string | null): Promise<number> {
-  const { rows } = await pg.query<Record<string, unknown>>(
-    'select * from watchlist_entries where list_id = $1 and deleted_at is null and done_at is null',
-    [listId],
-  )
-  const open = new Map(rows.map((r) => [String(r.animal_id), r]))
-  let added = 0
-  for (const animalId of animalIds) {
-    const existing = open.get(animalId)
-    if (existing) {
-      if (reason && !String(existing.reason ?? '').includes(reason)) {
-        await upsertRow(pg, 'watchlist_entries', { ...existing, id: String(existing.id), reason: existing.reason ? `${existing.reason}; ${reason}` : reason })
+export function addToWatchlist(pg: PGlite, listId: string, animalIds: string[], reason: string | null): Promise<number> {
+  return serialPerList(listId, async () => {
+    const { rows } = await pg.query<Record<string, unknown>>(
+      'select * from watchlist_entries where list_id = $1 and deleted_at is null and done_at is null',
+      [listId],
+    )
+    const open = new Map(rows.map((r) => [String(r.animal_id), r]))
+    let added = 0
+    for (const animalId of new Set(animalIds)) {
+      const existing = open.get(animalId)
+      if (existing) {
+        if (reason && !String(existing.reason ?? '').includes(reason)) {
+          await upsertRow(pg, 'watchlist_entries', { ...existing, id: String(existing.id), reason: existing.reason ? `${existing.reason}; ${reason}` : reason })
+        }
+        continue
       }
-      continue
+      const row = {
+        id: crypto.randomUUID(),
+        list_id: listId,
+        animal_id: animalId,
+        reason,
+        added_by: getCurrentUserEmail(),
+        added_at: new Date().toISOString(),
+        done_at: null,
+      }
+      await upsertRow(pg, 'watchlist_entries', row)
+      open.set(animalId, row)
+      added++
     }
-    await upsertRow(pg, 'watchlist_entries', {
-      id: crypto.randomUUID(),
-      list_id: listId,
-      animal_id: animalId,
-      reason,
-      added_by: getCurrentUserEmail(),
-      added_at: new Date().toISOString(),
-      done_at: null,
-    })
-    added++
+    return added
+  })
+}
+
+/** Doppelte offene Einträge (gleiche Liste, gleiches Tier) — der älteste bleibt und
+ * übernimmt allfällige Gründe der anderen. Rein, für removeDuplicateEntries. */
+export function duplicateEntries(entries: WatchlistEntry[]): { keep: WatchlistEntry; drop: WatchlistEntry[] }[] {
+  const groups = new Map<string, WatchlistEntry[]>()
+  for (const e of entries) {
+    if (e.done_at) continue
+    const k = `${e.list_id}|${e.animal_id}`
+    groups.set(k, [...(groups.get(k) ?? []), e])
   }
-  return added
+  return [...groups.values()]
+    .filter((g) => g.length > 1)
+    .map((g) => {
+      const [first, ...rest] = [...g].sort((a, b) => a.added_at.localeCompare(b.added_at) || a.id.localeCompare(b.id))
+      const reasons = [...new Set(g.flatMap((e) => (e.reason ?? '').split('; ')).filter(Boolean))]
+      return { keep: { ...first, reason: reasons.length ? reasons.join('; ') : null }, drop: rest }
+    })
+}
+
+/** Räumt doppelte Einträge auf (beim Öffnen der Merklisten). Gibt die Anzahl entfernter zurück. */
+export async function removeDuplicateEntries(pg: PGlite, entries: WatchlistEntry[]): Promise<number> {
+  let n = 0
+  for (const { keep, drop } of duplicateEntries(entries)) {
+    const original = entries.find((e) => e.id === keep.id)
+    if (original && original.reason !== keep.reason) await upsertRow(pg, 'watchlist_entries', { ...keep })
+    for (const d of drop) {
+      await softDeleteRow(pg, 'watchlist_entries', d.id)
+      n++
+    }
+  }
+  return n
 }
 
 /** Erledigt abhaken (bleibt in der Liste sichtbar) oder wieder öffnen. */
 export async function setEntryDone(pg: PGlite, entry: WatchlistEntry, done: boolean): Promise<void> {
   await upsertRow(pg, 'watchlist_entries', { ...entry, done_at: done ? new Date().toISOString() : null })
+}
+
+/** Grund bzw. Markierung eines Eintrags ändern (leer = keine). */
+export async function setEntryReason(pg: PGlite, entry: WatchlistEntry, reason: string | null): Promise<void> {
+  await upsertRow(pg, 'watchlist_entries', { ...entry, reason: reason?.trim() || null })
 }
 
 export async function removeEntry(pg: PGlite, entryId: string): Promise<void> {

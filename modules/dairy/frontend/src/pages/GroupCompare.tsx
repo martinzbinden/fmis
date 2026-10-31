@@ -77,6 +77,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   const [building, setBuilding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newIds, setNewIds] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
   const [sort, setSort] = useState<{ key: keyof AnimalMetrics | 'name'; desc: boolean }>({ key: 'name', desc: false })
 
   function updateSettings(next: GroupSettings) {
@@ -103,7 +104,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
     const activeIds = new Set(active.map((c) => c.animal.id))
     const lists = data.lists
       .filter((l) => !l.archived_at)
-      .map((l) => ({ key: l.id, name: l.name, ids: data.entries.filter((e) => e.list_id === l.id && !e.done_at && activeIds.has(e.animal_id)).map((e) => e.animal_id) }))
+      .map((l) => ({ key: l.id, name: l.name, ids: [...new Set(data.entries.filter((e) => e.list_id === l.id && !e.done_at && activeIds.has(e.animal_id)).map((e) => e.animal_id))] }))
     return [...fixed, ...lists]
   }, [data, active, settings.youngMaxDays, word.mothers, word.young])
   const chosen = selected.map((k) => groups.find((g) => g.key === k)).filter((g): g is Group => !!g)
@@ -118,7 +119,8 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   const groupMetrics = chosen.map((g) => g.ids.map((id) => metricsById.get(id)).filter((m): m is AnimalMetrics => !!m))
 
   async function saveGroup() {
-    if (!newName.trim() || newIds.length === 0) return
+    if (!newName.trim() || newIds.length === 0 || saving) return
+    setSaving(true)
     try {
       const id = await createWatchlist(db, newName)
       await addToWatchlist(db, id, newIds, null)
@@ -128,6 +130,8 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
       setNewIds([])
     } catch (e) {
       notifyError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -219,8 +223,8 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
             <AnimalPicker animals={allAnimals} selected={newIds} onChange={setNewIds} multiple readerModule={moduleKey} />
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-gray-600">Wird als Merkliste gespeichert und lässt sich dort ändern.</span>
-              <button type="button" disabled={!newName.trim() || newIds.length === 0} onClick={() => void saveGroup()} className="min-h-11 shrink-0 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:opacity-40">
-                Speichern ({newIds.length})
+              <button type="button" disabled={saving || !newName.trim() || newIds.length === 0} onClick={() => void saveGroup()} className="min-h-11 shrink-0 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:opacity-40">
+                {saving ? 'speichert …' : `Speichern (${newIds.length})`}
               </button>
             </div>
           </div>

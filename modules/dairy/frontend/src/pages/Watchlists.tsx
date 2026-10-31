@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
 import { animalLabel } from '@fmis/core/earTag'
-import { notifyError } from '@fmis/core/toast'
+import { notifyError, notifySuccess } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
 import { fmtDate } from '../lib/format'
-import { addToWatchlist, createWatchlist, loadWatchlists, removeEntry, saveWatchlist, setEntryDone, type Watchlist, type WatchlistEntry } from '../lib/watchlists'
+import { addToWatchlist, createWatchlist, duplicateEntries, loadWatchlists, removeDuplicateEntries, removeEntry, saveWatchlist, setEntryDone, setEntryReason, type Watchlist, type WatchlistEntry } from '../lib/watchlists'
 import type { Animal } from '../types'
 
 async function loadData(pg: PGlite) {
@@ -33,6 +33,15 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
   const active = lists.filter((l) => !l.archived_at)
   const archived = lists.filter((l) => l.archived_at)
   const entriesOf = (id: string) => (data?.entries ?? []).filter((e) => e.list_id === id)
+
+  // doppelt eingetragene Tiere (früherer Doppeltipp auf «hinzufügen») still bereinigen
+  const dupCount = useMemo(() => duplicateEntries(data?.entries ?? []).reduce((n, d) => n + d.drop.length, 0), [data])
+  useEffect(() => {
+    if (!data || dupCount === 0) return
+    removeDuplicateEntries(db, data.entries)
+      .then((n) => n > 0 && notifySuccess(`${n} doppelte Einträge entfernt`))
+      .catch((e) => notifyError(e instanceof Error ? e.message : String(e)))
+  }, [db, data, dupCount])
 
   async function create() {
     if (!name.trim()) return
@@ -130,15 +139,24 @@ function ListCard({
   const [reason, setReason] = useState('')
   const [showDone, setShowDone] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
-  const openEntries = entries.filter((e) => !e.done_at)
+  const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
+  const openEntries = entries.filter((e) => !e.done_at).sort((a, b) => Number(!!b.reason) - Number(!!a.reason))
   const done = entries.filter((e) => e.done_at)
   const onList = new Set(openEntries.map((e) => e.animal_id))
 
   async function add() {
-    if (adding.length === 0) return
-    await addToWatchlist(db, list.id, adding, reason.trim() || null)
-    setAdding([])
-    setReason('')
+    if (adding.length === 0 || busy) return
+    setBusy(true)
+    try {
+      await addToWatchlist(db, list.id, adding, reason.trim() || null)
+      setAdding([])
+      setReason('')
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -152,6 +170,11 @@ function ListCard({
       </button>
       {open && (
         <div className="space-y-3 border-t px-3 pb-3 pt-2">
+          <datalist id="watchlist-marks">
+            {[...new Set(entries.map((x) => x.reason).filter((r): r is string => !!r))].map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
           <ul className="divide-y">
             {[...openEntries, ...(showDone ? done : [])].map((e) => (
               <li key={e.id} className={`flex items-start gap-2 py-1.5 ${e.done_at ? 'opacity-60' : ''}`}>
@@ -159,12 +182,37 @@ function ListCard({
                   <Link to={`/${moduleKey}/kuehe/${e.animal_id}`} className={`font-medium text-brand-700 ${e.done_at ? 'line-through' : ''}`}>
                     {tierLabel(byId.get(e.animal_id))}
                   </Link>
-                  {e.reason && <div className="text-xs text-gray-700">{e.reason}</div>}
+                  {editing?.id === e.id ? (
+                    <form
+                      className="mt-1 flex gap-1"
+                      onSubmit={(ev) => {
+                        ev.preventDefault()
+                        void setEntryReason(db, e, editing.text).then(() => setEditing(null))
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        value={editing.text}
+                        onChange={(ev) => setEditing({ id: e.id, text: ev.target.value })}
+                        placeholder="Grund / Markierung"
+                        list="watchlist-marks"
+                        className="min-h-10 min-w-0 flex-1 rounded-lg border border-gray-300 px-2 text-base"
+                      />
+                      <button type="submit" className="min-h-10 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white">
+                        OK
+                      </button>
+                    </form>
+                  ) : (
+                    e.reason && <div className="mt-0.5 w-fit rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900">{e.reason}</div>
+                  )}
                   <div className="text-xs text-gray-500">
                     {fmtDate(e.added_at)}
                     {e.added_by ? ` · ${e.added_by.split('@')[0]}` : ''}
                   </div>
                 </div>
+                <button type="button" onClick={() => setEditing(editing?.id === e.id ? null : { id: e.id, text: e.reason ?? '' })} className="min-h-10 shrink-0 rounded-lg px-2 text-sm text-gray-700" aria-label="Grund / Markierung bearbeiten">
+                  ✎
+                </button>
                 <button type="button" onClick={() => void setEntryDone(db, e, !e.done_at)} className="min-h-10 shrink-0 rounded-lg border border-gray-300 px-2 text-sm" aria-label={e.done_at ? 'wieder öffnen' : 'erledigt'}>
                   {e.done_at ? '↺' : '✓'}
                 </button>
@@ -187,8 +235,8 @@ function ListCard({
             {adding.length > 0 && (
               <div className="flex gap-2">
                 <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Grund (optional)" className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base" />
-                <button type="button" onClick={() => void add()} className="min-h-11 shrink-0 rounded-lg bg-brand-700 px-3 font-semibold text-white">
-                  {adding.length} hinzufügen
+                <button type="button" onClick={() => void add()} disabled={busy} className="min-h-11 shrink-0 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:opacity-50">
+                  {busy ? 'speichert …' : `${adding.length} hinzufügen`}
                 </button>
               </div>
             )}
