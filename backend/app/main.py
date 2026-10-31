@@ -10,6 +10,7 @@ from core.backend.fmis_core import admin as core_admin
 from core.backend.fmis_core import auth as core_auth
 from core.backend.fmis_core import modules_admin
 from core.backend.fmis_core import notifications as core_notifications
+from core.backend.fmis_core import reader_scan as core_reader_scan
 from core.backend.fmis_core.db import close_pools, get_pool, open_pools, run_migrations
 from core.backend.fmis_core.module_registry import MODULE_SPECS
 from core.backend.fmis_core.modules_admin import require_module_enabled
@@ -85,6 +86,7 @@ app.include_router(core_auth.router)
 app.include_router(core_admin.router)
 app.include_router(modules_admin.router)
 app.include_router(core_notifications.router)
+app.include_router(core_reader_scan.router)
 
 for _spec in MODULE_SPECS:
     app.include_router(

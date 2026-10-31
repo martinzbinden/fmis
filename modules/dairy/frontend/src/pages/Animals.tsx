@@ -5,7 +5,9 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate } from '../lib/format'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
-import { animalKey, animalLabel } from '@fmis/core/earTag'
+import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
+import { matchRead, readDigits, useTagReader } from '@fmis/core/tagReader'
+import TagReaderButton from '@fmis/core/TagReaderButton'
 import { loadInbreeding } from '../lib/pedigreeData'
 
 async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
@@ -48,6 +50,15 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
   const allAnimals = data ?? []
   // Ein Filterfeld über alle Spalten — gilt für Karten und Liste.
   const animals = filter ? allAnimals.filter((a) => matchesFilter(a, filter)) : allAnimals
+  // Lesegerät: gelesene Ohrmarke als Filter
+  const reader = useTagReader({
+    moduleKey,
+    onRead: (read) => {
+      const a = matchRead(read, allAnimals)
+      setFilter(a ? shortEarTag(a.ear_tag) : readDigits(read))
+      return a ? `${animalLabel(a)}` : { text: `${shortEarTag(read.earTag)}: nicht im Bestand`, tone: 'error' }
+    },
+  })
 
   function changeView(v: ViewMode) {
     setView(v)
@@ -70,11 +81,23 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
         </span>
       </Link>
 
+      <div className="grid grid-cols-2 gap-2">
+        <Link to="../tierinfo" relative="path" className="rounded-lg bg-white p-3 text-sm shadow-sm active:bg-gray-50">
+          <span className="font-semibold text-brand-700">🔎 Tier-Info</span>
+          <span className="block text-xs text-gray-500">Nummer tippen oder lesen</span>
+        </Link>
+        <Link to="../merklisten" relative="path" className="rounded-lg bg-white p-3 text-sm shadow-sm active:bg-gray-50">
+          <span className="font-semibold text-brand-700">📋 Merklisten</span>
+          <span className="block text-xs text-gray-500">z.B. Ausmerzen prüfen</span>
+        </Link>
+      </div>
+
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && allAnimals.length === 0 && (
         <p className="text-center text-gray-500">Noch keine Tiere importiert.</p>
       )}
 
+      {allAnimals.length > 0 && <TagReaderButton reader={reader} hint="Lesung filtert die Liste" />}
       {allAnimals.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <input

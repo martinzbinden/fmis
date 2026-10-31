@@ -1,25 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
-import { API_URL, getCurrentUserEmail, getToken } from '@fmis/core/auth'
+import { getCurrentUserEmail } from '@fmis/core/auth'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import FooterBar from '@fmis/core/FooterBar'
 import NumberInput from '@fmis/core/NumberInput'
 import { notifyError } from '@fmis/core/toast'
+import { matchRead, useTagReader } from '@fmis/core/tagReader'
+import TagReaderButton from '@fmis/core/TagReaderButton'
+import AnimalWarnings from '../components/AnimalWarnings'
+import { animalWarnings, eventsOf, loadAnimalEvents, RECENT_PREGNANT_DAYS, type AnimalWarning } from '../lib/animalWarnings'
 import { useQuery } from '../hooks/useQuery'
 import { softDeleteRow, upsertRow } from '../db/write'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
-import { examiners, fmtDuration, fmtTimeRange, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
+import { examiners, fmtDuration, fmtTimeRange, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, tagDigits, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
 import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 async function loadData(pg: PGlite) {
-  const [animals, checks] = await Promise.all([
+  const [animals, checks, events] = await Promise.all([
     pg.query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' and coalesce(sex, 'w') = 'w' order by lauf_nr nulls last, ear_tag"),
     pg.query<PregnancyCheck>('select * from pregnancy_checks where deleted_at is null order by recorded_at desc'),
+    loadAnimalEvents(pg),
   ])
   return {
+    events,
     animals: animals.rows,
     checks: checks.rows.map((c) => ({
       ...c,
@@ -50,6 +56,7 @@ const roundTitle = (r: Pick<PregnancyRound, 'date' | 'examiner' | 'method'>) =>
 
 // Laufender Durchgang und zuletzt gewählte Person/Methode je Gerät (Durchgang = Einträge mit gleicher round_id)
 const roundKey = (moduleKey: string) => `fmis_${moduleKey}_pregnancy_round`
+const modeKey = (moduleKey: string) => `fmis_${moduleKey}_pregnancy_mode`
 const lastKey = (moduleKey: string) => `fmis_${moduleKey}_pregnancy_last`
 function readJson<T>(key: string): T | null {
   try {
@@ -108,6 +115,25 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   }, [rounds.length])
   const [editRound, setEditRound] = useState(false)
 
+  // Einzeln: Tier → Ergebnis. Liste: mehrere Tiere sammeln (+ oder Lesegerät), dann ein Ergebnis für alle.
+  const [mode, setModeState] = useState<'einzeln' | 'liste'>(() => (readJson<string>(modeKey(moduleKey)) === 'liste' ? 'liste' : 'einzeln'))
+  function setMode(m: 'einzeln' | 'liste') {
+    setModeState(m)
+    writeJson(modeKey(moduleKey), m)
+  }
+  const [list, setList] = useState<{ id: string; fromReader: boolean }[]>([])
+  function addToList(id: string, viaReader: boolean) {
+    setList((prev) => (prev.some((x) => x.id === id) ? prev : [{ id, fromReader: viaReader }, ...prev]))
+    setQuery('')
+    setPicked(null)
+  }
+  const removeFromList = (id: string) => setList((prev) => prev.filter((x) => x.id !== id))
+  // Warnungen nach dem Speichern (z.B. leer nach trächtig): ignorieren oder auf eine Merkliste
+  const [after, setAfter] = useState<{ animalId: string; warnings: AnimalWarning[] }[]>([])
+  const events = data?.events
+  const warningsFor = (id: string, result?: PregnancyResult) =>
+    events && round ? animalWarnings(id, eventsOf(events, id), { kind: 'pregnancy', date: round.date, result, roundId: round.id }, speciesOf(moduleKey)) : []
+
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<string | null>(null)
   const [weeks, setWeeks] = useState('')
@@ -124,10 +150,14 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   const matches = useMemo(() => (picked ? [] : matchAnimals(animals, query)), [animals, query, picked])
   const auto = useMemo(() => (picked ? null : uniqueMatch(animals, query)), [animals, query, picked])
   const animal = picked ? byId.get(picked) : (auto ?? undefined)
-  // Eindeutig gefunden: Tastatur schliessen, damit die Ergebnis-Knöpfe sichtbar sind
+  // Eindeutig gefunden: einzeln die Tastatur schliessen, damit die Ergebnis-Knöpfe sichtbar
+  // sind; in der Liste ab 4 Ziffern gleich aufnehmen und weiter tippen
   useEffect(() => {
-    if (auto) input.current?.blur()
-  }, [auto])
+    if (!auto) return
+    if (mode === 'einzeln') input.current?.blur()
+    else if (query.length >= 4) addToList(auto.id, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, mode])
 
   const ofRound = round ? checks.filter((c) => (c.round_id ?? `tag:${c.check_date}`) === round.id) : []
   const sum = summarize(ofRound)
@@ -153,8 +183,10 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     setEditRound(false)
   }
   function stop() {
-    setReaderOn(false)
+    reader.setOn(false)
     setRound(null)
+    setList([])
+    setAfter([])
     reset()
   }
 
@@ -166,27 +198,41 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     input.current?.focus()
   }
 
+  async function writeCheck(animalId: string, result: PregnancyResult, viaReader: boolean) {
+    if (!round) return
+    const prev = inRoundRef.current.get(animalId)
+    const w = toWeeks(weeks, round.unit)
+    // Gleiches Tier im gleichen Durchgang: Eintrag korrigieren statt doppelt
+    const base = prev ?? { id: crypto.randomUUID(), recorded_at: new Date().toISOString(), created_by: getCurrentUserEmail(), notes: null }
+    await upsertRow(db, 'pregnancy_checks', {
+      ...base,
+      animal_id: animalId,
+      check_date: round.date,
+      result,
+      weeks: w ?? prev?.weeks ?? null,
+      source: viaReader ? 'reader' : 'manual',
+      round_id: prev?.round_id ?? round.id,
+      examiner: round.examiner,
+      method: round.method,
+      duration_unit: round.unit,
+      deleted_at: null,
+    })
+  }
+  /** Warnungen, die erst mit dem Ergebnis entstehen (z.B. leer nach trächtig). */
+  function resultWarnings(ids: string[], result: PregnancyResult) {
+    return ids
+      .map((id) => ({ animalId: id, warnings: warningsFor(id, result).filter((x) => x.suggestList && !x.suggestRemove) }))
+      .filter((x) => x.warnings.length > 0)
+  }
+
   async function save(result: PregnancyResult) {
     if (!animal || !round || saving) return
     setSaving(true)
     try {
-      const w = toWeeks(weeks, round.unit)
-      // Gleiches Tier im gleichen Durchgang: Eintrag korrigieren statt doppelt
-      const base = inRound ?? { id: crypto.randomUUID(), recorded_at: new Date().toISOString(), created_by: getCurrentUserEmail(), notes: null }
-      await upsertRow(db, 'pregnancy_checks', {
-        ...base,
-        animal_id: animal.id,
-        check_date: round.date,
-        result,
-        weeks: w ?? inRound?.weeks ?? null,
-        source: fromReader ? 'reader' : 'manual',
-        round_id: inRound?.round_id ?? round.id,
-        examiner: round.examiner,
-        method: round.method,
-        duration_unit: round.unit,
-        deleted_at: null,
-      })
+      const followUp = resultWarnings([animal.id], result)
+      await writeCheck(animal.id, result, fromReader)
       showFlash(`${label(animal)}: ${RESULT_LABEL[result]}${inRound ? ' (korrigiert)' : ''}`)
+      setAfter(followUp)
       reset()
     } catch (e) {
       notifyError(e instanceof Error ? e.message : String(e))
@@ -195,79 +241,48 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     }
   }
 
-  // ---- Lesegerät (APR600) über den Server: solange eingeschaltet, wählt jede Lesung das Tier
-  const [readerAvailable, setReaderAvailable] = useState(false)
-  const [readerOn, setReaderOn] = useState(false)
-  const [readerMsg, setReaderMsg] = useState<string | null>(null)
-  useEffect(() => {
-    fetch(`${API_URL}/${moduleKey}/reader/status`, { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then((r) => (r.ok ? r.json() : { enabled: false }))
-      .then((r: { enabled: boolean }) => setReaderAvailable(r.enabled))
-      .catch(() => setReaderAvailable(false))
-  }, [moduleKey])
-  const lastRead = useRef<{ tag: string; at: number } | null>(null)
-  useEffect(() => {
-    if (!readerOn) return
-    const controller = new AbortController()
-    setReaderMsg('Verbinde mit dem Lesegerät …')
-    ;(async () => {
-      try {
-        const res = await fetch(`${API_URL}/${moduleKey}/reader/scan`, { headers: { Authorization: `Bearer ${getToken()}` }, signal: controller.signal })
-        if (!res.ok || !res.body) {
-          const detail = ((await res.json().catch(() => null)) as { detail?: string } | null)?.detail
-          throw new Error(detail ?? `Lesegerät nicht verfügbar (${res.status})`)
-        }
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buf = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buf += decoder.decode(value, { stream: true })
-          const parts = buf.split('\n\n')
-          buf = parts.pop() ?? ''
-          for (const part of parts) {
-            const line = part.split('\n').find((l) => l.startsWith('data: '))
-            if (!line) continue
-            const ev = JSON.parse(line.slice(6)) as { ready?: boolean; error?: string; closed?: boolean; tag?: string; ear_tag?: string; animal_id?: string | null }
-            if (ev.ready) setReaderMsg('Lesegerät bereit: Ohrmarke lesen')
-            if (ev.error) setReaderMsg(ev.error)
-            if (ev.tag) {
-              const now = Date.now()
-              // Das Gerät meldet dieselbe Marke beim Festhalten mehrmals
-              if (lastRead.current && lastRead.current.tag === ev.tag && now - lastRead.current.at < 5000) continue
-              lastRead.current = { tag: ev.tag, at: now }
-              const done = ev.animal_id ? inRoundRef.current.get(ev.animal_id) : undefined
-              if (ev.animal_id && done) {
-                // Im gleichen Durchgang schon erfasst: Lesung ignorieren (korrigieren geht über die Liste)
-                const a = byIdRef.current.get(ev.animal_id)
-                setReaderMsg(`${label(a)}: schon erfasst (${RESULT_LABEL[done.result]}), ignoriert`)
-                if (navigator.vibrate) navigator.vibrate([40, 80, 40])
-              } else if (ev.animal_id && byIdRef.current.has(ev.animal_id)) {
-                setPicked(ev.animal_id)
-                setQuery(shortEarTag(ev.ear_tag ?? '').replace(/\D/g, '').slice(-4))
-                setFromReader(true)
-                setReaderMsg(`Gelesen: ${shortEarTag(ev.ear_tag ?? '')}`)
-                if (navigator.vibrate) navigator.vibrate(60)
-              } else {
-                setReaderMsg(`${shortEarTag(ev.ear_tag ?? ev.tag)}: kein aktives weibliches Tier in der Liste`)
-              }
-            }
-          }
-        }
-        setReaderOn(false)
-      } catch (e) {
-        if (!controller.signal.aborted) {
-          setReaderMsg(e instanceof Error ? e.message : String(e))
-          setReaderOn(false)
-        }
+  async function saveList(result: PregnancyResult) {
+    if (!round || saving || list.length === 0) return
+    setSaving(true)
+    try {
+      const followUp = resultWarnings(list.map((x) => x.id), result)
+      for (const x of list) await writeCheck(x.id, result, x.fromReader)
+      showFlash(`${list.length} ${list.length === 1 ? 'Tier' : 'Tiere'}: ${RESULT_LABEL[result]}`)
+      setAfter(followUp)
+      setList([])
+      setWeeks('')
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ---- Lesegerät (zentral, core/tagReader): einzeln wählt jede Lesung das Tier, in der
+  // Liste kommt es dazu. Schon im Durchgang erfasste Tiere werden ignoriert (übersteuerbar).
+  const reader = useTagReader({
+    moduleKey,
+    context: `${round?.id ?? ''}|${mode}`,
+    duplicate: (read) => {
+      const a = matchRead(read, animals)
+      if (!a) return null
+      if (mode === 'liste' && list.some((x) => x.id === a.id)) return `${label(a)} schon in der Liste`
+      const done = inRoundRef.current.get(a.id)
+      return done ? `${label(a)} im Durchgang schon erfasst (${RESULT_LABEL[done.result]})` : null
+    },
+    onRead: (read) => {
+      const a = matchRead(read, animals)
+      if (!a) return { text: `${shortEarTag(read.earTag)}: kein aktives weibliches Tier in der Liste`, tone: 'error' }
+      if (mode === 'liste') {
+        addToList(a.id, true)
+        return `${label(a)} dazu (${list.length + 1} in der Liste)`
       }
-    })()
-    return () => controller.abort()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readerOn, moduleKey])
-  const byIdRef = useRef(byId)
-  byIdRef.current = byId
+      setPicked(a.id)
+      setQuery(tagDigits(a).slice(-4))
+      setFromReader(true)
+      return `Gelesen: ${label(a)}`
+    },
+  })
 
   // ---- Liste: Bearbeiten
   const editing = editId ? checks.find((c) => c.id === editId) : undefined
@@ -285,6 +300,25 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   }
 
   const chip = (on: boolean) => `min-h-11 min-w-11 shrink-0 rounded-full border-2 px-3 text-sm ${on ? 'border-brand-700 bg-brand-700 font-semibold text-white' : 'border-gray-400 bg-white text-gray-800'}`
+
+  function addCurrent() {
+    const a = animal ?? (matches.length === 1 ? matches[0] : undefined)
+    if (!a) return
+    addToList(a.id, false)
+    input.current?.focus()
+  }
+
+  const durationChips = round && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1" aria-label={`Trächtigkeitsdauer in ${UNIT_LABEL[round.unit]} (optional)`}>
+      <span className="shrink-0 text-xs font-medium text-gray-800">{UNIT_LABEL[round.unit]}</span>
+      {DURATION_CHIPS[round.unit].map((w) => (
+        <button key={w} type="button" className={chip(weeks === String(w))} onClick={() => setWeeks(weeks === String(w) ? '' : String(w))}>
+          {w}
+        </button>
+      ))}
+      <NumberInput className="min-h-11 w-16 shrink-0 rounded-lg border-2 border-gray-400 px-2 text-base" value={weeks} onChange={(e) => setWeeks(e.target.value)} placeholder="…" aria-label={UNIT_LABEL[round.unit]} />
+    </div>
+  )
 
   // ---- Start eines Durchgangs (auch: Person/Methode ändern)
   const roundForm = (
@@ -426,15 +460,18 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         </div>
 
         <div className="space-y-2 p-3">
-          {readerAvailable && (
-            <div className="flex items-center gap-2 text-sm">
-              <button type="button" onClick={() => setReaderOn((o) => !o)} className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg border-2 px-3 font-semibold ${readerOn ? 'border-green-700 bg-green-700 text-white' : 'border-gray-400 bg-white text-gray-800'}`}>
-                📡 Lesegerät {readerOn ? 'ein' : 'aus'}
-              </button>
-              {readerOn && readerMsg && <span className="font-medium text-gray-800">{readerMsg}</span>}
-              {!readerOn && readerMsg && <span className="font-medium text-red-700">{readerMsg}</span>}
+          <div className="flex items-start gap-2">
+            <div className="flex shrink-0 rounded-xl border-2 border-gray-400 p-0.5" role="radiogroup" aria-label="Erfassungsart">
+              {(['einzeln', 'liste'] as const).map((m) => (
+                <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)} className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${mode === m ? 'bg-brand-700 text-white' : 'text-gray-800'}`}>
+                  {m === 'einzeln' ? 'Einzeln' : 'Mehrere'}
+                </button>
+              ))}
             </div>
-          )}
+            <div className="min-w-0 flex-1">
+              <TagReaderButton reader={reader} hint={mode === 'liste' ? 'jede Lesung kommt in die Liste' : 'Lesung wählt das Tier'} />
+            </div>
+          </div>
 
           <div className="flex gap-2">
             <input
@@ -452,10 +489,17 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                 setFromReader(false)
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !animal && matches.length) setPicked(matches[0].id)
+                if (e.key !== 'Enter') return
+                if (mode === 'liste') addCurrent()
+                else if (!animal && matches.length) setPicked(matches[0].id)
               }}
               aria-label="Letzte Ziffern der Ohrmarke"
             />
+            {mode === 'liste' && (
+              <button type="button" disabled={!animal && matches.length === 0} onClick={addCurrent} className="min-h-14 min-w-14 rounded-lg bg-brand-700 px-3 text-2xl font-bold text-white disabled:opacity-40" aria-label="Tier zur Liste hinzufügen">
+                +
+              </button>
+            )}
             {(query || picked) && (
               <button type="button" className="min-h-14 rounded-lg border-2 border-gray-400 bg-white px-3 text-lg" onClick={reset} aria-label="Eingabe löschen">
                 ✕
@@ -463,12 +507,13 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
             )}
           </div>
 
-          {!animal && query && (
+          {(mode === 'liste' ? query && !(animal && matches.length <= 1) : !animal && query) && (
             <ul className="max-h-60 divide-y overflow-y-auto rounded-lg border-2 border-gray-300">
               {matches.map((a) => (
                 <li key={a.id}>
-                  <button type="button" className="flex min-h-12 w-full items-center gap-2 px-3 text-left active:bg-gray-100" onClick={() => setPicked(a.id)}>
+                  <button type="button" className="flex min-h-12 w-full items-center gap-2 px-3 text-left active:bg-gray-100" onClick={() => (mode === 'liste' ? addToList(a.id, false) : setPicked(a.id))}>
                     <span className="flex-1 text-base text-gray-900">{label(a)}</span>
+                    {mode === 'liste' && list.some((x) => x.id === a.id) && <span className="text-xs font-medium text-gray-700">in der Liste</span>}
                     {checkedIds.has(a.id) && <span className="text-xs font-medium text-gray-700">schon erfasst</span>}
                   </button>
                 </li>
@@ -477,7 +522,14 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
             </ul>
           )}
 
-          {animal && (
+          {mode === 'liste' && animal && matches.length <= 1 && (
+            <button type="button" onClick={addCurrent} className="flex min-h-12 w-full items-center justify-between rounded-lg border-2 border-brand-700 bg-brand-50 px-3 text-left font-semibold text-brand-900">
+              <span>{label(animal)}</span>
+              <span>{list.some((x) => x.id === animal.id) ? 'schon in der Liste' : '+ hinzufügen'}</span>
+            </button>
+          )}
+
+          {mode === 'einzeln' && animal && (
             <div className="space-y-2">
               <div className="rounded-lg bg-gray-900 px-3 py-2 text-white">
                 <div className="text-xl font-bold">{label(animal)}</div>
@@ -490,15 +542,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                       : 'noch keine Untersuchung'}
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1" aria-label={`Trächtigkeitsdauer in ${UNIT_LABEL[round.unit]} (optional)`}>
-                <span className="shrink-0 text-xs font-medium text-gray-800">{UNIT_LABEL[round.unit]}</span>
-                {DURATION_CHIPS[round.unit].map((w) => (
-                  <button key={w} type="button" className={chip(weeks === String(w))} onClick={() => setWeeks(weeks === String(w) ? '' : String(w))}>
-                    {w}
-                  </button>
-                ))}
-                <NumberInput className="min-h-11 w-16 shrink-0 rounded-lg border-2 border-gray-400 px-2 text-base" value={weeks} onChange={(e) => setWeeks(e.target.value)} placeholder="…" aria-label={UNIT_LABEL[round.unit]} />
-              </div>
+              <AnimalWarnings animalIds={[animal.id]} warnings={warningsFor(animal.id)} />
+              {durationChips}
               <div className="grid grid-cols-3 gap-2">
                 {RESULTS.map((r) => (
                   <button key={r.key} type="button" disabled={saving} onClick={() => void save(r.key)} className={`min-h-16 rounded-xl text-lg font-bold shadow disabled:opacity-50 ${r.cls}`}>
@@ -509,7 +554,26 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
               </div>
             </div>
           )}
+          {mode === 'liste' && (
+            <ListPanel
+              list={list}
+              byId={byId}
+              warningsFor={warningsFor}
+              onRemove={removeFromList}
+              durationChips={durationChips}
+              saving={saving}
+              onSave={(r) => void saveList(r)}
+              onClear={() => setList([])}
+            />
+          )}
+
           {flash && <p className={`rounded-lg px-3 py-2 text-sm font-semibold ${flash.tone === 'ok' ? 'bg-green-100 text-green-900' : 'bg-amber-100 text-amber-900'}`}>{flash.tone === 'ok' ? '✓ ' : ''}{flash.text}</p>}
+          {after.map((x) => (
+            <div key={x.animalId}>
+              <div className="text-sm font-semibold text-gray-900">{label(byId.get(x.animalId))}</div>
+              <AnimalWarnings animalIds={[x.animalId]} warnings={x.warnings} />
+            </div>
+          ))}
         </div>
       </section>
 
@@ -588,5 +652,79 @@ function CompareLink() {
       Frühere Beurteilungen vergleichen
       <span aria-hidden>›</span>
     </Link>
+  )
+}
+
+/** Liste «Mehrere»: gesammelte Tiere mit Warnungen (schon trächtig gemeldete zuerst, zum
+ * Entfernen empfohlen), dann ein Ergebnis für alle. */
+function ListPanel({
+  list,
+  byId,
+  warningsFor,
+  onRemove,
+  durationChips,
+  saving,
+  onSave,
+  onClear,
+}: {
+  list: { id: string; fromReader: boolean }[]
+  byId: Map<string, Animal>
+  warningsFor: (id: string) => AnimalWarning[]
+  onRemove: (id: string) => void
+  durationChips: ReactNode
+  saving: boolean
+  onSave: (r: PregnancyResult) => void
+  onClear: () => void
+}) {
+  const rows = list.map((x) => ({ ...x, warnings: warningsFor(x.id) }))
+  const flagged = rows.filter((r) => r.warnings.some((w) => w.suggestRemove))
+  const sorted = [...flagged, ...rows.filter((r) => !flagged.includes(r))]
+  if (list.length === 0) {
+    return <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">Tiere mit + oder dem Lesegerät sammeln, dann ein Ergebnis für alle speichern.</p>
+  }
+  return (
+    <div className="space-y-2">
+      {flagged.length > 0 && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-950">
+          <span>
+            <b>{flagged.length}</b> in den letzten {RECENT_PREGNANT_DAYS} Tagen schon trächtig gemeldet
+          </span>
+          <button type="button" onClick={() => flagged.forEach((r) => onRemove(r.id))} className="min-h-10 shrink-0 rounded-lg bg-amber-600 px-3 font-semibold text-white">
+            Alle entfernen
+          </button>
+        </div>
+      )}
+      <ul className="divide-y rounded-lg border-2 border-gray-300">
+        {sorted.map((r) => {
+          const recent = r.warnings.some((w) => w.suggestRemove)
+          return (
+            <li key={r.id} className={`space-y-1 px-2.5 py-1.5 ${recent ? 'bg-amber-50' : ''}`}>
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-base font-medium text-gray-900">
+                  {r.fromReader && <span aria-label="vom Lesegerät">📡 </span>}
+                  {label(byId.get(r.id))}
+                </span>
+                <button type="button" onClick={() => onRemove(r.id)} className="min-h-10 min-w-10 rounded-lg border border-gray-300 text-gray-700" aria-label={`${label(byId.get(r.id))} aus der Liste entfernen`}>
+                  ✕
+                </button>
+              </div>
+              <AnimalWarnings animalIds={[r.id]} warnings={r.warnings} onRemove={() => onRemove(r.id)} compact />
+            </li>
+          )
+        })}
+      </ul>
+      {durationChips}
+      <div className="grid grid-cols-3 gap-2">
+        {RESULTS.map((res) => (
+          <button key={res.key} type="button" disabled={saving} onClick={() => onSave(res.key)} className={`min-h-16 rounded-xl text-base font-bold shadow disabled:opacity-50 ${res.cls}`}>
+            <span className="block text-2xl leading-none">{res.icon}</span>
+            {list.length} {res.label}
+          </button>
+        ))}
+      </div>
+      <button type="button" onClick={onClear} className="text-sm text-gray-600 underline">
+        Liste leeren
+      </button>
+    </div>
   )
 }

@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
-import { shortEarTag } from '@fmis/core/earTag'
+import { animalKey, shortEarTag } from '@fmis/core/earTag'
+import { useTagReader } from '@fmis/core/tagReader'
+import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useDb } from '@fmis/core/DbContext'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
@@ -24,6 +26,19 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
   const [saved, setSaved] = useState<{ earTag: string; animalId: string; created: boolean }[]>([])
   const today = localTodayIso()
   const pending = data?.pending ?? []
+  // Lesegerät: die Lesung geht an das gewählte (sonst das oberste) Lamm
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const active = pending.find((p) => p.id === activeId) ?? pending[0]
+  const [scanned, setScanned] = useState<{ id: string; earTag: string; n: number } | null>(null)
+  const reader = useTagReader({
+    moduleKey,
+    duplicate: (read) => (saved.some((s) => animalKey(s.earTag) === read.key) ? 'eben eingetragen' : null),
+    onRead: (read) => {
+      if (!active) return { text: `Keine offenen ${word.youngPl}`, tone: 'error' }
+      setScanned((prev) => ({ id: active.id, earTag: read.earTag, n: (prev?.n ?? 0) + 1 }))
+      return `${shortEarTag(read.earTag)} → ${word.young} von ${data ? (byId.get(active.dam_id)?.lauf_nr ?? shortEarTag(byId.get(active.dam_id)?.ear_tag)) : '?'}: Geschlecht prüfen, Speichern`
+    },
+  })
 
   return (
     <div className="mx-auto max-w-lg space-y-3 p-4 pb-24">
@@ -53,6 +68,8 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
+      {pending.length > 0 && <TagReaderButton reader={reader} hint={`Lesung geht an das markierte ${word.young}`} />}
+
       {data && pending.length === 0 && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Keine offenen Ohrmarken. 👍</p>}
 
       {pending.map((p, i) => (
@@ -65,6 +82,9 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
           today={today}
           deadline={MARKING_DAYS[species]}
           young={word.young}
+          active={reader.on && active?.id === p.id}
+          onActivate={() => setActiveId(p.id)}
+          scanned={scanned?.id === p.id ? scanned : null}
           onSaved={(s) => setSaved((prev) => [...prev, s])}
         />
       ))}
@@ -80,6 +100,9 @@ function PendingCard({
   today,
   deadline,
   young,
+  active,
+  onActivate,
+  scanned,
   onSaved,
 }: {
   nr: number
@@ -89,6 +112,9 @@ function PendingCard({
   today: string
   deadline: number
   young: string
+  active: boolean
+  onActivate: () => void
+  scanned: { earTag: string; n: number } | null
   onSaved: (s: { earTag: string; animalId: string; created: boolean }) => void
 }) {
   const db = useDb()
@@ -98,6 +124,9 @@ function PendingCard({
   const [diedOn, setDiedOn] = useState(today)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (scanned) setEarTag(scanned.earTag)
+  }, [scanned])
   const age = daysSince(p.birth_date, today)
   const tone = age > deadline ? 'border-red-500' : age > deadline - 7 ? 'border-amber-400' : 'border-transparent'
   const check = earTag.trim() ? checkEarTag(p, earTag, animals) : null
@@ -129,7 +158,7 @@ function PendingCard({
   }
 
   return (
-    <div className={`space-y-2 rounded-lg border-2 bg-white p-3 shadow-sm ${tone}`}>
+    <div className={`space-y-2 rounded-lg border-2 bg-white p-3 shadow-sm ${tone} ${active ? 'ring-4 ring-green-600' : ''}`} onClickCapture={onActivate} onFocusCapture={onActivate}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-semibold text-gray-900">
           Mutter {dam ? (dam.lauf_nr ?? shortEarTag(dam.ear_tag)) : '?'}

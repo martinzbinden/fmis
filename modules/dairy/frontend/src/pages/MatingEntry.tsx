@@ -5,6 +5,8 @@ import { useQuery } from '../hooks/useQuery'
 import { upsertRow } from '../db/write'
 import { inTransaction } from '../db/transaction'
 import AnimalPicker from '../components/AnimalPicker'
+import AnimalWarnings from '../components/AnimalWarnings'
+import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
 import { animalKey, animalLabel } from '@fmis/core/earTag'
@@ -15,14 +17,16 @@ import { speciesOf, speciesTerms } from '../lib/species'
 import type { Animal } from '../types'
 
 async function loadData(pg: PGlite) {
-  const [animals, sires, lastBirths, matings, inbreeding] = await Promise.all([
+  const [animals, sires, lastBirths, matings, inbreeding, events] = await Promise.all([
     pg.query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' and coalesce(sex, 'w') = 'w' order by lauf_nr nulls last, ear_tag"),
     loadSireOptions(pg),
     pg.query<{ dam_id: string; last_birth: unknown }>('select dam_id, max(birth_date) as last_birth from births where deleted_at is null group by dam_id'),
     pg.query<{ animal_id: string; service_date: unknown }>('select animal_id, service_date from matings where deleted_at is null'),
     loadInbreeding(pg),
+    loadAnimalEvents(pg),
   ])
   return {
+    events,
     females: animals.rows,
     sires,
     lastBirth: new Map(lastBirths.rows.map((b) => [b.dam_id, isoDate(b.last_birth)])),
@@ -106,7 +110,21 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
 
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <div className="mb-1 text-sm text-gray-600">{terms.plural}</div>
-        <AnimalPicker animals={females} selected={ids} onChange={setIds} multiple />
+        <AnimalPicker animals={females} selected={ids} onChange={setIds} multiple readerModule={moduleKey} />
+        {data &&
+          ids.map((id) => {
+            const warnings = animalWarnings(id, eventsOf(data.events, id), { kind: 'mating', date: from }, species)
+            if (warnings.length === 0) return null
+            return (
+              <div key={id} className="mt-2">
+                <div className="text-sm font-semibold text-gray-800">
+                  {byId.get(id)!.lauf_nr ? `${byId.get(id)!.lauf_nr} · ` : ''}
+                  {animalLabel(byId.get(id)!)}
+                </div>
+                <AnimalWarnings animalIds={[id]} warnings={warnings} />
+              </div>
+            )
+          })}
       </div>
 
       <div className="space-y-3 rounded-lg bg-white p-4 shadow-sm">

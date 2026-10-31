@@ -58,6 +58,8 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "birth_id", "ear_tag", "animal_key", "sex", "stillborn", "died_24h",
         "birth_weight_kg", "import_key", "updated_at", "deleted_at", "died_on",
     ],
+    "watchlists": ["id", "name", "color", "notes", "created_by", "created_at", "archived_at", "updated_at", "deleted_at"],
+    "watchlist_entries": ["id", "list_id", "animal_id", "reason", "added_by", "added_at", "done_at", "updated_at", "deleted_at"],
     "breeding_values": [
         "id", "animal_id", "eval_date", "trait", "value", "reliability", "base",
         "import_key", "updated_at", "deleted_at",
@@ -110,6 +112,8 @@ def table_area(key: str) -> dict[str, str]:
         "births": f"{key}:animals",
         "pregnancy_checks": f"{key}:animals",
         "birth_offspring": f"{key}:animals",
+        "watchlists": f"{key}:animals",
+        "watchlist_entries": f"{key}:animals",
         "breeding_values": f"{key}:animals",
         "lamb_selection": f"{key}:animals",
         "pedigree_breeding_values": f"{key}:animals",

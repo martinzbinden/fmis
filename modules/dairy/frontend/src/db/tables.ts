@@ -59,6 +59,8 @@ export const SYNC_TABLES = {
     'id', 'birth_id', 'ear_tag', 'animal_key', 'sex', 'stillborn', 'died_24h',
     'birth_weight_kg', 'import_key', 'updated_at', 'deleted_at', 'died_on',
   ],
+  watchlists: ['id', 'name', 'color', 'notes', 'created_by', 'created_at', 'archived_at', 'updated_at', 'deleted_at'],
+  watchlist_entries: ['id', 'list_id', 'animal_id', 'reason', 'added_by', 'added_at', 'done_at', 'updated_at', 'deleted_at'],
   breeding_values: [
     'id', 'animal_id', 'eval_date', 'trait', 'value', 'reliability', 'base',
     'import_key', 'updated_at', 'deleted_at',
@@ -101,6 +103,8 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   pregnancy_checks: new Set(['check_date']),
   births: new Set(['birth_date', 'conception_date']),
   birth_offspring: new Set(['died_on']),
+  watchlists: new Set(),
+  watchlist_entries: new Set(),
   breeding_values: new Set(['eval_date']),
   lamb_selection: new Set(['decided_on']),
   pedigree_breeding_values: new Set(['eval_date']),

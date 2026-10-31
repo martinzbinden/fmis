@@ -37,7 +37,7 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
       )}
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <div className="mb-1 text-sm text-gray-600">{terms.plural} (eines oder mehrere)</div>
-        <AnimalPicker animals={data ?? []} selected={ids} onChange={setIds} multiple />
+        <AnimalPicker animals={data ?? []} selected={ids} onChange={setIds} multiple readerModule={moduleKey} />
       </div>
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <JournalForm

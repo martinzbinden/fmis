@@ -24,6 +24,8 @@ import MatingPlanner from './pages/MatingPlanner'
 import Pruefbericht from './pages/Pruefbericht'
 import LambSelection from './pages/LambSelection'
 import PedigreeAnimal from './pages/PedigreeAnimal'
+import AnimalInfo from './pages/AnimalInfo'
+import Watchlists from './pages/Watchlists'
 import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
 import { createDairyAnimalProvider } from './lib/animalProvider'
@@ -67,6 +69,8 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'belegung', element: <MatingEntry moduleKey={key} /> },
       { path: 'traechtigkeit', element: <PregnancyEntry moduleKey={key} /> },
       { path: 'traechtigkeit/vergleich', element: <PregnancyCompare /> },
+      { path: 'tierinfo', element: <AnimalInfo moduleKey={key} /> },
+      { path: 'merklisten', element: <Watchlists moduleKey={key} /> },
       { path: 'journal', element: <JournalEntry moduleKey={key} /> },
       { path: 'behandlungen', element: <TreatmentJournal moduleKey={key} /> },
       { path: 'anpaarung', element: <MatingPlanner moduleKey={key} /> },

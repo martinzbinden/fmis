@@ -35,6 +35,7 @@ from core.backend.fmis_core.agrident import ReaderBusyError, ReaderError, acquir
 from core.backend.fmis_core.auth import CurrentUser, require_auth, require_permission
 from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.modules_admin import get_reader_settings, is_reader_enabled, require_reader_enabled
+from core.backend.fmis_core.reader_scan import scan_response
 
 
 DUPLICATE_WINDOW_S = 60.0
@@ -360,9 +361,6 @@ def build_reader_router(key: str) -> APIRouter:
             raise HTTPException(status_code=409, detail="Das Lesegerät ist in der Milchwägung belegt")
         host, port = await get_reader_settings(key)
 
-        def sse(payload: dict) -> str:
-            return f"data: {json.dumps(payload)}\n\n"
-
         async def lookup(long_tag: str) -> dict:
             candidate, core = reader_tag_candidates(long_tag)
             async with pool.connection() as conn:
@@ -374,43 +372,7 @@ def build_reader_router(key: str) -> APIRouter:
                 )).fetchone()
             return {"tag": long_tag, "ear_tag": animal[1] if animal else candidate, "animal_id": str(animal[0]) if animal else None}
 
-        async def stream():
-            queue: asyncio.Queue = asyncio.Queue()
-
-            async def pump() -> None:
-                try:
-                    async with acquire_reader(host, port, keepalive=True) as conn:
-                        try:
-                            await conn.send_command("XGMEMINFO", timeout=5.0)
-                        except ReaderError as exc:
-                            await queue.put({"error": f"Der Leser antwortet nicht ({exc}) — AgriLink-/WLAN-Modus am Gerät prüfen"})
-                            return
-                        await queue.put({"ready": True})
-                        async for long_tag in conn.live_reads():
-                            await queue.put(await lookup(long_tag))
-                except asyncio.CancelledError:
-                    raise
-                except (ReaderBusyError, ReaderError, OSError) as exc:
-                    await queue.put({"error": str(exc)})
-                except Exception as exc:  # noqa: BLE001
-                    await queue.put({"error": f"Unerwarteter Fehler: {exc}"})
-                await queue.put({"closed": True})
-
-            task = asyncio.create_task(pump())
-            try:
-                while True:
-                    try:
-                        item = await asyncio.wait_for(queue.get(), timeout=20)
-                    except asyncio.TimeoutError:
-                        yield ": ping\n\n"  # Heartbeat gegen Proxy-Timeouts
-                        continue
-                    yield sse(item)
-                    if "closed" in item:
-                        return
-            finally:
-                task.cancel()  # Browser weg: Leser freigeben
-
-        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+        return scan_response(host, port, lookup)
 
     @router.get("/reader/session/events")
     async def session_events(user: CurrentUser = Depends(require_auth)) -> StreamingResponse:

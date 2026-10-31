@@ -1,22 +1,28 @@
 import { useMemo, useState } from 'react'
 import type { Animal } from '../types'
-import { animalLabel } from '@fmis/core/earTag'
+import { animalLabel, shortEarTag } from '@fmis/core/earTag'
+import { matchRead, useTagReader } from '@fmis/core/tagReader'
+import TagReaderButton from '@fmis/core/TagReaderButton'
 
 /** Tierauswahl per Laufnummer, Name oder Ohrmarke — für die Erfassungs-
  * formulare. Mit `multiple` mehrere Tiere (z.B. eine Belegperiode für die
- * ganze Gruppe). */
+ * ganze Gruppe). Mit `readerModule` auch per Lesegerät: jede Lesung wählt
+ * das Tier (bei `multiple` kommt es dazu; schon gewählte Tiere werden ignoriert,
+ * ein wieder entferntes Tier zählt beim nächsten Lesen wieder). */
 export default function AnimalPicker({
   animals,
   selected,
   onChange,
   multiple = false,
   placeholder = 'Laufnummer, Name oder Ohrmarke',
+  readerModule,
 }: {
   animals: Animal[]
   selected: string[]
   onChange: (ids: string[]) => void
   multiple?: boolean
   placeholder?: string
+  readerModule?: string
 }) {
   const [query, setQuery] = useState('')
   const byId = useMemo(() => new Map(animals.map((a) => [a.id, a])), [animals])
@@ -43,8 +49,27 @@ export default function AnimalPicker({
 
   const label = (a: Animal) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${animalLabel(a)}`
 
+  const reader = useTagReader({
+    moduleKey: readerModule ?? '',
+    duplicate: (read) => {
+      const a = matchRead(read, animals)
+      return a && selected.includes(a.id) ? `${label(a)} schon gewählt` : null
+    },
+    onRead: (read) => {
+      const a = matchRead(read, animals)
+      if (!a) return { text: `${shortEarTag(read.earTag)}: nicht in der Auswahl`, tone: 'error' }
+      if (!selected.includes(a.id)) pick(a.id)
+      return multiple ? `${label(a)} dazu (${selected.length + (selected.includes(a.id) ? 0 : 1)} gewählt)` : `${label(a)} gewählt`
+    },
+  })
+
   return (
     <div>
+      {readerModule && (
+        <div className="mb-2">
+          <TagReaderButton reader={reader} hint={multiple ? 'jede Lesung kommt dazu' : undefined} />
+        </div>
+      )}
       {selected.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {selected.map((id) => {

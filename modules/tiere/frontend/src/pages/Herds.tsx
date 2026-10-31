@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { animalProviders, listAllAnimals, type AnimalRef } from '@fmis/core/animals'
+import { shortEarTag } from '@fmis/core/earTag'
+import { matchRead, useTagReader } from '@fmis/core/tagReader'
+import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useQuery } from '../hooks/useQuery'
 import Modal from '../components/Modal'
 import { addDaysIso, fmtDate, todayIso } from '../lib/format'
@@ -293,6 +296,24 @@ function GroupDialog({ data, group, date, onClose }: { data: HerdData; group: He
 }
 
 /** Tiere zügeln: Einzeltiere per Nummer und/oder Anzahl ohne Nummer. */
+/** Lesegerät in den Dialogen: jede Lesung hakt das Tier an (schon angehakte werden ignoriert). */
+function HerdReader({ animals, selected, onAdd }: { animals: AnimalRef[]; selected: Set<string>; onAdd: (id: string) => void }) {
+  const reader = useTagReader({
+    moduleKey: 'tiere',
+    duplicate: (read) => {
+      const a = matchRead(read, animals)
+      return a && selected.has(a.id) ? `${a.lauf_nr ?? shortEarTag(a.ear_tag)} schon gewählt` : null
+    },
+    onRead: (read) => {
+      const a = matchRead(read, animals)
+      if (!a) return { text: `${shortEarTag(read.earTag)}: nicht in der Auswahl`, tone: 'error' }
+      onAdd(a.id)
+      return `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTag(a.ear_tag)} gewählt (${selected.size + 1})`
+    },
+  })
+  return <TagReaderButton reader={reader} hint="jede Lesung hakt das Tier an" />
+}
+
 function MoveDialog({
   data,
   from,
@@ -410,6 +431,7 @@ function MoveDialog({
 
         <div className="space-y-1">
           <span className="block font-medium text-gray-700">Einzeltiere mit Nummer</span>
+          <HerdReader animals={animals ?? []} selected={selected} onAdd={(id) => setSelected((prev) => new Set(prev).add(id))} />
           <input
             className={field}
             value={numbers}
@@ -595,6 +617,7 @@ function IdentifyDialog({
             <input type="date" className={field} value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
         </div>
+        <HerdReader animals={list} selected={selected} onAdd={(id) => setSelected((prev) => new Set(prev).add(id))} />
         <input className={field} value={numbers} onChange={(e) => applyNumbers(e.target.value)} placeholder="Laufnummern oder Ende der Ohrmarke, z.B. 2212 2213" />
         {unmatched.length > 0 && <p className="text-xs text-amber-700">Nicht gefunden: {unmatched.join(', ')}</p>}
         {ambiguous.length > 0 && <p className="text-xs text-amber-700">Mehrdeutig, bitte in der Liste wählen: {ambiguous.join(', ')}</p>}

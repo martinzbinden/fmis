@@ -2,19 +2,24 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
+import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
+import { matchRead, useTagReader } from '@fmis/core/tagReader'
+import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
 import AnimalPicker from '../components/AnimalPicker'
+import AnimalWarnings from '../components/AnimalWarnings'
+import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
 import { recordBirth, validateBirth, type OffspringFate, type OffspringInput } from '../lib/recordBirth'
 import { loadPendingOffspring } from '../lib/earTagPending'
-import { isoDate, localTodayIso, num } from '../lib/format'
+import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import type { Animal } from '../types'
 
 async function loadData(pg: PGlite) {
-  const [animals, sires, lastMatings, births, pending] = await Promise.all([
+  const [animals, sires, lastMatings, births, pending, events] = await Promise.all([
     pg.query<Animal>('select * from animals where deleted_at is null order by lauf_nr nulls last, ear_tag'),
     loadSireOptions(pg),
     pg.query<{ animal_id: string; service_date: unknown; sire_key: string | null; sire_ear_tag: string | null; sire_name: string | null }>(
@@ -25,8 +30,10 @@ async function loadData(pg: PGlite) {
       'select dam_id, birth_date, parity from births where deleted_at is null',
     ),
     loadPendingOffspring(pg),
+    loadAnimalEvents(pg),
   ])
   return {
+    events,
     animals: animals.rows,
     sires,
     lastMating: new Map(lastMatings.rows.map((m) => [m.animal_id, { ...m, service_date: isoDate(m.service_date)! }])),
@@ -81,6 +88,36 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   function patch(i: number, p: Partial<OffspringInput>) {
     setOffspring((prev) => prev.map((o, j) => (j === i ? { ...o, ...p } : o)))
   }
+
+  // Lesegerät: zuerst die Mutter, danach füllt jede Lesung die nächste freie Ohrmarke.
+  const reader = useTagReader({
+    moduleKey,
+    duplicate: (read) => {
+      const m = matchRead(read, females)
+      if (dam && m?.id === dam.id) return `${word.mother} ${animalLabel(dam)} schon gewählt`
+      if (read.key && offspring.some((o) => animalKey(o.ear_tag) === read.key)) return `bei den ${word.youngPl} schon eingetragen`
+      return null
+    },
+    onRead: (read) => {
+      const known = matchRead(read, data?.animals ?? [])
+      if (!dam) {
+        const m = matchRead(read, females)
+        if (!m) return { text: `${shortEarTag(read.earTag)}: keine aktive ${word.mother} – zuerst die ${word.mother} lesen`, tone: 'error' }
+        setDamIds([m.id])
+        return `${word.mother}: ${animalLabel(m)} – jetzt die ${word.youngPl} lesen`
+      }
+      if (known && isoDate(known.birth_date) !== date) return { text: `${animalLabel(known)} ist schon im Bestand (geb. ${fmtDate(isoDate(known.birth_date))}) – nicht als ${word.young}`, tone: 'error' }
+      const slot = offspring.findIndex((o) => o.fate === 'lebend' && !o.tag_later && !o.ear_tag.trim())
+      if (slot >= 0) {
+        patch(slot, { ear_tag: read.earTag })
+        return `${word.young} ${slot + 1}: ${shortEarTag(read.earTag)}`
+      }
+      if (offspring.length >= 4) return { text: `Schon 4 ${word.youngPl} – Ohrmarke von Hand eintragen`, tone: 'error' }
+      setOffspring((prev) => [...prev, { ...EMPTY_OFFSPRING, ear_tag: read.earTag }])
+      return `${word.young} ${offspring.length + 1}: ${shortEarTag(read.earTag)}`
+    },
+  })
+  const damWarnings = dam && data ? animalWarnings(dam.id, eventsOf(data.events, dam.id), { kind: 'birth', date }, species) : []
 
   async function save() {
     if (!dam || !data) return setError(`Zuerst die ${word.mother} wählen.`)
@@ -144,9 +181,16 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
+      <TagReaderButton reader={reader} hint={`erst ${word.mother}, dann ${word.youngPl}`} />
+
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <div className="mb-1 text-sm text-gray-600">{word.mother}</div>
         <AnimalPicker animals={females} selected={damIds} onChange={setDamIds} />
+        {damWarnings.length > 0 && (
+          <div className="mt-2">
+            <AnimalWarnings animalIds={[dam!.id]} warnings={damWarnings} />
+          </div>
+        )}
         {dam && (
           <p className="mt-2 text-xs text-gray-500">
             {lastBirth ? `Letzte ${word.event} ${lastBirth.split('-').reverse().join('.')}` : `Noch keine ${word.event} erfasst`}

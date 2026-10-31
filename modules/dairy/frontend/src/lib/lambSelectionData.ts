@@ -6,7 +6,7 @@ import { animalKey } from '@fmis/core/earTag'
 import { upsertRow } from '../db/write'
 import type { Species } from './fertility'
 import { isoDate, num } from './format'
-import { loadHerdContext } from './herdContext'
+import { loadHerdContext, type AnimalContext } from './herdContext'
 import { loadInbreeding } from './pedigreeData'
 import { SIRE_TRAIT } from './breedingTraits'
 import type { Inbreeding } from './inbreeding'
@@ -21,6 +21,8 @@ export interface LambSelectionData {
   sireValueBasis: Map<string, 'eigen' | 'eltern'>
   decisions: Map<string, { id: string; purpose: Purpose | null; decided_on: string | null; notes: string | null }>
   inbreeding: Inbreeding
+  /** Herdenkontext (Kennzahlen je Tier), aus dem die Mütter-Infos stammen */
+  context: Map<string, AnimalContext>
 }
 
 export { SIRE_TRAIT }
@@ -128,7 +130,7 @@ export async function loadLambSelection(pg: PGlite, species: Species, today: str
     sireValueBasis.set(sireKey, 'eltern')
   }
 
-  return { candidates: [...candidates.values()], dams, sireValues, sireValueBasis, decisions: decisionMap, inbreeding }
+  return { candidates: [...candidates.values()], dams, sireValues, sireValueBasis, decisions: decisionMap, inbreeding, context }
 }
 
 /** Entscheid speichern bzw. zurücknehmen (purpose null) — immer dieselbe
