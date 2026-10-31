@@ -49,9 +49,14 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
     <div className="mx-auto max-w-lg space-y-3 p-4 pb-24">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Merklisten</h1>
-        <Link to="../tierinfo" relative="path" className="text-sm text-brand-700">
-          🔎 Tier-Info
-        </Link>
+        <span className="flex gap-3">
+          <Link to="../gruppen" relative="path" className="text-sm text-brand-700">
+            ⚖️ vergleichen
+          </Link>
+          <Link to="../tierinfo" relative="path" className="text-sm text-brand-700">
+            🔎 Tier-Info
+          </Link>
+        </span>
       </div>
       <form
         className="flex gap-2"

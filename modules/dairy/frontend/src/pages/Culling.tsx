@@ -139,6 +139,9 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Ausmerzliste</h1>
         <div className="flex flex-wrap gap-2 print:hidden">
+          <Link to="../gruppen" relative="path" className="rounded border border-brand-700 px-2 py-1 text-xs font-medium text-brand-700">
+            ⚖️ Gruppen vergleichen
+          </Link>
           {species === 'sheep' && (
             <Link to="laemmer" className="rounded border border-brand-700 px-2 py-1 text-xs font-medium text-brand-700">
               🐑 Lämmer zum Schlachttermin

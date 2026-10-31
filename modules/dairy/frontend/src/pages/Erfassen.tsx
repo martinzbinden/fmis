@@ -12,10 +12,12 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
     { to: 'ohrmarken', icon: '🏷️', label: 'Ohrmarken nachtragen', desc: sheep ? 'Lämmer, die bei der Ablammung noch keine Ohrmarke hatten' : 'Kälber, die bei der Abkalbung noch keine Ohrmarke hatten' },
     { to: 'belegung', icon: '❤️', label: sheep ? 'Belegung' : 'Besamung / Belegung', desc: sheep ? 'Widder und Zeitraum, für die ganze Gruppe' : 'Stier und Datum' },
     { to: 'traechtigkeit', icon: '🤰', label: 'Trächtigkeit', desc: 'Einzeln oder mehrere Tiere (+ / Lesegerät), ja/leer/unsicher, Wochen' },
+    { to: 'klauen', icon: '🐾', label: 'Klauen', desc: sheep ? 'Moderhinke-Score je Fuss, lahm, geschnitten, Behandlung – im Durchgang, mit Lesegerät' : 'Befunde nach ICAR-Atlas, Lahmheit 1–5, geschnitten, Behandlung' },
     { to: 'journal', icon: '💉', label: 'Beobachtung / Behandlung', desc: 'Krankheit, Behandlung mit Absetzfrist, Brunst, Klauen' },
     { to: 'behandlungen', icon: '📒', label: 'Behandlungsjournal', desc: 'Tierarzneimittel für die Kontrolle: Liste, Absetzfristen, Druck, Favoriten, cownect-Import' },
     { to: 'selektion', icon: '⭐', label: sheep ? 'Lämmer-Selektion' : 'Kälber-Selektion', desc: 'Remonte oder Mast nach Mutterleistung, Vater und Inzucht' },
     { to: 'merklisten', icon: '📋', label: 'Merklisten', desc: 'Tiere vormerken, z.B. «Ausmerzen prüfen» – auch aus Warnungen bei der Erfassung' },
+    { to: 'gruppen', icon: '⚖️', label: 'Gruppen vergleichen', desc: 'Leistung + Zuchtwert, Schlachterlös, Fortpflanzung, Klauen – beliebige Gruppen nebeneinander' },
     { to: 'anpaarung', icon: '🧬', label: 'Anpaarung planen', desc: 'Erwartete Inzucht je Mutter × ' + (sheep ? 'Widder' : 'Stier') },
   ]
   return (

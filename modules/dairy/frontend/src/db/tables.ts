@@ -61,6 +61,11 @@ export const SYNC_TABLES = {
   ],
   watchlists: ['id', 'name', 'color', 'notes', 'created_by', 'created_at', 'archived_at', 'updated_at', 'deleted_at'],
   watchlist_entries: ['id', 'list_id', 'animal_id', 'reason', 'added_by', 'added_at', 'done_at', 'updated_at', 'deleted_at'],
+  claw_exams: [
+    'id', 'animal_id', 'exam_date', 'round_id', 'examiner', 'locomotion', 'trimmed', 'treatment', 'notes',
+    'source', 'recorded_at', 'created_by', 'updated_at', 'deleted_at',
+  ],
+  claw_findings: ['id', 'exam_id', 'animal_id', 'foot', 'claw', 'code', 'grade', 'zone', 'updated_at', 'deleted_at'],
   breeding_values: [
     'id', 'animal_id', 'eval_date', 'trait', 'value', 'reliability', 'base',
     'import_key', 'updated_at', 'deleted_at',
@@ -105,6 +110,8 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   birth_offspring: new Set(['died_on']),
   watchlists: new Set(),
   watchlist_entries: new Set(),
+  claw_exams: new Set(['exam_date']),
+  claw_findings: new Set(),
   breeding_values: new Set(['eval_date']),
   lamb_selection: new Set(['decided_on']),
   pedigree_breeding_values: new Set(['eval_date']),

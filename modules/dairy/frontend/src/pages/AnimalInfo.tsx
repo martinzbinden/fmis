@@ -18,18 +18,20 @@ import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { matchAnimals, METHOD_LABEL, RESULT_LABEL } from '../lib/pregnancy'
 import { speciesOf } from '../lib/species'
 import { withdrawalUntil } from '../lib/treatments'
+import { clawStatusByAnimal, examSummary, loadClawExams } from '../lib/clawHealth'
 import { loadSettings } from './LambSelection'
 import type { Animal, AnimalJournalEntry } from '../types'
 
 async function loadInfo(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: string) {
   const today = localTodayIso()
   const sel = await loadLambSelection(pg, species, today)
-  const [pedigree, events, journal] = await Promise.all([
+  const [pedigree, events, journal, claws] = await Promise.all([
     loadPedigreeData(pg, sel.context, species),
     loadAnimalEvents(pg),
     pg.query<AnimalJournalEntry>(
       "select * from animal_journal where deleted_at is null and (category in ('krankheit', 'behandlung') or withdrawal_milk_days is not null or withdrawal_meat_days is not null) order by entry_date desc",
     ),
+    loadClawExams(pg),
   ])
   const lambs = rankLambs({
     candidates: sel.candidates,
@@ -63,6 +65,7 @@ async function loadInfo(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: stri
     pedigree,
     events,
     journalByAnimal,
+    claws: clawStatusByAnimal(claws, species, today),
   }
 }
 
@@ -184,6 +187,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
         const milkUntil = until('milk')
         const meatUntil = until('meat')
         const lastTreatment = journal[0]
+        const claw = data.claws.get(a.id)
         const reasons = a.sex !== 'm' && (ctx.births.length > 0 || ctx.lactationNumber) ? cullingReasons(cullingInput(ctx, species), thresholds) : []
         const lastScc = ctx.currentLactationScc.filter((v): v is number => v != null).at(-1)
         const inactive = a.status !== 'aktiv'
@@ -292,14 +296,16 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>keine Proben</Line>
                 )}
               </Tile>
-              <Tile label="Letzte Behandlung">
-                {lastTreatment ? (
-                  <>
-                    <Line strong>{fmtDate(lastTreatment.entry_date)}</Line>
-                    <Line>{lastTreatment.diagnosis ?? lastTreatment.medication ?? lastTreatment.text ?? '–'}</Line>
-                  </>
+              <Tile label="Gesundheit / Klauen">
+                <Line strong={!!lastTreatment}>
+                  {lastTreatment ? `${fmtDate(lastTreatment.entry_date)} ${lastTreatment.diagnosis ?? lastTreatment.medication ?? lastTreatment.text ?? ''}` : 'keine Behandlung'}
+                </Line>
+                {claw ? (
+                  <Line className={(claw.mh ?? 0) >= 3 || claw.lame ? 'font-semibold text-red-700' : ''}>
+                    🐾 {fmtDate(claw.last.exam_date)}: {examSummary(claw.last, species)}
+                  </Line>
                 ) : (
-                  <Line>keine</Line>
+                  <Line>🐾 nicht beurteilt</Line>
                 )}
               </Tile>
               <Tile label="Ausmerzliste">

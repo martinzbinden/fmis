@@ -8,6 +8,7 @@ import { softDeleteRow } from '../db/write'
 import JournalForm from '../components/JournalForm'
 import { canChangeEntry, categoryIcon, categoryLabel, groupCases, journalSummary, supersededBy } from '../lib/journal'
 import { withdrawalUntil } from '../lib/treatments'
+import { examSummary, loadClawExams, worstMh } from '../lib/clawHealth'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useQuery } from '../hooks/useQuery'
 import { cullingInput, loadHerdContext, type AnimalContext } from '../lib/herdContext'
@@ -28,7 +29,7 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
   const today = todayIso()
   const herd = await loadHerdContext(pg, species, today)
   const ctx = herd.get(id) ?? null
-  const [pedigreeData, lactations, tests, journal, sires, certificate] = await Promise.all([
+  const [pedigreeData, lactations, tests, journal, sires, certificate, claws] = await Promise.all([
     loadPedigreeData(pg, herd, species),
     pg.query<LactationSummary>('select * from v_lactation_summary where animal_id = $1 order by lactation_number desc', [id]),
     pg.query<{ test_date: unknown; milk_kg: unknown; cell_count: unknown }>(
@@ -41,8 +42,10 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
     ),
     loadSireOptions(pg),
     ctx ? loadCertificateDetails(pg, animalKey(ctx.animal.ear_tag) ?? ctx.animal.ear_tag) : Promise.resolve(null),
+    loadClawExams(pg),
   ])
   return {
+    claws: claws.filter((e) => e.animal_id === id),
     ctx,
     ...pedigreeData,
     sires,
@@ -172,7 +175,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
   if (!data?.ctx) return <p className="p-4 text-center text-gray-500">Tier nicht gefunden.</p>
 
-  const { ctx, inbreeding, sires, pedigreeByKey, herdIdByKey, lactations, tests, journal, certificate } = data
+  const { ctx, inbreeding, sires, pedigreeByKey, herdIdByKey, lactations, tests, journal, certificate, claws } = data
   const a = ctx.animal
   const f = ctx.fertility
   const p = ctx.performance
@@ -246,6 +249,23 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       </Section>
 
       <JournalSection animalId={a.id} journal={journal} />
+
+      {claws.length > 0 && (
+        <Section title="Klauen">
+          <ul className="divide-y text-sm">
+            {claws.map((e) => (
+              <li key={e.id} className="flex gap-3 py-1.5">
+                <span className="w-20 shrink-0 text-gray-500">{fmtDate(e.exam_date)}</span>
+                <span className={`min-w-0 flex-1 ${(worstMh(e) ?? 0) >= 3 ? 'font-semibold text-red-700' : 'text-gray-800'}`}>
+                  {examSummary(e, species)}
+                  {e.examiner ? <span className="text-gray-500"> · {e.examiner}</span> : null}
+                  {e.notes ? <span className="block text-xs text-gray-600">{e.notes}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
 
       <Section title="Abstammung">
         <PedigreeTree rootKey={offspringKey} pedigreeByKey={pedigreeByKey} linkFor={(k) => pedigreeLink(moduleKey, herdIdByKey, k)} />
