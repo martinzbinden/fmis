@@ -214,7 +214,7 @@ export function cullingReasons(input: CullingInput, t: CullingThresholds): Culli
   if (perfRel != null && perfRel < t.performanceRel) {
     const pct = Math.round((1 - perfRel) * 100)
     const b = p?.performance_basis_stage ?? p?.performance_basis
-    const basis = b === 'Standardlaktation' ? 'Standardlaktation' : b === 'Lebenstagleistung bis zur Abkalbung' ? 'Lebenstagleistung (bis zur letzten Abkalbung)' : 'Lebenstagleistung'
+    const basis = b === 'Standardlaktation' ? 'Standardlaktation' : b === 'Lebenstagleistung bis zur Abkalbung' ? `Lebenstagleistung (bis zur letzten ${term.birth})` : 'Lebenstagleistung'
     reasons.push({ area: 'leistung', weight: 1, text: `${basis} ${pct} % unter Gleichaltrigen` })
   }
 

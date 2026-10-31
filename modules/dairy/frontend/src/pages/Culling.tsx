@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '../hooks/useQuery'
-import { cullingInput, loadHerdContext, latestValues } from '../lib/herdContext'
+import { cullingInput, litterSummary, loadHerdContext, latestValues, type LitterSummary } from '../lib/herdContext'
 import TrendBadge from '../components/TrendBadge'
 import type { LactationTrend } from '../lib/lactationTrend'
 import { cullingReasons, fmtCells, reasonScore, type CullingReason, type CullingThresholds } from '../lib/culling'
@@ -49,7 +49,17 @@ interface Row {
   totalBv: number | null
   trend: LactationTrend | undefined
   pregnancy: PregnancyStatus | null
+  litter: LitterSummary
 }
+
+/** «2·1·3 (Ø 2.0)» – die letzten vier Würfe, Mittel über alle. */
+function fmtLitters(l: LitterSummary): string | null {
+  if (l.sizes.length === 0) return null
+  const last = l.sizes.slice(-4).join('·')
+  return `Würfe ${l.sizes.length > 4 ? '…' : ''}${last}${l.sizes.length > 1 ? ` (Ø ${l.mean!.toFixed(1)})` : ''}`
+}
+
+const round2 = (v: number | null) => (v == null ? null : Math.round(v * 100) / 100)
 
 function csvEscape(v: unknown): string {
   const s = v == null ? '' : String(v)
@@ -84,6 +94,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           totalBv: species === 'sheep' ? (bv.gzw ?? null) : (bv.iset ?? null),
           trend: c.trend,
           pregnancy: c.pregnancy,
+          litter: litterSummary(c.births),
         }
       })
       .sort((a, b) => b.score - a.score || b.reasons.length - a.reasons.length || a.label.localeCompare(b.label))
@@ -93,7 +104,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   const visible = showAll ? rows : flagged
 
   function exportCsv() {
-    const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Tendenz je Lakt.', 'Trächtigkeit', 'Gründe']
+    const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Tendenz je Lakt.', 'Trächtigkeit', ...(species === 'sheep' ? ['Würfe', 'Wurfgrösse Ø', 'lebend geboren Ø'] : []), 'Gründe']
     const lines = visible.map((r) =>
       [
         r.laufNr,
@@ -106,6 +117,9 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
         r.totalBv,
         r.trend?.slope != null ? Math.round(r.trend.slope * 100) : null,
         r.pregnancy ? `${RESULT_LABEL[r.pregnancy.result]} ${r.pregnancy.date}` : null,
+        ...(species === 'sheep'
+          ? [r.litter.sizes.join('-') || null, round2(r.litter.mean), round2(r.litter.aliveMean)]
+          : []),
         r.reasons.map((x) => x.text).join(' | '),
       ]
         .map(csvEscape)
@@ -191,6 +205,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
             <div className="mt-1 text-xs text-gray-500">
               {r.lactation ? `${r.lactation}. Laktation` : 'noch nicht gemolken'}
               {r.pregnancy ? ` · ${RESULT_LABEL[r.pregnancy.result]}${r.pregnancy.weeks != null && r.pregnancy.result === 'ja' ? ` (${Math.round(r.pregnancy.weeks)} Wo.)` : ''} am ${fmtDate(r.pregnancy.date)}` : ''}
+              {species === 'sheep' && fmtLitters(r.litter) ? ` · ${fmtLitters(r.litter)}` : ''}
               {r.sccGeo12m != null ? ` · Zellzahl Ø ${fmtCells(r.sccGeo12m)}` : ''}
               {r.performanceRel != null ? ` · Leistung ${Math.round(r.performanceRel * 100)} %` : ''}
               {r.totalBv != null ? ` · ${species === 'sheep' ? 'GZW' : 'ISET'} ${r.totalBv}` : ''}{' '}

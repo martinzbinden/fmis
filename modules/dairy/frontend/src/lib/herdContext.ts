@@ -278,3 +278,20 @@ export function cullingInput(ctx: AnimalContext, species: Species): CullingInput
 export function latestValues(bvs: Record<string, BreedingValueEntry>): Record<string, number> {
   return Object.fromEntries(Object.entries(bvs).map(([k, v]) => [k, v.value]))
 }
+
+export interface LitterSummary {
+  /** Wurfgrössen (inkl. tot geborene), älteste zuerst */
+  sizes: number[]
+  mean: number | null
+  /** davon lebend geboren (ohne tot geboren/verendet < 24 h) */
+  aliveMean: number | null
+}
+
+/** Wurfgrössen eines Muttertiers aus den erfassten bzw. importierten Geburten. */
+export function litterSummary(births: Pick<BirthRow, 'birth_date' | 'offspring'>[]): LitterSummary {
+  const withOffspring = [...births].filter((b) => b.offspring.length > 0).sort((a, b) => a.birth_date.localeCompare(b.birth_date))
+  const sizes = withOffspring.map((b) => b.offspring.length)
+  const alive = withOffspring.map((b) => b.offspring.filter((o) => !o.stillborn && !o.died_24h).length)
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null)
+  return { sizes, mean: mean(sizes), aliveMean: mean(alive) }
+}
