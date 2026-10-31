@@ -2,6 +2,7 @@ import { isDrySql } from '../lib/dryOff'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getToken } from '@fmis/core/auth'
+import AnimalOption from '@fmis/core/AnimalOption'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import { useDb } from '@fmis/core/DbContext'
@@ -551,12 +552,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
                   onMouseEnter={() => setSuggestIdx(i)}
                   className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${i === suggestIdx ? 'bg-brand-50' : ''}`}
                 >
-                  <span className="w-14 text-xl font-bold text-gray-800">{a.lauf_nr ?? '–'}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-gray-800">{a.name ?? ''}</span>
-                    <span className="block text-xs text-gray-500">{shortEarTag(a.ear_tag)}</span>
-                  </span>
-                  {inBank && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">schon in Bank</span>}
+                  <AnimalOption animal={a} extra={inBank && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">schon in Bank</span>} />
                 </li>
               ))}
             </ul>

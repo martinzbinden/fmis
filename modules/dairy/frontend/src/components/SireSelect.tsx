@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import AnimalOption from '@fmis/core/AnimalOption'
 import { animalKey } from '@fmis/core/earTag'
-import { sireLabel, type SireOption } from '../lib/sires'
+import { fmtDate } from '../lib/format'
+import type { SireOption } from '../lib/sires'
 
 export interface SireValue {
   key: string | null
@@ -10,8 +12,8 @@ export interface SireValue {
 
 export const EMPTY_SIRE: SireValue = { key: null, ear_tag: '', name: '' }
 
-/** Vatertier wählen: bekannte Widder/Stiere aus der Liste oder ein anderes
- * Tier per Ohrmarke/Name. */
+/** Vatertier wählen: bekannte Widder/Stiere als Liste (Ohrmarke, Laufnummer,
+ * Geburtsdatum) oder ein anderes Tier per Ohrmarke/Name. */
 export default function SireSelect({
   options,
   value,
@@ -24,35 +26,67 @@ export default function SireSelect({
   label: string
 }) {
   const known = value.key ? options.find((o) => o.key === value.key) : undefined
-  const [other, setOther] = useState(false)
-  const selectValue = other ? '__other' : (known?.key ?? '')
+  const [otherChosen, setOther] = useState(false)
+  // vorbelegter Vater, der nicht in der Liste steht (z.B. aus einer Belegung) → als «anderes Tier» zeigen
+  const other = otherChosen || (!known && !!(value.ear_tag || value.name))
   const input = 'w-full rounded-lg border border-gray-300 px-3 py-3 text-base'
+  const chip = (active: boolean) => `min-h-10 rounded-lg border px-3 text-sm ${active ? 'border-brand-700 bg-brand-50 font-semibold text-brand-900' : 'border-gray-300 text-gray-700'}`
   return (
     <div className="space-y-2">
-      <label className="block text-sm text-gray-600">
-        {label}
-        <select
-          value={selectValue}
-          onChange={(e) => {
-            const v = e.target.value
-            setOther(v === '__other')
-            if (v === '' || v === '__other') onChange(EMPTY_SIRE)
-            else {
-              const o = options.find((x) => x.key === v)!
-              onChange({ key: o.key, ear_tag: o.ear_tag, name: o.name ?? '' })
-            }
+      <div className="text-sm text-gray-600">{label}</div>
+      {options.length > 0 && (
+        <ul className="max-h-64 divide-y overflow-y-auto rounded-lg border border-gray-300 bg-white" role="radiogroup" aria-label={label}>
+          {options.map((o) => {
+            const active = !other && known?.key === o.key
+            return (
+              <li key={o.key}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => {
+                    setOther(false)
+                    onChange({ key: o.key, ear_tag: o.ear_tag, name: o.name ?? '' })
+                  }}
+                  className={`flex min-h-12 w-full items-center gap-2 px-3 text-left ${active ? 'bg-brand-50 ring-2 ring-inset ring-brand-700' : 'active:bg-gray-50'}`}
+                >
+                  <AnimalOption
+                    animal={{ ...o, sex: 'm' }}
+                    extra={
+                      <>
+                        {o.lastUsed && <span className="text-gray-500">zuletzt {fmtDate(o.lastUsed)}</span>}
+                        {!o.present && <span className="rounded bg-gray-100 px-1 text-gray-600">nicht im Bestand</span>}
+                      </>
+                    }
+                  />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setOther(false)
+            onChange(EMPTY_SIRE)
           }}
-          className={input}
+          className={chip(!other && !known && !value.ear_tag)}
         >
-          <option value="">unbekannt</option>
-          {options.map((o) => (
-            <option key={o.key} value={o.key}>
-              {sireLabel(o)}
-            </option>
-          ))}
-          <option value="__other">Anderes Tier…</option>
-        </select>
-      </label>
+          unbekannt
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setOther(true)
+            onChange(EMPTY_SIRE)
+          }}
+          className={chip(other)}
+        >
+          Anderes Tier…
+        </button>
+      </div>
       {other && (
         <div className="grid grid-cols-2 gap-2">
           <input

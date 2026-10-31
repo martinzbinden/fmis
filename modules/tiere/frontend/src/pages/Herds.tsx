@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
+import AnimalOption from '@fmis/core/AnimalOption'
 import { animalProviders, listAllAnimals, type AnimalRef } from '@fmis/core/animals'
 import { shortEarTag } from '@fmis/core/earTag'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
@@ -463,12 +464,15 @@ function MoveDialog({
                       setSelected(next)
                     }}
                   />
-                  <span className="min-w-0 flex-1">
-                    <span className="font-medium">{a.label}</span>
-                    {a.name && <span className="text-gray-500"> {a.name}</span>}
-                    {a.dry && <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800">trocken</span>}
-                  </span>
-                  <span className="shrink-0 text-xs text-gray-500">{g ? g.name : 'ohne Gruppe'}</span>
+                  <AnimalOption
+                    animal={a}
+                    extra={
+                      <>
+                        {a.dry && <span className="rounded bg-amber-100 px-1 text-amber-800">trocken</span>}
+                        <span className="text-gray-500">{g ? g.name : 'ohne Gruppe'}</span>
+                      </>
+                    }
+                  />
                 </label>
               )
             })}
@@ -642,11 +646,7 @@ function IdentifyDialog({
                     setSelected(next)
                   }}
                 />
-                <span className="min-w-0 flex-1">
-                  <span className="font-medium">{a.label}</span>
-                  {a.name && <span className="text-gray-500"> {a.name}</span>}
-                  {g && <span className="ml-1 text-xs text-gray-500">({g.name})</span>}
-                </span>
+                <AnimalOption animal={a} extra={g && <span className="text-gray-500">({g.name})</span>} />
                 {isSel && (
                   <select
                     className="rounded border border-gray-300 px-1 py-0.5 text-xs"

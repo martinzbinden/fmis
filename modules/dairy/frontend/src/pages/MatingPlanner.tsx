@@ -51,7 +51,7 @@ export default function MatingPlanner({ moduleKey }: { moduleKey: string }) {
   function addSire() {
     const key = animalKey(newSire)
     if (!key) return
-    if (!allSires.some((s) => s.key === key)) setExtra((e) => [...e, { key, ear_tag: newSire.trim(), name: null, lastUsed: null }])
+    if (!allSires.some((s) => s.key === key)) setExtra((e) => [...e, { key, ear_tag: newSire.trim(), name: null, lauf_nr: null, birth_date: null, present: false, lastUsed: null }])
     setChosen([...selectedKeys.filter((k) => k !== key), key])
     setNewSire('')
   }

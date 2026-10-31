@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Animal } from '../types'
 import { animalLabel, shortEarTag } from '@fmis/core/earTag'
+import AnimalOption from '@fmis/core/AnimalOption'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 
@@ -110,8 +111,8 @@ export default function AnimalPicker({
             <ul className="mt-1 divide-y rounded-lg border border-gray-200 bg-white">
               {matches.map((a) => (
                 <li key={a.id}>
-                  <button type="button" onClick={() => pick(a.id)} className="w-full px-3 py-2.5 text-left active:bg-gray-50">
-                    <span className="font-semibold text-gray-800">{label(a)}</span>
+                  <button type="button" onClick={() => pick(a.id)} className="flex w-full px-3 py-2.5 text-left active:bg-gray-50">
+                    <AnimalOption animal={a} />
                   </button>
                 </li>
               ))}

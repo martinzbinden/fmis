@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey, shortEarTag } from '@fmis/core/earTag'
+import AnimalOption from '@fmis/core/AnimalOption'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useQuery } from '../hooks/useQuery'
@@ -149,8 +150,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
           {matches.slice(0, 12).map((a) => (
             <li key={a.id}>
               <button type="button" onClick={() => show(a.id)} className={`flex min-h-11 w-full items-center px-3 text-left ${a.id === id ? 'bg-brand-50' : ''}`}>
-                <span className="flex-1">{nameOf(a)}</span>
-                {a.status !== 'aktiv' && <span className="text-xs text-gray-600">{a.status}</span>}
+                <AnimalOption animal={a} extra={a.status !== 'aktiv' && <span>{a.status}</span>} />
               </button>
             </li>
           ))}

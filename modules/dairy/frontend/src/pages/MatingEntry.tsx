@@ -19,7 +19,7 @@ import type { Animal } from '../types'
 async function loadData(pg: PGlite) {
   const [animals, sires, lastBirths, matings, inbreeding, events] = await Promise.all([
     pg.query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' and coalesce(sex, 'w') = 'w' order by lauf_nr nulls last, ear_tag"),
-    loadSireOptions(pg),
+    loadSireOptions(pg, { presentOnly: true }),
     pg.query<{ dam_id: string; last_birth: unknown }>('select dam_id, max(birth_date) as last_birth from births where deleted_at is null group by dam_id'),
     pg.query<{ animal_id: string; service_date: unknown }>('select animal_id, service_date from matings where deleted_at is null'),
     loadInbreeding(pg),

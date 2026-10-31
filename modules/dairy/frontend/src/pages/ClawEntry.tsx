@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
+import AnimalOption from '@fmis/core/AnimalOption'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import { notifyError } from '@fmis/core/toast'
@@ -415,8 +416,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
               {matches.map((a) => (
                 <li key={a.id}>
                   <button type="button" onClick={() => setPicked(a.id)} className="flex min-h-12 w-full items-center px-3 text-left">
-                    <span className="flex-1">{label(a)}</span>
-                    {inRound.has(a.id) && <span className="text-xs text-gray-700">schon erfasst</span>}
+                    <AnimalOption animal={a} extra={inRound.has(a.id) && <span className="text-gray-700">schon erfasst</span>} />
                   </button>
                 </li>
               ))}
