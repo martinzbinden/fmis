@@ -178,6 +178,38 @@ export async function removeMembers(data: HerdData, memberIds: string[], date: s
   for (const m of data.members.filter((x) => memberIds.includes(x.id))) await closeFrom('herd_members', m, date)
 }
 
+/** Gruppe ab `date` neu zusammenstellen: die genannten Tiere kommen hinein (und
+ * verlassen ihre bisherige Gruppe); mit `replace` verlassen alle anderen
+ * Einzeltiere die Gruppe und stehen danach «ohne Gruppe». Tiere ohne Nummer
+ * (Anzahlen) bleiben unberührt. Gibt zurück, wie viele dazukamen bzw. gingen. */
+export async function constituteGroup(
+  data: HerdData,
+  input: { group: HerdGroup; animals: AnimalRef[]; date: string; replace: boolean },
+): Promise<{ added: number; left: number }> {
+  const { group, date } = input
+  const ids = new Set(input.animals.map((a) => a.id))
+  const inGroup = data.members.filter((m) => m.group_id === group.id && (m.to_date == null || m.to_date >= date))
+  const leaving = input.replace ? inGroup.filter((m) => !ids.has(m.animal_id)) : []
+  for (const m of leaving) await closeFrom('herd_members', m, date)
+  const already = new Set(inGroup.filter((m) => m.from_date <= date).map((m) => m.animal_id))
+  const incoming = input.animals.filter((a) => !already.has(a.id))
+  if (incoming.length) await moveAnimals(data, { toGroup: group, fromGroup: null, date, animals: incoming, counts: {}, dryOff: false })
+  return { added: incoming.length, left: leaving.length }
+}
+
+/** Gruppe ab `date` auflösen: alle Tiere verlassen sie (Einzeltiere → «ohne
+ * Gruppe», Anzahlen ohne Nummer enden), Stall und Weide enden, die Gruppe wird
+ * inaktiv. Der Verlauf bleibt erhalten; sie lässt sich später wieder aktivieren. */
+export async function dissolveGroup(data: HerdData, group: HerdGroup, date: string): Promise<number> {
+  const open = <T extends { group_id: string; to_date: string | null }>(r: T) => r.group_id === group.id && (r.to_date == null || r.to_date >= date)
+  const members = data.members.filter(open)
+  for (const m of members) await closeFrom('herd_members', m, date)
+  for (const c of data.counts.filter(open)) await closeFrom('herd_counts', c, date)
+  for (const st of data.stays.filter(open)) await closeFrom('herd_stays', st, date)
+  await saveGroup({ ...group, active: false })
+  return members.length
+}
+
 /** Laufhofgang einer Gruppe an `date` setzen oder entfernen. */
 export async function setLaufhof(data: HerdData, groupId: string, date: string, on: boolean): Promise<void> {
   const existing = data.laufhof.filter((l) => l.group_id === groupId && l.entry_date === date)

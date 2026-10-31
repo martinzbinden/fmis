@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '../hooks/useQuery'
+import { useJumpTarget, useJumpTo } from '../hooks/useJumpTo'
 import { cullingInput, litterSummary, loadHerdContext, latestValues, type LitterSummary } from '../lib/herdContext'
 import TrendBadge from '../components/TrendBadge'
 import type { LactationTrend } from '../lib/lactationTrend'
@@ -70,6 +71,8 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
   const terms = speciesTerms(moduleKey)
   const { thresholds, update, reset } = useCullingThresholds(moduleKey, species)
+  const jumpTo = useJumpTarget()
+  // Sprung aus der Tier-Info: auch ein Tier ohne Hinweis muss sichtbar sein
   const [showAll, setShowAll] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const { data, loading } = useQuery((pg) => loadHerdContext(pg, species, todayIso()), [species])
@@ -101,7 +104,8 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   }, [data, thresholds, species])
 
   const flagged = rows.filter((r) => r.reasons.some((x) => x.weight > 0))
-  const visible = showAll ? rows : flagged
+  const visible = showAll || (jumpTo && !flagged.some((r) => r.id === jumpTo)) ? rows : flagged
+  useJumpTo(!!data, jumpTo ? `tier-${jumpTo}` : null)
 
   function exportCsv() {
     const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Tendenz je Lakt.', 'Trächtigkeit', ...(species === 'sheep' ? ['Würfe', 'Wurfgrösse Ø', 'lebend geboren Ø'] : []), 'Gründe']
@@ -200,7 +204,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
 
       <ul className="space-y-2">
         {visible.map((r) => (
-          <li key={r.id} className="rounded-lg bg-white p-3 shadow-sm">
+          <li key={r.id} id={`tier-${r.id}`} className={`scroll-mt-20 rounded-lg bg-white p-3 shadow-sm ${r.id === jumpTo ? 'ring-2 ring-brand-700' : ''}`}>
             <div className="flex items-start justify-between gap-2">
               <Link to={`../kuehe/${r.id}`} relative="path" className="font-semibold text-gray-800">
                 {r.laufNr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{r.laufNr}</span>}

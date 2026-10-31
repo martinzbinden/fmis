@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { useDb } from '@fmis/core/DbContext'
 import { useQuery } from '../hooks/useQuery'
+import { useJumpTarget, useJumpTo } from '../hooks/useJumpTo'
 import { fmtCells } from '../lib/culling'
 import { todayIso } from '../lib/format'
 import { DEFAULT_SELECTION_SETTINGS, rankLambs, type LambRow, type Purpose, type SelectionSettings } from '../lib/lambSelection'
@@ -79,11 +80,14 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
     })
   }, [data, settings, today])
 
+  const jumpTo = useJumpTarget()
   const visible = rows.filter(
     (r) =>
+      r.animal_id === jumpTo ||
       (sexFilter === 'alle' || r.sex === sexFilter || (sexFilter === 'w' && r.sex == null)) &&
       (decisionFilter === 'alle' || (decisionFilter === 'offen' ? r.purpose == null : r.purpose === decisionFilter)),
   )
+  useJumpTo(!!data, jumpTo ? `tier-${jumpTo}` : null)
   const count = (p: Purpose | null) => rows.filter((r) => r.purpose === p).length
 
   async function decide(r: LambRow, purpose: Purpose) {
@@ -243,7 +247,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                 const p = r.dam?.performance
                 const scc = settings.scc12m ? p?.scc_geo_12m : p?.scc_geo
                 return (
-                  <tr key={r.key} className={`border-b align-top last:border-0 ${r.purpose === 'mast' ? 'text-gray-500' : ''}`}>
+                  <tr key={r.key} id={r.animal_id ? `tier-${r.animal_id}` : undefined} className={`scroll-mt-20 border-b align-top last:border-0 ${r.purpose === 'mast' ? 'text-gray-500' : ''} ${r.animal_id && r.animal_id === jumpTo ? 'bg-brand-50 outline outline-2 outline-brand-700' : ''}`}>
                     <td className="px-2 py-2 text-right font-bold">{r.rank ?? ''}</td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {r.animal_id ? (

@@ -11,6 +11,7 @@ import { withdrawalUntil } from '../lib/treatments'
 import { examSummary, loadClawExams, worstMh } from '../lib/clawHealth'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useQuery } from '../hooks/useQuery'
+import { useJumpTo } from '../hooks/useJumpTo'
 import { cullingInput, loadHerdContext, type AnimalContext } from '../lib/herdContext'
 import { cullingReasons, fmtCells, type CullingReason } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
@@ -65,9 +66,9 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
   }
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section className="rounded-lg bg-white p-4 shadow-sm">
+    <section id={id} className="scroll-mt-20 rounded-lg bg-white p-4 shadow-sm">
       <h2 className="mb-2 text-sm font-semibold text-gray-700">{title}</h2>
       {children}
     </section>
@@ -171,6 +172,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const { thresholds } = useCullingThresholds(moduleKey, species)
   const { data, loading } = useQuery((pg) => loadDetail(pg, id, species), [id, species])
+  useJumpTo(!!data)
 
   if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
   if (!data?.ctx) return <p className="p-4 text-center text-gray-500">Tier nicht gefunden.</p>
@@ -220,12 +222,12 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       <AnimalLocationCard moduleKey={moduleKey} animalId={a.id} active={a.status === 'aktiv'} />
 
       {reasons.length > 0 && (
-        <Section title="Hinweise (Ausmerzliste)">
+        <Section title="Hinweise (Ausmerzliste)" id="hinweise">
           <ReasonChips reasons={reasons} />
         </Section>
       )}
 
-      <Section title="Kennzahlen">
+      <Section title="Kennzahlen" id="kennzahlen">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Laktation" value={ctx.lactationNumber ?? '–'} />
           <Field label={`Letzte ${birthWord}`} value={f.last_birth ? `${fmtDate(f.last_birth)} (${f.days_since_birth} T.)` : '–'} />
@@ -251,7 +253,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       <JournalSection animalId={a.id} journal={journal} />
 
       {claws.length > 0 && (
-        <Section title="Klauen">
+        <Section title="Klauen" id="klauen">
           <ul className="divide-y text-sm">
             {claws.map((e) => (
               <li key={e.id} className="flex gap-3 py-1.5">
@@ -267,7 +269,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         </Section>
       )}
 
-      <Section title="Abstammung">
+      <Section title="Abstammung" id="abstammung">
         <PedigreeTree rootKey={offspringKey} pedigreeByKey={pedigreeByKey} linkFor={(k) => pedigreeLink(moduleKey, herdIdByKey, k)} />
         <InbreedingNote f={inbreeding.inbreeding(offspringKey)} completeness={inbreeding.completeness(offspringKey)} />
       </Section>
@@ -306,7 +308,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       )}
 
       {tests.length > 0 && (
-        <Section title="Milchproben">
+        <Section title="Milchproben" id="milchproben">
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={tests} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
@@ -328,7 +330,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         </Section>
       )}
 
-      <Section title={`${birthWord}en`}>
+      <Section title={`${birthWord}en`} id="geburten">
         {ctx.births.length === 0 ? (
           <p className="text-sm text-gray-500">Keine erfasst.</p>
         ) : (
@@ -367,7 +369,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         )}
       </Section>
 
-      <Section title="Belegungen">
+      <Section title="Belegungen" id="belegungen">
         {ctx.matings.length === 0 ? (
           <p className="text-sm text-gray-500">Keine erfasst.</p>
         ) : (
@@ -550,7 +552,7 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
     />
   )
   return (
-    <Section title="Journal">
+    <Section title="Journal" id="journal">
       {form ?? (
         <button type="button" onClick={() => setMode({ kind: 'new' })} className="mb-2 w-full rounded-lg border border-dashed border-brand-300 py-2.5 text-sm font-medium text-brand-700">
           ＋ Beobachtung / Behandlung erfassen

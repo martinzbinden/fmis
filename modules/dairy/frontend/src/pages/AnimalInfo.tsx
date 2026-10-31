@@ -225,12 +225,12 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
             )}
 
             <div className="grid grid-cols-2 gap-1.5">
-              <Tile label="Abstammung">
+              <Tile label="Abstammung" to={`../kuehe/${a.id}#abstammung`}>
                 <Line>V {sire ? (sire.name ?? shortEarTag(sire.ear_tag)) : '?'}{sire?.bv ? ` (${sire.bv.label} ${sire.bv.value})` : ''}</Line>
                 <Line>M {dam ? nameOf(dam) : damNode ? shortEarTag(damNode.ear_tag) : '?'}</Line>
                 {f > 0 && <Line className={inbreedingClass(f) === 'high' || inbreedingClass(f) === 'medium' ? 'text-red-700' : ''}>Inzucht {fmtInbreeding(f)}</Line>}
               </Tile>
-              <Tile label={lamb && !p?.idx_performance ? 'Index (Abstammung)' : 'Index Leistung / Zellzahl'}>
+              <Tile label={lamb && !p?.idx_performance ? 'Index (Abstammung)' : 'Index Leistung / Zellzahl'} to={lamb && !p?.idx_performance ? `../selektion?tier=${a.id}` : `../kuehe/${a.id}#kennzahlen`}>
                 {lamb && !p?.idx_performance ? (
                   <>
                     <Big tone={lamb.index != null && lamb.index < 95 ? 'bad' : lamb.index != null && lamb.index > 105 ? 'good' : undefined}>{lamb.index != null ? Math.round(lamb.index) : '–'}</Big>
@@ -245,7 +245,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   </>
                 )}
               </Tile>
-              <Tile label={`Letzte ${word.birth}`}>
+              <Tile label={`Letzte ${word.birth}`} to={`../kuehe/${a.id}#geburten`}>
                 {lastBirth ? (
                   <>
                     <Line strong>{fmtDate(lastBirth.birth_date)} · vor {daysAgo(lastBirth.birth_date, today)} T.</Line>
@@ -259,7 +259,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>keine</Line>
                 )}
               </Tile>
-              <Tile label={`Letzte ${word.mating}`}>
+              <Tile label={`Letzte ${word.mating}`} to={`../kuehe/${a.id}#belegungen`}>
                 {lastService && (!lastBirth || lastService.service_date > lastBirth.birth_date) ? (
                   <>
                     <Line strong>
@@ -273,7 +273,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>{lastBirth ? `seit der ${word.birth} keine` : 'keine'}</Line>
                 )}
               </Tile>
-              <Tile label="Trächtigkeit">
+              <Tile label="Trächtigkeit" to={`../kuehe/${a.id}#kennzahlen`}>
                 {preg ? (
                   <>
                     <Big tone={preg.result === 'ja' ? 'good' : preg.result === 'nein' ? 'bad' : undefined}>{RESULT_LABEL[preg.result]}</Big>
@@ -286,7 +286,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>keine Meldung</Line>
                 )}
               </Tile>
-              <Tile label="Zellzahl">
+              <Tile label="Zellzahl" to={`../kuehe/${a.id}#milchproben`}>
                 {p?.scc_geo_12m != null || lastScc != null ? (
                   <>
                     <Line strong>Ø 12 Mt. {p?.scc_geo_12m != null ? fmtCells(p.scc_geo_12m) : '–'}</Line>
@@ -296,7 +296,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>keine Proben</Line>
                 )}
               </Tile>
-              <Tile label="Gesundheit / Klauen">
+              <Tile label="Gesundheit / Klauen" to={`../kuehe/${a.id}#${claw && !lastTreatment ? 'klauen' : 'journal'}`}>
                 <Line strong={!!lastTreatment}>
                   {lastTreatment ? `${fmtDate(lastTreatment.entry_date)} ${lastTreatment.diagnosis ?? lastTreatment.medication ?? lastTreatment.text ?? ''}` : 'keine Behandlung'}
                 </Line>
@@ -308,7 +308,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>🐾 nicht beurteilt</Line>
                 )}
               </Tile>
-              <Tile label="Ausmerzliste">
+              <Tile label="Ausmerzliste" to={`../ausmerzen?tier=${a.id}`}>
                 {reasons.length > 0 ? (
                   <>
                     <Line strong className="text-red-700">
@@ -348,12 +348,22 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
   )
 }
 
-function Tile({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <section className="min-w-0 rounded-lg bg-white px-2.5 py-1.5 shadow-sm">
-      <h2 className="truncate text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</h2>
+/** Kachel; mit `to` führt ein Tipp zu den Details (Abschnitt im Tierdetail, Liste beim Tier). */
+function Tile({ label, to, children }: { label: string; to?: string; children: ReactNode }) {
+  const body = (
+    <>
+      <h2 className="flex items-center justify-between gap-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+        <span className="truncate">{label}</span>
+        {to && <span className="shrink-0 text-sm leading-none text-brand-700">›</span>}
+      </h2>
       {children}
-    </section>
+    </>
+  )
+  if (!to) return <section className="min-w-0 rounded-lg bg-white px-2.5 py-1.5 shadow-sm">{body}</section>
+  return (
+    <Link to={to} relative="path" className="block min-w-0 rounded-lg bg-white px-2.5 py-1.5 shadow-sm active:bg-gray-50">
+      {body}
+    </Link>
   )
 }
 

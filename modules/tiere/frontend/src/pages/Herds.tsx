@@ -10,7 +10,7 @@ import { useQuery } from '../hooks/useQuery'
 import Modal from '../components/Modal'
 import { addDaysIso, fmtDate, todayIso } from '../lib/format'
 import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, HERD_CATEGORIES, matchNumber, numberTokens } from '../lib/herdModel'
-import { changeStay, countAt, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, saveGroup, saveLocation, setCount, setLaufhof, type HerdData } from '../lib/herds'
+import { changeStay, countAt, dissolveGroup, type HerdData, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, saveGroup, saveLocation, setCount, setLaufhof } from '../lib/herds'
 import { accessIndex, ACCESS_LABEL, monthCounter, type AccessIndex } from '../lib/outdoorAccess'
 import CounterBadge from '../components/CounterBadge'
 import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LaufhofMode, LocationKind, StaySlot } from '../types'
@@ -291,6 +291,23 @@ function GroupDialog({ data, group, date, onClose }: { data: HerdData; group: He
         <button type="button" disabled={busy || !name.trim()} onClick={() => void save()} className="w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
           Speichern
         </button>
+        {group?.active && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              const n = compositionAt(group.id, data.members, data.counts, date).total
+              if (!confirm(`Gruppe «${group.name}» ab ${fmtDate(date)} auflösen? ${n} Tiere stehen danach «ohne Gruppe», Stall und Weide enden.`)) return
+              setBusy(true)
+              void dissolveGroup(data, group, date)
+                .then(onClose)
+                .finally(() => setBusy(false))
+            }}
+            className="w-full rounded-lg border border-red-300 py-2 font-medium text-red-700 disabled:opacity-50"
+          >
+            Gruppe ab {fmtDate(date)} auflösen
+          </button>
+        )}
       </div>
     </Modal>
   )
@@ -869,7 +886,7 @@ export default function Herds() {
         </p>
       )}
 
-      {groups.length > 0 && data && (unassigned?.length || gone.length || groups.some((g) => compositionAt(g.id, data.members, data.counts, date).counts.length)) ? (
+      {groups.length > 0 && data && (gone.length || groups.some((g) => compositionAt(g.id, data.members, data.counts, date).counts.length)) ? (
         <details className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
           <summary className="cursor-pointer font-medium text-amber-900">
             Bestand klären ·{' '}
@@ -878,7 +895,6 @@ export default function Herds() {
                 const n = groups.reduce((s, g) => s + compositionAt(g.id, data.members, data.counts, date).counts.reduce((t, c) => t + c.count, 0), 0)
                 return n ? `${n} ohne Nummer` : null
               })(),
-              unassigned?.length ? `${unassigned.length} ohne Gruppe` : null,
               gone.length ? `${gone.length} nicht mehr im Bestand` : null,
             ]
               .filter(Boolean)
@@ -906,82 +922,6 @@ export default function Herds() {
                     )
                   })}
                 </ul>
-              </div>
-            )}
-
-            {unassigned && unassigned.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold uppercase text-amber-900">Aktive Tiere ohne Gruppe ({unassigned.length})</h3>
-                <p className="text-xs text-amber-900/80">Auswählen und einer Gruppe zuteilen; steht das Tier dort schon als Anzahl ohne Nummer, wird diese verringert.</p>
-                {(['schafe', 'rinder'] as HerdSpecies[]).map((sp) => {
-                  const list = unassigned.filter((a) => a.species === sp)
-                  if (!list.length) return null
-                  return (
-                    <div key={sp} className="mt-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-gray-700">
-                          {SPECIES_ICON[sp]} {SPECIES_LABEL[sp]} ({list.length})
-                        </span>
-                        {canWrite && (
-                          <span className="flex gap-1">
-                            <button
-                              type="button"
-                              className={btn}
-                              onClick={() => {
-                                const next = new Set(pick)
-                                const all = list.every((a) => next.has(a.id))
-                                for (const a of list) {
-                                  if (all) next.delete(a.id)
-                                  else next.add(a.id)
-                                }
-                                setPick(next)
-                              }}
-                            >
-                              alle
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!list.some((a) => pick.has(a.id))}
-                              className={`${btn} disabled:opacity-40`}
-                              onClick={() =>
-                                setDialog({
-                                  kind: 'identify',
-                                  group: groups.find((g) => g.species === sp) ?? null,
-                                  preselected: list.filter((a) => pick.has(a.id)),
-                                })
-                              }
-                            >
-                              {list.filter((a) => pick.has(a.id)).length} zuteilen…
-                            </button>
-                          </span>
-                        )}
-                      </div>
-                      <ul className="mt-1 grid grid-cols-2 gap-x-2 text-xs text-gray-700 sm:grid-cols-3">
-                        {list.map((a) => (
-                          <li key={`${a.moduleKey}-${a.id}`}>
-                            <label className="flex items-center gap-1">
-                              {canWrite && (
-                                <input
-                                  type="checkbox"
-                                  checked={pick.has(a.id)}
-                                  onChange={(e) => {
-                                    const next = new Set(pick)
-                                    if (e.target.checked) next.add(a.id)
-                                    else next.delete(a.id)
-                                    setPick(next)
-                                  }}
-                                />
-                              )}
-                              <span className="truncate">
-                                {a.label} <span className="text-gray-500">{categoryLabel(defaultCategory(a, false, date))}</span>
-                              </span>
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )
-                })}
               </div>
             )}
 
@@ -1151,6 +1091,82 @@ export default function Herds() {
           )
         })}
       </ul>
+
+      {unassigned && unassigned.length > 0 && (
+        <section className="rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 p-3 text-sm">
+          <h2 className="font-semibold text-amber-900">📥 Ohne Gruppe ({unassigned.length})</h2>
+          <p className="text-xs text-amber-900/80">Aktive Tiere, die keiner Gruppe angehören — z.B. nach dem Auflösen einer Gruppe. Auswählen und zuteilen; steht das Tier dort schon als Anzahl ohne Nummer, wird diese verringert.</p>
+          {(['schafe', 'rinder'] as HerdSpecies[]).map((sp) => {
+            const list = unassigned.filter((a) => a.species === sp)
+            if (!list.length) return null
+            return (
+              <div key={sp} className="mt-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-gray-700">
+                    {SPECIES_ICON[sp]} {SPECIES_LABEL[sp]} ({list.length})
+                  </span>
+                  {canWrite && (
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        className={btn}
+                        onClick={() => {
+                          const next = new Set(pick)
+                          const all = list.every((a) => next.has(a.id))
+                          for (const a of list) {
+                            if (all) next.delete(a.id)
+                            else next.add(a.id)
+                          }
+                          setPick(next)
+                        }}
+                      >
+                        alle
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!list.some((a) => pick.has(a.id))}
+                        className={`${btn} disabled:opacity-40`}
+                        onClick={() =>
+                          setDialog({
+                            kind: 'identify',
+                            group: groups.find((g) => g.species === sp) ?? null,
+                            preselected: list.filter((a) => pick.has(a.id)),
+                          })
+                        }
+                      >
+                        {list.filter((a) => pick.has(a.id)).length} zuteilen…
+                      </button>
+                    </span>
+                  )}
+                </div>
+                <ul className="mt-1 grid grid-cols-2 gap-x-2 text-xs text-gray-700 sm:grid-cols-3">
+                  {list.map((a) => (
+                    <li key={`${a.moduleKey}-${a.id}`}>
+                      <label className="flex items-center gap-1">
+                        {canWrite && (
+                          <input
+                            type="checkbox"
+                            checked={pick.has(a.id)}
+                            onChange={(e) => {
+                              const next = new Set(pick)
+                              if (e.target.checked) next.add(a.id)
+                              else next.delete(a.id)
+                              setPick(next)
+                            }}
+                          />
+                        )}
+                        <span className="truncate">
+                          {a.label} <span className="text-gray-500">{categoryLabel(defaultCategory(a, false, date))}</span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+        </section>
+      )}
 
       {dialog?.kind === 'group' && <GroupDialog key={dialog.seq} data={data} group={dialog.group} date={date} onClose={close} />}
       {dialog?.kind === 'stay' && <StayDialog key={dialog.seq} data={data} group={dialog.group} slot={dialog.slot} date={date} onClose={close} />}

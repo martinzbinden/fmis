@@ -6,6 +6,9 @@ import { animalLabel } from '@fmis/core/earTag'
 import { notifyError, notifySuccess } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
+import ToHerdGroup from '../components/ToHerdGroup'
+import { useHasPermission } from '@fmis/core/AuthContext'
+import { animalProvider } from '@fmis/core/animals'
 import { fmtDate } from '../lib/format'
 import { addToWatchlist, createWatchlist, duplicateEntries, loadWatchlists, removeDuplicateEntries, removeEntry, saveWatchlist, setEntryDone, setEntryReason, type Watchlist, type WatchlistEntry } from '../lib/watchlists'
 import type { Animal } from '../types'
@@ -141,6 +144,9 @@ function ListCard({
   const [renaming, setRenaming] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
+  const [toGroup, setToGroup] = useState(false)
+  // Tiergruppen gehören dem Modul Tiere — nur mit dessen Schreibrecht und wenn es läuft
+  const canHerd = useHasPermission('tiere:herden:write') && !!animalProvider(moduleKey)
   const openEntries = entries.filter((e) => !e.done_at).sort((a, b) => Number(!!b.reason) - Number(!!a.reason))
   const done = entries.filter((e) => e.done_at)
   const onList = new Set(openEntries.map((e) => e.animal_id))
@@ -242,6 +248,8 @@ function ListCard({
             )}
           </div>
 
+          {toGroup && <ToHerdGroup moduleKey={moduleKey} listName={list.name} animalIds={openEntries.map((e) => e.animal_id)} onDone={() => setToGroup(false)} />}
+
           <div className="flex flex-wrap gap-2 text-sm">
             {renaming != null ? (
               <form
@@ -264,6 +272,11 @@ function ListCard({
             <button type="button" onClick={() => void saveWatchlist(db, { ...list, archived_at: new Date().toISOString() })} className="min-h-10 rounded-lg border border-gray-300 px-3">
               Archivieren
             </button>
+            {canHerd && openEntries.length > 0 && !toGroup && (
+              <button type="button" onClick={() => setToGroup(true)} className="min-h-10 rounded-lg border border-sky-600 px-3 text-sky-800">
+                → Tiergruppe
+              </button>
+            )}
           </div>
         </div>
       )}
