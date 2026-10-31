@@ -72,7 +72,7 @@ type HistoryAction = 'insert' | 'update' | 'delete'
  * aufgerufen, siehe schema/0002_history.sql.
  */
 async function recordHistory(
-  pg: PGlite,
+  pg: Pick<PGlite, 'query'>,
   table: SyncTable,
   rowId: string,
   action: HistoryAction,
@@ -106,10 +106,21 @@ export async function upsertRow<T extends SyncTable>(
   options?: { action?: HistoryAction },
 ): Promise<void> {
   const pg = await ready()
+  // EINE Transaktion: sonst schreibt pglite jede der fünf Queries einzeln nach IndexedDB
+  await pg.transaction((tx) => writeRow(tx, table, row, options?.action))
+  notifyDataChanged()
+}
+
+async function writeRow<T extends SyncTable>(
+  pg: Pick<PGlite, 'query'>,
+  table: T,
+  row: Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string },
+  forcedAction?: HistoryAction,
+): Promise<void> {
   const columns = SYNC_TABLES[table] as readonly string[]
   const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
 
-  let action = options?.action
+  let action = forcedAction
   if (!action) {
     const { rows: existing } = await pg.query(`select 1 from "${table}" where id = $1`, [row.id])
     action = existing.length > 0 ? 'update' : 'insert'
@@ -140,8 +151,6 @@ export async function upsertRow<T extends SyncTable>(
   if (table !== 'data_history') {
     await recordHistory(pg, table, row.id, action, stamped)
   }
-
-  notifyDataChanged()
 }
 
 /** Soft-Delete: setzt deleted_at und stösst die Zeile via upsertRow erneut in die Outbox. */

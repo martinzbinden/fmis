@@ -7,6 +7,7 @@ import { shortEarTag } from '@fmis/core/earTag'
 import { getDb } from '../db/pglite'
 import { getDairySyncClient } from '../db/sync'
 import { upsertRow } from '../db/write'
+import { inTransaction } from '../db/transaction'
 import { isDrySql } from './dryOff'
 import { isoDate, num } from './format'
 import { speciesOf } from './species'
@@ -48,17 +49,19 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
     },
     async dryOff(animalIds, date, note) {
       const pg = await getDb(moduleKey)
-      for (const id of animalIds) {
-        await upsertRow(pg, 'animal_journal', {
-          id: crypto.randomUUID(),
-          animal_id: id,
-          entry_date: date,
-          source: 'manual',
-          text: note,
-          ref_id: null,
-          category: 'trocken',
-        })
-      }
+      await inTransaction(pg, async (tx) => {
+        for (const id of animalIds) {
+          await upsertRow(tx, 'animal_journal', {
+            id: crypto.randomUUID(),
+            animal_id: id,
+            entry_date: date,
+            source: 'manual',
+            text: note,
+            ref_id: null,
+            category: 'trocken',
+          })
+        }
+      })
       void getDairySyncClient(moduleKey).syncNow()
     },
   }

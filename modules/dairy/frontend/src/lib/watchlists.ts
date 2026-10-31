@@ -2,7 +2,7 @@
 
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
-import { softDeleteRow, upsertRow } from '../db/write'
+import { softDeleteRow, softDeleteRows, upsertRow, upsertRows } from '../db/write'
 
 export interface Watchlist {
   id: string
@@ -88,16 +88,17 @@ export function addToWatchlist(pg: PGlite, listId: string, animalIds: string[], 
       [listId],
     )
     const open = new Map(rows.map((r) => [String(r.animal_id), r]))
+    const writes: Record<string, unknown>[] = []
     let added = 0
     for (const animalId of new Set(animalIds)) {
       const existing = open.get(animalId)
       if (existing) {
         if (reason && !String(existing.reason ?? '').includes(reason)) {
-          await upsertRow(pg, 'watchlist_entries', { ...existing, id: String(existing.id), reason: existing.reason ? `${existing.reason}; ${reason}` : reason })
+          writes.push({ ...existing, id: String(existing.id), reason: existing.reason ? `${existing.reason}; ${reason}` : reason })
         }
         continue
       }
-      const row = {
+      writes.push({
         id: crypto.randomUUID(),
         list_id: listId,
         animal_id: animalId,
@@ -105,11 +106,10 @@ export function addToWatchlist(pg: PGlite, listId: string, animalIds: string[], 
         added_by: getCurrentUserEmail(),
         added_at: new Date().toISOString(),
         done_at: null,
-      }
-      await upsertRow(pg, 'watchlist_entries', row)
-      open.set(animalId, row)
+      })
       added++
     }
+    await upsertRows(pg, 'watchlist_entries', writes as never)
     return added
   })
 }
@@ -134,16 +134,12 @@ export function duplicateEntries(entries: WatchlistEntry[]): { keep: WatchlistEn
 
 /** Räumt doppelte Einträge auf (beim Öffnen der Merklisten). Gibt die Anzahl entfernter zurück. */
 export async function removeDuplicateEntries(pg: PGlite, entries: WatchlistEntry[]): Promise<number> {
-  let n = 0
-  for (const { keep, drop } of duplicateEntries(entries)) {
-    const original = entries.find((e) => e.id === keep.id)
-    if (original && original.reason !== keep.reason) await upsertRow(pg, 'watchlist_entries', { ...keep })
-    for (const d of drop) {
-      await softDeleteRow(pg, 'watchlist_entries', d.id)
-      n++
-    }
-  }
-  return n
+  const dups = duplicateEntries(entries)
+  const merged = dups.filter(({ keep }) => entries.find((e) => e.id === keep.id)?.reason !== keep.reason).map(({ keep }) => ({ ...keep }))
+  const drop = dups.flatMap(({ drop }) => drop.map((d) => d.id))
+  await upsertRows(pg, 'watchlist_entries', merged)
+  await softDeleteRows(pg, 'watchlist_entries', drop)
+  return drop.length
 }
 
 /** Erledigt abhaken (bleibt in der Liste sichtbar) oder wieder öffnen. */

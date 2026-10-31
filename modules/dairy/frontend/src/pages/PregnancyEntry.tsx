@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
+import AnimalOption from '@fmis/core/AnimalOption'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import FooterBar from '@fmis/core/FooterBar'
@@ -13,6 +14,7 @@ import AnimalWarnings from '../components/AnimalWarnings'
 import { animalWarnings, eventsOf, loadAnimalEvents, RECENT_PREGNANT_DAYS, type AnimalWarning } from '../lib/animalWarnings'
 import { useQuery } from '../hooks/useQuery'
 import { softDeleteRow, upsertRow } from '../db/write'
+import { inTransaction } from '../db/transaction'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { examiners, fmtDuration, fmtTimeRange, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, tagDigits, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
@@ -178,7 +180,9 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   async function changeRound() {
     if (!round || !startMethod) return
     const next = { ...round, examiner: startExaminer.trim() || null, method: startMethod, unit: startUnit }
-    for (const c of ofRound) await upsertRow(db, 'pregnancy_checks', { ...c, round_id: c.round_id ?? round.id, examiner: next.examiner, method: next.method, duration_unit: next.unit })
+    await inTransaction(db, async (tx) => {
+      for (const c of ofRound) await upsertRow(tx, 'pregnancy_checks', { ...c, round_id: c.round_id ?? round.id, examiner: next.examiner, method: next.method, duration_unit: next.unit })
+    })
     setRound(next)
     setEditRound(false)
   }
@@ -198,13 +202,13 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     input.current?.focus()
   }
 
-  async function writeCheck(animalId: string, result: PregnancyResult, viaReader: boolean) {
+  async function writeCheck(animalId: string, result: PregnancyResult, viaReader: boolean, pg: PGlite = db) {
     if (!round) return
     const prev = inRoundRef.current.get(animalId)
     const w = toWeeks(weeks, round.unit)
     // Gleiches Tier im gleichen Durchgang: Eintrag korrigieren statt doppelt
     const base = prev ?? { id: crypto.randomUUID(), recorded_at: new Date().toISOString(), created_by: getCurrentUserEmail(), notes: null }
-    await upsertRow(db, 'pregnancy_checks', {
+    await upsertRow(pg, 'pregnancy_checks', {
       ...base,
       animal_id: animalId,
       check_date: round.date,
@@ -246,7 +250,10 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     setSaving(true)
     try {
       const followUp = resultWarnings(list.map((x) => x.id), result)
-      for (const x of list) await writeCheck(x.id, result, x.fromReader)
+      // eine Transaktion für die ganze Liste (ein IndexedDB-Flush statt einer je Tier)
+      await inTransaction(db, async (tx) => {
+        for (const x of list) await writeCheck(x.id, result, x.fromReader, tx)
+      })
       showFlash(`${list.length} ${list.length === 1 ? 'Tier' : 'Tiere'}: ${RESULT_LABEL[result]}`)
       setAfter(followUp)
       setList([])
@@ -512,9 +519,15 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
               {matches.map((a) => (
                 <li key={a.id}>
                   <button type="button" className="flex min-h-12 w-full items-center gap-2 px-3 text-left active:bg-gray-100" onClick={() => (mode === 'liste' ? addToList(a.id, false) : setPicked(a.id))}>
-                    <span className="flex-1 text-base text-gray-900">{label(a)}</span>
-                    {mode === 'liste' && list.some((x) => x.id === a.id) && <span className="text-xs font-medium text-gray-700">in der Liste</span>}
-                    {checkedIds.has(a.id) && <span className="text-xs font-medium text-gray-700">schon erfasst</span>}
+                    <AnimalOption
+                      animal={a}
+                      extra={
+                        <>
+                          {mode === 'liste' && list.some((x) => x.id === a.id) && <span className="font-medium text-gray-700">in der Liste</span>}
+                          {checkedIds.has(a.id) && <span className="font-medium text-gray-700">schon erfasst</span>}
+                        </>
+                      }
+                    />
                   </button>
                 </li>
               ))}

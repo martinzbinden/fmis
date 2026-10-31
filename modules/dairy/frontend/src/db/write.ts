@@ -70,14 +70,24 @@ async function ready(pg: PGlite): Promise<PGlite> {
 
 type HistoryAction = 'insert' | 'update' | 'delete'
 
+/** PGlite oder eine laufende Transaktion — beide haben query(). */
+type Queryable = Pick<PGlite, 'query'>
+/** Aufrufer, die schon eine Transaktion offen haben (pg.transaction(tx => upsertRow(tx, …))),
+ * reichen deren tx herein — die hat kein transaction() und schreibt direkt mit. */
+function inTx<R>(pg: PGlite, fn: (q: Queryable) => Promise<R>): Promise<R> {
+  return typeof (pg as Partial<PGlite>).transaction === 'function' ? pg.transaction(fn) : fn(pg)
+}
+
+type RowOf<T extends SyncTable> = Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string }
+
 /**
  * Schreibt einen Eintrag in data_history direkt per SQL (NICHT über
  * upsertRow — das würde rekursiv wieder einen History-Eintrag auslösen).
- * Wird von upsertRow() für jede Tabelle ausser data_history selbst
+ * Wird von writeRow() für jede Tabelle ausser data_history selbst
  * aufgerufen, siehe schema/0002_history.sql.
  */
 async function recordHistory(
-  pg: PGlite,
+  pg: Queryable,
   table: SyncTable,
   rowId: string,
   action: HistoryAction,
@@ -104,18 +114,33 @@ async function recordHistory(
  * sind per Definition die aktuellste Version). Schreibt ausserdem automatisch
  * einen data_history-Eintrag (siehe recordHistory) — ohne explizites
  * `options.action` wird per Existenz-Check zwischen insert/update unterschieden.
+ *
+ * Alles in EINER Transaktion: ausserhalb einer Transaktion schreibt pglite
+ * jede Query einzeln nach IndexedDB — fünf Flushes je Zeile, rund 1 s am PC
+ * und 2 s am Handy.
  */
-export async function upsertRow<T extends SyncTable>(
-  pg: PGlite,
-  table: T,
-  row: Partial<Record<(typeof SYNC_TABLES)[T][number], unknown>> & { id: string },
-  options?: { action?: HistoryAction },
-): Promise<void> {
+export async function upsertRow<T extends SyncTable>(pg: PGlite, table: T, row: RowOf<T>, options?: { action?: HistoryAction }): Promise<void> {
   await ready(pg)
+  await inTx(pg, (tx) => writeRow(tx, table, row, options?.action))
+  notifyDataChanged()
+}
+
+/** Mehrere Zeilen in EINER Transaktion (ein Flush, ein Neuladen der Seiten),
+ * z.B. ganze Tierlisten auf eine Merkliste. */
+export async function upsertRows<T extends SyncTable>(pg: PGlite, table: T, rows: RowOf<T>[]): Promise<void> {
+  if (rows.length === 0) return
+  await ready(pg)
+  await inTx(pg, async (tx) => {
+    for (const row of rows) await writeRow(tx, table, row)
+  })
+  notifyDataChanged()
+}
+
+async function writeRow<T extends SyncTable>(pg: Queryable, table: T, row: RowOf<T>, forcedAction?: HistoryAction): Promise<void> {
   const columns = SYNC_TABLES[table] as readonly string[]
   const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
 
-  let action = options?.action
+  let action = forcedAction
   if (!action) {
     const { rows: existing } = await pg.query(`select 1 from "${table}" where id = $1`, [row.id])
     action = existing.length > 0 ? 'update' : 'insert'
@@ -146,22 +171,25 @@ export async function upsertRow<T extends SyncTable>(
   if (table !== 'data_history') {
     await recordHistory(pg, table, row.id, action, stamped)
   }
-
-  notifyDataChanged()
 }
 
-/** Soft-Delete: setzt deleted_at und stösst die Zeile via upsertRow erneut in die Outbox. */
+/** Soft-Delete: setzt deleted_at und stösst die Zeile erneut in die Outbox. */
 export async function softDeleteRow(pg: PGlite, table: SyncTable, id: string): Promise<void> {
+  await softDeleteRows(pg, table, [id])
+}
+
+/** Soft-Delete mehrerer Zeilen in EINER Transaktion. */
+export async function softDeleteRows(pg: PGlite, table: SyncTable, ids: string[]): Promise<void> {
+  if (ids.length === 0) return
   await ready(pg)
-  const { rows } = await pg.query<Record<string, unknown>>(
-    `select * from "${table}" where id = $1`,
-    [id],
-  )
-  if (rows.length === 0) return
-  await upsertRow(
-    pg,
-    table,
-    { ...rows[0], id, deleted_at: new Date().toISOString() } as never,
-    { action: 'delete' },
-  )
+  let changed = false
+  await inTx(pg, async (tx) => {
+    for (const id of ids) {
+      const { rows } = await tx.query<Record<string, unknown>>(`select * from "${table}" where id = $1`, [id])
+      if (rows.length === 0) continue
+      await writeRow(tx, table, { ...rows[0], id, deleted_at: new Date().toISOString() } as never, 'delete')
+      changed = true
+    }
+  })
+  if (changed) notifyDataChanged()
 }

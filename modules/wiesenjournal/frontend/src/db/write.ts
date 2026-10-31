@@ -107,7 +107,8 @@ export async function upsertRow<T extends SyncTable>(
   options?: { action?: HistoryAction },
 ): Promise<void> {
   const pg = await ready()
-  await writeRow(pg, table, row, options?.action)
+  // EINE Transaktion: sonst schreibt pglite jede der fünf Queries einzeln nach IndexedDB
+  await pg.transaction((tx) => writeRow(tx, table, row, options?.action))
   notifyDataChanged()
 }
 
