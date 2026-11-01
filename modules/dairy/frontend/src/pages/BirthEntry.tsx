@@ -288,7 +288,9 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                   value={o.ear_tag}
                   onChange={(e) => patch(i, { ear_tag: e.target.value })}
                   placeholder={o.fate === 'lebend' ? 'Ohrmarke' : 'Ohrmarke (falls markiert)'}
-                  autoCapitalize="characters"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  aria-label={`Ohrmarke Nachkomme ${i + 1}`}
                   className={`col-span-2 ${input}`}
                 />
               )}

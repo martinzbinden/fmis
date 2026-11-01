@@ -151,6 +151,8 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   const [error, setError] = useState<string | null>(null)
   const [capacity, setCapacity] = useState(12)
   const [manualInput, setManualInput] = useState('')
+  // Zahlentastatur (Laufnummer, Ohrmarke); «ABC» für Namen
+  const [abc, setAbc] = useState(false)
   const [suggestIdx, setSuggestIdx] = useState(0)
   const [suggestOpen, setSuggestOpen] = useState(false)
   // Alle aktiven, nicht trockengestellten Tiere für die Vorschlagsliste
@@ -559,6 +561,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
               type="text"
               placeholder="Manuell: Laufnummer, Ohrmarke oder Name"
               value={manualInput}
+              inputMode={abc ? 'text' : 'numeric'}
               autoComplete="off"
               onChange={(e) => {
                 setManualInput(e.target.value)
@@ -580,8 +583,17 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
                   setSuggestOpen(false)
                 }
               }}
-              className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
+              className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base"
             />
+            <button
+              type="button"
+              onClick={() => setAbc((v) => !v)}
+              aria-pressed={abc}
+              aria-label={abc ? 'Zahlentastatur' : 'Buchstaben-Tastatur (Name)'}
+              className="min-h-11 shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 text-sm font-medium text-gray-800"
+            >
+              {abc ? '123' : 'ABC'}
+            </button>
             <button
               type="submit"
               disabled={busy || !manualInput.trim()}

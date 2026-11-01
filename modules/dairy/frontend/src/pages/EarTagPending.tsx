@@ -192,7 +192,8 @@ function PendingCard({
           onKeyDown={(e) => e.key === 'Enter' && void save()}
           placeholder="Ohrmarke"
           aria-label={`Ohrmarke ${young} ${nr}`}
-          autoCapitalize="characters"
+          inputMode="numeric"
+          autoComplete="off"
           className={input}
         />
         <button

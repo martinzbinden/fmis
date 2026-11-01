@@ -32,6 +32,8 @@ export default function AnimalPicker({
 }) {
   const [query, setQuery] = useState('')
   const [listOpen, setListOpen] = useState(false)
+  // Zahlentastatur (Laufnummer, Ohrmarke); «ABC» für die Suche nach Namen
+  const [abc, setAbc] = useState(false)
   const byId = useMemo(() => new Map(animals.map((a) => [a.id, a])), [animals])
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -112,11 +114,20 @@ export default function AnimalPicker({
               }
             }}
             placeholder={placeholder}
-            inputMode="search"
+            inputMode={abc ? 'search' : 'numeric'}
             autoComplete="off"
             aria-label="Tier suchen (Laufnummer, Name oder Ohrmarke)"
             className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-3 text-base"
           />
+          <button
+            type="button"
+            onClick={() => setAbc((v) => !v)}
+            aria-pressed={abc}
+            aria-label={abc ? 'Zahlentastatur' : 'Buchstaben-Tastatur (Name)'}
+            className="shrink-0 rounded-lg border border-gray-300 bg-white px-2.5 text-sm font-medium text-gray-800"
+          >
+            {abc ? '123' : 'ABC'}
+          </button>
           <button
             type="button"
             onClick={() => setListOpen((o) => !o)}
