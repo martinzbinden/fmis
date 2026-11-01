@@ -182,6 +182,7 @@ function TemplateEditor({ template, ctx, onDone }: { template: Partial<Treatment
         title: t.title.trim(),
         body_system: t.body_system?.trim() || null,
         diagnosis: t.diagnosis?.trim() || null,
+        diagnosis_code: t.diagnosis_code ?? null,
         items: JSON.stringify(items.filter((i) => i.medication.trim() || i.hint)),
         supplier: t.supplier?.trim() || null,
         notes: t.notes?.trim() || null,

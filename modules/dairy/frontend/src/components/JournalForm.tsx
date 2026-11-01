@@ -5,6 +5,10 @@ import { inTransaction } from '../db/transaction'
 import { JOURNAL_CATEGORIES, journalSummary } from '../lib/journal'
 import { localTodayIso } from '../lib/format'
 import TreatmentForm from './TreatmentForm'
+import DiagnosisSelect from './DiagnosisSelect'
+import { diagnosisByKey } from '../lib/diagnoses'
+
+const labelOf = (key: string) => diagnosisByKey(key)?.label ?? ''
 import type { AnimalJournalEntry, JournalCategory } from '../types'
 
 /** Journaleintrag für ein oder mehrere Tiere — Beobachtung, Krankheit,
@@ -33,6 +37,7 @@ export default function JournalForm({
   const [category, setCategory] = useState<JournalCategory>(corrects?.category ?? defaultCategory)
   const [text, setText] = useState(corrects && corrects.text !== journalSummary(corrects) ? corrects.text : '')
   const [diagnosis, setDiagnosis] = useState(corrects?.diagnosis ?? '')
+  const [diagnosisCode, setDiagnosisCode] = useState<string | null>(corrects?.diagnosis_code ?? null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -49,6 +54,7 @@ export default function JournalForm({
       const fields = {
         category,
         diagnosis: hasDiagnosis ? diagnosis.trim() || null : null,
+        diagnosis_code: hasDiagnosis ? diagnosisCode : null,
         medication: null,
         dose: null,
         withdrawal_milk_days: null,
@@ -73,6 +79,7 @@ export default function JournalForm({
       })
       setText('')
       setDiagnosis('')
+      setDiagnosisCode(null)
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
@@ -111,8 +118,19 @@ export default function JournalForm({
             <input type="date" value={date} max={localTodayIso()} onChange={(e) => setDate(e.target.value)} className={input} />
           </label>
           {hasDiagnosis && (
+            <DiagnosisSelect
+              value={diagnosisCode}
+              className={input}
+              onChange={(key, label) => {
+                // Befund vorfüllen, solange dort nichts Eigenes steht
+                if (!diagnosis.trim() || diagnosis === (diagnosisCode ? labelOf(diagnosisCode) : '')) setDiagnosis(label ?? '')
+                setDiagnosisCode(key)
+              }}
+            />
+          )}
+          {hasDiagnosis && (
             <label className="block text-sm text-gray-600">
-              Diagnose / Befund
+              Befund / Einzelheiten
               <input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="z.B. Mastitis hinten links" className={input} />
             </label>
           )}

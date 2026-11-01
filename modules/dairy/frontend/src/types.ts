@@ -63,6 +63,8 @@ export interface AnimalJournalEntry {
   // schema/0007_journal_health.sql — null bei Zeilen von älteren Geräten = 'notiz'
   category: JournalCategory | null
   diagnosis: string | null
+  /** Schlüssel aus der Kurzliste lib/diagnoses.ts (schema/0022) */
+  diagnosis_code: string | null
   medication: string | null
   dose: string | null
   withdrawal_milk_days: number | null
@@ -100,6 +102,7 @@ export interface TreatmentTemplate {
   title: string
   body_system: string | null
   diagnosis: string | null
+  diagnosis_code: string | null
   /** JSON TemplateItem[] */
   items: string
   supplier: string | null

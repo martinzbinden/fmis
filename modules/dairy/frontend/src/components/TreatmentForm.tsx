@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useDb } from '@fmis/core/DbContext'
 import { useQuery } from '../hooks/useQuery'
 import TreatmentItems, { emptyItem } from './TreatmentItems'
+import DiagnosisSelect from './DiagnosisSelect'
+import { diagnosisByKey } from '../lib/diagnoses'
 import { localTodayIso } from '../lib/format'
 import { journalSummary } from '../lib/journal'
 import { loadTreatmentContext, saveTemplate, saveTreatment } from '../lib/treatmentData'
@@ -53,6 +55,7 @@ export default function TreatmentForm({
   const [date, setDate] = useState(corrects?.entry_date ?? localTodayIso())
   const [time, setTime] = useState(corrects ? (corrects.treatment_time ?? '') : nowTime())
   const [diagnosis, setDiagnosis] = useState(corrects?.diagnosis ?? '')
+  const [diagnosisCode, setDiagnosisCode] = useState<string | null>(corrects?.diagnosis_code ?? null)
   const [bodySystem, setBodySystem] = useState(corrects?.body_system ?? '')
   const [items, setItems] = useState<TemplateItem[]>(() => (corrects ? [itemOf(corrects)] : [emptyItem()]))
   const [by, setBy] = useState(() => corrects?.administered_by ?? load(LS.by) ?? '')
@@ -79,6 +82,7 @@ export default function TreatmentForm({
   function applyTemplate(t: TreatmentTemplate) {
     setTemplateId(t.id)
     setDiagnosis(t.diagnosis ?? t.title)
+    setDiagnosisCode(t.diagnosis_code ?? null)
     setBodySystem(t.body_system ?? '')
     if (t.supplier) setSupplier(t.supplier)
     const its = parseItems(t.items)
@@ -112,6 +116,7 @@ export default function TreatmentForm({
         time: time || null,
         body_system: bodySystem.trim() || null,
         diagnosis: diagnosis.trim(),
+        diagnosis_code: diagnosisCode,
         items: used,
         administered_by: by.trim(),
         supplier: supplier.trim() || null,
@@ -127,6 +132,7 @@ export default function TreatmentForm({
           title: favorite.title.trim(),
           body_system: bodySystem.trim() || null,
           diagnosis: diagnosis.trim(),
+          diagnosis_code: diagnosisCode,
           items: JSON.stringify(used.map((i) => ({ ...i, hint: undefined }))),
           supplier: supplier.trim() || null,
           notes: null,
@@ -136,6 +142,7 @@ export default function TreatmentForm({
       if (supplier.trim()) store(LS.supplier, supplier.trim())
       setFactor(DEFAULT_WITHDRAWAL_FACTOR)
       setDiagnosis('')
+      setDiagnosisCode(null)
       setBodySystem('')
       setItems([emptyItem()])
       setNotes('')
@@ -180,6 +187,15 @@ export default function TreatmentForm({
           <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={input} />
         </label>
       </div>
+      <DiagnosisSelect
+        value={diagnosisCode}
+        className={input}
+        onChange={(key, label) => {
+          // Befund vorfüllen, solange dort nichts Eigenes steht
+          if (!diagnosis.trim() || diagnosis === (diagnosisByKey(diagnosisCode)?.label ?? '')) setDiagnosis(label ?? '')
+          setDiagnosisCode(key)
+        }}
+      />
       <label className="block text-sm text-gray-600">
         Indikation / Befund
         <input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="z.B. Fieber 40 °C, Verdacht Blauzunge" className={input} />

@@ -16,6 +16,8 @@ export interface TreatmentInput {
   time: string | null
   body_system: string | null
   diagnosis: string | null
+  /** Schlüssel aus lib/diagnoses.ts */
+  diagnosis_code?: string | null
   items: TemplateItem[]
   administered_by: string | null
   supplier: string | null
@@ -72,6 +74,7 @@ export function treatmentRows(input: TreatmentInput, newId: () => string = () =>
         release_meat_date: releaseDate(last ?? input.date, it.meat_days, input.factor),
         critical_antibiotic: null,
         antibiogram: null,
+        diagnosis_code: input.diagnosis_code ?? null,
         case_id: caseId,
         import_key: null,
         corrects_id: index === 0 && input.animalIds.length === 1 ? (input.correctsId ?? null) : null,
