@@ -202,7 +202,7 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
                   <tr key={r.key} className="border-b border-gray-100 last:border-0">
                     <td className="px-2 py-1.5">
                       {r.animal_id ? (
-                        <Link to={`../../kuehe/${r.animal_id}`} relative="path" className="font-medium text-gray-900">
+                        <Link to={`../../tiere/${r.animal_id}`} relative="path" className="font-medium text-gray-900">
                           {animalLabel(r)}
                         </Link>
                       ) : (

@@ -200,7 +200,7 @@ function ListCard({
             {[...openEntries, ...(showDone ? done : [])].map((e) => (
               <li key={e.id} className={`flex items-start gap-2 py-1.5 ${e.done_at ? 'opacity-60' : ''}`}>
                 <div className="min-w-0 flex-1">
-                  <Link to={`/${moduleKey}/kuehe/${e.animal_id}`} className={`font-medium text-brand-700 ${e.done_at ? 'line-through' : ''}`}>
+                  <Link to={`/${moduleKey}/tiere/${e.animal_id}`} className={`font-medium text-brand-700 ${e.done_at ? 'line-through' : ''}`}>
                     {tierLabel(byId.get(e.animal_id))}
                   </Link>
                   {/* für Entscheide (z.B. Schlachtgruppe): Geschlecht und Alter */}

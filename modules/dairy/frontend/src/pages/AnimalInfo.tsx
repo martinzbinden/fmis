@@ -244,12 +244,12 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
             )}
 
             <div className="grid grid-cols-2 gap-1.5">
-              <Tile label="Abstammung" to={`../kuehe/${a.id}#abstammung`}>
+              <Tile label="Abstammung" to={`../tiere/${a.id}#abstammung`}>
                 <Line>V {sire ? (sire.name ?? shortEarTag(sire.ear_tag)) : '?'}{sire?.bv ? ` (${sire.bv.label} ${sire.bv.value})` : ''}</Line>
                 <Line>M {dam ? nameOf(dam) : damNode ? shortEarTag(damNode.ear_tag) : '?'}</Line>
                 {f > 0 && <Line className={inbreedingClass(f) === 'high' || inbreedingClass(f) === 'medium' ? 'text-red-700' : ''}>Inzucht {fmtInbreeding(f)}</Line>}
               </Tile>
-              <Tile label={lamb && !p?.idx_performance ? 'Index (Abstammung)' : 'Index Leistung / Zellzahl'} to={lamb && !p?.idx_performance ? `../selektion?tier=${a.id}` : `../kuehe/${a.id}#kennzahlen`}>
+              <Tile label={lamb && !p?.idx_performance ? 'Index (Abstammung)' : 'Index Leistung / Zellzahl'} to={lamb && !p?.idx_performance ? `../selektion?tier=${a.id}` : `../tiere/${a.id}#kennzahlen`}>
                 {lamb && !p?.idx_performance ? (
                   <>
                     <Big tone={lamb.index != null && lamb.index < 95 ? 'bad' : lamb.index != null && lamb.index > 105 ? 'good' : undefined}>{lamb.index != null ? Math.round(lamb.index) : '–'}</Big>
@@ -264,7 +264,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   </>
                 )}
               </Tile>
-              <Tile label={`Letzte ${word.birth}`} to={`../kuehe/${a.id}#geburten`}>
+              <Tile label={`Letzte ${word.birth}`} to={`../tiere/${a.id}#geburten`}>
                 {lastBirth ? (
                   <>
                     <Line strong>{fmtDate(lastBirth.birth_date)} · vor {daysAgo(lastBirth.birth_date, today)} T.</Line>
@@ -278,7 +278,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>keine</Line>
                 )}
               </Tile>
-              <Tile label={`Letzte ${word.mating}`} to={`../kuehe/${a.id}#belegungen`}>
+              <Tile label={`Letzte ${word.mating}`} to={`../tiere/${a.id}#belegungen`}>
                 {lastService && (!lastBirth || lastService.service_date > lastBirth.birth_date) ? (
                   <>
                     <Line strong>
@@ -292,7 +292,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>{lastBirth ? `seit der ${word.birth} keine` : 'keine'}</Line>
                 )}
               </Tile>
-              <Tile label="Trächtigkeit" to={`../kuehe/${a.id}#kennzahlen`}>
+              <Tile label="Trächtigkeit" to={`../tiere/${a.id}#kennzahlen`}>
                 {preg ? (
                   <>
                     <Big tone={preg.result === 'ja' ? 'good' : preg.result === 'nein' ? 'bad' : undefined}>{RESULT_LABEL[preg.result]}</Big>
@@ -305,7 +305,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>keine Meldung</Line>
                 )}
               </Tile>
-              <Tile label="Zellzahl" to={`../kuehe/${a.id}#milchproben`}>
+              <Tile label="Zellzahl" to={`../tiere/${a.id}#milchproben`}>
                 {p?.scc_geo_12m != null || lastScc != null ? (
                   <>
                     <Line strong>Ø 12 Mt. {p?.scc_geo_12m != null ? fmtCells(p.scc_geo_12m) : '–'}</Line>
@@ -315,7 +315,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                   <Line>keine Proben</Line>
                 )}
               </Tile>
-              <Tile label="Gesundheit / Klauen" to={`../kuehe/${a.id}#${claw && !lastTreatment ? 'klauen' : 'journal'}`}>
+              <Tile label="Gesundheit / Klauen" to={`../tiere/${a.id}#${claw && !lastTreatment ? 'klauen' : 'journal'}`}>
                 <Line strong={!!lastTreatment}>
                   {lastTreatment ? `${fmtDate(lastTreatment.entry_date)} ${lastTreatment.diagnosis ?? lastTreatment.medication ?? lastTreatment.text ?? ''}` : 'keine Behandlung'}
                 </Line>
@@ -342,7 +342,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
             </div>
 
             <div className="flex gap-2">
-              <Link to={`../kuehe/${a.id}`} relative="path" className="flex min-h-11 flex-1 items-center justify-center rounded-lg border-2 border-gray-300 bg-white font-semibold text-brand-800">
+              <Link to={`../tiere/${a.id}`} relative="path" className="flex min-h-11 flex-1 items-center justify-center rounded-lg border-2 border-gray-300 bg-white font-semibold text-brand-800">
                 Details ›
               </Link>
               <button type="button" onClick={() => setPicking((v) => !v)} className="min-h-11 flex-1 rounded-lg border-2 border-brand-700 bg-white font-semibold text-brand-800">

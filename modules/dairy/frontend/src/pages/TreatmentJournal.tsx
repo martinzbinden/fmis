@@ -376,7 +376,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
             {[...open.values()].map((o) => (
               <li key={o.label} className="text-red-900">
                 {o.animalId ? (
-                  <Link to={`../kuehe/${o.animalId}`} relative="path" className="font-medium underline">
+                  <Link to={`../tiere/${o.animalId}`} relative="path" className="font-medium underline">
                     {o.label}
                   </Link>
                 ) : (
@@ -418,7 +418,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                     {c.time ? ` ${c.time}` : ''}
                     {c.lastDate !== c.date ? ` – ${fmtDate(c.lastDate)}` : ''} ·{' '}
                     {c.animalId ? (
-                      <Link to={`../kuehe/${c.animalId}`} relative="path" className="font-semibold text-brand-700">
+                      <Link to={`../tiere/${c.animalId}`} relative="path" className="font-semibold text-brand-700">
                         {c.label}
                       </Link>
                     ) : (

@@ -209,7 +209,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
         {visible.map((r) => (
           <li key={r.id} id={`tier-${r.id}`} className={`scroll-mt-20 rounded-lg bg-white p-3 shadow-sm ${r.id === jumpTo ? 'ring-2 ring-brand-700' : ''}`}>
             <div className="flex items-start justify-between gap-2">
-              <Link to={`../kuehe/${r.id}`} relative="path" className="font-semibold text-gray-800">
+              <Link to={`../tiere/${r.id}`} relative="path" className="font-semibold text-gray-800">
                 {r.laufNr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{r.laufNr}</span>}
                 {r.label}
               </Link>

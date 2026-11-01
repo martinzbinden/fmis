@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation, useParams } from 'react-router-dom'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import { DbProvider } from '@fmis/core/DbContext'
 import { getDb } from './db/pglite'
@@ -57,15 +57,18 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { to: '', label: 'Heute', icon: '🏠' },
       { to: 'erfassen', label: 'Erfassen', icon: '✏️' },
       { to: 'tierinfo', label: 'Tier-Info', icon: '🔎' },
-      { to: 'kuehe', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
+      { to: 'tiere', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
       { to: 'leistung', label: 'Leistung', icon: '🥛' },
     ],
     historyPermission: `${key}:history:read`,
     routes: [
       { path: '', element: <Today moduleKey={key} /> },
       { path: 'leistung', element: <Milk moduleKey={key} /> },
-      { path: 'kuehe', element: <Animals moduleKey={key} /> },
-      { path: 'kuehe/:id', element: <AnimalDetail moduleKey={key} /> },
+      { path: 'tiere', element: <Animals moduleKey={key} /> },
+      { path: 'tiere/:id', element: <AnimalDetail moduleKey={key} /> },
+      // frühere Adresse (auch für Schafe «kuehe») — gespeicherte Links und Lesezeichen
+      { path: 'kuehe', element: <OldAnimalsPath moduleKey={key} /> },
+      { path: 'kuehe/:id', element: <OldAnimalsPath moduleKey={key} /> },
       { path: 'ausmerzen', element: <Culling moduleKey={key} /> },
       { path: 'ausmerzen/laemmer', element: <SlaughterLambs moduleKey={key} /> },
       { path: 'erfassen', element: <Erfassen moduleKey={key} /> },
@@ -95,4 +98,11 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     importer: createDairyImporter(key, title, ({ claim, ...run }) => <ImportPanel moduleKey={key} files={dairyFilesOf(claim)} {...run} />),
     animals: createDairyAnimalProvider(key, title),
   }
+}
+
+/** /<herde>/kuehe[/id] → /<herde>/tiere[/id], mit Suchparametern und Sprungmarke. */
+function OldAnimalsPath({ moduleKey }: { moduleKey: string }) {
+  const { id } = useParams()
+  const { search, hash } = useLocation()
+  return <Navigate to={`/${moduleKey}/tiere${id ? `/${id}` : ''}${search}${hash}`} replace />
 }

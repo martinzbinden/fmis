@@ -263,7 +263,7 @@ function LactationTable({ rows, showAnimal, calvingLabel, sort }: {
           <tr key={l.lactation_id} className={`border-b last:border-0 ${isRunning(l) ? 'bg-green-50/50' : ''}`}>
             {showAnimal && (
               <td className="whitespace-nowrap px-2 py-1.5 font-medium text-gray-800">
-                <Link to={`../kuehe/${l.animal_id}`} relative="path" className="hover:text-brand-700">
+                <Link to={`../tiere/${l.animal_id}`} relative="path" className="hover:text-brand-700">
                   {l.lauf_nr && <span className="mr-1 rounded bg-gray-100 px-1 text-xs font-bold">{l.lauf_nr}</span>}
                   {animalLabel(l)}
                 </Link>
@@ -771,7 +771,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                       />
                     )}
                     <LactationTable rows={a.lactations} showAnimal={false} calvingLabel={calvingLabel} />
-                    <Link to={`../kuehe/${a.animal_id}`} relative="path" className="link-btn ml-2 text-xs text-brand-700">
+                    <Link to={`../tiere/${a.animal_id}`} relative="path" className="link-btn ml-2 text-xs text-brand-700">
                       Zum Tier →
                     </Link>
                   </div>

@@ -71,7 +71,7 @@ export async function loadPedigreeData(pg: PGlite, herd: Map<string, AnimalConte
  * übrigen auf die Stammbaum-Ansicht (pages/PedigreeAnimal.tsx). */
 export function pedigreeLink(moduleKey: string, herdIdByKey: Map<string, string>, key: string): string {
   const herdId = herdIdByKey.get(key)
-  return herdId ? `/${moduleKey}/kuehe/${herdId}` : `/${moduleKey}/stammbaum/${encodeURIComponent(key)}`
+  return herdId ? `/${moduleKey}/tiere/${herdId}` : `/${moduleKey}/stammbaum/${encodeURIComponent(key)}`
 }
 
 function PedigreeCell({ node, role, linkFor }: { node: PedigreeNode | undefined; role: string; linkFor: (key: string) => string }) {

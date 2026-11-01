@@ -40,11 +40,11 @@ function describeEntry(entry: DataHistory, moduleKey: string): { label: string; 
 
   switch (entry.table_name) {
     case 'animals':
-      return { label: snap.ear_tag ? animalLabel({ ear_tag: String(snap.ear_tag), name: s(snap.name) }) : entry.row_id, link: `/${moduleKey}/kuehe/${entry.row_id}` }
+      return { label: snap.ear_tag ? animalLabel({ ear_tag: String(snap.ear_tag), name: s(snap.name) }) : entry.row_id, link: `/${moduleKey}/tiere/${entry.row_id}` }
     case 'milk_tests':
       return {
         label: `${s(snap.milk_kg) ?? '?'} kg am ${s(snap.test_date) ?? '?'}`,
-        link: snap.animal_id ? `/${moduleKey}/kuehe/${s(snap.animal_id)}` : null,
+        link: snap.animal_id ? `/${moduleKey}/tiere/${s(snap.animal_id)}` : null,
       }
     default:
       return { label: entry.row_id, link: null }

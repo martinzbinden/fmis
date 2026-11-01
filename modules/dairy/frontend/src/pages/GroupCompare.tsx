@@ -311,7 +311,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
                 {sorted.map(({ a, m }) => (
                   <tr key={a.id}>
                     <td className="whitespace-nowrap px-1.5 py-1.5">
-                      <Link to={`../kuehe/${a.id}`} relative="path" className="font-medium text-brand-700">
+                      <Link to={`../tiere/${a.id}`} relative="path" className="font-medium text-brand-700">
                         {label(a)}
                       </Link>
                       {m.pregnant && <span title="trächtig gemeldet"> 🤰</span>}

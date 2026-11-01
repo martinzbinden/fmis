@@ -300,7 +300,7 @@ export default function Pruefbericht({ moduleKey }: { moduleKey: string }) {
                     {sorted.map((r) => (
                       <tr key={r.animal.id} className="border-b last:border-0">
                         <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-1.5">
-                          <Link to={`../kuehe/${r.animal.id}`} relative="path" className="text-gray-800">
+                          <Link to={`../tiere/${r.animal.id}`} relative="path" className="text-gray-800">
                             {r.animal.lauf_nr && <span className="mr-1.5 font-bold">{r.animal.lauf_nr}</span>}
                             {animalLabel(r.animal)}
                           </Link>

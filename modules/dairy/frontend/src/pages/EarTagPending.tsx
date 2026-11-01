@@ -58,7 +58,7 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
           {saved.map((s, i) => (
             <span key={s.animalId}>
               {i > 0 && ', '}
-              <Link to={`../kuehe/${s.animalId}`} relative="path" className="font-medium text-brand-700">
+              <Link to={`../tiere/${s.animalId}`} relative="path" className="font-medium text-brand-700">
                 {shortEarTag(s.earTag)}
               </Link>
               {!s.created && ' (schon im Bestand, verknüpft)'}

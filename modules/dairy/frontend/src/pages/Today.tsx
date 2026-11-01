@@ -61,7 +61,7 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
     const late = r.due_date < today
     todo.push(
       <li key={r.id} className="flex items-center">
-        <Link to={`kuehe/${r.animal_id}#journal`} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pl-4 active:bg-gray-50">
+        <Link to={`tiere/${r.animal_id}#journal`} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pl-4 active:bg-gray-50">
           <span className="text-xl" aria-hidden>
             {late ? '⏰' : '💉'}
           </span>
@@ -121,7 +121,7 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
         <Section title={`Absetzfrist Milch (${data.withdrawals.length})`}>
           <ul className="divide-y rounded-xl bg-white shadow-sm">
             {data.withdrawals.map((w) => (
-              <Row key={w.id} to={`kuehe/${w.id}#journal`} icon="🚫" title={who(w)} detail={`Milch nicht abliefern bis und mit ${fmtDate(w.until)}`} tone="red" />
+              <Row key={w.id} to={`tiere/${w.id}#journal`} icon="🚫" title={who(w)} detail={`Milch nicht abliefern bis und mit ${fmtDate(w.until)}`} tone="red" />
             ))}
           </ul>
         </Section>

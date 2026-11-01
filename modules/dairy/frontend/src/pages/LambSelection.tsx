@@ -251,7 +251,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     <td className="px-2 py-2 text-right font-bold">{r.rank ?? ''}</td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {r.animal_id ? (
-                        <Link to={`../kuehe/${r.animal_id}`} relative="path" className="font-semibold">
+                        <Link to={`../tiere/${r.animal_id}`} relative="path" className="font-semibold">
                           {animalLabel(r)}
                         </Link>
                       ) : (
@@ -266,7 +266,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     <td className="whitespace-nowrap px-2 py-2 text-gray-600">{ageText(r.age_days)}</td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {r.dam ? (
-                        <Link to={`../kuehe/${r.dam.id}`} relative="path">
+                        <Link to={`../tiere/${r.dam.id}`} relative="path">
                           {r.dam.lauf_nr && <span className="mr-1 font-bold">{r.dam.lauf_nr}</span>}
                           {animalLabel(r.dam)}
                         </Link>

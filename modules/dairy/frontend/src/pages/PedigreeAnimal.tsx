@@ -26,7 +26,7 @@ export default function PedigreeAnimal({ moduleKey }: { moduleKey: string }) {
   if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
   if (!data) return null
   const herdId = data.herdIdByKey.get(key)
-  if (herdId) return <Navigate to={`/${moduleKey}/kuehe/${herdId}`} replace />
+  if (herdId) return <Navigate to={`/${moduleKey}/tiere/${herdId}`} replace />
   const node = data.pedigreeByKey.get(key)
   if (!node) return <p className="p-4 text-center text-gray-500">Tier nicht im Stammbaum.</p>
   const f = data.inbreeding.inbreeding(key)
@@ -34,7 +34,7 @@ export default function PedigreeAnimal({ moduleKey }: { moduleKey: string }) {
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
       <div>
-        <Link to={`/${moduleKey}/kuehe`} className="link-btn text-sm text-brand-700">
+        <Link to={`/${moduleKey}/tiere`} className="link-btn text-sm text-brand-700">
           ← Tiere
         </Link>
         <h1 className="mt-1 text-xl font-bold text-gray-800">{animalLabel(node)}</h1>

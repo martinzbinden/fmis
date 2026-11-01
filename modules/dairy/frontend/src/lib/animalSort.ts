@@ -44,8 +44,11 @@ export function sortDate(a: Sortable, facts: Map<string, AnimalFacts> | undefine
   return null
 }
 
+/** Laufnummer aufsteigend, Tiere ohne Laufnummer danach (nach Ohrmarke). */
 const byNr = (x: Sortable, y: Sortable) =>
-  (x.lauf_nr ?? '').localeCompare(y.lauf_nr ?? '', 'de-CH', { numeric: true }) || x.ear_tag.localeCompare(y.ear_tag)
+  Number(!x.lauf_nr) - Number(!y.lauf_nr) ||
+  (x.lauf_nr ?? '').localeCompare(y.lauf_nr ?? '', 'de-CH', { numeric: true }) ||
+  x.ear_tag.localeCompare(y.ear_tag)
 
 /** Neueste zuerst; Tiere ohne Datum ans Ende (nach Laufnummer). */
 export function sortAnimals<T extends Sortable>(list: T[], facts: Map<string, AnimalFacts> | undefined, sort: AnimalSort): T[] {

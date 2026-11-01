@@ -180,7 +180,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
               {done.later} {done.later === 1 ? word.young : word.youngPl} ohne Ohrmarke → Pendenz.{' '}
             </>
           )}
-          <Link to={`../kuehe/${done.damId}`} relative="path" className="link-btn font-medium text-brand-700">
+          <Link to={`../tiere/${done.damId}`} relative="path" className="link-btn font-medium text-brand-700">
             Zur {word.mother}
           </Link>
           <div className="mt-1 text-xs text-green-800">Die Geburtsmeldung an die TVD bleibt wie bisher separat.</div>

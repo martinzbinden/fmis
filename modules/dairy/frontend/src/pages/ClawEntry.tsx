@@ -344,7 +344,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
                 const s = status.get(a.id)!
                 return (
                   <li key={a.id} className="flex items-baseline justify-between gap-2 py-1.5">
-                    <Link to={`../kuehe/${a.id}`} relative="path" className="font-medium text-brand-700">
+                    <Link to={`../tiere/${a.id}`} relative="path" className="font-medium text-brand-700">
                       {label(a)}
                     </Link>
                     <span className="text-right text-xs text-gray-700">

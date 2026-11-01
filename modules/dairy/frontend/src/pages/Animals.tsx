@@ -5,9 +5,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate } from '../lib/format'
 import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
-import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
-import { matchRead, readDigits, useTagReader } from '@fmis/core/tagReader'
-import { TagReaderPanel, TagReaderToggle } from '@fmis/core/TagReaderButton'
+import { animalKey, animalLabel } from '@fmis/core/earTag'
 import { loadInbreeding } from '../lib/pedigreeData'
 import { ANIMAL_SORTS, loadAnimalFacts, sortAnimals, sortDate, sortLabel, type AnimalSort } from '../lib/animalSort'
 import { speciesOf } from '../lib/species'
@@ -83,15 +81,6 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
       // nur bis zum Reload
     }
   }
-  // Lesegerät: gelesene Ohrmarke als Filter
-  const reader = useTagReader({
-    moduleKey,
-    onRead: (read) => {
-      const a = matchRead(read, allAnimals)
-      setFilter(a ? shortEarTag(a.ear_tag) : readDigits(read))
-      return a ? `${animalLabel(a)}` : { text: `${shortEarTag(read.earTag)}: nicht im Bestand`, tone: 'error' }
-    },
-  })
 
   function changeView(v: ViewMode) {
     setView(v)
@@ -112,12 +101,15 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
           <span className="block text-xs text-gray-500">Nummer tippen oder lesen</span>
         </Link>
         <Link to="../merklisten" relative="path" className="min-w-0 flex-1 rounded-lg bg-white p-3 text-sm shadow-sm active:bg-gray-50">
-          <span className="font-semibold text-brand-700">📋 Merklisten</span>
+          <span className="font-semibold text-brand-700">🔖 Merklisten</span>
           <span className="block text-xs text-gray-500">z.B. Ausmerzen prüfen</span>
         </Link>
-        {allAnimals.length > 0 && <TagReaderToggle reader={reader} className="min-h-full" />}
+        {/* Tiergruppen (Stall, Weide, Schlachtgruppe …) führt das Modul «Tiere» */}
+        <Link to="/tiere" className="min-w-0 flex-1 rounded-lg bg-white p-3 text-sm shadow-sm active:bg-gray-50">
+          <span className="font-semibold text-brand-700">{species === 'sheep' ? '🐑' : '🐄'} Tiergruppen</span>
+          <span className="block text-xs text-gray-500">Stall, Weide, Gruppen</span>
+        </Link>
       </div>
-      <TagReaderPanel reader={reader} hint="Lesung filtert die Liste" />
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && allAnimals.length === 0 && (

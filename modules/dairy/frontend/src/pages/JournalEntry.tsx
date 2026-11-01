@@ -32,7 +32,7 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
         <div className="rounded-lg bg-green-50 p-3 text-sm text-green-900">
           Gespeichert.{' '}
           {saved.length === 1 && (
-            <Link to={`../kuehe/${saved[0]}`} relative="path" className="link-btn font-medium text-brand-700">
+            <Link to={`../tiere/${saved[0]}`} relative="path" className="link-btn font-medium text-brand-700">
               Zum Tier
             </Link>
           )}

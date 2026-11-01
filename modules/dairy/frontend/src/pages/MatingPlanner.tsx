@@ -127,7 +127,7 @@ export default function MatingPlanner({ moduleKey }: { moduleKey: string }) {
                 return (
                   <tr key={a.id} className="border-b last:border-0">
                     <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-1.5">
-                      <Link to={`../kuehe/${a.id}`} relative="path" className="text-gray-800">
+                      <Link to={`../tiere/${a.id}`} relative="path" className="text-gray-800">
                         {a.lauf_nr && <span className="mr-1.5 font-bold">{a.lauf_nr}</span>}
                         {animalLabel(a)}
                       </Link>
