@@ -16,7 +16,7 @@ import { fmtInbreeding, inbreedingClass } from '../lib/inbreeding'
 import { rankLambs } from '../lib/lambSelection'
 import { loadLambSelection } from '../lib/lambSelectionData'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
-import { matchAnimals, METHOD_LABEL, RESULT_LABEL } from '../lib/pregnancy'
+import { matchAnimals, METHOD_LABEL, RESULT_LABEL, uniqueMatch } from '../lib/pregnancy'
 import { speciesOf } from '../lib/species'
 import { withdrawalUntil } from '../lib/treatments'
 import { clawStatusByAnimal, examSummary, loadClawExams } from '../lib/clawHealth'
@@ -132,8 +132,8 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
             value={query}
             onChange={(e) => {
               setQuery(e.target.value.replace(/[^\d]/g, '').slice(0, 9))
-              const m = matchAnimals(animals, e.target.value)
-              if (m.length === 1 && e.target.value.replace(/\D/g, '').length >= 3) show(m[0].id)
+              const one = uniqueMatch(animals, e.target.value)
+              if (one) show(one.id)
             }}
             onKeyDown={(e) => e.key === 'Enter' && matches[0] && show(matches[0].id)}
             inputMode="numeric"
@@ -148,9 +148,10 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
           <TagReaderButton reader={reader} />
         </div>
       </div>
-      {query && matches.length > 1 && (
-        <ul className="max-h-48 divide-y overflow-y-auto rounded-lg border-2 border-gray-300 bg-white">
-          {matches.slice(0, 12).map((a) => (
+      {query && matches.length > 0 && !(matches.length === 1 && matches[0].id === id) && (
+        <ul className="max-h-64 divide-y overflow-y-auto rounded-lg border-2 border-gray-300 bg-white">
+          {matches.length > 4 && <li className="px-3 py-1 text-xs text-gray-600">{matches.length} Tiere passen</li>}
+          {matches.map((a) => (
             <li key={a.id}>
               <button type="button" onClick={() => show(a.id)} className={`flex min-h-11 w-full items-center px-3 text-left ${a.id === id ? 'bg-brand-50' : ''}`}>
                 <AnimalOption animal={a} extra={a.status !== 'aktiv' && <span>{a.status}</span>} />

@@ -10,21 +10,29 @@ export const METHOD_LABEL: Record<PregnancyMethod, string> = { auge: 'Auge', far
 /** Ziffern der Ohrmarke in Kurzform (CH 2172 8023 → 21728023). */
 export const tagDigits = (a: Pick<Animal, 'ear_tag'>) => shortEarTag(a.ear_tag).replace(/\D/g, '')
 
-/** Tiere, deren Ohrmarke auf die eingegebenen Ziffern endet (bei 1–2 Ziffern auch die Laufnummer). */
+/** Ganz eingetippt: Laufnummer oder die letzten 4 (und mehr) Ziffern der Ohrmarke. */
+const isComplete = (a: Animal, q: string) => a.lauf_nr === q || (q.length >= 4 && tagDigits(a).endsWith(q))
+
+/** Alle Tiere, die zur (auch erst halb) eingetippten Nummer passen: Ohrmarke
+ * endet darauf, die letzten 4 Ziffern beginnen damit («15» → 2004.1511) oder
+ * die Laufnummer beginnt damit. Ganz eingetippte Treffer zuerst. */
 export function matchAnimals(animals: Animal[], input: string): Animal[] {
   const q = input.replace(/\D/g, '')
   if (!q) return []
-  const byTag = animals.filter((a) => tagDigits(a).endsWith(q))
-  const byNr = q.length <= 3 ? animals.filter((a) => a.lauf_nr === q && !byTag.includes(a)) : []
-  return [...byTag, ...byNr]
+  const m = animals.filter((a) => {
+    const d = tagDigits(a)
+    return d.endsWith(q) || (q.length < 4 && d.slice(-4).startsWith(q)) || (a.lauf_nr ?? '').startsWith(q)
+  })
+  return [...m.filter((a) => isComplete(a, q)), ...m.filter((a) => !isComplete(a, q))]
 }
 
-/** Eindeutig erst ab 3 Ziffern (bei weniger stimmen zufällig zu viele Ohrmarken überein). */
+/** Automatisch gewählt nur, wenn genau ein Tier passt UND die Nummer ganz
+ * eingetippt ist — sonst springt «151» auf 2053.3151, wo 2004.1511 gemeint war. */
 export function uniqueMatch(animals: Animal[], input: string): Animal | null {
   const q = input.replace(/\D/g, '')
   if (q.length < 3) return null
-  const m = animals.filter((a) => tagDigits(a).endsWith(q))
-  return m.length === 1 ? m[0] : null
+  const m = matchAnimals(animals, q)
+  return m.length === 1 && isComplete(m[0], q) ? m[0] : null
 }
 
 /** Uhrzeit von–bis eines Durchgangs, z.B. "16:15–16:47" (Ortszeit). */

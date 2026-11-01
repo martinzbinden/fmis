@@ -14,6 +14,16 @@ describe('Tier über die Ohrmarke finden', () => {
     expect(uniqueMatch(herd, '5501')?.id).toBe('3')
     expect(uniqueMatch(herd, '8023')).toBeNull()
   })
+  it('zeigt bei halb eingetippter Nummer alle passenden Tiere und wählt erst bei ganzer Nummer', () => {
+    const h = [a('1', 'CH20533151', '2314'), a('2', 'CH20041511'), a('3', 'CH20041512'), a('4', 'CH21161315')]
+    expect(matchAnimals(h, '151').map((x) => x.id).sort()).toEqual(['1', '2', '3'])
+    expect(uniqueMatch(h, '151')).toBeNull()
+    expect(matchAnimals(h, '15').map((x) => x.id).sort()).toEqual(['2', '3', '4'])
+    expect(uniqueMatch(h, '1511')?.id).toBe('2')
+    expect(matchAnimals(h, '231').map((x) => x.id)).toEqual(['1'])
+    expect(uniqueMatch(h, '231')).toBeNull()
+    expect(uniqueMatch(h, '2314')?.id).toBe('1')
+  })
   it('nimmt bei wenigen Ziffern auch die Laufnummer, wählt aber nicht automatisch', () => {
     expect(matchAnimals(herd, '12').map((x) => x.id)).toContain('2')
     expect(uniqueMatch(herd, '01')).toBeNull()
