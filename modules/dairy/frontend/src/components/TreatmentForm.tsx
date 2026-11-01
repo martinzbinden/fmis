@@ -3,6 +3,10 @@ import { useDb } from '@fmis/core/DbContext'
 import { useQuery } from '../hooks/useQuery'
 import TreatmentItems, { emptyItem } from './TreatmentItems'
 import DiagnosisSelect from './DiagnosisSelect'
+import PhotoPicker from './PhotoPicker'
+import { useLocation } from 'react-router-dom'
+import { undoAction } from '@fmis/core/undo'
+import { savePhotos, type PreparedPhoto } from '../lib/photos'
 import { diagnosisByKey } from '../lib/diagnoses'
 import { localTodayIso } from '../lib/format'
 import { journalSummary } from '../lib/journal'
@@ -68,6 +72,8 @@ export default function TreatmentForm({
   // Folgebehandlung/Kontrolle planen → Erinnerung in den Pendenzen («Heute»)
   const [followup, setFollowup] = useState<{ on: boolean; date: string; title: string }>({ on: false, date: '', title: '' })
   const [saving, setSaving] = useState(false)
+  const [photos, setPhotos] = useState<PreparedPhoto[]>([])
+  const moduleKey = useLocation().pathname.split('/')[1] ?? ''
   const [error, setError] = useState<string | null>(null)
   // zweiter Tipp auf Speichern bestätigt «ohne Präparat»; jede Änderung an den Präparaten fragt wieder
   const [noMedOk, setNoMedOk] = useState(false)
@@ -110,21 +116,24 @@ export default function TreatmentForm({
     setSaving(true)
     setError(null)
     try {
-      await saveTreatment(db, {
-        animalIds,
-        date,
-        time: time || null,
-        body_system: bodySystem.trim() || null,
-        diagnosis: diagnosis.trim(),
-        diagnosis_code: diagnosisCode,
-        items: used,
-        administered_by: by.trim(),
-        supplier: supplier.trim() || null,
-        factor: f,
-        notes: notes.trim() || null,
-        caseId: corrects?.case_id ?? caseId,
-        correctsId: corrects?.id,
-        followup: followup.on ? { date: followup.date, title: followup.title.trim() || `Folgebehandlung: ${diagnosis.trim()}` } : null,
+      await undoAction(photos.length ? `Behandlung mit ${photos.length} Foto${photos.length > 1 ? 's' : ''}` : undefined, async () => {
+        const written = await saveTreatment(db, {
+          animalIds,
+          date,
+          time: time || null,
+          body_system: bodySystem.trim() || null,
+          diagnosis: diagnosis.trim(),
+          diagnosis_code: diagnosisCode,
+          items: used,
+          administered_by: by.trim(),
+          supplier: supplier.trim() || null,
+          factor: f,
+          notes: notes.trim() || null,
+          caseId: corrects?.case_id ?? caseId,
+          correctsId: corrects?.id,
+          followup: followup.on ? { date: followup.date, title: followup.title.trim() || `Folgebehandlung: ${diagnosis.trim()}` } : null,
+        })
+        if (photos.length && written[0]) await savePhotos(db, moduleKey, photos, { animalId: written[0].animal_id, journalId: written[0].id, caseId: written[0].case_id })
       })
       if (favorite.on && favorite.title.trim())
         await saveTemplate(db, {
@@ -149,6 +158,7 @@ export default function TreatmentForm({
       setTemplateId(null)
       setFavorite({ on: false, title: '' })
       setFollowup({ on: false, date: '', title: '' })
+      setPhotos([])
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
@@ -229,6 +239,7 @@ export default function TreatmentForm({
           <option key={p} value={p} />
         ))}
       </datalist>
+      <PhotoPicker photos={photos} onChange={setPhotos} disabledReason={animalIds.length > 1 ? 'Fotos nur bei einem einzelnen Tier' : null} />
       <label className="block text-sm text-gray-600">
         Bemerkung (optional)
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={input} />

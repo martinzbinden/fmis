@@ -2,14 +2,18 @@ import { useState } from 'react'
 import { useDb } from '@fmis/core/DbContext'
 import { upsertRow } from '../db/write'
 import { inTransaction } from '../db/transaction'
-import { JOURNAL_CATEGORIES, journalSummary } from '../lib/journal'
+import { JOURNAL_CATEGORIES, categoryLabel, journalSummary } from '../lib/journal'
 import { localTodayIso } from '../lib/format'
 import TreatmentForm from './TreatmentForm'
 import DiagnosisSelect from './DiagnosisSelect'
+import PhotoPicker from './PhotoPicker'
+import { useLocation } from 'react-router-dom'
+import { undoAction } from '@fmis/core/undo'
+import { savePhotos, type PreparedPhoto } from '../lib/photos'
 import { diagnosisByKey } from '../lib/diagnoses'
+import type { AnimalJournalEntry, JournalCategory } from '../types'
 
 const labelOf = (key: string) => diagnosisByKey(key)?.label ?? ''
-import type { AnimalJournalEntry, JournalCategory } from '../types'
 
 /** Journaleintrag für ein oder mehrere Tiere — Beobachtung, Krankheit,
  * Brunst, Klauen, Notiz; Behandlung im Behandlungsjournal-Formular
@@ -39,6 +43,8 @@ export default function JournalForm({
   const [diagnosis, setDiagnosis] = useState(corrects?.diagnosis ?? '')
   const [diagnosisCode, setDiagnosisCode] = useState<string | null>(corrects?.diagnosis_code ?? null)
   const [saving, setSaving] = useState(false)
+  const [photos, setPhotos] = useState<PreparedPhoto[]>([])
+  const moduleKey = useLocation().pathname.split('/')[1] ?? ''
   const [error, setError] = useState<string | null>(null)
 
   const isTreatment = category === 'behandlung'
@@ -61,25 +67,33 @@ export default function JournalForm({
         withdrawal_meat_days: null,
         administered_by: null,
       }
-      await inTransaction(db, async (tx) => {
-        for (const animalId of animalIds) {
-          await upsertRow(tx, 'animal_journal', {
-            id: crypto.randomUUID(),
-            animal_id: animalId,
-            entry_date: date,
-            source: 'manual',
-            text: text.trim() || journalSummary(fields),
-            ref_id: null,
-            ...fields,
-            // Krankheit eröffnet einen Fall, an den sich Verlauf und Folgebehandlungen hängen lassen
-            case_id: corrects?.case_id ?? caseId ?? (category === 'krankheit' ? crypto.randomUUID() : null),
-            corrects_id: corrects?.id ?? null,
-          })
-        }
+      const written: { id: string; animalId: string; caseId: string | null }[] = []
+      await undoAction(photos.length ? `${categoryLabel(category)} mit ${photos.length} Foto${photos.length > 1 ? 's' : ''}` : undefined, async () => {
+        await inTransaction(db, async (tx) => {
+          for (const animalId of animalIds) {
+            const id = crypto.randomUUID()
+            const caseIdOf = corrects?.case_id ?? caseId ?? (category === 'krankheit' ? crypto.randomUUID() : null)
+            written.push({ id, animalId, caseId: caseIdOf })
+            await upsertRow(tx, 'animal_journal', {
+              id,
+              animal_id: animalId,
+              entry_date: date,
+              source: 'manual',
+              text: text.trim() || journalSummary(fields),
+              ref_id: null,
+              ...fields,
+              // Krankheit eröffnet einen Fall, an den sich Verlauf und Folgebehandlungen hängen lassen
+              case_id: caseIdOf,
+              corrects_id: corrects?.id ?? null,
+            })
+          }
+        })
+        if (photos.length && written.length === 1) await savePhotos(db, moduleKey, photos, { animalId: written[0].animalId, journalId: written[0].id, caseId: written[0].caseId })
       })
       setText('')
       setDiagnosis('')
       setDiagnosisCode(null)
+      setPhotos([])
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
@@ -134,6 +148,7 @@ export default function JournalForm({
               <input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="z.B. Mastitis hinten links" className={input} />
             </label>
           )}
+          <PhotoPicker photos={photos} onChange={setPhotos} disabledReason={animalIds.length > 1 ? 'Fotos nur bei einem einzelnen Tier' : null} />
           <label className="block text-sm text-gray-600">
             {hasDiagnosis ? 'Bemerkung (optional)' : 'Bemerkung'}
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} className={input} />

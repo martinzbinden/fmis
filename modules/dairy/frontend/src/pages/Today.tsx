@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { shortEarTag } from '@fmis/core/earTag'
 import { SessionUndoList } from '@fmis/core/UndoBar'
@@ -7,6 +7,7 @@ import { useDb } from '@fmis/core/DbContext'
 import { errorText, notifyError } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import { completeReminder, dueText } from '../lib/reminders'
+import { pendingPhotoCount, uploadPendingPhotos } from '../lib/photos'
 import { loadToday, type TodayAnimal } from '../lib/today'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
@@ -36,7 +37,26 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
   const claws = runningRound(`fmis_${moduleKey}_claw_round`)
 
   const db = useDb()
+  // Fotos aus dem Stall ohne Empfang: beim Öffnen nachschieben
+  const [waitingPhotos, setWaitingPhotos] = useState(pendingPhotoCount)
+  useEffect(() => {
+    void uploadPendingPhotos().then(setWaitingPhotos)
+  }, [])
   const todo: ReactNode[] = []
+  if (waitingPhotos > 0)
+    todo.push(
+      <li key="photos" className="flex min-h-14 items-center gap-3 px-4 py-2">
+        <span className="text-xl" aria-hidden>
+          📷
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium text-gray-900">
+            {waitingPhotos} {waitingPhotos === 1 ? 'Foto wartet' : 'Fotos warten'} auf das Hochladen
+          </span>
+          <span className="block text-sm text-gray-600">geht automatisch, sobald das Handy Verbindung hat</span>
+        </span>
+      </li>,
+    )
   for (const r of data?.reminders ?? []) {
     const late = r.due_date < today
     todo.push(

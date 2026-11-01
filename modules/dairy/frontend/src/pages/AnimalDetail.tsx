@@ -1,6 +1,8 @@
 import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
-import { useMemo, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import PhotoThumbs from '../components/PhotoThumbs'
+import { loadPhotos, uploadPendingPhotos, type JournalPhoto } from '../lib/photos'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
 import { notifyError } from '@fmis/core/toast'
@@ -471,6 +473,7 @@ function JournalEntryRow({
   canDelete,
   onCorrect,
   onDelete,
+  photos,
 }: {
   j: AnimalJournalEntry
   correctedBy: AnimalJournalEntry | undefined
@@ -479,6 +482,7 @@ function JournalEntryRow({
   canDelete: boolean
   onCorrect: () => void
   onDelete: () => Promise<void>
+  photos?: ReactNode
 }) {
   const milk = correctedBy ? null : withdrawalUntil(j, 'milk')
   const meat = correctedBy ? null : withdrawalUntil(j, 'meat')
@@ -506,6 +510,7 @@ function JournalEntryRow({
             ].filter(Boolean)
             return details.length > 0 && <div className="text-xs text-gray-600">{details.join(' · ')}</div>
           })()}
+          {photos}
           {(milk || meat) && (
             <div className="text-xs text-red-700">
               Absetzfrist {milk ? `Milch bis ${fmtDate(milk)}` : ''}
@@ -541,6 +546,15 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
   const byId = useMemo(() => new Map(journal.map((j) => [j.id, j])), [journal])
   const superseded = useMemo(() => supersededBy(journal), [journal])
   const cases = useMemo(() => groupCases(journal), [journal])
+  const moduleKey = useLocation().pathname.split('/')[1] ?? ''
+  const { data: photos } = useQuery((pg) => loadPhotos(pg, animalId), [animalId])
+  const photosByEntry = useMemo(() => {
+    const m = new Map<string, JournalPhoto[]>()
+    for (const p of photos ?? []) if (p.journal_id) m.set(p.journal_id, [...(m.get(p.journal_id) ?? []), p])
+    return m
+  }, [photos])
+  // Fotos, die auf diesem Gerät noch warten, beim Öffnen nachschieben
+  useEffect(() => void uploadPendingPhotos(), [])
   const now = Date.now()
   const form = mode && (
     <div className="mb-3 rounded-lg border border-gray-200 p-3">
@@ -566,6 +580,7 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
       canDelete={canChangeEntry(j, canCorrectLater, now)}
       onCorrect={() => setMode({ kind: 'correct', entry: j })}
       onDelete={() => softDeleteRow(db, 'animal_journal', j.id)}
+      photos={photosByEntry.has(j.id) ? <PhotoThumbs moduleKey={moduleKey} photos={photosByEntry.get(j.id)!} /> : undefined}
     />
   )
   return (

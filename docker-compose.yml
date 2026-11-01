@@ -74,8 +74,8 @@ services:
         traefik.http.routers.fmis-api.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
         (PathPrefix(`/auth`) || PathPrefix(`/core`) || PathPrefix(`/admin`) ||
         PathPrefix(`/livestock/sync`) || PathPrefix(`/livestock/reader`) ||
-        PathPrefix(`/dairy/sync`) || PathPrefix(`/dairy/reader`) ||
-        PathPrefix(`/dairy_schafe/sync`) || PathPrefix(`/dairy_schafe/reader`) ||
+        PathPrefix(`/dairy/sync`) || PathPrefix(`/dairy/reader`) || PathPrefix(`/dairy/photos`) ||
+        PathPrefix(`/dairy_schafe/sync`) || PathPrefix(`/dairy_schafe/reader`) || PathPrefix(`/dairy_schafe/photos`) ||
         PathPrefix(`/fields/sync`) ||
         PathPrefix(`/wiesenjournal/sync`) || PathPrefix(`/wiesenjournal/reports`) ||
         PathPrefix(`/wiesenjournal/parcels`) || PathPrefix(`/wiesenjournal/fertilization`) ||

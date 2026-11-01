@@ -83,7 +83,8 @@ export function treatmentRows(input: TreatmentInput, newId: () => string = () =>
   })
 }
 
-export async function saveTreatment(db: PGlite, input: TreatmentInput): Promise<number> {
+/** Gibt die geschriebenen Zeilen zurück (id, Tier, Fall — z.B. für Fotos). */
+export async function saveTreatment(db: PGlite, input: TreatmentInput): Promise<{ id: string; animal_id: string; case_id: string }[]> {
   const rows = treatmentRows(input)
   const caseIds = [...new Set(rows.map((r) => r.case_id))]
   await inTransaction(db, async (tx) => {
@@ -103,7 +104,7 @@ export async function saveTreatment(db: PGlite, input: TreatmentInput): Promise<
         await upsertRow(tx, 'reminders', reminderRow(animalId, caseId, input.followup.date, input.followup.title))
       }
   })
-  return rows.length
+  return rows.map((r) => ({ id: r.id, animal_id: r.animal_id, case_id: r.case_id }))
 }
 
 /** cownect-Behandlungen importieren: nur neue Zeilen (import_key), nie

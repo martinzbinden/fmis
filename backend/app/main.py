@@ -14,6 +14,7 @@ from core.backend.fmis_core import reader_scan as core_reader_scan
 from core.backend.fmis_core.db import close_pools, get_pool, open_pools, run_migrations
 from core.backend.fmis_core.module_registry import MODULE_SPECS
 from core.backend.fmis_core.modules_admin import require_module_enabled
+from modules.dairy.backend.app import photos as dairy_photos
 from modules.dairy.backend.app import reader as dairy_reader
 from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
@@ -100,6 +101,12 @@ for _spec in MODULE_SPECS:
     if _spec.source == "dairy":
         app.include_router(
             dairy_reader.build_reader_router(_spec.key),
+            prefix=f"/{_spec.key}",
+            dependencies=[Depends(require_module_enabled(_spec.key))],
+        )
+        # Fotos zu Journal-Einträgen (Inhalt nur auf dem Server, Angaben per Sync)
+        app.include_router(
+            dairy_photos.build_photo_router(_spec.key),
             prefix=f"/{_spec.key}",
             dependencies=[Depends(require_module_enabled(_spec.key))],
         )

@@ -177,7 +177,7 @@ export const TABLE_LABELS: Record<string, string> = {
   animals: 'Tier', milk_tests: 'Milchwägung', lactations: 'Laktation', milking_banks: 'Bank (Milchwägung)', milking_slots: 'Platz (Milchwägung)',
   animal_journal: 'Journal', treatment_templates: 'Behandlungsvorlage', pedigree: 'Abstammung', matings: 'Belegung',
   pregnancy_checks: 'Trächtigkeit', births: 'Geburt', birth_offspring: 'Nachkomme', watchlists: 'Merkliste',
-  watchlist_entries: 'Merklisten-Eintrag', reminders: 'Erinnerung', claw_exams: 'Klauen', claw_findings: 'Klauenbefund', lamb_selection: 'Lämmer-Selektion',
+  watchlist_entries: 'Merklisten-Eintrag', reminders: 'Erinnerung', journal_photos: 'Foto', claw_exams: 'Klauen', claw_findings: 'Klauenbefund', lamb_selection: 'Lämmer-Selektion',
   breeding_values: 'Zuchtwert', conformation_scores: 'Exterieur',
   // Tiere
   locations: 'Ort', herd_groups: 'Gruppe', herd_stays: 'Aufenthalt', herd_members: 'Gruppenzuteilung', herd_counts: 'Tierzahl', herd_laufhof: 'Laufhof',

@@ -60,6 +60,10 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "watchlists": ["id", "name", "color", "notes", "created_by", "created_at", "archived_at", "updated_at", "deleted_at"],
     "watchlist_entries": ["id", "list_id", "animal_id", "reason", "added_by", "added_at", "done_at", "updated_at", "deleted_at"],
+    "journal_photos": [
+        "id", "animal_id", "journal_id", "case_id", "taken_at", "content_type", "size_bytes", "width", "height",
+        "caption", "created_by", "updated_at", "deleted_at",
+    ],
     "reminders": [
         "id", "animal_id", "case_id", "due_date", "title", "done_at", "done_by", "created_by", "created_at",
         "updated_at", "deleted_at",
@@ -124,6 +128,7 @@ def table_area(key: str) -> dict[str, str]:
         "watchlists": f"{key}:animals",
         "watchlist_entries": f"{key}:animals",
         "reminders": f"{key}:animals",
+        "journal_photos": f"{key}:animals",
         "claw_exams": f"{key}:animals",
         "claw_findings": f"{key}:animals",
         "breeding_values": f"{key}:animals",
