@@ -6,14 +6,20 @@ import { toWebp, type PreparedPhoto } from '../lib/photos'
 export default function PhotoPicker({ photos, onChange, disabledReason }: { photos: PreparedPhoto[]; onChange: (p: PreparedPhoto[]) => void; disabledReason?: string | null }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [over, setOver] = useState(false)
 
   async function add(files: FileList | null) {
-    if (!files?.length) return
+    // beim Ziehen aus dem Explorer kommen auch andere Dateien mit
+    const images = Array.from(files ?? []).filter((f) => f.type.startsWith('image/'))
+    if (!images.length) {
+      if (files?.length) setError('Nur Fotos (Bilddateien) möglich.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
       const added: PreparedPhoto[] = []
-      for (const f of Array.from(files)) added.push(await toWebp(f))
+      for (const f of images) added.push(await toWebp(f))
       onChange([...photos, ...added])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Foto liess sich nicht verarbeiten.')
@@ -23,8 +29,23 @@ export default function PhotoPicker({ photos, onChange, disabledReason }: { phot
   }
 
   if (disabledReason) return <p className="text-sm text-gray-600">📷 {disabledReason}</p>
+  // am PC: Fotos auch hierher ziehen (Drag & Drop)
   return (
-    <div className="space-y-2">
+    <div
+      className={`space-y-2 rounded-lg ${over ? 'bg-brand-50 outline-dashed outline-2 outline-brand-700' : ''}`}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        setOver(true)
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return
+        e.preventDefault()
+        setOver(false)
+        void add(e.dataTransfer.files)
+      }}
+    >
       <div className="flex flex-wrap items-center gap-2">
         {photos.map((p, i) => (
           <span key={p.preview} className="relative">
@@ -56,6 +77,7 @@ export default function PhotoPicker({ photos, onChange, disabledReason }: { phot
             className="sr-only"
           />
         </label>
+        <span className="hidden text-xs text-gray-500 [@media(pointer:fine)]:inline">oder Foto hierher ziehen</span>
       </div>
       {error && <p className="text-sm text-red-700">{error}</p>}
     </div>

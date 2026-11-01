@@ -9,7 +9,7 @@ import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useQuery } from '../hooks/useQuery'
 import Modal from '../components/Modal'
 import { addDaysIso, fmtDate, todayIso } from '../lib/format'
-import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, doubleMemberships, HERD_CATEGORIES, matchNumber, numberTokens } from '../lib/herdModel'
+import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, doubleMemberships, HERD_CATEGORIES, matchNumber, numberTokens, searchMoveSources } from '../lib/herdModel'
 import { changeStay, countAt, dissolveGroup, type HerdData, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, resolveDoubleMemberships, saveGroup, saveLocation, setCount, setLaufhof } from '../lib/herds'
 import { accessIndex, ACCESS_LABEL, monthCounter, type AccessIndex } from '../lib/outdoorAccess'
 import CounterBadge from '../components/CounterBadge'
@@ -332,6 +332,17 @@ function HerdReader({ animals, selected, onAdd }: { animals: AnimalRef[]; select
   return <TagReaderButton reader={reader} hint="jede Lesung hakt das Tier an" />
 }
 
+/** Ein Block im Dialog «Tiere zuteilen»: eine Gruppe oder Merkliste mit ihren
+ * Tieren (alle angehakt, einzeln abwählbar) oder die einzeln gesuchten Tiere. */
+interface MoveBlock {
+  key: string
+  kind: 'group' | 'list' | 'single'
+  name: string
+  groupId?: string
+  animalIds: string[]
+  checked: Set<string>
+}
+
 function MoveDialog({
   data,
   from,
@@ -343,56 +354,87 @@ function MoveDialog({
   date: string
   onClose: () => void
 }) {
-  const species = from?.species ?? 'schafe'
-  const [speciesSel, setSpeciesSel] = useState<HerdSpecies>(species)
+  const [speciesSel, setSpeciesSel] = useState<HerdSpecies>(from?.species ?? 'schafe')
   const targets = data.groups.filter((g) => g.active && g.species === speciesSel && g.id !== from?.id)
   const [toId, setToId] = useState(targets[0]?.id ?? '')
   const [date, setDate] = useState(initialDate)
   const [animals, setAnimals] = useState<AnimalRef[] | null>(null)
-  const [numbers, setNumbers] = useState('')
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [onlyFrom, setOnlyFrom] = useState(!!from)
-  // ganze Gruppen mitnehmen (danach auflösen) und Merklisten als Auswahlhilfe
-  const [sourceGroups, setSourceGroups] = useState<Set<string>>(new Set())
+  const [lists, setLists] = useState<{ id: string; name: string; animalIds: string[] }[]>([])
+  const [query, setQuery] = useState('')
+  const [focused, setFocused] = useState(false)
   const [dissolve, setDissolve] = useState(true)
-  const [lists, setLists] = useState<{ key: string; name: string; animalIds: string[] }[] | null>(null)
   const [dryOff, setDryOff] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const groupIds = (gid: string) => data.members.filter((m) => m.group_id === gid && activeAt(m, date)).map((m) => m.animal_id)
+  // «Tiere zügeln…» an einer Gruppe: die Gruppe ist schon gewählt
+  const [blocks, setBlocks] = useState<MoveBlock[]>(() => {
+    if (!from) return []
+    const ids = data.members.filter((m) => m.group_id === from.id && activeAt(m, initialDate)).map((m) => m.animal_id)
+    return [{ key: `g:${from.id}`, kind: 'group', name: from.name, groupId: from.id, animalIds: ids, checked: new Set(ids) }]
+  })
 
   useEffect(() => {
     void listAllAnimals(speciesSel).then(setAnimals)
-    void listAllWatchlists(speciesSel).then(setLists)
+    void listAllWatchlists(speciesSel).then((ls) => setLists(ls.map((l) => ({ id: l.key, name: l.name, animalIds: l.animalIds }))))
   }, [speciesSel])
 
-  const groupOf = (a: AnimalRef) => {
-    const m = memberAt(data, a.id, date)
+  const byId = useMemo(() => new Map((animals ?? []).map((a) => [a.id, a])), [animals])
+  const to = data.groups.find((g) => g.id === toId) ?? null
+  const groupsForSearch = data.groups
+    .filter((g) => g.active && g.species === speciesSel && g.id !== to?.id && !blocks.some((b) => b.groupId === g.id))
+    .map((g) => ({ id: g.id, name: g.name, animalIds: groupIds(g.id) }))
+  const suggestions = animals
+    ? searchMoveSources(query, { animals, groups: groupsForSearch, lists: lists.filter((l) => !blocks.some((b) => b.key === `l:${l.id}`)) })
+    : []
+  const groupOf = (id: string) => {
+    const m = memberAt(data, id, date)
     return m ? data.groups.find((g) => g.id === m.group_id) : undefined
   }
-  const candidates = (animals ?? []).filter((a) => !onlyFrom || !from || groupOf(a)?.id === from.id)
 
-  const tokens = numberTokens(numbers)
-  function applyNumbers(text: string) {
-    setNumbers(text)
-    const next = new Set(selected)
-    for (const t of numberTokens(text)) {
-      const hit = matchNumber(animals ?? [], t)
-      if (hit && hit !== 'mehrdeutig') next.add(hit.id)
-    }
-    setSelected(next)
+  function addBlock(b: Omit<MoveBlock, 'checked'>) {
+    const known = b.animalIds.filter((id) => byId.has(id))
+    setBlocks((prev) => [...prev, { ...b, animalIds: known, checked: new Set(known) }])
+    setQuery('')
   }
-  const unmatched = tokens.filter((t) => matchNumber(animals ?? [], t) == null)
-  const ambiguous = tokens.filter((t) => matchNumber(animals ?? [], t) === 'mehrdeutig')
+  function addSingle(id: string) {
+    setBlocks((prev) => {
+      const single = prev.find((b) => b.kind === 'single')
+      if (single?.animalIds.includes(id)) return prev
+      if (single) return prev.map((b) => (b === single ? { ...b, animalIds: [...b.animalIds, id], checked: new Set([...b.checked, id]) } : b))
+      return [...prev, { key: 'single', kind: 'single', name: 'Einzeln gewählt', animalIds: [id], checked: new Set([id]) }]
+    })
+    setQuery('')
+  }
+  function toggle(block: MoveBlock, id: string) {
+    setBlocks((prev) =>
+      prev.map((b) => {
+        if (b !== block) return b
+        const checked = new Set(b.checked)
+        if (checked.has(id)) checked.delete(id)
+        else checked.add(id)
+        return { ...b, checked }
+      }),
+    )
+  }
 
-  const to = data.groups.find((g) => g.id === toId) ?? null
-  const otherGroups = data.groups.filter((g) => g.active && g.species === speciesSel && g.id !== to?.id)
-  const groupMembers = (gid: string) => data.members.filter((m) => m.group_id === gid && activeAt(m, date))
-  const viaGroups = new Set(otherGroups.filter((g) => sourceGroups.has(g.id)).flatMap((g) => groupMembers(g.id).map((m) => m.animal_id)))
-  // einzeln gewählte Tiere, die nicht schon mit ihrer Gruppe kommen
-  const chosen = (animals ?? []).filter((a) => selected.has(a.id) && !viaGroups.has(a.id))
-  const total = chosen.length + viaGroups.size
-  const fromMilking = chosen.some((a) => groupOf(a)?.milking) || !!from?.milking || otherGroups.some((g) => sourceGroups.has(g.id) && g.milking)
+  // Alle angehakten Tiere ziehen einzeln um (Kategorie und Trockenstellen wie gewohnt). Ist eine
+  // Gruppe ganz angehakt, kann sie danach aufgelöst werden.
+  const wholeGroups = blocks.filter((b) => b.kind === 'group' && b.groupId !== to?.id && b.animalIds.length > 0 && b.checked.size === b.animalIds.length)
+  const chosen = [...new Set(blocks.flatMap((b) => [...b.checked]))].filter((id) => byId.has(id)).map((id) => byId.get(id)!)
+  const total = chosen.length
+  const fromMilking = chosen.some((a) => groupOf(a.id)?.milking)
   const showDry = fromMilking && !to?.milking && chosen.some((a) => a.moduleKey.startsWith('dairy'))
+
+  const reader = useTagReader({
+    moduleKey: animals?.[0]?.moduleKey ?? '',
+    onRead: (read) => {
+      const a = matchRead(read, animals ?? [])
+      if (!a) return { text: `${shortEarTag(read.earTag)}: nicht im Bestand`, tone: 'error' }
+      addSingle(a.id)
+      return a.label
+    },
+  })
 
   async function save() {
     if (!to) return
@@ -401,11 +443,11 @@ function MoveDialog({
     try {
       await moveAnimals(data, {
         toGroup: to,
-        fromGroup: from,
+        fromGroup: null,
         date,
         animals: chosen,
         counts: {},
-        groups: otherGroups.filter((g) => sourceGroups.has(g.id)).map((group) => ({ group, dissolve })),
+        groups: wholeGroups.map((b) => ({ group: data.groups.find((g) => g.id === b.groupId)!, dissolve })),
         dryOff: showDry && dryOff,
       })
       onClose()
@@ -416,6 +458,7 @@ function MoveDialog({
     }
   }
 
+  const input = 'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base'
   return (
     <Modal title={from ? `Tiere zügeln aus «${from.name}»` : 'Tiere einer Gruppe zuteilen'} onClose={() => !busy && onClose()}>
       <div className="space-y-3 text-sm">
@@ -427,10 +470,10 @@ function MoveDialog({
                 type="button"
                 onClick={() => {
                   setSpeciesSel(s)
-                  setSelected(new Set())
+                  setBlocks([])
                   setToId(data.groups.find((g) => g.active && g.species === s)?.id ?? '')
                 }}
-                className={`flex-1 rounded-lg py-1.5 ${speciesSel === s ? 'bg-brand-700 text-white' : 'border border-gray-300 text-gray-700'}`}
+                className={`min-h-11 flex-1 rounded-lg ${speciesSel === s ? 'bg-brand-700 text-white' : 'border border-gray-300 text-gray-700'}`}
               >
                 {SPECIES_ICON[s]} {SPECIES_LABEL[s]}
               </button>
@@ -440,7 +483,7 @@ function MoveDialog({
         <div className="grid grid-cols-2 gap-2">
           <label className="block">
             <span className="mb-1 block font-medium text-gray-700">nach</span>
-            <select className={field} value={toId} onChange={(e) => setToId(e.target.value)}>
+            <select className={input} value={toId} onChange={(e) => setToId(e.target.value)}>
               {targets.length === 0 && <option value="">— zuerst Gruppe anlegen —</option>}
               {targets.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -451,131 +494,106 @@ function MoveDialog({
           </label>
           <label className="block">
             <span className="mb-1 block font-medium text-gray-700">am</span>
-            <input type="date" className={field} value={date} onChange={(e) => setDate(e.target.value)} />
+            <input type="date" className={input} value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
         </div>
 
-        {(otherGroups.length > 0 || (lists?.length ?? 0) > 0) && (
-          <div className="space-y-2">
-            {otherGroups.length > 0 && (
-              <div className="space-y-1">
-                <span className="block font-medium text-gray-700">Ganze Gruppe überführen</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {otherGroups.map((g) => {
-                    const on = sourceGroups.has(g.id)
-                    return (
-                      <button
-                        key={g.id}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => setSourceGroups((prev) => {
-                          const next = new Set(prev)
-                          if (on) next.delete(g.id)
-                          else next.add(g.id)
-                          return next
-                        })}
-                        className={`min-h-11 rounded-full border-2 px-3 ${on ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}
-                      >
-                        {g.name} ({groupMembers(g.id).length})
-                      </button>
-                    )
-                  })}
-                </div>
-                {sourceGroups.size > 0 && (
-                  <label className="flex min-h-11 items-center gap-2 text-gray-700">
-                    <input type="checkbox" checked={dissolve} onChange={(e) => setDissolve(e.target.checked)} className="h-5 w-5" />
-                    gewählte Gruppen danach auflösen (Stall und Weide enden)
-                  </label>
-                )}
-              </div>
-            )}
-            {(lists?.length ?? 0) > 0 && (
-              <div className="space-y-1">
-                <span className="block font-medium text-gray-700">Tiere einer Merkliste dazuwählen</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {lists!.map((l) => {
-                    const ids = l.animalIds.filter((id) => (animals ?? []).some((a) => a.id === id))
-                    return (
-                      <button
-                        key={l.key}
-                        type="button"
-                        disabled={ids.length === 0}
-                        onClick={() => setSelected((prev) => new Set([...prev, ...ids]))}
-                        className="min-h-11 rounded-full border-2 border-sky-300 bg-sky-50 px-3 text-sky-900 disabled:opacity-40"
-                      >
-                        🔖 {l.name} ({ids.length})
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+        <div className="relative space-y-1">
+          <div className="flex gap-2">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setTimeout(() => setFocused(false), 150)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || !suggestions[0]) return
+                e.preventDefault()
+                const s = suggestions[0]
+                if (s.kind === 'animal') addSingle(s.animal.id)
+                else addBlock(s.kind === 'group' ? { key: `g:${s.id}`, kind: 'group', name: s.name, groupId: s.id, animalIds: s.animalIds } : { key: `l:${s.id}`, kind: 'list', name: s.name, animalIds: s.animalIds })
+              }}
+              autoComplete="off"
+              placeholder="Tier, Gruppe oder Merkliste suchen"
+              aria-label="Tier, Gruppe oder Merkliste suchen"
+              className={`${input} min-w-0 flex-1`}
+            />
+            <TagReaderButton reader={reader} />
           </div>
-        )}
-
-        <div className="space-y-1">
-          <span className="block font-medium text-gray-700">Einzeltiere</span>
-          <HerdReader animals={animals ?? []} selected={selected} onAdd={(id) => setSelected((prev) => new Set(prev).add(id))} />
-          <input
-            className={field}
-            value={numbers}
-            onChange={(e) => applyNumbers(e.target.value)}
-            placeholder="Laufnummern oder Ende der Ohrmarke, z.B. 2212 2213 1904"
-          />
-          {unmatched.length > 0 && <p className="text-xs text-amber-700">Nicht gefunden: {unmatched.join(', ')}</p>}
-          {ambiguous.length > 0 && <p className="text-xs text-amber-700">Mehrdeutig, bitte in der Liste wählen: {ambiguous.join(', ')}</p>}
-          {from && (
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input type="checkbox" checked={onlyFrom} onChange={(e) => setOnlyFrom(e.target.checked)} />
-              nur Tiere aus «{from.name}» anzeigen
-            </label>
-          )}
-          <div className="max-h-56 overflow-y-auto rounded border border-gray-200">
-            {animals == null && <p className="p-2 text-xs text-gray-500">Lädt…</p>}
-            {animals && candidates.length === 0 && <p className="p-2 text-xs text-gray-500">Keine Tiere.</p>}
-            {candidates.map((a) => {
-              const g = groupOf(a)
-              return (
-                <label key={`${a.moduleKey}-${a.id}`} className="flex items-center gap-2 border-b px-2 py-1 last:border-0">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(a.id) || viaGroups.has(a.id)}
-                    disabled={viaGroups.has(a.id)}
-                    className="h-5 w-5"
-                    onChange={(e) => {
-                      const next = new Set(selected)
-                      if (e.target.checked) next.add(a.id)
-                      else next.delete(a.id)
-                      setSelected(next)
-                    }}
-                  />
-                  <AnimalOption
-                    animal={a}
-                    extra={
-                      <>
-                        {a.dry && <span className="rounded bg-amber-100 px-1 text-amber-800">trocken</span>}
-                        <span className="text-gray-500">{g ? g.name : 'ohne Gruppe'}</span>
-                      </>
+          {(focused || query) && suggestions.length > 0 && (
+            <ul className="absolute left-0 right-0 z-20 max-h-72 divide-y overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+              {suggestions.map((s) => (
+                <li key={s.kind === 'animal' ? `a:${s.animal.id}` : `${s.kind}:${s.id}`}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() =>
+                      s.kind === 'animal'
+                        ? addSingle(s.animal.id)
+                        : addBlock(s.kind === 'group' ? { key: `g:${s.id}`, kind: 'group', name: s.name, groupId: s.id, animalIds: s.animalIds } : { key: `l:${s.id}`, kind: 'list', name: s.name, animalIds: s.animalIds })
                     }
-                  />
-                </label>
-              )
-            })}
-          </div>
-          {(chosen.length > 0 || viaGroups.size > 0) && (
-            <p className="text-xs text-gray-600">
-              {chosen.length} einzeln ausgewählt{viaGroups.size > 0 ? `, ${viaGroups.size} mit ganzer Gruppe` : ''}
-            </p>
+                    className="flex min-h-11 w-full items-center px-3 py-2 text-left active:bg-gray-50"
+                  >
+                    {s.kind === 'animal' ? (
+                      <AnimalOption animal={s.animal} extra={<span className="text-gray-500">{groupOf(s.animal.id)?.name ?? 'ohne Gruppe'}</span>} />
+                    ) : (
+                      <span className="font-medium text-gray-900">
+                        {s.kind === 'group' ? `${SPECIES_ICON[speciesSel]} Gruppe` : '🔖 Merkliste'} «{s.name}» <span className="font-normal text-gray-500">· {s.animalIds.length} {s.animalIds.length === 1 ? 'Tier' : 'Tiere'}</span>
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
+          {query && suggestions.length === 0 && animals && <p className="text-xs text-gray-600">Nichts gefunden zu «{query}».</p>}
         </div>
 
+        {blocks.map((b) => (
+          <div key={b.key} className="rounded-lg border border-gray-200">
+            <div className="flex items-center justify-between gap-2 border-b bg-gray-50 px-3 py-1.5">
+              <span className="font-medium text-gray-900">
+                {b.kind === 'group' ? `${SPECIES_ICON[speciesSel]} Gruppe «${b.name}»` : b.kind === 'list' ? `🔖 Merkliste «${b.name}»` : b.name}
+                <span className="font-normal text-gray-600">
+                  {' '}
+                  · {b.checked.size} von {b.animalIds.length}
+                </span>
+              </span>
+              <button type="button" onClick={() => setBlocks((prev) => prev.filter((x) => x !== b))} className="grid h-11 w-11 place-items-center text-lg text-gray-600" aria-label={`${b.name} entfernen`}>
+                ×
+              </button>
+            </div>
+            <ul className="max-h-60 divide-y overflow-y-auto">
+              {b.animalIds.map((id) => {
+                const a = byId.get(id)!
+                const g = groupOf(id)
+                return (
+                  <li key={id}>
+                    <label className="flex min-h-11 items-center gap-2 px-3">
+                      <input type="checkbox" checked={b.checked.has(id)} onChange={() => toggle(b, id)} className="h-5 w-5" />
+                      <AnimalOption animal={a} extra={b.kind !== 'group' && <span className="text-gray-500">{g?.name ?? 'ohne Gruppe'}</span>} />
+                    </label>
+                  </li>
+                )
+              })}
+              {b.animalIds.length === 0 && <li className="px-3 py-2 text-gray-600">keine aktiven Tiere</li>}
+            </ul>
+          </div>
+        ))}
+
+        {wholeGroups.length > 0 && (
+          <label className="flex min-h-11 items-center gap-2 text-gray-700">
+            <input type="checkbox" checked={dissolve} onChange={(e) => setDissolve(e.target.checked)} className="h-5 w-5" />
+            {wholeGroups.length === 1 ? `Gruppe «${wholeGroups[0].name}»` : 'Ganz gewählte Gruppen'} danach auflösen (Stall und Weide enden)
+          </label>
+        )}
         {showDry && (
           <label className="flex items-start gap-2 rounded bg-amber-50 p-2 text-amber-900">
-            <input type="checkbox" className="mt-0.5" checked={dryOff} onChange={(e) => setDryOff(e.target.checked)} />
-            <span>Einzeltiere aus der gemolkenen Gruppe ab {fmtDate(date)} trockenstellen (Eintrag im Tierjournal, nicht mehr in der Milchwägung)</span>
+            <input type="checkbox" className="mt-0.5 h-5 w-5" checked={dryOff} onChange={(e) => setDryOff(e.target.checked)} />
+            <span>Tiere aus der gemolkenen Gruppe ab {fmtDate(date)} trockenstellen (Eintrag im Tierjournal, nicht mehr in der Milchwägung)</span>
           </label>
         )}
-        {error && <p className="text-red-600">{error}</p>}
+        {error && <p className="text-red-700">{error}</p>}
         <button
           type="button"
           disabled={busy || !to || total === 0}

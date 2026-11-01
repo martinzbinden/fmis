@@ -271,3 +271,42 @@ export function doubleMemberships(members: HerdMember[], date: string): { animal
       return { animalId, keep, extra }
     })
 }
+
+export type MoveSuggestion =
+  | { kind: 'animal'; animal: AnimalRef }
+  | { kind: 'group'; id: string; name: string; animalIds: string[] }
+  | { kind: 'list'; id: string; name: string; animalIds: string[] }
+
+/** Ein Suchfeld für «Tiere zuteilen»: Gruppen und Merklisten nach Namen,
+ * Tiere nach Laufnummer (Anfang), Ende der Ohrmarke oder Name. Gruppen und
+ * Listen zuerst (es sind wenige), dann höchstens `limit` Tiere. Ohne Eingabe:
+ * nur Gruppen und Listen als Vorschlag. */
+export function searchMoveSources(
+  query: string,
+  input: { animals: AnimalRef[]; groups: { id: string; name: string; animalIds: string[] }[]; lists: { id: string; name: string; animalIds: string[] }[] },
+  limit = 8,
+): MoveSuggestion[] {
+  const q = query.trim().toLowerCase()
+  const byName = (n: string) => !q || n.toLowerCase().includes(q)
+  const sets: MoveSuggestion[] = [
+    ...input.groups.filter((g) => byName(g.name)).map((g) => ({ kind: 'group' as const, ...g })),
+    ...input.lists.filter((l) => byName(l.name)).map((l) => ({ kind: 'list' as const, ...l })),
+  ]
+  if (!q) return sets
+  const digits = q.replace(/[.\s]/g, '')
+  const score = (a: AnimalRef) => {
+    const nr = (a.lauf_nr ?? '').toLowerCase()
+    if (nr === q) return 0
+    if (/^\d+$/.test(digits) && a.ear_tag.replace(/[.\s]/g, '').endsWith(digits)) return 1
+    if (nr.startsWith(q)) return 2
+    if ((a.name ?? '').toLowerCase().includes(q)) return 3
+    return 9
+  }
+  const animals = input.animals
+    .map((a) => ({ a, s: score(a) }))
+    .filter((x) => x.s < 9)
+    .sort((x, y) => x.s - y.s || (x.a.lauf_nr ?? '').localeCompare(y.a.lauf_nr ?? '', 'de-CH', { numeric: true }))
+    .slice(0, limit)
+    .map((x) => ({ kind: 'animal' as const, animal: x.a }))
+  return [...sets, ...animals]
+}

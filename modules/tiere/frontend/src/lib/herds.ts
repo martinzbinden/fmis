@@ -157,8 +157,8 @@ export interface MoveInput {
   counts: Record<string, number>
   /** Kategorie je Einzeltier (sonst Vorschlag) */
   categories?: Record<string, string>
-  /** ganze Gruppen mitnehmen: alle Einzeltiere (Kategorie bleibt) und alle Anzahlen
-   * ohne Nummer; mit `dissolve` wird die Gruppe danach aufgelöst (Stall/Weide enden) */
+  /** ganz überführte Gruppen (ihre Tiere stehen in `animals`): Anzahlen ohne Nummer
+   * kommen mit; mit `dissolve` wird die Gruppe danach aufgelöst (Stall/Weide enden) */
   groups?: { group: HerdGroup; dissolve: boolean }[]
   dryOff: boolean
 }
@@ -181,25 +181,21 @@ export async function moveAnimals(data: HerdData, input: MoveInput): Promise<voi
 
 async function moveIn(w: W, data: HerdData, input: MoveInput): Promise<void> {
   const { toGroup, fromGroup, date } = input
-  const memberRow = (a: { id: string; moduleKey: string; label: string | null }, category: string) => ({
-    id: crypto.randomUUID(),
-    group_id: toGroup.id,
-    module_key: a.moduleKey,
-    animal_id: a.id,
-    label: a.label,
-    category,
-    from_date: date,
-    to_date: null,
-  })
   const moved = new Set<string>()
   for (const a of input.animals) {
     for (const m of data.members.filter((x) => x.animal_id === a.id && (x.to_date == null || x.to_date >= date))) {
       await closeFrom(w, 'herd_members', m, date)
     }
-    await w.upsert('herd_members', memberRow(
-      { id: a.id, moduleKey: a.moduleKey, label: a.name ? `${a.label} ${a.name}` : a.label },
-      input.categories?.[a.id] ?? defaultCategory({ ...a, dry: a.dry || input.dryOff }, toGroup.milking, date),
-    ))
+    await w.upsert('herd_members', {
+      id: crypto.randomUUID(),
+      group_id: toGroup.id,
+      module_key: a.moduleKey,
+      animal_id: a.id,
+      label: a.name ? `${a.label} ${a.name}` : a.label,
+      category: input.categories?.[a.id] ?? defaultCategory({ ...a, dry: a.dry || input.dryOff }, toGroup.milking, date),
+      from_date: date,
+      to_date: null,
+    })
     moved.add(a.id)
   }
   // Anzahlen ohne Nummer: je Kategorie einmal setzen (setCountIn liest den alten Stand)
@@ -209,16 +205,13 @@ async function moveIn(w: W, data: HerdData, input: MoveInput): Promise<void> {
     if (fromGroup) await setCountIn(w, data, fromGroup.id, cat, Math.max(0, countAt(data, fromGroup.id, cat, date) - n), date)
     add.set(cat, (add.get(cat) ?? 0) + n)
   }
-  // ganze Gruppen: Einzeltiere mit ihrer Kategorie, alle Anzahlen
+  // ganze Gruppen: die Tiere kommen über input.animals (Kategorie, Trockenstellen); hier noch
+  // allfällige Anzahlen ohne Nummer und das Auflösen. Wer sonst noch in der Gruppe steht (z.B.
+  // im Tiermodul nicht mehr aktiv), verlässt sie beim Auflösen und wird nicht mitgenommen.
   for (const { group, dissolve } of input.groups ?? []) {
     if (group.id === toGroup.id) continue
     const open = <T extends { group_id: string; to_date: string | null }>(r: T) => r.group_id === group.id && (r.to_date == null || r.to_date >= date)
-    for (const m of data.members.filter((x) => open(x) && x.from_date <= date)) {
-      if (moved.has(m.animal_id)) continue
-      await closeFrom(w, 'herd_members', m, date)
-      await w.upsert('herd_members', memberRow({ id: m.animal_id, moduleKey: m.module_key, label: m.label }, m.category))
-      moved.add(m.animal_id)
-    }
+    if (dissolve) for (const m of data.members.filter((x) => open(x) && !moved.has(x.animal_id))) await closeFrom(w, 'herd_members', m, date)
     for (const c of data.counts.filter((x) => open(x) && x.from_date <= date)) {
       await closeFrom(w, 'herd_counts', c, date)
       add.set(c.category, (add.get(c.category) ?? 0) + c.count)
