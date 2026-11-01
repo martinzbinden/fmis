@@ -6,6 +6,7 @@ import { isoDate } from './format'
 import { notSupersededSql } from './journal'
 import { MILK_UNTIL_SQL } from './treatments'
 import { loadPendingOffspring } from './earTagPending'
+import { loadOpenReminders, type Reminder } from './reminders'
 
 export interface TodayAnimal {
   id: string
@@ -72,10 +73,12 @@ export interface TodayData {
   openBank: { bank_number: number; session_date: string; slots: number } | null
   expected: ExpectedBirth[]
   markedLists: { id: string; name: string; marked: number; open: number }[]
+  /** offene Erinnerungen (Folgebehandlungen …), fällige zuerst */
+  reminders: Reminder[]
 }
 
 export async function loadToday(pg: PGlite, species: Species, today: string): Promise<TodayData> {
-  const [pending, withdrawals, banks, animals, matings, births, checks, lists] = await Promise.all([
+  const [pending, withdrawals, banks, animals, matings, births, checks, lists, reminders] = await Promise.all([
     loadPendingOffspring(pg),
     pg.query<TodayAnimal & { until: unknown }>(
       `select a.id, a.ear_tag, a.lauf_nr, a.name, max(${MILK_UNTIL_SQL}) as until
@@ -109,6 +112,7 @@ export async function loadToday(pg: PGlite, species: Species, today: string): Pr
        having count(*) filter (where e.reason is not null and e.reason <> '') > 0
        order by l.name`,
     ),
+    loadOpenReminders(pg),
   ])
   const bank = banks.rows[0]
   return {
@@ -126,5 +130,6 @@ export async function loadToday(pg: PGlite, species: Species, today: string): Pr
       today,
     ),
     markedLists: lists.rows,
+    reminders,
   }
 }

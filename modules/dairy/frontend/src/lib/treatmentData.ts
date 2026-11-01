@@ -4,7 +4,9 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow, softDeleteRow } from '../db/write'
 import { inTransaction } from '../db/transaction'
+import { isoDate } from './format'
 import { journalSummary } from './journal'
+import { reminderRow } from './reminders'
 import { releaseDate, stableUuid, type ImportedTreatment } from './treatments'
 import type { TemplateItem, TreatmentTemplate } from '../types'
 
@@ -24,6 +26,8 @@ export interface TreatmentInput {
   caseId?: string
   /** Korrektur: die erste Zeile ersetzt diesen Eintrag, der alte bleibt unverändert (schema/0014) */
   correctsId?: string
+  /** Folgebehandlung/Kontrolle planen: Erinnerung je Tier in den Pendenzen (schema/0021) */
+  followup?: { date: string; title: string } | null
 }
 
 const lastDateOf = (date: string, days: number | null) => {
@@ -35,14 +39,16 @@ const lastDateOf = (date: string, days: number | null) => {
 
 /** Zeilen einer Behandlung (je Tier × Präparat), Freigabedaten gerechnet. */
 export function treatmentRows(input: TreatmentInput, newId: () => string = () => crypto.randomUUID()) {
+  // ohne Präparat: eine Zeile je Tier (Behandlung ohne Tierarzneimittel, keine Absetzfrist)
+  const items = input.items.length ? input.items : [{ medication: '', dose: '', applications: null, days: 1, milk_days: null, meat_days: null }]
   return input.animalIds.flatMap((animalId) => {
     const caseId = input.animalIds.length === 1 && input.caseId ? input.caseId : newId()
-    return input.items.map((it, index) => {
+    return items.map((it, index) => {
       const last = lastDateOf(input.date, it.days)
       const fields = {
         category: 'behandlung' as const,
         diagnosis: input.diagnosis,
-        medication: it.medication.trim(),
+        medication: it.medication.trim() || null,
         dose: it.dose.trim() || null,
       }
       return {
@@ -76,8 +82,23 @@ export function treatmentRows(input: TreatmentInput, newId: () => string = () =>
 
 export async function saveTreatment(db: PGlite, input: TreatmentInput): Promise<number> {
   const rows = treatmentRows(input)
+  const caseIds = [...new Set(rows.map((r) => r.case_id))]
   await inTransaction(db, async (tx) => {
     for (const r of rows) await upsertRow(tx, 'animal_journal', r, { action: 'insert' })
+    // Folgebehandlung im Fall erfasst: dessen offene Erinnerungen sind erledigt
+    if (input.caseId && !input.correctsId) {
+      const { rows: open } = await tx.query<Record<string, unknown>>(
+        'select * from reminders where case_id = $1 and done_at is null and deleted_at is null',
+        [input.caseId],
+      )
+      const now = new Date().toISOString()
+      for (const o of open) await upsertRow(tx, 'reminders', { ...o, id: String(o.id), due_date: isoDate(o.due_date), done_at: now, done_by: input.administered_by } as never)
+    }
+    if (input.followup)
+      for (const caseId of caseIds) {
+        const animalId = rows.find((r) => r.case_id === caseId)!.animal_id
+        await upsertRow(tx, 'reminders', reminderRow(animalId, caseId, input.followup.date, input.followup.title))
+      }
   })
   return rows.length
 }

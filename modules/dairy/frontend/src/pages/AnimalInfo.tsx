@@ -16,6 +16,7 @@ import { fmtInbreeding, inbreedingClass } from '../lib/inbreeding'
 import { rankLambs } from '../lib/lambSelection'
 import { loadLambSelection } from '../lib/lambSelectionData'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
+import { AnimalListPanel } from '../components/AnimalPicker'
 import { matchAnimals, METHOD_LABEL, RESULT_LABEL, uniqueMatch } from '../lib/pregnancy'
 import { speciesOf } from '../lib/species'
 import { withdrawalUntil } from '../lib/treatments'
@@ -94,6 +95,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
   const id = params.get('tier')
   const setId = (animalId: string) => setParams({ tier: animalId }, { replace: true })
   const [picking, setPicking] = useState(false)
+  const [listOpen, setListOpen] = useState(false)
   const [listMsg, setListMsg] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const animals = useMemo(() => data?.animals ?? [], [data])
@@ -144,10 +146,30 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
             className="min-h-12 w-full rounded-lg border-2 border-gray-500 px-3 text-xl tracking-widest focus:border-brand-700 focus:outline-none"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => setListOpen((o) => !o)}
+          aria-expanded={listOpen}
+          aria-label="Tiere als Liste"
+          className={`min-h-12 shrink-0 rounded-lg border-2 px-3 font-medium ${listOpen ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-400 bg-white text-gray-800'}`}
+        >
+          ☰
+        </button>
         <div className="shrink-0">
           <TagReaderButton reader={reader} />
         </div>
       </div>
+      {listOpen && (
+        <AnimalListPanel
+          animals={animals.filter((a) => a.status === 'aktiv')}
+          selected={[]}
+          onPick={(animalId) => {
+            show(animalId)
+            setQuery('')
+            setListOpen(false)
+          }}
+        />
+      )}
       {query && matches.length > 0 && !(matches.length === 1 && matches[0].id === id) && (
         <ul className="max-h-64 divide-y overflow-y-auto rounded-lg border-2 border-gray-300 bg-white">
           {matches.length > 4 && <li className="px-3 py-1 text-xs text-gray-600">{matches.length} Tiere passen</li>}

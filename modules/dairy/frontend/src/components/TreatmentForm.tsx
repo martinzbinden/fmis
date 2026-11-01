@@ -6,6 +6,7 @@ import { localTodayIso } from '../lib/format'
 import { journalSummary } from '../lib/journal'
 import { loadTreatmentContext, saveTemplate, saveTreatment } from '../lib/treatmentData'
 import { DEFAULT_WITHDRAWAL_FACTOR, parseItems } from '../lib/treatments'
+import { QUICK_DAYS, dueIn } from '../lib/reminders'
 import type { AnimalJournalEntry, TemplateItem, TreatmentTemplate } from '../types'
 
 const LS = { by: 'dairy_journal_last_administered_by', supplier: 'dairy_treatment_supplier' }
@@ -61,8 +62,13 @@ export default function TreatmentForm({
   const [notes, setNotes] = useState(corrects && corrects.text !== journalSummary(corrects) ? corrects.text : '')
   const [favorite, setFavorite] = useState<{ on: boolean; title: string }>({ on: false, title: '' })
   const [templateId, setTemplateId] = useState<string | null>(null)
+  // Folgebehandlung/Kontrolle planen → Erinnerung in den Pendenzen («Heute»)
+  const [followup, setFollowup] = useState<{ on: boolean; date: string; title: string }>({ on: false, date: '', title: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // zweiter Tipp auf Speichern bestätigt «ohne Präparat»; jede Änderung an den Präparaten fragt wieder
+  const [noMedOk, setNoMedOk] = useState(false)
+  useEffect(() => setNoMedOk(false), [items])
   const f = factor
 
   useEffect(() => {
@@ -87,10 +93,16 @@ export default function TreatmentForm({
     const missing = items.find((i) => i.hint && !i.medication.trim())
     if (missing) return setError(`${missing.hint} — Präparat angeben.`)
     const used = items.filter((i) => i.medication.trim())
-    if (used.length === 0) return setError('Mindestens ein Präparat angeben.')
+    // ohne Präparat (z.B. Wunde gereinigt, Klaue geschnitten) möglich — aber erst nach einem zweiten Tipp
+    if (used.length === 0 && !noMedOk) {
+      setNoMedOk(true)
+      return setError('Kein Präparat angegeben. Ohne Tierarzneimittel speichern? Dann nochmals tippen.')
+    }
     if (used.some((i) => i.milk_days == null || i.meat_days == null))
       return setError('Absetzfristen Milch und Fleisch angeben (0 = keine) — laut Packungsbeilage bzw. Tierarzt.')
     if (!by.trim()) return setError('Wer hat behandelt? (Pflicht im Behandlungsjournal)')
+    if (followup.on && !followup.date) return setError('Datum der Folgebehandlung angeben (oder das Häkchen entfernen).')
+    if (followup.on && followup.date < date) return setError('Die Folgebehandlung liegt vor der Behandlung.')
     setSaving(true)
     setError(null)
     try {
@@ -107,6 +119,7 @@ export default function TreatmentForm({
         notes: notes.trim() || null,
         caseId: corrects?.case_id ?? caseId,
         correctsId: corrects?.id,
+        followup: followup.on ? { date: followup.date, title: followup.title.trim() || `Folgebehandlung: ${diagnosis.trim()}` } : null,
       })
       if (favorite.on && favorite.title.trim())
         await saveTemplate(db, {
@@ -128,6 +141,7 @@ export default function TreatmentForm({
       setNotes('')
       setTemplateId(null)
       setFavorite({ on: false, title: '' })
+      setFollowup({ on: false, date: '', title: '' })
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
@@ -203,6 +217,43 @@ export default function TreatmentForm({
         Bemerkung (optional)
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={input} />
       </label>
+      {!corrects && (
+        <div className="rounded-lg border border-gray-200 p-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 text-gray-700">
+            <input type="checkbox" checked={followup.on} onChange={(e) => setFollowup({ ...followup, on: e.target.checked })} className="h-5 w-5" />
+            Folgebehandlung / Kontrolle planen
+          </label>
+          {followup.on && (
+            <div className="mt-1 space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_DAYS.map((d) => {
+                  const iso = dueIn(date, d)
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setFollowup({ ...followup, date: iso })}
+                      aria-pressed={followup.date === iso}
+                      className={`min-h-11 rounded-lg border px-3 ${followup.date === iso ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}
+                    >
+                      {d === 1 ? 'morgen' : `+${d} Tage`}
+                    </button>
+                  )
+                })}
+                <input type="date" value={followup.date} min={date} onChange={(e) => setFollowup({ ...followup, date: e.target.value })} aria-label="Datum der Folgebehandlung" className="min-h-11 rounded-lg border border-gray-300 px-2" />
+              </div>
+              <input
+                value={followup.title}
+                onChange={(e) => setFollowup({ ...followup, title: e.target.value })}
+                placeholder={`Folgebehandlung: ${diagnosis.trim() || '…'}`}
+                aria-label="Was ist zu tun?"
+                className={input}
+              />
+              <p className="text-xs text-gray-600">Erscheint auf «Heute» unter Pendenzen. Eine Folgebehandlung in diesem Fall hakt sie ab.</p>
+            </div>
+          )}
+        </div>
+      )}
       <div className="rounded-lg border border-gray-200 p-2 text-sm">
         <label className="flex items-center gap-2 text-gray-700">
           <input type="checkbox" checked={favorite.on} onChange={(e) => setFavorite({ on: e.target.checked, title: favorite.title || diagnosis })} className="h-4 w-4" />
@@ -212,14 +263,18 @@ export default function TreatmentForm({
           <input value={favorite.title} onChange={(e) => setFavorite({ ...favorite, title: e.target.value })} placeholder="Name des Favoriten" className={`${input} mt-2`} />
         )}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className={`text-sm ${noMedOk ? 'rounded-lg bg-amber-50 p-2 text-amber-900' : 'text-red-700'}`}>
+          {error}
+        </p>
+      )}
       <button
         type="button"
         onClick={() => void save()}
         disabled={saving || animalIds.length === 0}
         className="w-full rounded-lg bg-brand-700 py-3 text-base font-semibold text-white disabled:opacity-50"
       >
-        {saving ? 'Speichere…' : corrects ? 'Korrektur speichern' : caseId ? 'Folgebehandlung speichern' : animalIds.length > 1 ? `Behandlung für ${animalIds.length} Tiere speichern` : 'Behandlung speichern'}
+        {saving ? 'Speichere…' : noMedOk && !items.some((i) => i.medication.trim()) ? 'Ohne Präparat speichern' : corrects ? 'Korrektur speichern' : caseId ? 'Folgebehandlung speichern' : animalIds.length > 1 ? `Behandlung für ${animalIds.length} Tiere speichern` : 'Behandlung speichern'}
       </button>
     </div>
   )

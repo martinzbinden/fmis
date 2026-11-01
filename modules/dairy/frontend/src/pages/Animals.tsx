@@ -1,6 +1,6 @@
 import { isDrySql } from '../lib/dryOff'
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate } from '../lib/format'
@@ -9,6 +9,8 @@ import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { matchRead, readDigits, useTagReader } from '@fmis/core/tagReader'
 import { TagReaderPanel, TagReaderToggle } from '@fmis/core/TagReaderButton'
 import { loadInbreeding } from '../lib/pedigreeData'
+import { ANIMAL_SORTS, loadAnimalFacts, sortAnimals, sortDate, sortLabel, type AnimalSort } from '../lib/animalSort'
+import { speciesOf } from '../lib/species'
 
 async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
   const { rows } = await pg.query<AnimalRow>(`
@@ -42,14 +44,45 @@ function loadView(key: string): ViewMode {
   }
 }
 
+function loadSort(key: string): AnimalSort {
+  try {
+    const v = localStorage.getItem(key) as AnimalSort | null
+    return v && ANIMAL_SORTS.includes(v) ? v : 'nr'
+  } catch {
+    return 'nr'
+  }
+}
+
 export default function Animals({ moduleKey }: { moduleKey: string }) {
+  const species = speciesOf(moduleKey)
   const { data, loading } = useQuery(loadAnimals)
+  const { data: facts } = useQuery(loadAnimalFacts)
   const viewKey = `${moduleKey}_animals_view`
+  const sortKey = `${moduleKey}_animals_sort`
   const [view, setView] = useState<ViewMode>(() => loadView(viewKey))
+  // Sortierung: ?sort=… (Link aus der Tierauswahl) vor der gemerkten
+  const [params] = useSearchParams()
+  const [sort, setSort] = useState<AnimalSort>(() => {
+    const p = params.get('sort') as AnimalSort | null
+    return p && ANIMAL_SORTS.includes(p) ? p : loadSort(sortKey)
+  })
   const [filter, setFilter] = useState('')
   const allAnimals = data ?? []
   // Ein Filterfeld über alle Spalten — gilt für Karten und Liste.
-  const animals = filter ? allAnimals.filter((a) => matchesFilter(a, filter)) : allAnimals
+  const animals = useMemo(
+    () => sortAnimals(filter ? allAnimals.filter((a) => matchesFilter(a, filter)) : allAnimals, facts, sort),
+    [allAnimals, filter, facts, sort],
+  )
+  const sortWord = { nr: '', geburt: species === 'sheep' ? 'abgelammt' : 'abgekalbt', jung: 'geboren', behandelt: 'behandelt' }[sort]
+
+  function changeSort(v: AnimalSort) {
+    setSort(v)
+    try {
+      localStorage.setItem(sortKey, v)
+    } catch {
+      // nur bis zum Reload
+    }
+  }
   // Lesegerät: gelesene Ohrmarke als Filter
   const reader = useTagReader({
     moduleKey,
@@ -98,13 +131,20 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
             placeholder="Filter (Name, Ohrmarke, Rasse, Status, …)"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
+            className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base"
           />
+          <select value={sort} onChange={(e) => changeSort(e.target.value as AnimalSort)} aria-label="Sortierung" className="min-h-11 rounded-lg border border-gray-300 bg-white px-2 text-sm">
+            {ANIMAL_SORTS.map((k) => (
+              <option key={k} value={k}>
+                {sortLabel(k, species)}
+              </option>
+            ))}
+          </select>
           <span className="text-xs text-gray-500">
             {animals.length}
             {filter ? ` von ${allAnimals.length}` : ''}
           </span>
-          <div className="flex rounded border border-gray-300 text-xs">
+          <div className="flex overflow-hidden rounded-lg border border-gray-300 text-sm">
             {(
               [
                 ['cards', 'Karten'],
@@ -115,7 +155,7 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
                 key={v}
                 type="button"
                 onClick={() => changeView(v)}
-                className={`px-2.5 py-1 ${view === v ? 'bg-brand-700 text-white' : 'text-gray-600'}`}
+                className={`min-h-11 px-3 ${view === v ? 'bg-brand-700 text-white' : 'text-gray-600'}`}
               >
                 {label}
               </button>
@@ -151,8 +191,13 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
             <div className="mt-1 text-xs text-gray-500">
               {a.breed_code ? `${a.breed_code} · ` : ''}geb. {fmtDate(a.birth_date)}
             </div>
+            {sort !== 'nr' && sort !== 'jung' && (
+              <div className="mt-1 text-sm font-medium text-gray-800">
+                {sortDate(a, facts, sort) ? `${sortWord} ${fmtDate(sortDate(a, facts, sort))}` : `nie ${sortWord}`}
+              </div>
+            )}
             <div className="mt-1 text-xs text-gray-500">
-              {a.milk_test_count} Milchtests erfasst
+              {a.milk_test_count} Milchwägungen
               {a.journal_count > 0 ? ` · ${a.journal_count} Journaleinträge` : ''}
             </div>
             {a.last_journal && <div className="mt-1 text-xs text-gray-600">📝 {a.last_journal}</div>}

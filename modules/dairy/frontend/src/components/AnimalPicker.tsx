@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import type { Animal } from '../types'
+import { useQuery } from '../hooks/useQuery'
+import { ANIMAL_SORTS, loadAnimalFacts, sortAnimals, sortDate, sortLabel, type AnimalSort } from '../lib/animalSort'
+import { fmtDate } from '../lib/format'
+import { speciesOf } from '../lib/species'
 import { animalLabel, shortEarTag } from '@fmis/core/earTag'
 import AnimalOption from '@fmis/core/AnimalOption'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
@@ -26,6 +31,7 @@ export default function AnimalPicker({
   readerModule?: string
 }) {
   const [query, setQuery] = useState('')
+  const [listOpen, setListOpen] = useState(false)
   const byId = useMemo(() => new Map(animals.map((a) => [a.id, a])), [animals])
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -94,6 +100,7 @@ export default function AnimalPicker({
       )}
       {(multiple || selected.length === 0) && (
         <>
+          <div className="flex gap-2">
           <input
             type="search"
             value={query}
@@ -108,8 +115,27 @@ export default function AnimalPicker({
             inputMode="search"
             autoComplete="off"
             aria-label="Tier suchen (Laufnummer, Name oder Ohrmarke)"
-            className="w-full rounded-lg border border-gray-300 px-3 py-3 text-base"
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-3 text-base"
           />
+          <button
+            type="button"
+            onClick={() => setListOpen((o) => !o)}
+            aria-expanded={listOpen}
+            className={`shrink-0 rounded-lg border px-3 text-sm font-medium ${listOpen ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}
+          >
+            ☰ Liste
+          </button>
+          </div>
+          {listOpen && (
+            <AnimalListPanel
+              animals={animals}
+              selected={selected}
+              onPick={(id) => {
+                pick(id)
+                if (!multiple) setListOpen(false)
+              }}
+            />
+          )}
           {query.trim() && matches.length === 0 && (
             // beim Start am Handy braucht die Ablage Sekunden — nicht «gibt es nicht» vortäuschen
             <p className="mt-1 px-1 text-sm text-gray-600">{animals.length === 0 ? 'Tiere werden geladen …' : `Kein Tier mit «${query.trim()}».`}</p>
@@ -126,6 +152,76 @@ export default function AnimalPicker({
             </ul>
           )}
         </>
+      )}
+    </div>
+  )
+}
+
+function loadSort(): AnimalSort {
+  try {
+    const v = localStorage.getItem('dairy_picker_sort') as AnimalSort | null
+    return v && ANIMAL_SORTS.includes(v) ? v : 'geburt'
+  } catch {
+    return 'geburt'
+  }
+}
+
+/** Alle Tiere als Liste, sortiert z.B. nach zuletzt abgelammt oder zuletzt
+ * behandelt — wenn man die Nummer nicht weiss («die, die gestern gelammt hat»). */
+export function AnimalListPanel({ animals, selected, onPick }: { animals: Animal[]; selected: string[]; onPick: (id: string) => void }) {
+  const species = speciesOf(useLocation().pathname.split('/')[1] ?? '')
+  const { data: facts } = useQuery(loadAnimalFacts)
+  const [sort, setSort] = useState<AnimalSort>(loadSort)
+  const [limit, setLimit] = useState(30)
+  const list = useMemo(() => sortAnimals(animals.filter((a) => !selected.includes(a.id)), facts, sort), [animals, selected, facts, sort])
+  const word = { nr: '', geburt: species === 'sheep' ? 'abgelammt' : 'abgekalbt', jung: 'geb.', behandelt: 'behandelt' }[sort]
+
+  function changeSort(v: AnimalSort) {
+    setSort(v)
+    setLimit(30)
+    try {
+      localStorage.setItem('dairy_picker_sort', v)
+    } catch {
+      // nur bis zum Reload
+    }
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-gray-200 bg-white">
+      <div className="flex flex-wrap gap-1.5 border-b p-2" role="radiogroup" aria-label="Sortierung">
+        {ANIMAL_SORTS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={sort === k}
+            onClick={() => changeSort(k)}
+            className={`min-h-11 rounded-full border px-3 text-sm ${sort === k ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 text-gray-800'}`}
+          >
+            {sortLabel(k, species)}
+          </button>
+        ))}
+      </div>
+      {!facts && sort !== 'nr' && <p className="px-3 py-2 text-sm text-gray-600">Lädt …</p>}
+      <ul className="max-h-80 divide-y overflow-y-auto">
+        {list.slice(0, limit).map((a) => {
+          const d = sortDate(a, facts, sort)
+          return (
+            <li key={a.id}>
+              <button type="button" onClick={() => onPick(a.id)} className="flex min-h-12 w-full items-center px-3 py-2 text-left active:bg-gray-50">
+                <span className="block w-full">
+                  <AnimalOption animal={a} />
+                  {sort !== 'nr' && sort !== 'jung' && <span className="block text-sm text-gray-700">{d ? `${word} ${fmtDate(d)}` : `nie ${word}`}</span>}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      {list.length > limit && (
+        <button type="button" onClick={() => setLimit((l) => l + 50)} className="min-h-11 w-full border-t text-sm font-medium text-brand-700">
+          weitere {Math.min(50, list.length - limit)} von {list.length - limit} anzeigen
+        </button>
       )}
     </div>
   )

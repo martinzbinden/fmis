@@ -36,4 +36,11 @@ describe('treatmentRows', () => {
     expect(new Set(rows.map((r) => r.case_id)).size).toBe(2)
     expect(rows.every((r) => r.corrects_id === null)).toBe(true)
   })
+  it('ohne Präparat: eine Zeile je Tier, ohne Absetzfrist', () => {
+    const rows = treatmentRows({ ...input, animalIds: ['a1', 'a2'], items: [] }, newId)
+    expect(rows).toHaveLength(2)
+    expect(rows[0].medication).toBeNull()
+    expect(rows[0].release_milk_date).toBeNull()
+    expect(rows[0].text).toBe('Mastitis')
+  })
 })

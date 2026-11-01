@@ -2,7 +2,11 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { shortEarTag } from '@fmis/core/earTag'
 import { SessionUndoList } from '@fmis/core/UndoBar'
+import { undoAction } from '@fmis/core/undo'
+import { useDb } from '@fmis/core/DbContext'
+import { errorText, notifyError } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
+import { completeReminder, dueText } from '../lib/reminders'
 import { loadToday, type TodayAnimal } from '../lib/today'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
@@ -31,7 +35,36 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
   const pregnancy = runningRound(`fmis_${moduleKey}_pregnancy_round`)
   const claws = runningRound(`fmis_${moduleKey}_claw_round`)
 
+  const db = useDb()
   const todo: ReactNode[] = []
+  for (const r of data?.reminders ?? []) {
+    const late = r.due_date < today
+    todo.push(
+      <li key={r.id} className="flex items-center">
+        <Link to={`kuehe/${r.animal_id}#journal`} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pl-4 active:bg-gray-50">
+          <span className="text-xl" aria-hidden>
+            {late ? '⏰' : '💉'}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className={`block font-medium ${late ? 'text-red-800' : 'text-gray-900'}`}>
+              {who(r)}: {r.title}
+            </span>
+            <span className="block text-sm text-gray-600">
+              {fmtDate(r.due_date)} · {dueText(r.due_date, today)}
+            </span>
+          </span>
+        </Link>
+        <button
+          type="button"
+          onClick={() => void undoAction(`Pendenz erledigt: ${r.title}`, () => completeReminder(db, r.id)).catch((e) => notifyError(errorText(e)))}
+          className="mx-2 grid h-11 w-11 shrink-0 place-items-center rounded-lg border-2 border-green-700 text-lg font-bold text-green-800 active:bg-green-50"
+          aria-label={`${who(r)}: ${r.title} erledigt`}
+        >
+          ✓
+        </button>
+      </li>,
+    )
+  }
   if (data?.openBank) {
     todo.push(
       <Row key="bank" to="milchwaegung" icon="⚖️" title={`Milchwägung läuft: Bank ${data.openBank.bank_number}`} detail={`${fmtDate(data.openBank.session_date)} · ${data.openBank.slots} Tiere aufgenommen`} />,
@@ -59,7 +92,7 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
       </div>
 
       {todo.length > 0 && (
-        <Section title="Offen">
+        <Section title="Pendenzen">
           <ul className="divide-y rounded-xl bg-white shadow-sm">{todo}</ul>
         </Section>
       )}

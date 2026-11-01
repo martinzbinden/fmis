@@ -61,6 +61,7 @@ export const SYNC_TABLES = {
   ],
   watchlists: ['id', 'name', 'color', 'notes', 'created_by', 'created_at', 'archived_at', 'updated_at', 'deleted_at'],
   watchlist_entries: ['id', 'list_id', 'animal_id', 'reason', 'added_by', 'added_at', 'done_at', 'updated_at', 'deleted_at'],
+  reminders: ['id', 'animal_id', 'case_id', 'due_date', 'title', 'done_at', 'done_by', 'created_by', 'created_at', 'updated_at', 'deleted_at'],
   claw_exams: [
     'id', 'animal_id', 'exam_date', 'round_id', 'examiner', 'locomotion', 'trimmed', 'treatment', 'notes',
     'source', 'recorded_at', 'created_by', 'updated_at', 'deleted_at',
@@ -110,6 +111,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   birth_offspring: new Set(['died_on']),
   watchlists: new Set(),
   watchlist_entries: new Set(),
+  reminders: new Set(['due_date']),
   claw_exams: new Set(['exam_date']),
   claw_findings: new Set(),
   breeding_values: new Set(['eval_date']),
