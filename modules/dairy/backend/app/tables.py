@@ -62,7 +62,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     "watchlist_entries": ["id", "list_id", "animal_id", "reason", "added_by", "added_at", "done_at", "updated_at", "deleted_at"],
     "journal_photos": [
         "id", "animal_id", "journal_id", "case_id", "taken_at", "content_type", "size_bytes", "width", "height",
-        "caption", "created_by", "updated_at", "deleted_at",
+        "caption", "created_by", "updated_at", "deleted_at", "claw_exam_id",
     ],
     "reminders": [
         "id", "animal_id", "case_id", "due_date", "title", "done_at", "done_by", "created_by", "created_at",

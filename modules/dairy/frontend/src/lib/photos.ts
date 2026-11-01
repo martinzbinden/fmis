@@ -24,6 +24,7 @@ export interface JournalPhoto {
   animal_id: string
   journal_id: string | null
   case_id: string | null
+  claw_exam_id: string | null
   taken_at: string
   content_type: string
   caption: string | null
@@ -74,7 +75,7 @@ export async function savePhotos(
   pg: PGlite,
   moduleKey: string,
   photos: PreparedPhoto[],
-  target: { animalId: string; journalId: string | null; caseId: string | null },
+  target: { animalId: string; journalId?: string | null; caseId?: string | null; clawExamId?: string | null },
 ): Promise<void> {
   if (!photos.length) return
   const cache = await caches.open(CACHE)
@@ -87,8 +88,9 @@ export async function savePhotos(
     await upsertRow(pg, 'journal_photos', {
       id,
       animal_id: target.animalId,
-      journal_id: target.journalId,
-      case_id: target.caseId,
+      journal_id: target.journalId ?? null,
+      case_id: target.caseId ?? null,
+      claw_exam_id: target.clawExamId ?? null,
       taken_at: now,
       content_type: p.blob.type,
       size_bytes: p.blob.size,
@@ -170,12 +172,64 @@ export function photoObjectUrl(moduleKey: string, id: string): Promise<string> {
 
 export async function loadPhotos(pg: PGlite, animalId: string): Promise<JournalPhoto[]> {
   const { rows } = await pg.query<JournalPhoto>(
-    `select p.id, p.animal_id, p.journal_id, p.case_id, p.taken_at, p.content_type, p.caption
+    `select p.id, p.animal_id, p.journal_id, p.case_id, p.claw_exam_id, p.taken_at, p.content_type, p.caption
      from journal_photos p
      left join animal_journal j on j.id = p.journal_id
+     left join claw_exams c on c.id = p.claw_exam_id
      where p.animal_id = $1 and p.deleted_at is null and (p.journal_id is null or j.deleted_at is null)
+       and (p.claw_exam_id is null or c.deleted_at is null)
      order by p.taken_at`,
     [animalId],
   )
   return rows.map((r) => ({ ...r, taken_at: String(r.taken_at) }))
+}
+
+// --- Weiter recherchieren: Bildsuche bei Google, Teilen -----------------------
+
+async function asJpeg(blob: Blob): Promise<File> {
+  // Google Lens und manche Apps können mit WebP nichts anfangen
+  const bitmap = await createImageBitmap(blob)
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0)
+  bitmap.close()
+  const jpeg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9))
+  return new File([jpeg ?? blob], 'foto.jpg', { type: jpeg ? 'image/jpeg' : blob.type })
+}
+
+/** Foto in einem neuen Fenster an Google Lens schicken (Bildsuche). Google
+ * bietet dafür keine offizielle Schnittstelle; das Formular entspricht dem
+ * Hochladen auf lens.google.com und kann sich ändern. */
+export async function searchWithGoogleLens(url: string): Promise<void> {
+  const file = await asJpeg(await (await fetch(url)).blob())
+  const form = document.createElement('form')
+  form.method = 'POST'
+  form.action = 'https://lens.google.com/v3/upload'
+  form.enctype = 'multipart/form-data'
+  form.target = '_blank'
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.name = 'encoded_image'
+  const dt = new DataTransfer()
+  dt.items.add(file)
+  input.files = dt.files
+  form.append(input)
+  document.body.append(form)
+  form.submit()
+  form.remove()
+}
+
+/** Teilen-Menü des Handys (z.B. an Google Lens, die Google-App, den Tierarzt). */
+export async function canSharePhoto(): Promise<boolean> {
+  return typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [new File([''], 'x.jpg', { type: 'image/jpeg' })] })
+}
+export async function sharePhoto(url: string): Promise<void> {
+  const file = await asJpeg(await (await fetch(url)).blob())
+  try {
+    await navigator.share({ files: [file] })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') return // abgebrochen
+    throw e
+  }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { photoObjectUrl, type JournalPhoto } from '../lib/photos'
+import { errorText, notifyError } from '@fmis/core/toast'
+import { canSharePhoto, photoObjectUrl, searchWithGoogleLens, sharePhoto, type JournalPhoto } from '../lib/photos'
 
 function Thumb({ moduleKey, photo, onOpen }: { moduleKey: string; photo: JournalPhoto; onOpen: (url: string) => void }) {
   const [url, setUrl] = useState<string | null>(null)
@@ -23,7 +24,8 @@ function Thumb({ moduleKey, photo, onOpen }: { moduleKey: string; photo: Journal
   )
 }
 
-/** Fotos eines Journal-Eintrags; Antippen zeigt das Foto bildschirmfüllend. */
+/** Fotos eines Eintrags; Antippen zeigt das Foto bildschirmfüllend, mit
+ * Bildsuche bei Google und Teilen zur weiteren Recherche. */
 export default function PhotoThumbs({ moduleKey, photos }: { moduleKey: string; photos: JournalPhoto[] }) {
   const [open, setOpen] = useState<string | null>(null)
   if (!photos.length) return null
@@ -34,11 +36,37 @@ export default function PhotoThumbs({ moduleKey, photos }: { moduleKey: string; 
           <Thumb key={p.id} moduleKey={moduleKey} photo={p} onOpen={setOpen} />
         ))}
       </div>
-      {open && (
-        <button type="button" onClick={() => setOpen(null)} className="fixed inset-0 z-50 grid place-items-center bg-black/90 p-2" aria-label="Foto schliessen">
-          <img src={open} alt="" className="max-h-full max-w-full object-contain" />
-        </button>
-      )}
+      {open && <PhotoViewer url={open} onClose={() => setOpen(null)} />}
     </>
+  )
+}
+
+function PhotoViewer({ url, onClose }: { url: string; onClose: () => void }) {
+  const [share, setShare] = useState(false)
+  useEffect(() => {
+    void canSharePhoto().then(setShare)
+  }, [])
+  const run = (fn: (u: string) => Promise<void>) => () => void fn(url).catch((e) => notifyError(errorText(e)))
+  const btn = 'min-h-11 rounded-lg bg-white/90 px-3 text-sm font-semibold text-gray-900 active:bg-white'
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/90" role="dialog" aria-label="Foto">
+      <button type="button" onClick={onClose} className="grid min-h-0 flex-1 place-items-center p-2" aria-label="Foto schliessen">
+        <img src={url} alt="" className="max-h-full max-w-full object-contain" />
+      </button>
+      <div className="flex flex-wrap items-center justify-center gap-2 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+        <button type="button" onClick={run(searchWithGoogleLens)} className={btn}>
+          🔍 Bildsuche (Google)
+        </button>
+        {share && (
+          <button type="button" onClick={run(sharePhoto)} className={btn}>
+            ↗ Teilen
+          </button>
+        )}
+        <button type="button" onClick={onClose} className={btn}>
+          ✕ Schliessen
+        </button>
+        <p className="w-full text-center text-xs text-gray-300">Bildsuche und Teilen schicken das Foto an Google bzw. die gewählte App.</p>
+      </div>
+    </div>
   )
 }

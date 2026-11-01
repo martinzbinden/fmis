@@ -34,6 +34,9 @@ import {
 import { fmtDate, localTodayIso } from '../lib/format'
 import { matchAnimals, uniqueMatch } from '../lib/pregnancy'
 import { speciesOf } from '../lib/species'
+import { savePhotos, type PreparedPhoto } from '../lib/photos'
+import PhotoPicker from '../components/PhotoPicker'
+import { undoAction } from '@fmis/core/undo'
 import type { Animal } from '../types'
 
 async function loadData(pg: PGlite) {
@@ -152,6 +155,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
     setFindings(e.findings.filter((f) => f.code !== 'MH').map((f) => ({ foot: f.foot, code: f.code, grade: f.grade })))
     setNotes(e.notes ?? '')
   }
+  const [photos, setPhotos] = useState<PreparedPhoto[]>([])
   function clearForm(keepTrim = true) {
     setEditId(null)
     setMh(EMPTY_MH)
@@ -160,6 +164,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
     setTreatments([])
     setFindings([])
     setNotes('')
+    setPhotos([])
     setAddFoot(null)
     setAddCode(null)
   }
@@ -201,27 +206,30 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
       const codes = findings.map((f) => f.code)
       const worst = sheep && FEET.some((f) => mh[f] != null) ? Math.max(...FEET.map((f) => mh[f] ?? 0)) : null
       const warnings = clawWarnings(animal.id, { date: round.date, mh: worst, codes, examId: id }, exams, CULL_LIST)
-      await inTransaction(db, async (tx) => {
-        await upsertRow(tx, 'claw_exams', {
-          id,
-          animal_id: animal.id,
-          exam_date: round.date,
-          round_id: round.id,
-          examiner: round.examiner,
-          locomotion,
-          trimmed,
-          treatment: treatments.length ? treatments.join(', ') : null,
-          notes: notes.trim() || null,
-          source: prev?.source ?? (viaReader ? 'reader' : 'manual'),
-          recorded_at: prev?.recorded_at ?? new Date().toISOString(),
-          created_by: prev?.created_by ?? getCurrentUserEmail(),
-          deleted_at: null,
+      await undoAction(photos.length ? `Klauen ${label(animal)} mit ${photos.length} Foto${photos.length > 1 ? 's' : ''}` : undefined, async () => {
+        await inTransaction(db, async (tx) => {
+          await upsertRow(tx, 'claw_exams', {
+            id,
+            animal_id: animal.id,
+            exam_date: round.date,
+            round_id: round.id,
+            examiner: round.examiner,
+            locomotion,
+            trimmed,
+            treatment: treatments.length ? treatments.join(', ') : null,
+            notes: notes.trim() || null,
+            source: prev?.source ?? (viaReader ? 'reader' : 'manual'),
+            recorded_at: prev?.recorded_at ?? new Date().toISOString(),
+            created_by: prev?.created_by ?? getCurrentUserEmail(),
+            deleted_at: null,
+          })
+          for (const f of prev?.findings ?? []) await softDeleteRow(tx, 'claw_findings', f.id)
+          const rows: Finding[] = [...(sheep ? FEET.filter((f) => mh[f] != null).map((f) => ({ foot: f, code: 'MH', grade: String(mh[f]) })) : []), ...findings]
+          for (const f of rows) {
+            await upsertRow(tx, 'claw_findings', { id: crypto.randomUUID(), exam_id: id, animal_id: animal.id, foot: f.foot, claw: null, code: f.code, grade: f.grade, zone: null, deleted_at: null })
+          }
         })
-        for (const f of prev?.findings ?? []) await softDeleteRow(tx, 'claw_findings', f.id)
-        const rows: Finding[] = [...(sheep ? FEET.filter((f) => mh[f] != null).map((f) => ({ foot: f, code: 'MH', grade: String(mh[f]) })) : []), ...findings]
-        for (const f of rows) {
-          await upsertRow(tx, 'claw_findings', { id: crypto.randomUUID(), exam_id: id, animal_id: animal.id, foot: f.foot, claw: null, code: f.code, grade: f.grade, zone: null, deleted_at: null })
-        }
+        await savePhotos(db, moduleKey, photos, { animalId: animal.id, clawExamId: id })
       })
       setFlash(`${label(animal)} gespeichert${prev ? ' (korrigiert)' : ''}`)
       setTimeout(() => setFlash(null), 3000)
@@ -581,6 +589,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
                 </p>
               )}
               <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Bemerkung" className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base" />
+              <PhotoPicker photos={photos} onChange={setPhotos} />
               <div className="flex gap-2">
                 {editId && (
                   <button type="button" onClick={() => void removeExam(exams.find((e) => e.id === editId)!)} className="min-h-12 rounded-xl px-3 text-sm text-red-700">

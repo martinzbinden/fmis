@@ -176,6 +176,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const { thresholds } = useCullingThresholds(moduleKey, species)
   const { data, loading } = useQuery((pg) => loadDetail(pg, id, species), [id, species])
+  const { data: clawPhotos } = useQuery((pg) => loadPhotos(pg, id), [id])
   useJumpTo(!!data)
 
   if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
@@ -266,6 +267,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                   {examSummary(e, species)}
                   {e.examiner ? <span className="text-gray-500"> · {e.examiner}</span> : null}
                   {e.notes ? <span className="block text-xs text-gray-600">{e.notes}</span> : null}
+                  <PhotoThumbs moduleKey={moduleKey} photos={(clawPhotos ?? []).filter((p) => p.claw_exam_id === e.id)} />
                 </span>
               </li>
             ))}
