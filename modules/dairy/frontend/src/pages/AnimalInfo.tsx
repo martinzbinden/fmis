@@ -15,7 +15,7 @@ import { cullingInput } from '../lib/herdContext'
 import { fmtInbreeding, inbreedingClass } from '../lib/inbreeding'
 import { rankLambs } from '../lib/lambSelection'
 import { loadLambSelection } from '../lib/lambSelectionData'
-import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
+import { fmtAge, fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { AnimalListPanel } from '../components/AnimalPicker'
 import { matchAnimals, METHOD_LABEL, RESULT_LABEL, uniqueMatch } from '../lib/pregnancy'
 import { speciesOf } from '../lib/species'
@@ -73,13 +73,6 @@ async function loadInfo(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: stri
 
 const DAY = 86_400_000
 const daysAgo = (iso: string, today: string) => Math.round((Date.parse(today) - Date.parse(iso)) / DAY)
-function fmtAge(birth: string | null, today: string): string {
-  if (!birth) return 'Alter ?'
-  const months = Math.floor((Date.parse(today) - Date.parse(birth)) / (30.4375 * DAY))
-  if (months < 1) return `${daysAgo(birth, today)} T.`
-  if (months < 24) return `${months} Mt.`
-  return `${Math.floor(months / 12)} J. ${months % 12} Mt.`
-}
 const nameOf = (a: Pick<Animal, 'lauf_nr' | 'ear_tag' | 'name'>) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTag(a.ear_tag)}${a.name ? ` ${a.name}` : ''}`
 
 /** Tier-Info: Nummer tippen oder lesen → das Wichtigste zum Tier auf einen Blick

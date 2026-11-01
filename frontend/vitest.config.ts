@@ -22,5 +22,6 @@ export default defineConfig({
     root: fileURLToPath(new URL('..', import.meta.url)),
     include: ['core/frontend/src/**/*.test.ts', 'modules/*/frontend/src/**/*.test.ts'],
     environment: 'node',
+    setupFiles: [fileURLToPath(new URL('./vitest.setup.ts', import.meta.url))],
   },
 })

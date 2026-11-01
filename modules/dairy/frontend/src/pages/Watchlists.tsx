@@ -9,7 +9,7 @@ import AnimalPicker from '../components/AnimalPicker'
 import ToHerdGroup from '../components/ToHerdGroup'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { animalProvider } from '@fmis/core/animals'
-import { fmtDate } from '../lib/format'
+import { fmtAge, fmtDate, localTodayIso } from '../lib/format'
 import { addToWatchlist, createWatchlist, duplicateEntries, loadWatchlists, removeDuplicateEntries, removeEntry, saveWatchlist, setEntryDone, setEntryReason, type Watchlist, type WatchlistEntry } from '../lib/watchlists'
 import type { Animal } from '../types'
 
@@ -21,6 +21,7 @@ async function loadData(pg: PGlite) {
   return { ...lists, animals: animals.rows }
 }
 
+const sexText = (sex: string | null) => (sex === 'w' ? '♀ weiblich' : sex === 'm' ? '♂ männlich' : 'Geschlecht ?')
 const tierLabel = (a: Animal | undefined) => (a ? `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${animalLabel(a)}` : 'unbekanntes Tier')
 
 /** Merklisten: frei benannte Listen von Tieren (z.B. «Ausmerzen prüfen»). Tiere kommen von
@@ -137,6 +138,7 @@ function ListCard({
   open: boolean
   onToggle: () => void
 }) {
+  const today = localTodayIso()
   const db = useDb()
   const [adding, setAdding] = useState<string[]>([])
   const [reason, setReason] = useState('')
@@ -201,6 +203,12 @@ function ListCard({
                   <Link to={`/${moduleKey}/kuehe/${e.animal_id}`} className={`font-medium text-brand-700 ${e.done_at ? 'line-through' : ''}`}>
                     {tierLabel(byId.get(e.animal_id))}
                   </Link>
+                  {/* für Entscheide (z.B. Schlachtgruppe): Geschlecht und Alter */}
+                  {byId.get(e.animal_id) && (
+                    <span className="ml-1.5 whitespace-nowrap text-xs text-gray-500">
+                      {sexText(byId.get(e.animal_id)!.sex)} · {fmtAge(byId.get(e.animal_id)!.birth_date, today)}
+                    </span>
+                  )}
                   {editing?.id === e.id ? (
                     <form
                       className="mt-1 flex gap-1"

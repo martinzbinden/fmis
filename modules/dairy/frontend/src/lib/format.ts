@@ -59,3 +59,14 @@ export function addDays(iso: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
 }
+
+/** Alter kurz: «12 T.», «7 Mt.», «3 J. 2 Mt.» (Tier-Info, Merklisten). */
+export function fmtAge(birth: unknown, today: string): string {
+  const b = isoDate(birth)
+  if (!b) return 'Alter ?'
+  const day = 86_400_000
+  const months = Math.floor((Date.parse(today) - Date.parse(b)) / (30.4375 * day))
+  if (months < 1) return `${Math.round((Date.parse(today) - Date.parse(b)) / day)} T.`
+  if (months < 24) return `${months} Mt.`
+  return `${Math.floor(months / 12)} J. ${months % 12} Mt.`
+}
