@@ -15,6 +15,7 @@ import DutyTile from './components/DutyTile'
 import MaintenanceTile from './components/MaintenanceTile'
 import TrackingBadge from './components/TrackingBadge'
 import { maintenancePasteImporter } from './lib/pasteMaintenance'
+import { dutyPasteImporter } from './lib/pasteDuty'
 import './theme.css'
 
 function BetriebDbProvider({ children }: { children: ReactNode }) {
@@ -57,7 +58,7 @@ const betriebModule: ModuleDescriptor = {
   // Tracking & Fahrhilfe: Symbol oben neben dem Import statt grosser Kachel
   quickLinks: [{ to: '/betrieb/tracking', icon: '🧭', title: 'Tracking & Fahrhilfe', permission: 'betrieb:tracking:write' }],
   globalOverlay: TrackingBadge,
-  pasteImporters: [maintenancePasteImporter],
+  pasteImporters: [maintenancePasteImporter, dutyPasteImporter],
 }
 
 export default betriebModule
