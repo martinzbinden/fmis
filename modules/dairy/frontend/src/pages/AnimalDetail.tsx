@@ -200,7 +200,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
       <div>
-        <Link to=".." relative="path" className="text-sm text-brand-700">
+        <Link to=".." relative="path" className="link-btn text-sm text-brand-700">
           ← Alle {terms.plural}
         </Link>
         <h1 className="mt-1 text-xl font-bold text-gray-800">
@@ -516,7 +516,7 @@ function JournalEntryRow({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {canCorrect && !correctedBy && (
-            <button type="button" onClick={onCorrect} className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700">
+            <button type="button" onClick={onCorrect} className="link-btn rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700">
               Korrigieren
             </button>
           )}
@@ -589,7 +589,7 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
                   <button
                     type="button"
                     onClick={() => setMode({ kind: 'case', caseId: c.entries[0].case_id! })}
-                    className="shrink-0 rounded border border-brand-300 px-2 py-0.5 text-xs font-medium text-brand-700"
+                    className="link-btn shrink-0 rounded border border-brand-300 px-2 py-0.5 text-xs font-medium text-brand-700"
                   >
                     ＋ Folgeeintrag
                   </button>

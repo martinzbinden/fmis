@@ -230,7 +230,7 @@ function TemplateEditor({ template, ctx, onDone }: { template: Partial<Treatment
             Löschen
           </button>
         )}
-        <button type="button" onClick={onDone} className="rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700">
+        <button type="button" onClick={onDone} className="link-btn rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700">
           Abbrechen
         </button>
         <button type="button" disabled={busy || !t.title.trim()} onClick={() => void save()} className="flex-1 rounded-lg bg-brand-700 py-1.5 font-semibold text-white disabled:opacity-50">
@@ -340,7 +340,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
       <style>{PRINT_CSS}</style>
       <PrintTable cases={shown} period={periodLabel} superseded={superseded} />
       <div>
-        <Link to="../erfassen" relative="path" className="text-sm text-brand-700">
+        <Link to="../erfassen" relative="path" className="link-btn text-sm text-brand-700">
           ← Erfassen
         </Link>
         <h1 className="text-xl font-bold text-gray-800">Behandlungsjournal</h1>
@@ -350,7 +350,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Link to="../journal" relative="path" className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white shadow-sm">
+        <Link to="../journal" relative="path" className="link-btn rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white shadow-sm">
           ＋ Behandlung erfassen
         </Link>
         <button type="button" className={btn} onClick={() => window.print()}>
@@ -431,7 +431,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                 </div>
                 {canDeleteCase(c) &&
                   (confirmCase === c.key ? (
-                    <button type="button" onClick={() => void deleteCase(c)} className="shrink-0 rounded bg-red-600 px-2 py-1 text-xs text-white">
+                    <button type="button" onClick={() => void deleteCase(c)} className="link-btn shrink-0 rounded bg-red-600 px-2 py-1 text-xs text-white">
                       Wirklich löschen?
                     </button>
                   ) : (
@@ -479,7 +479,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                         </div>
                       )}
                       {r.source === 'manual' && !correctedBy && r.animal_id && (
-                        <button type="button" onClick={() => setFormFor({ key: c.key, kind: 'correct', row: r })} className="mt-0.5 text-xs text-brand-700 underline">
+                        <button type="button" onClick={() => setFormFor({ key: c.key, kind: 'correct', row: r })} className="link-btn mt-0.5 text-xs text-brand-700 underline">
                           Korrigieren
                         </button>
                       )}
@@ -495,7 +495,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
                 <button
                   type="button"
                   onClick={() => setFormFor({ key: c.key, kind: 'followup' })}
-                  className="mt-2 rounded-lg border border-brand-300 px-3 py-1 text-xs font-medium text-brand-700"
+                  className="link-btn mt-2 rounded-lg border border-brand-300 px-3 py-1 text-xs font-medium text-brand-700"
                 >
                   ＋ Folgebehandlung / Verlauf
                 </button>

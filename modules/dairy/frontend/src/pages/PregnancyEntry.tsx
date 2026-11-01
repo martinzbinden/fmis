@@ -479,7 +479,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
           <div className="flex items-start gap-2">
             <div className="flex shrink-0 rounded-xl border-2 border-gray-400 p-0.5" role="radiogroup" aria-label="Erfassungsart">
               {(['einzeln', 'liste'] as const).map((m) => (
-                <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)} className={`min-h-10 rounded-lg px-3 text-sm font-semibold ${mode === m ? 'bg-brand-700 text-white' : 'text-gray-800'}`}>
+                <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${mode === m ? 'bg-brand-700 text-white' : 'text-gray-800'}`}>
                   {m === 'einzeln' ? 'Einzeln' : 'Mehrere'}
                 </button>
               ))}
@@ -726,7 +726,7 @@ function ListPanel({
                   {r.fromReader && <span aria-label="vom Lesegerät">📡 </span>}
                   {label(byId.get(r.id))}
                 </span>
-                <button type="button" onClick={() => onRemove(r.id)} className="min-h-10 min-w-10 rounded-lg border border-gray-300 text-gray-700" aria-label={`${label(byId.get(r.id))} aus der Liste entfernen`}>
+                <button type="button" onClick={() => onRemove(r.id)} className="min-h-11 min-w-11 rounded-lg border border-gray-300 text-gray-700" aria-label={`${label(byId.get(r.id))} aus der Liste entfernen`}>
                   ✕
                 </button>
               </div>
@@ -744,7 +744,7 @@ function ListPanel({
           </button>
         ))}
       </div>
-      <button type="button" onClick={onClear} className="text-sm text-gray-600 underline">
+      <button type="button" onClick={onClear} className="link-btn text-sm text-gray-600 underline">
         Liste leeren
       </button>
     </div>

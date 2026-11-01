@@ -143,34 +143,37 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Ausmerzliste</h1>
         <div className="flex flex-wrap gap-2 print:hidden">
-          <Link to="../gruppen" relative="path" className="rounded border border-brand-700 px-2 py-1 text-xs font-medium text-brand-700">
-            ⚖️ Gruppen vergleichen
+          <Link to="../gruppen" relative="path" className="link-btn rounded border border-brand-700 px-2 py-1 text-xs font-medium text-brand-700">
+            📊 Gruppen vergleichen
           </Link>
           {species === 'sheep' && (
-            <Link to="laemmer" className="rounded border border-brand-700 px-2 py-1 text-xs font-medium text-brand-700">
+            <Link to="laemmer" className="link-btn rounded border border-brand-700 px-2 py-1 text-xs font-medium text-brand-700">
               🐑 Lämmer zum Schlachttermin
             </Link>
           )}
-          <button type="button" onClick={() => setShowSettings((v) => !v)} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+          <button type="button" onClick={() => setShowSettings((v) => !v)} className="link-btn rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
             ⚙️ Schwellen
           </button>
-          <button type="button" onClick={exportCsv} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+          <button type="button" onClick={exportCsv} className="link-btn hidden rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 sm:inline-flex">
             CSV
           </button>
-          <button type="button" onClick={() => window.print()} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+          <button type="button" onClick={() => window.print()} className="link-btn hidden rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 sm:inline-flex">
             Drucken
           </button>
         </div>
       </div>
-      <p className="text-xs text-gray-500">
-        {terms.plural} mit Hinweisen auf Fruchtbarkeit, Eutergesundheit, Leistung oder Zuchtwert — nach Gewicht der
-        Gründe sortiert. Leistung im Vergleich mit Gleichaltrigen (gleiche Laktationszahl; bei laufender Laktation
-        stadienunabhängig: abgeschlossene Laktationen geteilt durch die Lebenstage bis zur letzten {terms.calving}),
-        Zellzahl als geometrisches Mittel; hohe Einzelproben zählen stadienabhängig (die ersten Tage nach der Geburt
-        nicht, ab dem eingestellten Tag gilt eine höhere Grenze, ⚙️ Schwellen). Tendenz: Niveau je Laktation im Vergleich mit den Herdengenossinnen am gleichen Wägungstag (wie unter
-        Leistung → Laktationsleistung), ↘ = fällt über die letzten Laktationen. Die Liste entscheidet nichts; sie zeigt,
-        wo sich ein genauer Blick lohnt.
-      </p>
+      <details className="text-xs text-gray-600">
+        <summary className="link-btn cursor-pointer font-medium text-gray-700">ⓘ Wie wird gerechnet?</summary>
+        <p className="mt-1">
+          {terms.plural} mit Hinweisen auf Fruchtbarkeit, Eutergesundheit, Leistung oder Zuchtwert — nach Gewicht der
+          Gründe sortiert. Leistung im Vergleich mit Gleichaltrigen (gleiche Laktationszahl; bei laufender Laktation
+          stadienunabhängig: abgeschlossene Laktationen geteilt durch die Lebenstage bis zur letzten {terms.calving}),
+          Zellzahl als geometrisches Mittel; hohe Einzelproben zählen stadienabhängig (die ersten Tage nach der Geburt
+          nicht, ab dem eingestellten Tag gilt eine höhere Grenze, ⚙️ Schwellen). Tendenz: Niveau je Laktation im Vergleich mit den Herdengenossinnen am gleichen Wägungstag (wie unter
+          Leistung → Laktationsleistung), ↘ = fällt über die letzten Laktationen. Die Liste entscheidet nichts; sie zeigt,
+          wo sich ein genauer Blick lohnt.
+        </p>
+      </details>
 
       {showSettings && (
         <div className="rounded-lg bg-white p-4 shadow-sm print:hidden">
@@ -187,7 +190,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
               </label>
             ))}
           </div>
-          <button type="button" onClick={reset} className="mt-3 text-xs text-brand-700">
+          <button type="button" onClick={reset} className="link-btn mt-3 text-xs text-brand-700">
             Vorgaben wiederherstellen
           </button>
         </div>

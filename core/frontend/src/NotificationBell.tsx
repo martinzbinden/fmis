@@ -53,7 +53,7 @@ export default function NotificationBell() {
           <div className="flex items-center justify-between border-b px-3 py-2">
             <span className="text-sm font-semibold text-gray-800">Benachrichtigungen</span>
             {unread > 0 && (
-              <button type="button" className="text-xs text-brand-700 underline" onClick={() => void markNotificationsRead('all')}>
+              <button type="button" className="link-btn text-xs text-brand-700 underline" onClick={() => void markNotificationsRead('all')}>
                 Alle gelesen
               </button>
             )}

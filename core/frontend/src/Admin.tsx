@@ -456,7 +456,7 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
         <button
           type="button"
           onClick={() => setShowNewUser((v) => !v)}
-          className="mr-2 rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
+          className="link-btn mr-2 rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
         >
           {showNewUser ? 'Schliessen' : '+ Person vorab erfassen'}
         </button>
@@ -467,7 +467,7 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
         <button
           type="button"
           onClick={() => setShowNewRole((v) => !v)}
-          className="rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
+          className="link-btn rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
         >
           {showNewRole ? 'Schliessen' : '+ Neue Rolle'}
         </button>
@@ -527,7 +527,7 @@ function UsersSection({ onDirty }: { onDirty: (v: boolean) => void }) {
         <button
           type="button"
           onClick={() => setGroupRows((rows) => [...rows, { group_name: '', role_id: '' }])}
-          className="mt-2 rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
+          className="link-btn mt-2 rounded-lg border border-brand-700 px-3 py-1.5 text-sm font-medium text-brand-700"
         >
           + Gruppe
         </button>
@@ -610,7 +610,7 @@ function NewUserForm({ roles, onCreated, onDone }: { roles: AdminRole[]; onCreat
         type="button"
         onClick={() => void handleSubmit()}
         disabled={busy || !email.includes('@')}
-        className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+        className="link-btn rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
       >
         {busy ? 'Erfasse…' : 'Erfassen'}
       </button>

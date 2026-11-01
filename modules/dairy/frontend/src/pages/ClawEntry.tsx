@@ -442,7 +442,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-gray-800">Moderhinke-Score je Fuss</span>
-                    <button type="button" onClick={() => setMh({ VL: 0, VR: 0, HL: 0, HR: 0 })} className="min-h-10 rounded-lg border-2 border-green-700 px-3 text-sm font-semibold text-green-800">
+                    <button type="button" onClick={() => setMh({ VL: 0, VR: 0, HL: 0, HR: 0 })} className="min-h-11 rounded-lg border-2 border-green-700 px-3 text-sm font-semibold text-green-800">
                       alle gesund
                     </button>
                   </div>
@@ -517,7 +517,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
                 )}
                 <div className="flex gap-1" role="radiogroup" aria-label="Fuss für den Befund">
                   {FEET.map((f) => (
-                    <button key={f} type="button" role="radio" aria-checked={addFoot === f} onClick={() => setAddFoot(addFoot === f ? null : f)} className={`min-h-10 flex-1 rounded-lg text-sm font-semibold ${addFoot === f ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800'}`}>
+                    <button key={f} type="button" role="radio" aria-checked={addFoot === f} onClick={() => setAddFoot(addFoot === f ? null : f)} className={`min-h-11 flex-1 rounded-lg text-sm font-semibold ${addFoot === f ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800'}`}>
                       {f}
                     </button>
                   ))}
@@ -535,7 +535,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
                           setAddCode(null)
                         }
                       }}
-                      className={`min-h-10 rounded-lg border px-2.5 text-sm ${addCode === c.code ? 'border-brand-700 bg-brand-50 font-semibold' : 'border-gray-300 bg-white'}`}
+                      className={`min-h-11 rounded-lg border px-2.5 text-sm ${addCode === c.code ? 'border-brand-700 bg-brand-50 font-semibold' : 'border-gray-300 bg-white'}`}
                     >
                       <b>{c.code}</b> <span className="text-xs text-gray-600">{c.label}</span>
                     </button>
@@ -552,7 +552,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
                           setFindings([...findings, { foot: addFoot, code: pendingCode.code, grade: g }])
                           setAddCode(null)
                         }}
-                        className="min-h-10 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white"
+                        className="min-h-11 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white"
                       >
                         {g}
                       </button>

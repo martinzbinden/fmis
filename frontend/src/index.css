@@ -59,3 +59,21 @@ html[data-view-as] header.sticky {
 html[data-view-as] .min-h-screen {
   min-height: calc(100vh - var(--viewas-h, 2.25rem));
 }
+
+/* Text-Knöpfe und kleine Links (z.B. «Vorgaben wiederherstellen», «← Tiere»):
+   Optik bleibt, die Tippfläche wird 44 px hoch — im Stall mit Handschuhen. */
+@layer components {
+  .link-btn {
+    @apply inline-flex min-h-11 items-center justify-center;
+  }
+}
+
+/* Am Handy (Touch) keine Eingabefelder unter 16 px: iOS zoomt sonst beim
+   Antippen in die Seite. Überschreibt text-sm/text-xs an Feldern. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

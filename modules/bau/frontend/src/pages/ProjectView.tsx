@@ -287,7 +287,7 @@ export default function ProjectView() {
       {(variants.length > 0 || canWrite) && (
         <div className="flex items-center gap-1.5 overflow-x-auto border-b bg-white px-2 py-1 text-sm" role="toolbar" aria-label="Varianten">
           {variants.length > 0 && (
-            <button type="button" disabled={drawing || measuring} onClick={() => setView('alle')} className={`min-h-9 shrink-0 rounded-full border px-3 ${shownView === 'alle' ? 'border-brand-600 bg-brand-100 font-semibold' : 'border-gray-300'}`}>
+            <button type="button" disabled={drawing || measuring} onClick={() => setView('alle')} className={`min-h-11 shrink-0 rounded-full border px-3 ${shownView === 'alle' ? 'border-brand-600 bg-brand-100 font-semibold' : 'border-gray-300'}`}>
               Alle
             </button>
           )}
@@ -301,14 +301,14 @@ export default function ProjectView() {
                 disabled={drawing || measuring}
                 onClick={() => setView(v.id)}
                 title={v.notes ?? undefined}
-                className={`min-h-9 shrink-0 rounded-full border px-3 ${shownView === v.id ? 'border-brand-600 bg-brand-100 font-semibold' : 'border-gray-300'} ${dropped ? 'text-gray-500 line-through' : ''}`}
+                className={`min-h-11 shrink-0 rounded-full border px-3 ${shownView === v.id ? 'border-brand-600 bg-brand-100 font-semibold' : 'border-gray-300'} ${dropped ? 'text-gray-500 line-through' : ''}`}
               >
                 {v.name}
                 {chosen ? ' ✓' : ''}
               </button>
             )
           })}
-          <button type="button" onClick={() => setDialog('variants')} disabled={drawing || measuring} className="min-h-9 shrink-0 rounded-full border border-dashed border-gray-400 px-3 text-gray-700">
+          <button type="button" onClick={() => setDialog('variants')} disabled={drawing || measuring} className="min-h-11 shrink-0 rounded-full border border-dashed border-gray-400 px-3 text-gray-700">
             {variants.length ? '⚖ Vergleich / Varianten' : '＋ Variante'}
           </button>
         </div>

@@ -46,12 +46,12 @@ export function TagReaderPanel({ reader, hint }: { reader: TagReader; hint?: str
         {reads > 0 && <span className="shrink-0 tabular-nums text-xs text-gray-600">{reads} gelesen</span>}
       </div>
       {ignored && (
-        <button type="button" onClick={reader.takeIgnored} className="min-h-10 rounded-lg border-2 border-amber-600 bg-white px-3 text-sm font-semibold text-amber-900">
+        <button type="button" onClick={reader.takeIgnored} className="min-h-11 rounded-lg border-2 border-amber-600 bg-white px-3 text-sm font-semibold text-amber-900">
           {ignored.read.earTag} trotzdem übernehmen
         </button>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-700">
-        <label className="flex min-h-9 items-center gap-1.5">
+        <label className="flex min-h-11 items-center gap-1.5">
           <input type="checkbox" checked={reader.allowDuplicates} onChange={(e) => reader.setAllowDuplicates(e.target.checked)} />
           Doppelte zulassen
         </label>

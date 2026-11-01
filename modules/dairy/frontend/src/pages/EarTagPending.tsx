@@ -223,7 +223,7 @@ function PendingCard({
           </button>
         </div>
       ) : (
-        <button type="button" onClick={() => setDying(true)} className="text-sm text-gray-600 underline">
+        <button type="button" onClick={() => setDying(true)} className="link-btn text-sm text-gray-600 underline">
           † vor dem Markieren verendet
         </button>
       )}

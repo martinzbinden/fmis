@@ -75,7 +75,7 @@ export default function HistoryUndoButton({ moduleKey, entry, restore }: { modul
 
   if (!plan) {
     return (
-      <button type="button" disabled={busy} onClick={() => void prepare()} className="min-h-9 rounded-lg border border-gray-300 px-2 text-xs text-gray-700 disabled:opacity-50" title="Nur Admins">
+      <button type="button" disabled={busy} onClick={() => void prepare()} className="min-h-11 rounded-lg border border-gray-300 px-2 text-xs text-gray-700 disabled:opacity-50" title="Nur Admins">
         {busy ? '…' : '↶ Rückgängig'}
       </button>
     )
@@ -87,10 +87,10 @@ export default function HistoryUndoButton({ moduleKey, entry, restore }: { modul
         {plan.later > 0 && ` Danach wurde er noch ${plan.later}× geändert — auch das geht verloren.`}
       </p>
       <div className="flex gap-2">
-        <button type="button" disabled={busy} onClick={() => void run()} className="min-h-9 rounded-lg bg-amber-700 px-3 font-semibold text-white disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={() => void run()} className="min-h-11 rounded-lg bg-amber-700 px-3 font-semibold text-white disabled:opacity-50">
           Ja, zurücknehmen
         </button>
-        <button type="button" onClick={() => setPlan(null)} className="min-h-9 rounded-lg border border-amber-700 px-3">
+        <button type="button" onClick={() => setPlan(null)} className="min-h-11 rounded-lg border border-amber-700 px-3">
           Abbrechen
         </button>
       </div>

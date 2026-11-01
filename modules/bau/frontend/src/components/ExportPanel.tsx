@@ -110,13 +110,13 @@ export default function ExportPanel({
         DXF: zusätzlich ein Layer je Status (z.B. GUELLE_EINGEMESSEN)
       </label>
       <details className="rounded-lg border p-2 text-sm" open={anyBasemap}>
-        <summary className="min-h-10 cursor-pointer font-semibold text-gray-800">Grundlagen mitexportieren{anyBasemap ? ` (${ovSel.size + wmsSel.size + (cultures ? 1 : 0)})` : ''}</summary>
+        <summary className="min-h-11 cursor-pointer font-semibold text-gray-800">Grundlagen mitexportieren{anyBasemap ? ` (${ovSel.size + wmsSel.size + (cultures ? 1 : 0)})` : ''}</summary>
         <div className="mt-1 space-y-1">
           {groups.map((g) => (
             <div key={g.id}>
               <div className="text-xs font-medium text-gray-600">{g.name}</div>
               {g.layers.map((o) => (
-                <label key={o.id} className="flex min-h-10 items-center gap-3">
+                <label key={o.id} className="flex min-h-11 items-center gap-3">
                   <input type="checkbox" className="h-5 w-5" checked={ovSel.has(o.id)} onChange={(e) => setOvSel(toggle(ovSel, o.id, e.target.checked))} />
                   <span className="h-1.5 w-5 rounded-full" style={{ background: o.color ?? '#6b7280' }} aria-hidden />
                   {o.name}
@@ -126,12 +126,12 @@ export default function ExportPanel({
           ))}
           <div className="text-xs font-medium text-gray-600">swisstopo (braucht Internet)</div>
           {(Object.keys(WMS_LAYERS) as WmsKey[]).map((k) => (
-            <label key={k} className="flex min-h-10 items-center gap-3">
+            <label key={k} className="flex min-h-11 items-center gap-3">
               <input type="checkbox" className="h-5 w-5" checked={wmsSel.has(k)} onChange={(e) => setWmsSel(toggle(wmsSel, k, e.target.checked))} />
               {WMS_LAYERS[k].name}
             </label>
           ))}
-          <label className="flex min-h-10 items-center gap-3">
+          <label className="flex min-h-11 items-center gap-3">
             <input type="checkbox" className="h-5 w-5" checked={cultures} onChange={(e) => setCultures(e.target.checked)} />
             Kulturflächen (Modul Kulturen, als Linien)
           </label>

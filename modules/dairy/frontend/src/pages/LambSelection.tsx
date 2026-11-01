@@ -151,10 +151,10 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Selektion {sheep ? 'Lämmer' : 'Kälber'}</h1>
         <div className="flex gap-2 print:hidden">
-          <button type="button" onClick={exportCsv} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+          <button type="button" onClick={exportCsv} className="link-btn rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
             CSV
           </button>
-          <button type="button" onClick={() => window.print()} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+          <button type="button" onClick={() => window.print()} className="link-btn rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
             Drucken
           </button>
         </div>
@@ -208,7 +208,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
             <input type="checkbox" checked={settings.scc12m} onChange={(e) => updateSettings({ ...settings, scc12m: e.target.checked })} />
             Zellzahl nur letzte 12 Monate
           </label>
-          <button type="button" onClick={() => updateSettings(DEFAULT_SELECTION_SETTINGS)} className="text-left text-sm text-brand-700 underline">
+          <button type="button" onClick={() => updateSettings(DEFAULT_SELECTION_SETTINGS)} className="link-btn text-left text-sm text-brand-700 underline">
             Vorgaben (60 / 40 / 0, 8 Monate)
           </button>
           <p className="text-xs text-gray-500 sm:col-span-2">

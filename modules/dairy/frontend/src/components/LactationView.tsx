@@ -536,7 +536,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
           <span>
             {animals.length} {animals.length === 1 ? terms.singular : terms.plural} · {rows.length} Laktationen
             {filtered && (
-              <button type="button" onClick={() => setSettings({ filter: DEFAULT_FILTER })} className="ml-2 text-brand-700 underline">
+              <button type="button" onClick={() => setSettings({ filter: DEFAULT_FILTER })} className="link-btn ml-2 text-brand-700 underline">
                 Filter zurücksetzen
               </button>
             )}
@@ -771,7 +771,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
                       />
                     )}
                     <LactationTable rows={a.lactations} showAnimal={false} calvingLabel={calvingLabel} />
-                    <Link to={`../kuehe/${a.animal_id}`} relative="path" className="ml-2 text-xs text-brand-700">
+                    <Link to={`../kuehe/${a.animal_id}`} relative="path" className="link-btn ml-2 text-xs text-brand-700">
                       Zum Tier →
                     </Link>
                   </div>

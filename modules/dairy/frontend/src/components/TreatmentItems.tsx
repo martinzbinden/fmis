@@ -119,7 +119,7 @@ export default function TreatmentItems({
           </div>
         )
       })}
-      <button type="button" onClick={() => onChange([...items, emptyItem()])} className="text-sm font-medium text-brand-700">
+      <button type="button" onClick={() => onChange([...items, emptyItem()])} className="link-btn text-sm font-medium text-brand-700">
         ＋ weiteres Präparat
       </button>
     </div>

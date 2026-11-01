@@ -91,13 +91,13 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Lämmer zum Schlachttermin</h1>
         <div className="flex gap-2 print:hidden">
-          <button type="button" onClick={() => setShowSettings((v) => !v)} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+          <button type="button" onClick={() => setShowSettings((v) => !v)} className="link-btn rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
             ⚙️ Preise
           </button>
-          <button type="button" onClick={() => window.print()} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+          <button type="button" onClick={() => window.print()} className="link-btn rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
             Drucken
           </button>
-          <Link to=".." relative="path" className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+          <Link to=".." relative="path" className="link-btn rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
             ‹ Ausmerzliste
           </Link>
         </div>
@@ -124,7 +124,7 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
               </label>
             ))}
           </div>
-          <button type="button" onClick={() => update(DEFAULT_SLAUGHTER_SETTINGS)} className="mt-3 text-xs text-brand-700">
+          <button type="button" onClick={() => update(DEFAULT_SLAUGHTER_SETTINGS)} className="link-btn mt-3 text-xs text-brand-700">
             Vorgaben wiederherstellen
           </button>
           <p className="mt-2 text-xs text-gray-500">

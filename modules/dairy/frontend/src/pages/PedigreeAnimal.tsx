@@ -34,7 +34,7 @@ export default function PedigreeAnimal({ moduleKey }: { moduleKey: string }) {
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
       <div>
-        <Link to={`/${moduleKey}/kuehe`} className="text-sm text-brand-700">
+        <Link to={`/${moduleKey}/kuehe`} className="link-btn text-sm text-brand-700">
           ← Tiere
         </Link>
         <h1 className="mt-1 text-xl font-bold text-gray-800">{animalLabel(node)}</h1>

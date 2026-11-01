@@ -106,7 +106,7 @@ export default function History({ moduleKey }: { moduleKey: string }) {
           <p className="mt-1 text-xs text-amber-700">
             Der Verlauf wird vom Server gelesen und ist deshalb offline nicht verfügbar.
           </p>
-          <button type="button" onClick={reload} className="mt-2 rounded bg-amber-700 px-3 py-1 text-xs font-semibold text-white">
+          <button type="button" onClick={reload} className="link-btn mt-2 rounded bg-amber-700 px-3 py-1 text-xs font-semibold text-white">
             Nochmals versuchen
           </button>
         </div>

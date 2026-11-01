@@ -30,7 +30,7 @@ export default function SireSelect({
   // vorbelegter Vater, der nicht in der Liste steht (z.B. aus einer Belegung) → als «anderes Tier» zeigen
   const other = otherChosen || (!known && !!(value.ear_tag || value.name))
   const input = 'w-full rounded-lg border border-gray-300 px-3 py-3 text-base'
-  const chip = (active: boolean) => `min-h-10 rounded-lg border px-3 text-sm ${active ? 'border-brand-700 bg-brand-50 font-semibold text-brand-900' : 'border-gray-300 text-gray-700'}`
+  const chip = (active: boolean) => `min-h-11 rounded-lg border px-3 text-sm ${active ? 'border-brand-700 bg-brand-50 font-semibold text-brand-900' : 'border-gray-300 text-gray-700'}`
   return (
     <div className="space-y-2">
       <div className="text-sm text-gray-600">{label}</div>

@@ -194,7 +194,7 @@ export default function YogurtPlanner() {
           </p>
           {selected.length > 0 && (
             <div className="mt-2 flex flex-wrap justify-center gap-2">
-              <button type="button" onClick={() => window.print()} className="rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-gray-800 shadow-sm">
+              <button type="button" onClick={() => window.print()} className="link-btn rounded-lg bg-white px-3 py-1.5 text-sm font-medium text-gray-800 shadow-sm">
                 🖨 Melkliste drucken / PDF
               </button>
             </div>

@@ -148,7 +148,7 @@ export default function TreatmentForm({
                 key={t.id}
                 type="button"
                 onClick={() => applyTemplate(t)}
-                className={`rounded-full px-3 py-1.5 text-sm ${templateId === t.id ? 'bg-brand-700 text-white' : 'border border-brand-200 bg-brand-50 text-brand-800'}`}
+                className={`link-btn rounded-full px-3 py-1.5 text-sm ${templateId === t.id ? 'bg-brand-700 text-white' : 'border border-brand-200 bg-brand-50 text-brand-800'}`}
               >
                 ★ {t.title}
               </button>

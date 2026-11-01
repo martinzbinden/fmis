@@ -62,10 +62,10 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Merklisten</h1>
         <span className="flex gap-3">
-          <Link to="../gruppen" relative="path" className="text-sm text-brand-700">
+          <Link to="../gruppen" relative="path" className="link-btn text-sm text-brand-700">
             📊 vergleichen
           </Link>
-          <Link to="../tierinfo" relative="path" className="text-sm text-brand-700">
+          <Link to="../tierinfo" relative="path" className="link-btn text-sm text-brand-700">
             🔎 Tier-Info
           </Link>
         </span>
@@ -100,7 +100,7 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
 
       {archived.length > 0 && (
         <section className="space-y-2">
-          <button type="button" onClick={() => setShowArchived((v) => !v)} className="text-sm text-gray-700 underline">
+          <button type="button" onClick={() => setShowArchived((v) => !v)} className="link-btn text-sm text-gray-700 underline">
             {showArchived ? 'Archivierte ausblenden' : `${archived.length} archivierte anzeigen`}
           </button>
           {showArchived &&
@@ -109,7 +109,7 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
                 <span className="text-gray-700">
                   {l.name} · {entriesOf(l.id).length} Tiere
                 </span>
-                <button type="button" onClick={() => void saveWatchlist(db, { ...l, archived_at: null })} className="min-h-10 px-2 text-brand-700">
+                <button type="button" onClick={() => void saveWatchlist(db, { ...l, archived_at: null })} className="min-h-11 px-2 text-brand-700">
                   wiederherstellen
                 </button>
               </div>
@@ -215,9 +215,9 @@ function ListCard({
                         onChange={(ev) => setEditing({ id: e.id, text: ev.target.value })}
                         placeholder="Grund / Markierung"
                         list="watchlist-marks"
-                        className="min-h-10 min-w-0 flex-1 rounded-lg border border-gray-300 px-2 text-base"
+                        className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-2 text-base"
                       />
-                      <button type="submit" className="min-h-10 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white">
+                      <button type="submit" className="min-h-11 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white">
                         OK
                       </button>
                     </form>
@@ -243,7 +243,7 @@ function ListCard({
             {openEntries.length === 0 && <li className="py-2 text-sm text-gray-600">Keine offenen Tiere.</li>}
           </ul>
           {done.length > 0 && (
-            <button type="button" onClick={() => setShowDone((v) => !v)} className="text-xs text-gray-700 underline">
+            <button type="button" onClick={() => setShowDone((v) => !v)} className="link-btn text-xs text-gray-700 underline">
               {showDone ? 'Erledigte ausblenden' : `${done.length} erledigte anzeigen`}
             </button>
           )}
@@ -272,21 +272,21 @@ function ListCard({
                   if (renaming.trim()) void saveWatchlist(db, { ...list, name: renaming.trim() }).then(() => setRenaming(null))
                 }}
               >
-                <input value={renaming} onChange={(e) => setRenaming(e.target.value)} className="min-h-10 min-w-0 flex-1 rounded-lg border border-gray-300 px-2" aria-label="Neuer Name" />
-                <button type="submit" className="min-h-10 rounded-lg bg-brand-700 px-3 font-semibold text-white">
+                <input value={renaming} onChange={(e) => setRenaming(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-2" aria-label="Neuer Name" />
+                <button type="submit" className="min-h-11 rounded-lg bg-brand-700 px-3 font-semibold text-white">
                   OK
                 </button>
               </form>
             ) : (
-              <button type="button" onClick={() => setRenaming(list.name)} className="min-h-10 rounded-lg border border-gray-300 px-3">
+              <button type="button" onClick={() => setRenaming(list.name)} className="min-h-11 rounded-lg border border-gray-300 px-3">
                 Umbenennen
               </button>
             )}
-            <button type="button" onClick={() => void saveWatchlist(db, { ...list, archived_at: new Date().toISOString() })} className="min-h-10 rounded-lg border border-gray-300 px-3">
+            <button type="button" onClick={() => void saveWatchlist(db, { ...list, archived_at: new Date().toISOString() })} className="min-h-11 rounded-lg border border-gray-300 px-3">
               Archivieren
             </button>
             {canHerd && openEntries.length > 0 && !toGroup && (
-              <button type="button" onClick={() => setToGroup(true)} className="min-h-10 rounded-lg border border-sky-600 px-3 text-sky-800">
+              <button type="button" onClick={() => setToGroup(true)} className="min-h-11 rounded-lg border border-sky-600 px-3 text-sky-800">
                 → Tiergruppe
               </button>
             )}

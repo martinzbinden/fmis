@@ -80,10 +80,10 @@ function WarningRow({
               {removeLabel}
             </button>
           )}
-          <button type="button" onClick={() => setPicking((p) => !p)} className="min-h-9 rounded-lg border border-gray-400 bg-white px-2.5 text-sm font-medium text-gray-800">
+          <button type="button" onClick={() => setPicking((p) => !p)} className="min-h-11 rounded-lg border border-gray-400 bg-white px-2.5 text-sm font-medium text-gray-800">
             + Merkliste
           </button>
-          <button type="button" onClick={onIgnore} className="min-h-9 rounded-lg px-2 text-sm text-gray-700 underline">
+          <button type="button" onClick={onIgnore} className="min-h-11 rounded-lg px-2 text-sm text-gray-700 underline">
             Ignorieren
           </button>
         </div>
@@ -139,7 +139,7 @@ export function WatchlistPicker({ animalIds, reason, suggest, onDone }: { animal
               type="button"
               disabled={busy}
               onClick={() => void add(l.id, l.name)}
-              className={`min-h-9 rounded-full border-2 px-3 text-sm ${l.name === suggest ? 'border-brand-700 font-semibold text-brand-800' : 'border-gray-300'}`}
+              className={`min-h-11 rounded-full border-2 px-3 text-sm ${l.name === suggest ? 'border-brand-700 font-semibold text-brand-800' : 'border-gray-300'}`}
             >
               {l.name}
             </button>
@@ -158,9 +158,9 @@ export function WatchlistPicker({ animalIds, reason, suggest, onDone }: { animal
           onChange={(e) => setName(e.target.value)}
           placeholder={suggestMissing ? suggest : 'Neue Merkliste'}
           aria-label="Name der neuen Merkliste"
-          className="min-h-9 min-w-0 flex-1 rounded-lg border border-gray-300 px-2 text-sm"
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-2 text-sm"
         />
-        <button type="submit" disabled={busy || !name.trim()} className="min-h-9 shrink-0 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white disabled:opacity-40">
+        <button type="submit" disabled={busy || !name.trim()} className="min-h-11 shrink-0 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white disabled:opacity-40">
           Neu
         </button>
       </form>

@@ -76,7 +76,7 @@ export default function MatingPlanner({ moduleKey }: { moduleKey: string }) {
               key={s.key}
               type="button"
               onClick={() => toggle(s.key)}
-              className={`rounded-full px-3 py-1 text-sm ${selectedKeys.includes(s.key) ? 'bg-brand-700 text-white' : 'bg-gray-100 text-gray-700'}`}
+              className={`link-btn rounded-full px-3 py-1 text-sm ${selectedKeys.includes(s.key) ? 'bg-brand-700 text-white' : 'bg-gray-100 text-gray-700'}`}
             >
               {sireLabel(s)}
             </button>

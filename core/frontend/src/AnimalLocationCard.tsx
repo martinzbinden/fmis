@@ -36,7 +36,7 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
     <section className="space-y-2 rounded-lg bg-white p-4 shadow-sm">
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-700">Standort</h2>
-        <Link to={locator.herdsPath} className="text-xs text-brand-700">
+        <Link to={locator.herdsPath} className="link-btn text-xs text-brand-700">
           Herden →
         </Link>
       </div>

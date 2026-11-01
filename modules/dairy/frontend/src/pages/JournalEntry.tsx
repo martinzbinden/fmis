@@ -24,7 +24,7 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
     <div className="mx-auto max-w-lg space-y-4 p-4 pb-24">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Beobachtung / Behandlung</h1>
-        <Link to="../behandlungen" relative="path" className="text-sm text-brand-700">
+        <Link to="../behandlungen" relative="path" className="link-btn text-sm text-brand-700">
           Behandlungsjournal →
         </Link>
       </div>
@@ -32,7 +32,7 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
         <div className="rounded-lg bg-green-50 p-3 text-sm text-green-900">
           Gespeichert.{' '}
           {saved.length === 1 && (
-            <Link to={`../kuehe/${saved[0]}`} relative="path" className="font-medium text-brand-700">
+            <Link to={`../kuehe/${saved[0]}`} relative="path" className="link-btn font-medium text-brand-700">
               Zum Tier
             </Link>
           )}

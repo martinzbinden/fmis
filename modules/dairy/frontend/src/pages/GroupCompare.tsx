@@ -161,7 +161,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
     <div className="mx-auto max-w-3xl space-y-3 p-3 pb-24">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-900">Gruppen vergleichen</h1>
-        <button type="button" onClick={() => setShowSettings((v) => !v)} className="min-h-10 rounded-lg border border-gray-300 px-3 text-sm text-gray-700">
+        <button type="button" onClick={() => setShowSettings((v) => !v)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700">
           ⚙️ Preise
         </button>
       </div>
@@ -191,7 +191,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
             </label>
           ))}
           <p className="text-xs text-gray-600">Ohne Gewicht oder Preis bleibt der Erlös leer. Erlös = Schlachtgewicht × Preis; Jungtiere erst ab dem Mindestalter.</p>
-          <button type="button" onClick={() => updateSettings(DEFAULT_GROUP_SETTINGS[species])} className="text-xs text-brand-700">
+          <button type="button" onClick={() => updateSettings(DEFAULT_GROUP_SETTINGS[species])} className="link-btn text-xs text-brand-700">
             Vorgaben wiederherstellen
           </button>
         </div>
@@ -207,13 +207,13 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
                 key={g.key}
                 type="button"
                 onClick={() => select(i >= 0 ? selected.filter((k) => k !== g.key) : [...selected, g.key].slice(-4))}
-                className={`min-h-10 rounded-full border-2 px-3 text-sm ${i >= 0 ? `${COLORS[i]} font-semibold text-white` : 'border-gray-300 bg-white text-gray-800'}`}
+                className={`min-h-11 rounded-full border-2 px-3 text-sm ${i >= 0 ? `${COLORS[i]} font-semibold text-white` : 'border-gray-300 bg-white text-gray-800'}`}
               >
                 {g.name} <span className="opacity-80">({g.ids.length})</span>
               </button>
             )
           })}
-          <button type="button" onClick={() => setBuilding((b) => !b)} className="min-h-10 rounded-full border-2 border-dashed border-brand-700 px-3 text-sm font-semibold text-brand-800">
+          <button type="button" onClick={() => setBuilding((b) => !b)} className="min-h-11 rounded-full border-2 border-dashed border-brand-700 px-3 text-sm font-semibold text-brand-800">
             + Gruppe zusammenstellen
           </button>
         </div>
@@ -286,7 +286,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
         <section className="space-y-2">
           <div className="flex flex-wrap gap-1.5">
             {chosen.map((g, i) => (
-              <button key={g.key} type="button" onClick={() => setTab(i)} className={`min-h-10 rounded-lg border-2 px-3 text-sm ${tab === i ? `${COLORS[i]} font-semibold text-white` : 'border-gray-300 bg-white'}`}>
+              <button key={g.key} type="button" onClick={() => setTab(i)} className={`min-h-11 rounded-lg border-2 px-3 text-sm ${tab === i ? `${COLORS[i]} font-semibold text-white` : 'border-gray-300 bg-white'}`}>
                 {g.name}
               </button>
             ))}

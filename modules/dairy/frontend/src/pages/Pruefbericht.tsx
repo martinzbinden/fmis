@@ -273,7 +273,7 @@ export default function Pruefbericht({ moduleKey }: { moduleKey: string }) {
                         ))}
                     </div>
                   ))}
-                  <button type="button" onClick={() => saveColumns(DEFAULT_COLUMNS)} className="text-brand-700 underline">
+                  <button type="button" onClick={() => saveColumns(DEFAULT_COLUMNS)} className="link-btn text-brand-700 underline">
                     Vorgabe wiederherstellen
                   </button>
                 </div>

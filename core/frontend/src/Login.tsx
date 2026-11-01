@@ -162,7 +162,7 @@ function EmailLogin() {
           Falls die Adresse bekannt ist, haben wir dir einen Login-Link geschickt. Der Link bleibt
           bis zu 1 Jahr gültig — du kannst ihn z.B. als Lesezeichen speichern.
         </p>
-        <button type="button" onClick={() => setSent(false)} className="text-sm text-brand-700 underline">
+        <button type="button" onClick={() => setSent(false)} className="link-btn text-sm text-brand-700 underline">
           Andere Adresse verwenden
         </button>
       </div>

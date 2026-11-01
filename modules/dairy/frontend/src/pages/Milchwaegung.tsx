@@ -417,7 +417,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
             )}
             {canWrite &&
               (session?.active ? (
-                <button type="button" onClick={stop} disabled={busy} className="rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700">
+                <button type="button" onClick={stop} disabled={busy} className="link-btn rounded-lg bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700">
                   Leser trennen
                 </button>
               ) : (
@@ -454,7 +454,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
               ? 'Leser nicht erreichbar – eingeschaltet und im selben WLAN?'
               : 'Verbindung zum Leser fehlgeschlagen.'}
             <details className="text-xs text-gray-600">
-              <summary className="min-h-9 cursor-pointer">Technische Angaben</summary>
+              <summary className="min-h-11 cursor-pointer">Technische Angaben</summary>
               {session.last_error}
             </details>
           </div>
@@ -531,7 +531,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           )}
         </h2>
         {canWrite && openBank && openBank.slots.length > 0 && (
-          <button type="button" onClick={nextBank} disabled={busy} className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white">
+          <button type="button" onClick={nextBank} disabled={busy} className="link-btn rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white">
             Nächste Bank →
           </button>
         )}
@@ -585,7 +585,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
             <button
               type="submit"
               disabled={busy || !manualInput.trim()}
-              className="rounded-lg border border-brand-600 px-3 py-1.5 text-sm font-medium text-brand-700 disabled:opacity-50"
+              className="link-btn rounded-lg border border-brand-600 px-3 py-1.5 text-sm font-medium text-brand-700 disabled:opacity-50"
             >
               Aufnehmen
             </button>
@@ -832,7 +832,7 @@ function BankTable({
         ) : (
           canWrite &&
           slots.length > 1 && (
-            <button type="button" onClick={startEdit} title="Reihenfolge nachträglich anpassen" className="rounded px-2 py-1 text-brand-700">
+            <button type="button" onClick={startEdit} title="Reihenfolge nachträglich anpassen" className="link-btn rounded px-2 py-1 text-brand-700">
               ✎ Umsortieren
             </button>
           )
@@ -931,7 +931,7 @@ function BankTable({
                         autoFocus
                         className="w-full min-w-[8rem] rounded border border-gray-300 px-2 py-1 text-xs"
                       />
-                      <button type="submit" className="rounded bg-brand-700 px-2 py-1 text-xs text-white">
+                      <button type="submit" className="link-btn rounded bg-brand-700 px-2 py-1 text-xs text-white">
                         OK
                       </button>
                     </form>
