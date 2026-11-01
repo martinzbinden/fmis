@@ -15,7 +15,7 @@ import type { BatchWriter } from '@fmis/core/writer'
 import { writeBatch } from '../db/write'
 import type { SYNC_TABLES } from '../db/tables'
 import { addDaysIso, isoDate } from './format'
-import { activeAt, defaultCategory, locateAnimal } from './herdModel'
+import { activeAt, defaultCategory, doubleMemberships, locateAnimal } from './herdModel'
 import type { HerdCount, HerdGroup, HerdLaufhof, HerdLocation, HerdMember, HerdStay, StaySlot } from '../types'
 
 const dates = <T extends { from_date: unknown; to_date: unknown }>(r: T) => ({
@@ -157,6 +157,9 @@ export interface MoveInput {
   counts: Record<string, number>
   /** Kategorie je Einzeltier (sonst Vorschlag) */
   categories?: Record<string, string>
+  /** ganze Gruppen mitnehmen: alle Einzeltiere (Kategorie bleibt) und alle Anzahlen
+   * ohne Nummer; mit `dissolve` wird die Gruppe danach aufgelöst (Stall/Weide enden) */
+  groups?: { group: HerdGroup; dissolve: boolean }[]
   dryOff: boolean
 }
 
@@ -178,27 +181,64 @@ export async function moveAnimals(data: HerdData, input: MoveInput): Promise<voi
 
 async function moveIn(w: W, data: HerdData, input: MoveInput): Promise<void> {
   const { toGroup, fromGroup, date } = input
+  const memberRow = (a: { id: string; moduleKey: string; label: string | null }, category: string) => ({
+    id: crypto.randomUUID(),
+    group_id: toGroup.id,
+    module_key: a.moduleKey,
+    animal_id: a.id,
+    label: a.label,
+    category,
+    from_date: date,
+    to_date: null,
+  })
+  const moved = new Set<string>()
   for (const a of input.animals) {
     for (const m of data.members.filter((x) => x.animal_id === a.id && (x.to_date == null || x.to_date >= date))) {
       await closeFrom(w, 'herd_members', m, date)
     }
-    await w.upsert('herd_members', {
-      id: crypto.randomUUID(),
-      group_id: toGroup.id,
-      module_key: a.moduleKey,
-      animal_id: a.id,
-      label: a.name ? `${a.label} ${a.name}` : a.label,
-      category: input.categories?.[a.id] ?? defaultCategory({ ...a, dry: a.dry || input.dryOff }, toGroup.milking, date),
-      from_date: date,
-      to_date: null,
-    })
+    await w.upsert('herd_members', memberRow(
+      { id: a.id, moduleKey: a.moduleKey, label: a.name ? `${a.label} ${a.name}` : a.label },
+      input.categories?.[a.id] ?? defaultCategory({ ...a, dry: a.dry || input.dryOff }, toGroup.milking, date),
+    ))
+    moved.add(a.id)
   }
+  // Anzahlen ohne Nummer: je Kategorie einmal setzen (setCountIn liest den alten Stand)
+  const add = new Map<string, number>()
   for (const [cat, n] of Object.entries(input.counts)) {
     if (!n) continue
     if (fromGroup) await setCountIn(w, data, fromGroup.id, cat, Math.max(0, countAt(data, fromGroup.id, cat, date) - n), date)
-    // setCount liest data — das Ziel hat sich durch die Herkunft nicht verändert
-    await setCountIn(w, data, toGroup.id, cat, countAt(data, toGroup.id, cat, date) + n, date)
+    add.set(cat, (add.get(cat) ?? 0) + n)
   }
+  // ganze Gruppen: Einzeltiere mit ihrer Kategorie, alle Anzahlen
+  for (const { group, dissolve } of input.groups ?? []) {
+    if (group.id === toGroup.id) continue
+    const open = <T extends { group_id: string; to_date: string | null }>(r: T) => r.group_id === group.id && (r.to_date == null || r.to_date >= date)
+    for (const m of data.members.filter((x) => open(x) && x.from_date <= date)) {
+      if (moved.has(m.animal_id)) continue
+      await closeFrom(w, 'herd_members', m, date)
+      await w.upsert('herd_members', memberRow({ id: m.animal_id, moduleKey: m.module_key, label: m.label }, m.category))
+      moved.add(m.animal_id)
+    }
+    for (const c of data.counts.filter((x) => open(x) && x.from_date <= date)) {
+      await closeFrom(w, 'herd_counts', c, date)
+      add.set(c.category, (add.get(c.category) ?? 0) + c.count)
+    }
+    if (dissolve) {
+      for (const st of data.stays.filter(open)) await closeFrom(w, 'herd_stays', st, date)
+      await w.upsert('herd_groups', { ...group, active: false } as never)
+    }
+  }
+  for (const [cat, n] of add) await setCountIn(w, data, toGroup.id, cat, countAt(data, toGroup.id, cat, date) + n, date)
+}
+
+/** Doppelte Zugehörigkeiten bereinigen (herdModel doubleMemberships): die zuletzt
+ * begonnene bleibt, die anderen enden am Vortag ihres Beginns. Ein Schritt. */
+export async function resolveDoubleMemberships(data: HerdData, date: string): Promise<number> {
+  const doubles = doubleMemberships(data.members, date)
+  await writeBatch(async (w) => {
+    for (const d of doubles) for (const m of d.extra) await closeFrom(w, 'herd_members', m, d.keep.from_date)
+  })
+  return doubles.length
 }
 
 /** Einzeltiere aus der Gruppe nehmen (Abgang, Verkauf …) ab `date`. */
@@ -267,6 +307,17 @@ export const herdLocator: HerdLocator = {
   async locate(_moduleKey, animalId, date) {
     const data = await loadHerdData()
     return locateAnimal(data, animalId, date)
+  },
+  async groupNames(animalIds, date) {
+    const data = await loadHerdData()
+    const ids = new Set(animalIds)
+    const names = new Map<string, string>()
+    for (const m of data.members) {
+      if (!ids.has(m.animal_id) || !activeAt(m, date)) continue
+      const g = data.groups.find((x) => x.id === m.group_id)
+      if (g) names.set(m.animal_id, g.name)
+    }
+    return names
   },
 }
 

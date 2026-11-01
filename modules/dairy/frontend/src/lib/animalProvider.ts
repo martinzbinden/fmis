@@ -47,6 +47,18 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
         }
       })
     },
+    async listWatchlists() {
+      const pg = await getDb(moduleKey)
+      const { rows } = await pg.query<{ id: string; name: string; animal_ids: string[] | null }>(
+        `select l.id, l.name,
+           array_agg(e.animal_id::text order by e.added_at) filter (where e.id is not null) as animal_ids
+         from watchlists l
+         left join watchlist_entries e on e.list_id = l.id and e.deleted_at is null and e.done_at is null
+         where l.deleted_at is null and l.archived_at is null
+         group by l.id, l.name order by l.name`,
+      )
+      return rows.map((r) => ({ id: String(r.id), name: r.name, animalIds: r.animal_ids ?? [] }))
+    },
     async dryOff(animalIds, date, note) {
       const pg = await getDb(moduleKey)
       await inTransaction(pg, async (tx) => {

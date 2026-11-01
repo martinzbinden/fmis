@@ -8,7 +8,7 @@ import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
 import ToHerdGroup from '../components/ToHerdGroup'
 import { useHasPermission } from '@fmis/core/AuthContext'
-import { animalProvider } from '@fmis/core/animals'
+import { animalProvider, herdLocator } from '@fmis/core/animals'
 import { fmtAge, fmtDate, localTodayIso } from '../lib/format'
 import { addToWatchlist, createWatchlist, duplicateEntries, loadWatchlists, removeDuplicateEntries, removeEntry, saveWatchlist, setEntryDone, setEntryReason, type Watchlist, type WatchlistEntry } from '../lib/watchlists'
 import type { Animal } from '../types'
@@ -140,6 +140,16 @@ function ListCard({
 }) {
   const today = localTodayIso()
   const db = useDb()
+  // aktuelle Tiergruppe je Tier (Modul Tiere; ein Tier ist in höchstens einer Gruppe)
+  const [groupOf, setGroupOf] = useState<Map<string, string>>(new Map())
+  const entryIds = entries.map((e) => e.animal_id).join(',')
+  useEffect(() => {
+    let live = true
+    void herdLocator()?.groupNames?.(entryIds.split(',').filter(Boolean), today).then((m) => live && setGroupOf(m))
+    return () => {
+      live = false
+    }
+  }, [entryIds, today])
   const [adding, setAdding] = useState<string[]>([])
   const [reason, setReason] = useState('')
   const [showDone, setShowDone] = useState(false)
@@ -207,6 +217,7 @@ function ListCard({
                   {byId.get(e.animal_id) && (
                     <span className="ml-1.5 whitespace-nowrap text-xs text-gray-500">
                       {sexText(byId.get(e.animal_id)!.sex)} · {fmtAge(byId.get(e.animal_id)!.birth_date, today)}
+                      {groupOf.get(e.animal_id) ? ` · Gruppe «${groupOf.get(e.animal_id)}»` : ''}
                     </span>
                   )}
                   {editing?.id === e.id ? (

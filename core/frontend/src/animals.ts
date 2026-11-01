@@ -32,6 +32,19 @@ export interface AnimalProvider {
   listAnimals(): Promise<AnimalRef[]>
   /** Trockenstellen ab Datum (Milchmodule). */
   dryOff?(animalIds: string[], date: string, note: string): Promise<void>
+  /** Offene Merklisten mit ihren Tieren (z.B. um sie einer Tiergruppe zuzuteilen). */
+  listWatchlists?(): Promise<{ id: string; name: string; animalIds: string[] }[]>
+}
+
+/** Merklisten aller Tiermodule einer Tierart (Name mit Modul, falls mehrere). */
+export async function listAllWatchlists(species?: HerdSpecies): Promise<{ key: string; name: string; moduleKey: string; animalIds: string[] }[]> {
+  const ps = animalProviders().filter(([, p]) => (!species || p.species === species) && p.listWatchlists)
+  const lists = await Promise.all(
+    ps.map(async ([moduleKey, p]) =>
+      (await p.listWatchlists!().catch(() => [])).map((l) => ({ key: `${moduleKey}:${l.id}`, name: ps.length > 1 ? `${l.name} (${p.title})` : l.name, moduleKey, animalIds: l.animalIds })),
+    ),
+  )
+  return lists.flat()
 }
 
 const providers = new Map<string, AnimalProvider>()
@@ -89,6 +102,8 @@ export interface HerdLocator {
   /** Pfad zur Herden-Seite, z.B. "/tiere" */
   herdsPath: string
   locate(moduleKey: string, animalId: string, date: string): Promise<AnimalLocation>
+  /** Gruppe je Tier an `date` (für Listen; ein Tier ist in höchstens einer Gruppe) */
+  groupNames?(animalIds: string[], date: string): Promise<Map<string, string>>
 }
 
 let locator: HerdLocator | null = null

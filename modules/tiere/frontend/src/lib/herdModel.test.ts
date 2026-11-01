@@ -110,3 +110,17 @@ describe('matchNumber', () => {
     expect(herdWeidePeriods([group], stays, members, counts, '2026-10-05', new Set(['andere']))).toHaveLength(0)
   })
 })
+
+describe('ein Tier, eine Gruppe', () => {
+  it('findet Tiere in zwei Gruppen; die zuletzt begonnene Zugehörigkeit gilt', async () => {
+    const { doubleMemberships } = await import('./herdModel')
+    const m = (id: string, group_id: string, animal_id: string, from_date: string, to_date: string | null = null): HerdMember => ({
+      id, group_id, module_key: 'dairy_schafe', animal_id, label: null, category: 'auen_galt', from_date, to_date, updated_at: '2026-11-01T00:00:00Z', deleted_at: null,
+    })
+    const ms = [m('1', 'herde', 'a', '2026-09-01'), m('2', 'schlacht', 'a', '2026-11-01'), m('3', 'herde', 'b', '2026-09-01'), m('4', 'alt', 'b', '2026-01-01', '2026-08-31')]
+    const d = doubleMemberships(ms, '2026-11-01')
+    expect(d).toHaveLength(1)
+    expect(d[0].keep.group_id).toBe('schlacht')
+    expect(d[0].extra.map((x) => x.group_id)).toEqual(['herde'])
+  })
+})

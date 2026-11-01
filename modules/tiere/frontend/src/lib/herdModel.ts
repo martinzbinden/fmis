@@ -256,3 +256,18 @@ export function matchNumber(animals: AnimalRef[], token: string): AnimalRef | 'm
 }
 
 export const numberTokens = (text: string) => text.split(/[\s,;]+/).map((t) => t.trim().toLowerCase()).filter(Boolean)
+
+/** Tiere, die an `date` in mehr als einer Gruppe stehen. Ein Tier gehört immer
+ * genau einer Gruppe an (Zügeln beendet die alte Zugehörigkeit); doppelt kann es
+ * nur werden, wenn zwei Geräte ohne Netz dasselbe Tier verschieden zuteilen.
+ * Die zuletzt begonnene Zugehörigkeit gilt (`keep`), die anderen sind zu viel. */
+export function doubleMemberships(members: HerdMember[], date: string): { animalId: string; keep: HerdMember; extra: HerdMember[] }[] {
+  const byAnimal = new Map<string, HerdMember[]>()
+  for (const m of members) if (activeAt(m, date)) byAnimal.set(m.animal_id, [...(byAnimal.get(m.animal_id) ?? []), m])
+  return [...byAnimal.entries()]
+    .filter(([, ms]) => ms.length > 1)
+    .map(([animalId, ms]) => {
+      const [keep, ...extra] = [...ms].sort((a, b) => b.from_date.localeCompare(a.from_date) || b.updated_at.localeCompare(a.updated_at))
+      return { animalId, keep, extra }
+    })
+}

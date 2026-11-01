@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import AnimalOption from '@fmis/core/AnimalOption'
-import { animalProviders, listAllAnimals, type AnimalRef } from '@fmis/core/animals'
+import { animalProviders, listAllAnimals, listAllWatchlists, type AnimalRef } from '@fmis/core/animals'
 import { shortEarTag } from '@fmis/core/earTag'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useQuery } from '../hooks/useQuery'
 import Modal from '../components/Modal'
 import { addDaysIso, fmtDate, todayIso } from '../lib/format'
-import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, HERD_CATEGORIES, matchNumber, numberTokens } from '../lib/herdModel'
-import { changeStay, countAt, dissolveGroup, type HerdData, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, saveGroup, saveLocation, setCount, setLaufhof } from '../lib/herds'
+import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, doubleMemberships, HERD_CATEGORIES, matchNumber, numberTokens } from '../lib/herdModel'
+import { changeStay, countAt, dissolveGroup, type HerdData, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, resolveDoubleMemberships, saveGroup, saveLocation, setCount, setLaufhof } from '../lib/herds'
 import { accessIndex, ACCESS_LABEL, monthCounter, type AccessIndex } from '../lib/outdoorAccess'
 import CounterBadge from '../components/CounterBadge'
 import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LaufhofMode, LocationKind, StaySlot } from '../types'
@@ -352,13 +352,17 @@ function MoveDialog({
   const [numbers, setNumbers] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [onlyFrom, setOnlyFrom] = useState(!!from)
-  const [counts, setCounts] = useState<Record<string, string>>({})
+  // ganze Gruppen mitnehmen (danach auflösen) und Merklisten als Auswahlhilfe
+  const [sourceGroups, setSourceGroups] = useState<Set<string>>(new Set())
+  const [dissolve, setDissolve] = useState(true)
+  const [lists, setLists] = useState<{ key: string; name: string; animalIds: string[] }[] | null>(null)
   const [dryOff, setDryOff] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     void listAllAnimals(speciesSel).then(setAnimals)
+    void listAllWatchlists(speciesSel).then(setLists)
   }, [speciesSel])
 
   const groupOf = (a: AnimalRef) => {
@@ -380,12 +384,15 @@ function MoveDialog({
   const unmatched = tokens.filter((t) => matchNumber(animals ?? [], t) == null)
   const ambiguous = tokens.filter((t) => matchNumber(animals ?? [], t) === 'mehrdeutig')
 
-  const chosen = (animals ?? []).filter((a) => selected.has(a.id))
   const to = data.groups.find((g) => g.id === toId) ?? null
-  const fromMilking = chosen.some((a) => groupOf(a)?.milking) || !!from?.milking
+  const otherGroups = data.groups.filter((g) => g.active && g.species === speciesSel && g.id !== to?.id)
+  const groupMembers = (gid: string) => data.members.filter((m) => m.group_id === gid && activeAt(m, date))
+  const viaGroups = new Set(otherGroups.filter((g) => sourceGroups.has(g.id)).flatMap((g) => groupMembers(g.id).map((m) => m.animal_id)))
+  // einzeln gewählte Tiere, die nicht schon mit ihrer Gruppe kommen
+  const chosen = (animals ?? []).filter((a) => selected.has(a.id) && !viaGroups.has(a.id))
+  const total = chosen.length + viaGroups.size
+  const fromMilking = chosen.some((a) => groupOf(a)?.milking) || !!from?.milking || otherGroups.some((g) => sourceGroups.has(g.id) && g.milking)
   const showDry = fromMilking && !to?.milking && chosen.some((a) => a.moduleKey.startsWith('dairy'))
-  const countNumbers = Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, Number(v || 0)]))
-  const countTotal = Object.values(countNumbers).reduce((s, n) => s + n, 0)
 
   async function save() {
     if (!to) return
@@ -397,7 +404,8 @@ function MoveDialog({
         fromGroup: from,
         date,
         animals: chosen,
-        counts: countNumbers,
+        counts: {},
+        groups: otherGroups.filter((g) => sourceGroups.has(g.id)).map((group) => ({ group, dissolve })),
         dryOff: showDry && dryOff,
       })
       onClose()
@@ -447,8 +455,66 @@ function MoveDialog({
           </label>
         </div>
 
+        {(otherGroups.length > 0 || (lists?.length ?? 0) > 0) && (
+          <div className="space-y-2">
+            {otherGroups.length > 0 && (
+              <div className="space-y-1">
+                <span className="block font-medium text-gray-700">Ganze Gruppe überführen</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {otherGroups.map((g) => {
+                    const on = sourceGroups.has(g.id)
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setSourceGroups((prev) => {
+                          const next = new Set(prev)
+                          if (on) next.delete(g.id)
+                          else next.add(g.id)
+                          return next
+                        })}
+                        className={`min-h-11 rounded-full border-2 px-3 ${on ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}
+                      >
+                        {g.name} ({groupMembers(g.id).length})
+                      </button>
+                    )
+                  })}
+                </div>
+                {sourceGroups.size > 0 && (
+                  <label className="flex min-h-11 items-center gap-2 text-gray-700">
+                    <input type="checkbox" checked={dissolve} onChange={(e) => setDissolve(e.target.checked)} className="h-5 w-5" />
+                    gewählte Gruppen danach auflösen (Stall und Weide enden)
+                  </label>
+                )}
+              </div>
+            )}
+            {(lists?.length ?? 0) > 0 && (
+              <div className="space-y-1">
+                <span className="block font-medium text-gray-700">Tiere einer Merkliste dazuwählen</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {lists!.map((l) => {
+                    const ids = l.animalIds.filter((id) => (animals ?? []).some((a) => a.id === id))
+                    return (
+                      <button
+                        key={l.key}
+                        type="button"
+                        disabled={ids.length === 0}
+                        onClick={() => setSelected((prev) => new Set([...prev, ...ids]))}
+                        className="min-h-11 rounded-full border-2 border-sky-300 bg-sky-50 px-3 text-sky-900 disabled:opacity-40"
+                      >
+                        🔖 {l.name} ({ids.length})
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="space-y-1">
-          <span className="block font-medium text-gray-700">Einzeltiere mit Nummer</span>
+          <span className="block font-medium text-gray-700">Einzeltiere</span>
           <HerdReader animals={animals ?? []} selected={selected} onAdd={(id) => setSelected((prev) => new Set(prev).add(id))} />
           <input
             className={field}
@@ -473,7 +539,9 @@ function MoveDialog({
                 <label key={`${a.moduleKey}-${a.id}`} className="flex items-center gap-2 border-b px-2 py-1 last:border-0">
                   <input
                     type="checkbox"
-                    checked={selected.has(a.id)}
+                    checked={selected.has(a.id) || viaGroups.has(a.id)}
+                    disabled={viaGroups.has(a.id)}
+                    className="h-5 w-5"
                     onChange={(e) => {
                       const next = new Set(selected)
                       if (e.target.checked) next.add(a.id)
@@ -494,28 +562,11 @@ function MoveDialog({
               )
             })}
           </div>
-          {chosen.length > 0 && <p className="text-xs text-gray-600">{chosen.length} ausgewählt</p>}
-        </div>
-
-        <div className="space-y-1">
-          <span className="block font-medium text-gray-700">Tiere ohne Nummer {from ? `(aus «${from.name}»)` : ''}</span>
-          <div className="grid grid-cols-2 gap-2">
-            {HERD_CATEGORIES[speciesSel].map((c) => {
-              const max = from ? countAt(data, from.id, c.key, date) : null
-              return (
-                <label key={c.key} className="block text-xs text-gray-600">
-                  {c.label}
-                  {max != null ? ` (da: ${max})` : ''}
-                  <input
-                    className={field}
-                    inputMode="numeric"
-                    value={counts[c.key] ?? ''}
-                    onChange={(e) => setCounts({ ...counts, [c.key]: e.target.value.replace(/\D/g, '') })}
-                  />
-                </label>
-              )
-            })}
-          </div>
+          {(chosen.length > 0 || viaGroups.size > 0) && (
+            <p className="text-xs text-gray-600">
+              {chosen.length} einzeln ausgewählt{viaGroups.size > 0 ? `, ${viaGroups.size} mit ganzer Gruppe` : ''}
+            </p>
+          )}
         </div>
 
         {showDry && (
@@ -527,11 +578,11 @@ function MoveDialog({
         {error && <p className="text-red-600">{error}</p>}
         <button
           type="button"
-          disabled={busy || !to || (chosen.length === 0 && countTotal === 0)}
+          disabled={busy || !to || total === 0}
           onClick={() => void save()}
-          className="w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50"
+          className="min-h-11 w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50"
         >
-          {busy ? 'Speichert…' : `${chosen.length + countTotal} Tiere nach «${to?.name ?? '…'}» zügeln`}
+          {busy ? 'Speichert…' : `${total} ${total === 1 ? 'Tier' : 'Tiere'} nach «${to?.name ?? '…'}» zügeln`}
         </button>
       </div>
     </Modal>
@@ -843,6 +894,8 @@ export default function Herds() {
     return data.members.filter((m) => activeAt(m, date) && modules.has(m.module_key) && !activeIds.has(m.animal_id))
   }, [data, allActive, date])
 
+  // Ein Tier gehört genau einer Gruppe an — doppelt nur nach gleichzeitigem Zuteilen ohne Netz
+  const doubles = useMemo(() => (data ? doubleMemberships(data.members, date) : []), [data, date])
   const groups = useMemo(() => (data?.groups ?? []).filter((g) => g.active), [data])
   const idx = useMemo(() => (data ? accessIndex(data) : null), [data])
   const close = () => {
@@ -874,6 +927,31 @@ export default function Herds() {
           <button type="button" onClick={() => setDialog({ kind: 'locations' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             Orte
           </button>
+        </div>
+      )}
+
+      {doubles.length > 0 && (
+        <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">
+            {doubles.length} {doubles.length === 1 ? 'Tier steht' : 'Tiere stehen'} in zwei Gruppen — ein Tier gehört nur einer Gruppe an.
+          </p>
+          <ul className="list-disc pl-5">
+            {doubles.map((d) => (
+              <li key={d.animalId}>
+                {d.keep.label ?? 'Tier'}: gilt «{data.groups.find((g) => g.id === d.keep.group_id)?.name ?? '?'}» (ab {d.keep.from_date}), zu viel:{' '}
+                {d.extra.map((m) => `«${data.groups.find((g) => g.id === m.group_id)?.name ?? '?'}»`).join(', ')}
+              </li>
+            ))}
+          </ul>
+          {canWrite && (
+            <button
+              type="button"
+              onClick={() => void resolveDoubleMemberships(data, date).then(refresh)}
+              className="min-h-11 rounded-lg bg-amber-700 px-3 font-semibold text-white"
+            >
+              Bereinigen (zuletzt zugeteilte Gruppe gilt)
+            </button>
+          )}
         </div>
       )}
 
@@ -1024,9 +1102,12 @@ export default function Herds() {
                     <button type="button" onClick={() => setDialog({ kind: 'move', from: g })} className={btn}>
                       Tiere zügeln…
                     </button>
-                    <button type="button" onClick={() => setDialog({ kind: 'count', group: g })} className={btn}>
-                      Anzahl ohne Nr.
-                    </button>
+                    {/* Tiere ohne Nummer gibt es auf dem Betrieb nicht — nur für frühere Anzahlen */}
+                    {comp.counts.length > 0 && (
+                      <button type="button" onClick={() => setDialog({ kind: 'count', group: g })} className={btn}>
+                        Anzahl ohne Nr.
+                      </button>
+                    )}
                     {comp.counts.length > 0 && (
                       <button type="button" onClick={() => setDialog({ kind: 'identify', group: g })} className={btn}>
                         Nummern erfassen ({comp.counts.reduce((s, c) => s + c.count, 0)} ohne Nr.)
