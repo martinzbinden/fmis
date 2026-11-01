@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useEffect, type ReactNode } from 'react'
+import { NavLink, useLocation, useNavigationType } from 'react-router-dom'
 import SyncStatusDot from './SyncStatusDot'
 import { logout } from './auth'
 import { useHasPermission } from './AuthContext'
@@ -30,6 +30,7 @@ export default function Layout({
   const canViewHistory = useHasPermission(historyPermission)
   const canImport = useHasPermission('core:import:write')
   const { status, error, pending } = useSyncStatus(sync)
+  useScrollTopOnNavigate()
 
   return (
     <div data-module={moduleKey} className="flex min-h-screen flex-col bg-gray-50">
@@ -101,4 +102,17 @@ export default function Layout({
       </div>
     </div>
   )
+}
+
+/** Neue Seite beginnt oben (sonst bleibt die Scrollhöhe der vorherigen und der
+ * Titel ist abgeschnitten). Nicht beim Zurück-Gehen und nicht bei Sprungzielen
+ * (#abschnitt, ?tier=), die selber scrollen. */
+function useScrollTopOnNavigate(): void {
+  const { pathname, hash } = useLocation()
+  const type = useNavigationType()
+  useEffect(() => {
+    if (type !== 'POP' && !hash) window.scrollTo(0, 0)
+    // nur beim Seitenwechsel, nicht bei jedem Rendern
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
 }

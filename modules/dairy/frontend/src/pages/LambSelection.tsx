@@ -311,8 +311,8 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                       <div className="flex gap-1">
                         {(
                           [
-                            ['zucht', 'Remonte', 'bg-green-600'],
-                            ['mast', 'Mast', 'bg-amber-600'],
+                            ['zucht', 'Remonte', 'bg-green-700'],
+                            ['mast', 'Mast', 'bg-amber-700'],
                           ] as const
                         ).map(([purpose, label, active]) => (
                           <button

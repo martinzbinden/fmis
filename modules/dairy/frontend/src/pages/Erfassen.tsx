@@ -14,10 +14,12 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
     { to: 'traechtigkeit', icon: '🤰', label: 'Trächtigkeit', desc: 'Einzeln oder mehrere Tiere (+ / Lesegerät), ja/leer/unsicher, Wochen' },
     { to: 'klauen', icon: '🐾', label: 'Klauen', desc: sheep ? 'Moderhinke-Score je Fuss, lahm, geschnitten, Behandlung – im Durchgang, mit Lesegerät' : 'Befunde nach ICAR-Atlas, Lahmheit 1–5, geschnitten, Behandlung' },
     { to: 'journal', icon: '💉', label: 'Beobachtung / Behandlung', desc: 'Krankheit, Behandlung mit Absetzfrist, Brunst, Klauen' },
+    { to: 'milchwaegung', icon: '⚖️', label: 'Milchwägung', desc: 'Melkreihenfolge für die Probenahme (Lesegerät oder von Hand)' },
+    { to: 'ausmerzen', icon: '📋', label: 'Ausmerzliste', desc: 'Tiere mit Gründen zum Ausmerzen: Fruchtbarkeit, Euter, Leistung, Klauen' },
     { to: 'behandlungen', icon: '📒', label: 'Behandlungsjournal', desc: 'Tierarzneimittel für die Kontrolle: Liste, Absetzfristen, Druck, Favoriten, cownect-Import' },
     { to: 'selektion', icon: '⭐', label: sheep ? 'Lämmer-Selektion' : 'Kälber-Selektion', desc: 'Remonte oder Mast nach Mutterleistung, Vater und Inzucht' },
-    { to: 'merklisten', icon: '📋', label: 'Merklisten', desc: 'Tiere vormerken, z.B. «Ausmerzen prüfen» – auch aus Warnungen bei der Erfassung' },
-    { to: 'gruppen', icon: '⚖️', label: 'Gruppen vergleichen', desc: 'Leistung + Zuchtwert, Schlachterlös, Fortpflanzung, Klauen – beliebige Gruppen nebeneinander' },
+    { to: 'merklisten', icon: '🔖', label: 'Merklisten', desc: 'Tiere vormerken, z.B. «Ausmerzen prüfen» – auch aus Warnungen bei der Erfassung' },
+    { to: 'gruppen', icon: '📊', label: 'Gruppen vergleichen', desc: 'Leistung + Zuchtwert, Schlachterlös, Fortpflanzung, Klauen – beliebige Gruppen nebeneinander' },
     { to: 'anpaarung', icon: '🧬', label: 'Anpaarung planen', desc: 'Erwartete Inzucht je Mutter × ' + (sheep ? 'Widder' : 'Stier') },
   ]
   return (
@@ -31,7 +33,7 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
             <span className="block text-sm text-gray-500">{item.desc}</span>
           </span>
           {item.to === 'ohrmarken' && pending > 0 && (
-            <span className="shrink-0 rounded-full bg-amber-500 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${pending} offen`}>
+            <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${pending} offen`}>
               {pending}
             </span>
           )}

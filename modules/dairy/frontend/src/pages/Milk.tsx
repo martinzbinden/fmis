@@ -112,7 +112,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
     <div className="mx-auto max-w-4xl space-y-4 p-4 pb-24">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Leistung</h1>
-        <Link to="pruefbericht" className="text-sm text-brand-700">
+        <Link to="../pruefbericht" relative="path" className="inline-flex min-h-11 items-center text-sm text-brand-700">
           Prüfbericht →
         </Link>
       </div>

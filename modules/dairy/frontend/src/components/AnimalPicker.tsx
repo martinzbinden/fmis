@@ -76,13 +76,14 @@ export default function AnimalPicker({
           {selected.map((id) => {
             const a = byId.get(id)
             return (
-              <span key={id} className="flex items-center gap-1 rounded-full bg-brand-100 px-3 py-1 text-sm font-medium text-brand-900">
+              <span key={id} className="flex items-center gap-1 rounded-full bg-brand-100 py-0.5 pl-3 text-sm font-medium text-brand-900">
                 {a ? label(a) : id}
+                {/* ganze 44-px-Fläche antippbar — der einzige Weg, ein falsches Tier zu entfernen */}
                 <button
                   type="button"
                   onClick={() => onChange(selected.filter((x) => x !== id))}
-                  className="text-brand-700"
-                  aria-label="entfernen"
+                  className="grid h-11 w-11 place-items-center rounded-full text-lg text-brand-700 active:bg-brand-200"
+                  aria-label={`${a ? label(a) : id} entfernen`}
                 >
                   ×
                 </button>
@@ -105,8 +106,14 @@ export default function AnimalPicker({
             }}
             placeholder={placeholder}
             inputMode="search"
+            autoComplete="off"
+            aria-label="Tier suchen (Laufnummer, Name oder Ohrmarke)"
             className="w-full rounded-lg border border-gray-300 px-3 py-3 text-base"
           />
+          {query.trim() && matches.length === 0 && (
+            // beim Start am Handy braucht die Ablage Sekunden — nicht «gibt es nicht» vortäuschen
+            <p className="mt-1 px-1 text-sm text-gray-600">{animals.length === 0 ? 'Tiere werden geladen …' : `Kein Tier mit «${query.trim()}».`}</p>
+          )}
           {matches.length > 0 && (
             <ul className="mt-1 divide-y rounded-lg border border-gray-200 bg-white">
               {matches.map((a) => (

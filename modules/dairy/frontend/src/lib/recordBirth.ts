@@ -1,6 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { upsertRow } from '../db/write'
-import { animalKey } from '@fmis/core/earTag'
+import { animalKey, earTagProblem } from '@fmis/core/earTag'
 import type { Animal } from '../types'
 
 export type OffspringFate = 'lebend' | 'totgeboren' | 'verendet'
@@ -26,10 +26,10 @@ export interface BirthInput {
 }
 
 /** Ohrmarke so ablegen, wie sie auch beim Abgleich verglichen wird: ohne
- * Leerzeichen/Punkte, gross. Eine spätere Langform aus dem Herdebuch-Export
- * ersetzt sie über den gemeinsamen Schlüssel (lib/animalId.ts). */
+ * Leerzeichen/Punkte, gross, mit Ländercode. Eine spätere Langform aus dem
+ * Herdebuch-Export ersetzt sie über den gemeinsamen Schlüssel (lib/animalId.ts). */
 export function compactEarTag(s: string): string {
-  return s.replace(/[\s.]/g, '').toUpperCase()
+  return animalKey(s) ?? s.replace(/[\s.]/g, '').toUpperCase()
 }
 
 /** Prüft die Nachkommen gegen den Bestand, bevor geschrieben wird. */
@@ -40,7 +40,11 @@ export function validateBirth(input: BirthInput, existing: Animal[]): string | n
   for (const [i, o] of input.offspring.entries()) {
     const key = animalKey(o.ear_tag)
     if (o.fate === 'lebend' && !key && !o.tag_later) return `Nachkomme ${i + 1}: Ohrmarke fehlt – eintragen oder «später» wählen.`
+    // ohne Geschlecht später für Selektion und Ausmerzliste unbrauchbar
+    if (o.fate === 'lebend' && !o.sex) return `Nachkomme ${i + 1}: Geschlecht ♀/♂ wählen.`
     if (!key) continue
+    const problem = earTagProblem(o.ear_tag)
+    if (problem) return `Nachkomme ${i + 1}: ${problem}`
     if (keys.has(key)) return `Ohrmarke ${o.ear_tag} doppelt erfasst.`
     keys.add(key)
     const clash = existingByKey.get(key)
@@ -111,13 +115,16 @@ type EnsurePedigree = (key: string, row: Record<string, unknown>) => Promise<voi
 
 /** Legt Stammbaum-Einträge nur an, wenn es den Schlüssel noch nicht gibt. */
 export async function pedigreeEnsurer(pg: PGlite): Promise<EnsurePedigree> {
-  const { rows } = await pg.query<{ animal_key: string }>('select animal_key from pedigree where deleted_at is null')
-  const known = new Set(rows.map((r) => r.animal_key))
+  const { rows } = await pg.query<{ id: string; animal_key: string; deleted_at: unknown }>('select id, animal_key, deleted_at from pedigree')
+  const known = new Set(rows.filter((r) => r.deleted_at == null).map((r) => r.animal_key))
+  // gelöscht (z.B. «Rückgängig»): denselben Eintrag wiederverwenden — animal_key ist eindeutig
+  const gone = new Map(rows.filter((r) => r.deleted_at != null).map((r) => [r.animal_key, r.id]))
   return async (key, row) => {
     if (known.has(key)) return
     known.add(key)
     await upsertRow(pg, 'pedigree', {
-      id: crypto.randomUUID(),
+      id: gone.get(key) ?? crypto.randomUUID(),
+      deleted_at: null,
       animal_key: key,
       sire_key: null,
       dam_key: null,
@@ -137,9 +144,14 @@ export async function addOffspringAnimal(
   ensurePedigree: EnsurePedigree,
   o: { earTag: string; key: string; sex: 'w' | 'm' | null; birth_date: string; dam: Pick<Animal, 'ear_tag' | 'breed_code'>; sireKey: string | null },
 ): Promise<string> {
-  const animalId = crypto.randomUUID()
+  // Ohrmarken sind eindeutig, auch über gelöschte Tiere hinweg: wurde dasselbe
+  // Lamm schon einmal erfasst und wieder gelöscht (z.B. «Rückgängig»), wird
+  // dieses Tier wiederverwendet statt an der Eindeutigkeit zu scheitern.
+  const { rows: gone } = await pg.query<{ id: string }>('select id from animals where ear_tag = $1 and deleted_at is not null', [o.earTag])
+  const animalId = gone[0]?.id ?? crypto.randomUUID()
   await upsertRow(pg, 'animals', {
     id: animalId,
+    deleted_at: null,
     ear_tag: o.earTag,
     name: null,
     breed_code: o.dam.breed_code,

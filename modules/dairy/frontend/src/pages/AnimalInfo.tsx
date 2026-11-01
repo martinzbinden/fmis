@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey, shortEarTag } from '@fmis/core/earTag'
 import AnimalOption from '@fmis/core/AnimalOption'
@@ -89,7 +89,10 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
   const { data } = useQuery((pg) => loadInfo(pg, species, moduleKey), [species, moduleKey])
   const { thresholds } = useCullingThresholds(moduleKey, species)
   const [query, setQuery] = useState('')
-  const [id, setId] = useState<string | null>(null)
+  // gewähltes Tier in der Adresse (?tier=): nach einer Kachel und «Zurück» wieder da
+  const [params, setParams] = useSearchParams()
+  const id = params.get('tier')
+  const setId = (animalId: string) => setParams({ tier: animalId }, { replace: true })
   const [picking, setPicking] = useState(false)
   const [listMsg, setListMsg] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)

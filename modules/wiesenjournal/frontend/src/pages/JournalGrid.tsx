@@ -32,10 +32,11 @@ import { isoDate, num, todayIso } from '../lib/format'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
+// ganzes Jahr: Weidegänge und Gülle gibt es auch im Winter
 function seasonDays(year: number): string[] {
   const days: string[] = []
-  const start = new Date(Date.UTC(year, 2, 1)) // 1. März
-  const end = new Date(Date.UTC(year, 9, 31)) // 31. Oktober
+  const start = new Date(Date.UTC(year, 0, 1))
+  const end = new Date(Date.UTC(year, 11, 31))
   for (let d = start; d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
     days.push(d.toISOString().slice(0, 10))
   }

@@ -7,7 +7,7 @@ import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import FooterBar from '@fmis/core/FooterBar'
 import NumberInput from '@fmis/core/NumberInput'
-import { notifyError } from '@fmis/core/toast'
+import { notifyError, notifyInfo } from '@fmis/core/toast'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import AnimalWarnings from '../components/AnimalWarnings'
@@ -39,9 +39,9 @@ async function loadData(pg: PGlite) {
 }
 
 const RESULTS: { key: PregnancyResult; label: string; icon: string; cls: string }[] = [
-  { key: 'ja', label: 'trächtig', icon: '✓', cls: 'bg-green-600 text-white active:bg-green-700' },
+  { key: 'ja', label: 'trächtig', icon: '✓', cls: 'bg-green-700 text-white active:bg-green-800' },
   { key: 'nein', label: 'leer', icon: '✗', cls: 'bg-gray-700 text-white active:bg-gray-800' },
-  { key: 'unsicher', label: 'unsicher', icon: '?', cls: 'bg-amber-500 text-white active:bg-amber-600' },
+  { key: 'unsicher', label: 'unsicher', icon: '?', cls: 'bg-amber-700 text-white active:bg-amber-800' },
 ]
 const BADGE: Record<PregnancyResult, string> = { ja: 'bg-green-100 text-green-800', nein: 'bg-gray-200 text-gray-800', unsicher: 'bg-amber-100 text-amber-900' }
 const DURATION_CHIPS: Record<DurationUnit, number[]> = { wochen: [4, 6, 8, 10, 12, 14, 16, 18, 20], tage: [30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140] }
@@ -125,6 +125,11 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   }
   const [list, setList] = useState<{ id: string; fromReader: boolean }[]>([])
   function addToList(id: string, viaReader: boolean) {
+    if (list.some((x) => x.id === id)) {
+      // nicht still leeren: sonst wirkt der zweite Tipp wie verschluckt
+      const a = data?.animals.find((x) => x.id === id)
+      notifyInfo(`${a ? (a.lauf_nr ?? shortEarTag(a.ear_tag)) : 'Das Tier'} ist schon in der Liste`)
+    }
     setList((prev) => (prev.some((x) => x.id === id) ? prev : [{ id, fromReader: viaReader }, ...prev]))
     setQuery('')
     setPicked(null)
@@ -302,8 +307,12 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   }
   async function saveEdit(result: PregnancyResult) {
     if (!editing) return
-    await upsertRow(db, 'pregnancy_checks', { ...editing, result, weeks: toWeeks(editWeeks, editing.duration_unit ?? 'wochen') })
-    setEditId(null)
+    try {
+      await upsertRow(db, 'pregnancy_checks', { ...editing, result, weeks: toWeeks(editWeeks, editing.duration_unit ?? 'wochen') })
+      setEditId(null)
+    } catch (e) {
+      notifyError(`Nicht gespeichert: ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
 
   const chip = (on: boolean) => `min-h-11 min-w-11 shrink-0 rounded-full border-2 px-3 text-sm ${on ? 'border-brand-700 bg-brand-700 font-semibold text-white' : 'border-gray-400 bg-white text-gray-800'}`
@@ -488,7 +497,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
               enterKeyHint="go"
               autoComplete="off"
               className="min-h-14 min-w-0 flex-1 rounded-lg border-2 border-gray-500 bg-white px-3 text-2xl tracking-widest text-gray-900 placeholder:text-gray-500 focus:border-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-200"
-              placeholder="Ohrmarke: letzte 4"
+              placeholder="letzte 4 Ziffern"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value.replace(/[^\d]/g, '').slice(0, 8))
@@ -702,7 +711,7 @@ function ListPanel({
           <span>
             <b>{flagged.length}</b> in den letzten {RECENT_PREGNANT_DAYS} Tagen schon trächtig gemeldet
           </span>
-          <button type="button" onClick={() => flagged.forEach((r) => onRemove(r.id))} className="min-h-10 shrink-0 rounded-lg bg-amber-600 px-3 font-semibold text-white">
+          <button type="button" onClick={() => flagged.forEach((r) => onRemove(r.id))} className="min-h-11 shrink-0 rounded-lg bg-amber-700 px-3 font-semibold text-white">
             Alle entfernen
           </button>
         </div>

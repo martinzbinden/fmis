@@ -3,6 +3,8 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
+import { notifyError } from '@fmis/core/toast'
+import { inTransaction } from '../db/transaction'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { softDeleteRow } from '../db/write'
 import JournalForm from '../components/JournalForm'
@@ -348,10 +350,13 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                       {cycle?.interval_days != null ? `${intervalWord} ${cycle.interval_days} T.` : ''}
                       {b.source === 'manual' && (
                         <DeleteButton
-                          onConfirm={async () => {
-                            for (const o of b.offspring) await softDeleteRow(db, 'birth_offspring', o.id)
-                            await softDeleteRow(db, 'births', b.id)
-                          }}
+                          onConfirm={() =>
+                            // ganz oder gar nicht: nie Nachkommen ohne Geburt (oder umgekehrt)
+                            inTransaction(db, async (tx) => {
+                              for (const o of b.offspring) await softDeleteRow(tx, 'birth_offspring', o.id)
+                              await softDeleteRow(tx, 'births', b.id)
+                            })
+                          }
                         />
                       )}
                     </span>
@@ -433,12 +438,24 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
  * bleiben die angelegten Jungtiere im Bestand. */
 function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
   const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
   return confirm ? (
-    <button type="button" onClick={() => void onConfirm().then(() => setConfirm(false))} className="rounded bg-red-600 px-2 py-0.5 text-xs text-white">
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true)
+        onConfirm()
+          .then(() => setConfirm(false))
+          .catch((e) => notifyError(`Nicht gelöscht: ${e instanceof Error ? e.message : String(e)}`))
+          .finally(() => setBusy(false))
+      }}
+      className="min-h-11 rounded-lg bg-red-700 px-3 text-sm font-semibold text-white disabled:opacity-50"
+    >
       Wirklich löschen?
     </button>
   ) : (
-    <button type="button" onClick={() => setConfirm(true)} className="px-1 text-base leading-none text-gray-500" aria-label="löschen">
+    <button type="button" onClick={() => setConfirm(true)} className="grid h-11 w-11 place-items-center text-lg leading-none text-gray-600" aria-label="löschen">
       ×
     </button>
   )

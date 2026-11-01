@@ -76,7 +76,7 @@ function WarningRow({
       {!membership && (
         <div className={`mt-1 flex flex-wrap gap-1.5 ${compact ? '' : 'pl-5'}`}>
           {onRemove && (
-            <button type="button" onClick={onRemove} className="min-h-9 rounded-lg bg-amber-600 px-2.5 text-sm font-semibold text-white">
+            <button type="button" onClick={onRemove} className="min-h-11 rounded-lg bg-amber-700 px-2.5 text-sm font-semibold text-white">
               {removeLabel}
             </button>
           )}

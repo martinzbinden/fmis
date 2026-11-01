@@ -5,6 +5,8 @@ import { useDb } from '@fmis/core/DbContext'
 import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
+import NumberInput from '@fmis/core/NumberInput'
+import { undoAction, useOnUndo } from '@fmis/core/undo'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
 import AnimalPicker from '../components/AnimalPicker'
@@ -64,6 +66,8 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<{ damId: string; count: number; later: number } | null>(null)
+  // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
+  useOnUndo(() => setDone(null))
 
   const females = useMemo(() => (data?.animals ?? []).filter((a) => a.status === 'aktiv' && a.sex !== 'm'), [data])
   const dam = females.find((a) => a.id === damIds[0])
@@ -121,6 +125,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
 
   async function save() {
     if (!dam || !data) return setError(`Zuerst die ${word.mother} wählen.`)
+    if (date > localTodayIso()) return setError('Das Datum liegt in der Zukunft.')
     if (damBirths.some((b) => b.birth_date === date)) return setError(`Für diese ${word.mother} ist am ${date} schon eine ${word.event} erfasst.`)
     const input = {
       dam,
@@ -137,7 +142,8 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
     setSaving(true)
     setError(null)
     try {
-      const result = await inTransaction(db, (tx) => recordBirth(tx, input))
+      const n = offspring.length
+      const result = await undoAction(`${word.event} ${animalLabel(dam)}, ${n} ${n === 1 ? word.young : word.youngPl}`, () => inTransaction(db, (tx) => recordBirth(tx, input)))
       setDone({ damId: dam.id, count: result.newAnimalIds.length, later: offspring.filter((o) => o.fate === 'lebend' && o.tag_later && !o.ear_tag.trim()).length })
       setDamIds([])
       setOffspring([{ ...EMPTY_OFFSPRING }])
@@ -202,7 +208,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
       <div className="space-y-3 rounded-lg bg-white p-4 shadow-sm">
         <label className="block text-sm text-gray-600">
           Datum
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
+          <input type="date" value={date} max={localTodayIso()} onChange={(e) => setDate(e.target.value)} className={input} />
         </label>
         <SireSelect label="Vater" options={data?.sires ?? []} value={sire} onChange={setSire} />
         {species === 'cattle' && (
@@ -269,7 +275,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                 type="button"
                 aria-pressed={!!o.tag_later}
                 onClick={() => patch(i, { tag_later: !o.tag_later, ear_tag: '' })}
-                className={`w-full rounded-lg py-2 text-sm ${o.tag_later ? 'bg-amber-500 font-semibold text-white' : 'bg-gray-100 text-gray-700'}`}
+                className={`min-h-11 w-full rounded-lg py-2 text-sm ${o.tag_later ? 'bg-amber-700 font-semibold text-white' : 'bg-gray-100 text-gray-700'}`}
               >
                 🏷️ Ohrmarke später nachtragen
               </button>
@@ -286,11 +292,14 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                   className={`col-span-2 ${input}`}
                 />
               )}
-              <input
+              <NumberInput
                 value={o.birth_weight_kg ?? ''}
-                onChange={(e) => patch(i, { birth_weight_kg: e.target.value ? Number(e.target.value.replace(',', '.')) : null })}
+                onChange={(e) => {
+                  const v = e.target.value === '' ? null : Number(e.target.value)
+                  patch(i, { birth_weight_kg: v != null && Number.isFinite(v) ? v : null })
+                }}
                 placeholder="kg"
-                inputMode="decimal"
+                aria-label={`Geburtsgewicht kg ${word.young} ${i + 1}`}
                 className={input}
               />
             </div>

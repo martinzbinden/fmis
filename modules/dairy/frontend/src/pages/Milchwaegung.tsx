@@ -12,7 +12,8 @@ import { getDairySyncClient } from '../db/sync'
 import { fmtDate, fmtDateTime, isoDate } from '../lib/format'
 import { speciesTerms } from '../lib/species'
 import type { Animal, MilkingBank, MilkingSlot } from '../types'
-import { shortEarTag } from '@fmis/core/earTag'
+import { earTagProblem, shortEarTag } from '@fmis/core/earTag'
+import { inTransaction } from '../db/transaction'
 import { notSupersededSql } from '../lib/journal'
 import { MILK_UNTIL_SQL } from '../lib/treatments'
 import NumberInput from '@fmis/core/NumberInput'
@@ -165,6 +166,8 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   )
   const [openArchived, setOpenArchived] = useState<Record<string, boolean>>({})
   const [showDetails, setShowDetails] = useState(false)
+  // «Leser verbinden» braucht einen zweiten Tipp (steht neben dem Eingabefeld)
+  const [confirmStart, setConfirmStart] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 5000)
@@ -283,8 +286,10 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       .slice(0, 8)
   }, [manualInput, animalsData, openBank])
 
-  /** Manuelle Aufnahme (ohne Leser): Laufnummer oder Ohrmarke — offline möglich. */
-  async function addManual(chosen?: Animal) {
+  /** Manuelle Aufnahme (ohne Leser): Laufnummer oder Ohrmarke — offline möglich.
+   * Ohne Treffer nur auf ausdrücklichen Wunsch (`unknown`) als unbekannte
+   * Ohrmarke — sonst würde aus jedem Tippfehler («1O1») ein Phantomtier. */
+  async function addManual(chosen?: Animal, unknown = false) {
     const q = manualInput.trim()
     if (!chosen && !q) return
     await run(async () => {
@@ -294,10 +299,21 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         const exact = suggestions.find((x) => x.s === 0)
         animal = exact?.a ?? (suggestions.length === 1 ? suggestions[0].a : null)
       }
+      if (animal) {
+        const pos = openBank?.slots.find((x) => x.animal_id === animal!.id)?.position
+        if (pos != null) throw new Error(`${animal.lauf_nr ?? shortEarTag(animal.ear_tag)} ist schon auf Platz ${pos}.`)
+      } else if (!unknown) {
+        throw new Error(suggestions.length > 1 ? `«${q}» passt auf mehrere Tiere — bitte aus der Liste wählen.` : `Kein Tier «${q}» gefunden. Tippfehler?`)
+      } else {
+        const problem = earTagProblem(q)
+        if (problem) throw new Error(problem)
+      }
       let bank = openBank?.bank ?? null
       let count = openBank?.slots.length ?? 0
+      // neue Bank und Platz zusammen: ganz oder gar nicht
+      await inTransaction(pg, async (tx) => {
       if (!bank || count >= bank.capacity) {
-        if (bank) await upsertRow(pg, 'milking_banks', { ...bank, closed_at: new Date().toISOString() })
+        if (bank) await upsertRow(tx, 'milking_banks', { ...bank, closed_at: new Date().toISOString() })
         bank = {
           id: crypto.randomUUID(),
           session_date: date,
@@ -307,12 +323,12 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           closed_at: null,
           notes: null,
         } as MilkingBank
-        await upsertRow(pg, 'milking_banks', bank)
+        await upsertRow(tx, 'milking_banks', bank)
         count = 0
       }
-      await upsertRow(pg, 'milking_slots', {
+      await upsertRow(tx, 'milking_slots', {
         id: crypto.randomUUID(),
-        bank_id: bank.id,
+        bank_id: bank!.id,
         position: count + 1,
         original_position: count + 1,
         transponder: null,
@@ -321,6 +337,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         weighed: false,
         notes: null,
         read_at: new Date().toISOString(),
+      })
       })
       setManualInput('')
       setSuggestOpen(false)
@@ -362,9 +379,12 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
+          className="min-h-11 rounded border border-gray-300 px-2 text-base"
         />
       </div>
+      <p className="text-sm text-gray-700">
+        Hier entsteht die Melkreihenfolge für die Probenahme: je Bank die {terms.plural} in der Reihenfolge, wie sie stehen, und das Häkchen «gewogen». Die Milchmengen kommen später aus dem Prüfbericht.
+      </p>
 
       {/* Leser-Sitzung */}
       <div className="rounded-lg bg-white p-3 shadow-sm">
@@ -401,15 +421,44 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
                   Leser trennen
                 </button>
               ) : (
-                <button type="button" onClick={start} disabled={busy} className="rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white">
-                  Leser verbinden
-                </button>
+                confirmStart ? (
+                  <span className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmStart(false)
+                        void start()
+                      }}
+                      disabled={busy}
+                      className="min-h-11 rounded-lg bg-brand-700 px-3 text-sm font-semibold text-white"
+                    >
+                      Ja, Leser verbinden
+                    </button>
+                    <button type="button" onClick={() => setConfirmStart(false)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-sm">
+                      Abbrechen
+                    </button>
+                  </span>
+                ) : (
+                  <button type="button" onClick={() => setConfirmStart(true)} disabled={busy} className="min-h-11 rounded-lg bg-brand-700 px-3 text-sm font-medium text-white">
+                    📡 Leser verbinden …
+                  </button>
+                )
               ))}
           </div>
         ) : (
           <p className="text-sm text-gray-500">Ohrmarkenleser für diese Instanz nicht aktiviert (Verwaltung → Module) — manuelle Aufnahme unten.</p>
         )}
-        {session?.last_error && <p className="mt-2 text-sm text-red-600">{session.last_error}</p>}
+        {session?.last_error && (
+          <div className="mt-2 text-sm text-red-700">
+            {/nicht erreichbar|unreachable|route to host|refused|timed out/i.test(session.last_error)
+              ? 'Leser nicht erreichbar – eingeschaltet und im selben WLAN?'
+              : 'Verbindung zum Leser fehlgeschlagen.'}
+            <details className="text-xs text-gray-600">
+              <summary className="min-h-9 cursor-pointer">Technische Angaben</summary>
+              {session.last_error}
+            </details>
+          </div>
+        )}
         {session?.active && session.last_ignored && (
           <p className="mt-2 text-xs text-amber-700">Letzte Lesung übersprungen: {session.last_ignored}</p>
         )}
@@ -477,7 +526,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           {openBank ? `Bank ${openBank.bank.bank_number}` : 'Keine offene Bank'}
           {openBank && (
             <span className="ml-2 text-sm font-normal text-gray-500">
-              {openBank.slots.length} / {openBank.bank.capacity} · {openBank.slots.filter((s) => s.weighed).length} gewogen
+              {openBank.slots.length} von {openBank.bank.capacity} Plätzen · {openBank.slots.filter((s) => s.weighed).length} gewogen
             </span>
           )}
         </h2>
@@ -513,6 +562,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
               autoComplete="off"
               onChange={(e) => {
                 setManualInput(e.target.value)
+                setError(null)
                 setSuggestOpen(true)
                 setSuggestIdx(0)
               }}
@@ -557,8 +607,18 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
               ))}
             </ul>
           )}
-          {suggestOpen && manualInput.trim() && suggestions.length === 0 && (
-            <p className="mt-1 text-xs text-gray-500">Kein Tier gefunden — „Aufnehmen" nimmt die Eingabe als unbekannte Ohrmarke auf.</p>
+          {manualInput.trim() && suggestions.length === 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-700">
+              <span>Kein Tier gefunden.</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void addManual(undefined, true)}
+                className="min-h-11 rounded-lg border border-gray-400 px-3 font-medium text-gray-800 disabled:opacity-50"
+              >
+                Als unbekannte Ohrmarke aufnehmen
+              </button>
+            </div>
           )}
         </form>
       )}
@@ -697,17 +757,22 @@ function BankTable({
     onChanged()
   }
 
+  // ohne Rückfrage: «↶ Rückgängig» holt die Zeile samt Notiz zurück
   async function removeSlot(s: SlotRow) {
-    if (!confirm(`${label(s)} aus der Bank entfernen?`)) return
-    await softDeleteRow(pg, 'milking_slots', s.id)
-    // Positionen der verbleibenden Zeilen lückenlos nachziehen
-    const remaining = slots.filter((x) => x.id !== s.id).sort((a, b) => a.position - b.position)
-    for (let i = 0; i < remaining.length; i++) {
-      if (remaining[i].position !== i + 1) {
-        const { animal: _a, ...row } = remaining[i]
-        await upsertRow(pg, 'milking_slots', { ...row, position: i + 1 })
+    await inTransaction(pg, async (tx) => {
+      await softDeleteRow(tx, 'milking_slots', s.id)
+      // die ins Tierjournal kopierte Notiz gehört zur Zeile
+      const { rows } = await tx.query<{ id: string }>('select id from animal_journal where ref_id = $1 and deleted_at is null', [s.id])
+      for (const r of rows) await softDeleteRow(tx, 'animal_journal', r.id)
+      // Positionen der verbleibenden Zeilen lückenlos nachziehen
+      const remaining = slots.filter((x) => x.id !== s.id).sort((a, b) => a.position - b.position)
+      for (let i = 0; i < remaining.length; i++) {
+        if (remaining[i].position !== i + 1) {
+          const { animal: _a, ...row } = remaining[i]
+          await upsertRow(tx, 'milking_slots', { ...row, position: i + 1 })
+        }
       }
-    }
+    })
     if (editing) setOrder((o) => o.filter((x) => x.id !== s.id))
     onChanged()
   }
@@ -719,15 +784,16 @@ function BankTable({
   async function saveNote(s: SlotRow) {
     const text = noteText.trim()
     const { animal: _a, ...row } = s
-    await upsertRow(pg, 'milking_slots', { ...row, notes: text || null })
+    await inTransaction(pg, async (tx) => {
+    await upsertRow(tx, 'milking_slots', { ...row, notes: text || null })
     // Ins Journal des Tiers kopieren (1:1 über ref_id = Slot; leer = löschen)
     if (s.animal_id) {
-      const { rows } = await pg.query<{ id: string }>(
+      const { rows } = await tx.query<{ id: string }>(
         'select id from animal_journal where ref_id = $1 and deleted_at is null',
         [s.id],
       )
       if (text) {
-        await upsertRow(pg, 'animal_journal', {
+        await upsertRow(tx, 'animal_journal', {
           id: rows[0]?.id ?? crypto.randomUUID(),
           animal_id: s.animal_id,
           entry_date: bank.bank.session_date,
@@ -737,9 +803,10 @@ function BankTable({
           category: 'notiz',
         })
       } else if (rows[0]) {
-        await softDeleteRow(pg, 'animal_journal', rows[0].id)
+        await softDeleteRow(tx, 'animal_journal', rows[0].id)
       }
     }
+    })
     setNoteFor(null)
     onChanged()
   }
@@ -892,7 +959,7 @@ function BankTable({
                     </>
                   )}
                   {canWrite && (
-                    <button type="button" onClick={() => removeSlot(s)} className="rounded px-1.5 py-0.5 text-lg leading-none text-red-400 hover:text-red-600" title="Zeile löschen (falsch eingegeben)">
+                    <button type="button" onClick={() => removeSlot(s)} className="grid h-11 w-11 place-items-center rounded text-lg leading-none text-red-700" title="Zeile löschen (falsch eingegeben)">
                       ×
                     </button>
                   )}

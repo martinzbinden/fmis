@@ -5,6 +5,7 @@ import { DbProvider } from '@fmis/core/DbContext'
 import { getDb } from './db/pglite'
 import { createDairySyncClient } from './db/sync'
 import Milk from './pages/Milk'
+import Today from './pages/Today'
 import Animals from './pages/Animals'
 import History from './pages/History'
 import Milchwaegung from './pages/Milchwaegung'
@@ -52,15 +53,17 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     icon: '🥛',
     group: 'tiere',
     navItems: [
-      { to: '', label: 'Leistung', icon: '🥛' },
-      { to: 'kuehe', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
+      // Stall zuerst: Milchwägung und Ausmerzliste stehen auf «Heute» und im Menü «Erfassen»
+      { to: '', label: 'Heute', icon: '🏠' },
       { to: 'erfassen', label: 'Erfassen', icon: '✏️' },
-      { to: 'milchwaegung', label: 'Milchwägung', icon: '⚖️' },
-      { to: 'ausmerzen', label: 'Ausmerzliste', icon: '📋' },
+      { to: 'tierinfo', label: 'Tier-Info', icon: '🔎' },
+      { to: 'kuehe', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
+      { to: 'leistung', label: 'Leistung', icon: '🥛' },
     ],
     historyPermission: `${key}:history:read`,
     routes: [
-      { path: '', element: <Milk moduleKey={key} /> },
+      { path: '', element: <Today moduleKey={key} /> },
+      { path: 'leistung', element: <Milk moduleKey={key} /> },
       { path: 'kuehe', element: <Animals moduleKey={key} /> },
       { path: 'kuehe/:id', element: <AnimalDetail moduleKey={key} /> },
       { path: 'ausmerzen', element: <Culling moduleKey={key} /> },

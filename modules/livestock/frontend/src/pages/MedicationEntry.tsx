@@ -4,7 +4,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useEarTagFilter } from '../hooks/useEarTagFilter'
 import EarTagFilterInput from '../components/EarTagFilterInput'
-import { upsertRow } from '../db/write'
+import { upsertRows } from '../db/write'
 import { todayIso } from '../lib/format'
 import type { MedicationReference } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
@@ -128,8 +128,9 @@ export default function MedicationEntry() {
 
     setSaving(true)
     try {
-      for (const id of targetIds) {
-        await upsertRow('medications', {
+      await upsertRows(
+        'medications',
+        targetIds.map((id) => ({
           id: crypto.randomUUID(),
           animal_id: id,
           date,
@@ -139,8 +140,8 @@ export default function MedicationEntry() {
           withdrawal_days: Number(withdrawalDays) || 0,
           administered_by: administeredBy || null,
           cost: cost ? Number(cost) : null,
-        })
-      }
+        })),
+      )
       setSavedMsg(`Gespeichert für ${targetIds.length} Tier(e).`)
       setName('')
       setDose('')

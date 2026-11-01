@@ -63,7 +63,7 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
         <h1 className="text-xl font-bold text-gray-800">Merklisten</h1>
         <span className="flex gap-3">
           <Link to="../gruppen" relative="path" className="text-sm text-brand-700">
-            ⚖️ vergleichen
+            📊 vergleichen
           </Link>
           <Link to="../tierinfo" relative="path" className="text-sm text-brand-700">
             🔎 Tier-Info
@@ -147,7 +147,20 @@ function ListCard({
   const [toGroup, setToGroup] = useState(false)
   // Tiergruppen gehören dem Modul Tiere — nur mit dessen Schreibrecht und wenn es läuft
   const canHerd = useHasPermission('tiere:herden:write') && !!animalProvider(moduleKey)
-  const openEntries = entries.filter((e) => !e.done_at).sort((a, b) => Number(!!b.reason) - Number(!!a.reason))
+  // ✓/✕ blenden die Zeile sofort aus (sonst träfe ein zweiter Tipp die nächste);
+  // mit den neu geladenen Einträgen gilt wieder deren Stand
+  const [hidden, setHidden] = useState<Set<string>>(new Set())
+  useEffect(() => setHidden(new Set()), [entries])
+  async function hideWhile(id: string, write: () => Promise<void>) {
+    setHidden((h) => new Set(h).add(id))
+    try {
+      await write()
+    } catch (err) {
+      setHidden((h) => new Set([...h].filter((x) => x !== id)))
+      notifyError(err instanceof Error ? err.message : String(err))
+    }
+  }
+  const openEntries = entries.filter((e) => !e.done_at && !hidden.has(e.id)).sort((a, b) => Number(!!b.reason) - Number(!!a.reason))
   const done = entries.filter((e) => e.done_at)
   const onList = new Set(openEntries.map((e) => e.animal_id))
 
@@ -216,13 +229,13 @@ function ListCard({
                     {e.added_by ? ` · ${e.added_by.split('@')[0]}` : ''}
                   </div>
                 </div>
-                <button type="button" onClick={() => setEditing(editing?.id === e.id ? null : { id: e.id, text: e.reason ?? '' })} className="min-h-10 shrink-0 rounded-lg px-2 text-sm text-gray-700" aria-label="Grund / Markierung bearbeiten">
+                <button type="button" onClick={() => setEditing(editing?.id === e.id ? null : { id: e.id, text: e.reason ?? '' })} className="min-h-11 min-w-11 shrink-0 rounded-lg px-2 text-base text-gray-800" aria-label="Grund / Markierung bearbeiten">
                   ✎
                 </button>
-                <button type="button" onClick={() => void setEntryDone(db, e, !e.done_at)} className="min-h-10 shrink-0 rounded-lg border border-gray-300 px-2 text-sm" aria-label={e.done_at ? 'wieder öffnen' : 'erledigt'}>
+                <button type="button" onClick={() => void hideWhile(e.id, () => setEntryDone(db, e, !e.done_at))} className="min-h-11 min-w-11 shrink-0 rounded-lg border border-gray-300 px-2 text-base" aria-label={e.done_at ? 'wieder öffnen' : 'erledigt'}>
                   {e.done_at ? '↺' : '✓'}
                 </button>
-                <button type="button" onClick={() => void removeEntry(db, e.id)} className="min-h-10 shrink-0 rounded-lg px-2 text-sm text-red-700" aria-label="von der Liste entfernen">
+                <button type="button" onClick={() => void hideWhile(e.id, () => removeEntry(db, e.id))} className="min-h-11 min-w-11 shrink-0 rounded-lg px-2 text-base text-red-700" aria-label="von der Liste entfernen">
                   ✕
                 </button>
               </li>

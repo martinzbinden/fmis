@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { describeStep, getUndoSteps, recordUndo, resetUndo, undoStep, type UndoChange } from './undo'
+import { describeStep, getUndoSteps, onUndo, recordUndo, resetUndo, undoAction, undoStep, type UndoChange } from './undo'
 
 const ins = (id: string, table = 'watchlist_entries'): UndoChange => ({ table, id, kind: 'insert', before: null })
 const upd = (id: string, before: Record<string, unknown>): UndoChange => ({ table: 'animals', id, kind: 'update', before })
@@ -33,7 +33,31 @@ describe('undo', () => {
   })
 
   it('beschreibt jede Zeile einmal', () => {
-    expect(describeStep({ changes: [ins('a'), ins('b'), upd('c', {})] })).toBe('Merkliste + Tier: 2 neu, 1 geändert')
+    expect(describeStep({ changes: [ins('a'), ins('b'), upd('c', {})] })).toBe('Merklisten-Eintrag + Tier: 2 neu, 1 geändert')
     expect(describeStep({ changes: [upd('c', {}), { ...upd('c', {}), kind: 'delete' }] })).toBe('Tier: 1 gelöscht')
+  })
+  it('undoAction: alles darin ist ein Schritt mit Text, auch über Module und Zeit', async () => {
+    const got: string[] = []
+    const r = (name: string) => async (cs: UndoChange[]) => void got.push(`${name}:${cs.map((c) => c.id).join(',')}`)
+    await undoAction('Gruppe «Jährlinge»', async () => {
+      recordUndo('tiere', r('tiere'), [ins('g', 'herd_groups')], 1000)
+      recordUndo('dairy_schafe', r('dairy'), [upd('t', {})], 9000)
+      recordUndo('tiere', r('tiere'), [ins('m', 'herd_members')], 20000)
+    })
+    recordUndo('tiere', r('tiere'), [ins('x', 'herd_members')], 20100)
+    const steps = getUndoSteps()
+    expect(steps).toHaveLength(2)
+    expect(describeStep(steps[0])).toBe('Gruppe «Jährlinge»')
+    let seen = 0
+    const off = onUndo(() => seen++)
+    await undoStep(steps[0].id)
+    off()
+    // zuletzt angefangenes Modul zuerst, je Modul rückwärts
+    expect(got).toEqual(['dairy:t', 'tiere:m,g'])
+    expect(seen).toBe(1)
+  })
+
+  it('nennt bei vielen Bereichen den ersten', () => {
+    expect(describeStep({ changes: [ins('a', 'births'), ins('b', 'birth_offspring'), ins('c', 'animals')] })).toBe('Geburt u.a.: 3 neu')
   })
 })

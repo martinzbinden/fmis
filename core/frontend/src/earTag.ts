@@ -6,15 +6,28 @@
  * Beide ergeben hier "CH20041511" — gleiche Regel wie
  * core/backend/fmis_core/agrident.py:sheep_short_tag. Alle anderen IDs
  * (Rinder "CH120…", ausländische Stiere/Widder "FR0099…") bleiben unverändert,
- * nur Leerzeichen und Punkte fallen weg.
+ * nur Leerzeichen und Punkte fallen weg. Von Hand ohne «CH» getippte
+ * Nummern ("2004.1511", "120136152533") bekommen das «CH» dazu — sonst würde
+ * die eigene Mutter als neues Lamm nicht erkannt.
  */
 export function animalKey(id: string | null | undefined): string | null {
   if (!id) return null
-  const compact = id.replace(/[\s.]/g, '').toUpperCase()
+  let compact = id.replace(/[\s.]/g, '').toUpperCase()
   if (compact === '' || /^[A-Z]{2}0*$/.test(compact)) return null
+  if (/^\d{8}$/.test(compact) || /^120\d{9}$/.test(compact)) compact = `CH${compact}`
   const sheepLong = /^CH113(\d{8})\d$/.exec(compact)
   if (sheepLong) return `CH${sheepLong[1]}`
   return compact
+}
+
+/** Ist eine von Hand eingetragene Ohrmarke vollständig? Gibt den Grund
+ * zurück, wenn nicht — Ländercode und mindestens 8 Ziffern (Schafe "2004.1511",
+ * Rinder "120 1361 5253 3"); nur die letzten Ziffern oder Buchstaben reichen nicht. */
+export function earTagProblem(input: string | null | undefined): string | null {
+  const key = animalKey(input)
+  if (!key) return 'Ohrmarke fehlt.'
+  if (!/^[A-Z]{2}\d{8,14}$/.test(key)) return `Ohrmarke «${(input ?? '').trim()}» ist unvollständig – die ganze Nummer eintragen, z.B. 2004.1511.`
+  return null
 }
 
 /**

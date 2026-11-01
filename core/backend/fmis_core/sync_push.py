@@ -89,18 +89,31 @@ async def push_rows(
     filters = frist_filters or {}
     watched = set(watch) if after_write else set()
 
-    def reject(table: str, row: Mapping[str, Any], reason: str, detail: str, current: dict[str, Any] | None = None) -> None:
+    def reject(table: str, row: Mapping[str, Any], reason: str, detail: str, current: dict[str, Any] | None = None, revert: bool = False) -> None:
         entry: dict[str, Any] = {"table": table, "id": str(row.get("id")), "reason": reason, "detail": detail}
-        if current is not None:
+        if current is not None or revert:
             entry["current"] = current
+        if revert:
+            # Gerät soll die Eingabe verwerfen (current = Stand des Servers, None = gibt es dort nicht)
+            entry["revert"] = True
         rejected.append(entry)
+
+    # Verlauf (data_history) nur von Benutzern mit irgendeinem Schreibrecht in
+    # diesem Modul — und nur zu Zeilen, die in diesem Push nicht abgelehnt wurden.
+    may_write_any = any(
+        (area := lookup(t)) is not None and f"{area}:write" in user.permissions
+        for t in sync_tables
+        if t != "data_history"
+    )
+    # Verlauf zuletzt, damit die Ablehnungen der Datenzeilen schon feststehen
+    ordered = sorted(tables.items(), key=lambda kv: kv[0] == "data_history")
 
     async with pool.connection() as conn:
         # Äussere Transaktion eröffnen: `conn.transaction()` legt dann je
         # Zeile nur einen Savepoint an statt je Zeile zu committen (ein
         # Import schickt tausende Zeilen).
         await conn.execute("select 1")
-        for table, rows in tables.items():
+        for table, rows in ordered:
             if not rows:
                 continue
             columns = list(sync_tables.get(table) or [])
@@ -108,19 +121,34 @@ async def push_rows(
                 for row in rows:
                     reject(table, row, "unknown_table", f"Unbekannte Tabelle {table}")
                 continue
-            # data_history entsteht immer als Nebeneffekt einer im selben
-            # Request geprüften Schreibung (frontend db/write.ts:
-            # recordHistory()) — kein eigenes Schreibrecht nötig, sonst
-            # würde jede Rolle mit irgendeinem Schreibrecht zusätzlich
-            # history:write brauchen.
-            if table != "data_history":
+            geometry_cols = geometry_columns.get(table, set())
+            # data_history entsteht immer als Nebeneffekt einer Schreibung
+            # (frontend db/write.ts: recordHistory()) — kein eigenes
+            # Schreibrecht nötig, sonst würde jede Rolle mit irgendeinem
+            # Schreibrecht zusätzlich history:write brauchen. Aber: nur mit
+            # einem Schreibrecht im Modul, nie zu einer abgelehnten Zeile, und
+            # bestehende Einträge bleiben unverändert (revisionssicher).
+            if table == "data_history":
+                if not may_write_any:
+                    for row in rows:
+                        reject(table, row, "forbidden", "Keine Schreibrechte in diesem Modul", revert=True)
+                    continue
+                refused = {(r["table"], r["id"]) for r in rejected if r.get("revert")}
+                kept = []
+                for row in rows:
+                    if (str(row.get("table_name")), str(row.get("row_id"))) in refused:
+                        reject(table, row, "forbidden", "Gehört zu einer abgelehnten Änderung", revert=True)
+                    else:
+                        kept.append(row)
+                rows = kept
+            else:
                 area = lookup(table)
                 if area is None or f"{area}:write" not in user.permissions:
                     for row in rows:
-                        reject(table, row, "forbidden", f"Keine Schreibrechte für {table}")
+                        current = await _row_for_client(conn, table, columns, geometry_cols, row.get("id")) if row.get("id") else None
+                        reject(table, row, "forbidden", f"Keine Schreibrechte für {table}", current, revert=True)
                     continue
 
-            geometry_cols = geometry_columns.get(table, set())
             set_clause = ", ".join(f'"{c}" = excluded."{c}"' for c in columns if c != "id")
             col_list = ", ".join(f'"{c}"' for c in columns)
             # Geometrie-Spalten sind serverseitig echtes PostGIS `geometry`;
@@ -133,8 +161,11 @@ async def push_rows(
             )
             sql = (
                 f'insert into "{table}" ({col_list}) values ({placeholders}) '
-                f'on conflict (id) do update set {set_clause} '
-                f'where "{table}".updated_at < excluded.updated_at'
+                + (
+                    "on conflict (id) do nothing"
+                    if table == "data_history"
+                    else f'on conflict (id) do update set {set_clause} where "{table}".updated_at < excluded.updated_at'
+                )
             )
             count = 0
             for row in rows:
@@ -158,7 +189,12 @@ async def push_rows(
                             await after_write(conn, table, params, old, user)
                     count += 1
                 except _Veto as veto:
-                    reject(table, row, veto.reason, veto.detail, veto.current)
+                    if veto.reason == "forbidden":
+                        # Prüfung des Moduls verweigert: Gerät nimmt die Eingabe zurück
+                        current = await _row_for_client(conn, table, columns, geometry_cols, row.get("id"))
+                        reject(table, row, veto.reason, veto.detail, current, revert=True)
+                    else:
+                        reject(table, row, veto.reason, veto.detail, veto.current)
                 except psycopg.Error as exc:
                     reject(table, row, "invalid", _reason(exc))
             accepted[table] = count
@@ -188,15 +224,20 @@ async def _check_frist(conn: Any, table: str, columns: list[str], geometry_cols:
     ).fetchone()
     if not found or not found[0]:
         return
-    col_list = ", ".join(
-        f'ST_AsGeoJSON("{c}") as "{c}"' if c in geometry_cols else f'"{c}"' for c in columns
-    )
-    current = await (await conn.execute(f'select {col_list} from "{table}" where id = %s', (row.get("id"),))).fetchone()
     raise _Veto(
         "frist",
         f"Nach {KORREKTUR_FRIST_MIN} Minuten kann nur noch das Büro ändern oder stornieren",
-        {c: (v.isoformat() if hasattr(v, "isoformat") else v) for c, v in zip(columns, current)} if current else None,
+        await _row_for_client(conn, table, columns, geometry_cols, row.get("id")),
     )
+
+
+async def _row_for_client(conn: Any, table: str, columns: list[str], geometry_cols: set[str], row_id: Any) -> dict[str, Any] | None:
+    """Stand des Servers in der Form, die das Gerät schreibt (Geometrie als GeoJSON)."""
+    col_list = ", ".join(
+        f'ST_AsGeoJSON("{c}") as "{c}"' if c in geometry_cols else f'"{c}"' for c in columns
+    )
+    current = await (await conn.execute(f'select {col_list} from "{table}" where id = %s', (row_id,))).fetchone()
+    return {c: (v.isoformat() if hasattr(v, "isoformat") else v) for c, v in zip(columns, current)} if current else None
 
 
 async def _row(conn: Any, table: str, row_id: Any) -> dict[str, Any] | None:

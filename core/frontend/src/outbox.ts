@@ -24,6 +24,8 @@ export interface RejectedRow {
   detail: string
   /** Stand des Servers bei reason 'frist': die lokale Änderung wird damit überschrieben */
   current?: Record<string, unknown> | null
+  /** Gerät soll die Eingabe verwerfen (fehlendes Recht); current null = gibt es auf dem Server nicht */
+  revert?: boolean
 }
 
 export async function readOutbox(pg: PGlite): Promise<OutboxEntry[]> {
@@ -50,11 +52,15 @@ export async function clearSent(pg: PGlite, sent: OutboxEntry[], rejected: Rejec
   return res.affectedRows ?? 0
 }
 
-/** Abgelehnte Änderungen nach Ablauf der Korrekturfrist zurücknehmen: der Stand
- * des Servers überschreibt die Zeile auf dem Gerät (unabhängig vom Zeitstempel,
- * die lokale Fassung ist ja neuer) und der Outbox-Eintrag entfällt. Sonst
- * würde das Gerät dieselbe Änderung jede Minute erneut senden und die Zeile
- * bliebe lokal anders als auf dem Server. Gibt die zurückgenommenen Zeilen zurück. */
+/** Abgelehnte Änderungen zurücknehmen — nach Ablauf der Korrekturfrist
+ * («frist») oder bei fehlendem Recht («revert»): der Stand des Servers
+ * überschreibt die Zeile auf dem Gerät (unabhängig vom Zeitstempel, die lokale
+ * Fassung ist ja neuer); gibt es sie auf dem Server nicht, verschwindet sie
+ * auch lokal. Der Outbox-Eintrag und der Verlauf dazu entfallen. Sonst würde
+ * das Gerät dieselbe Änderung jede Minute erneut senden und die Zeile bliebe
+ * lokal anders als auf dem Server. Abgelehnt wegen ungültiger Daten bleibt
+ * dagegen stehen (könnte ein vorübergehender Serverfehler sein — nie Eingaben
+ * wegwerfen, die vielleicht nur später ankommen). Gibt die zurückgenommenen Zeilen zurück. */
 export async function revertRejected(
   pg: PGlite,
   rejected: RejectedRow[],
@@ -63,19 +69,37 @@ export async function revertRejected(
   const reverted: RejectedRow[] = []
   for (const r of rejected) {
     const columns = syncTables[r.table]
-    if (r.reason !== 'frist' || !r.current || !columns) continue
-    const colList = columns.map((c) => `"${c}"`).join(', ')
-    const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
-    const setClause = columns
-      .filter((c) => c !== 'id')
-      .map((c) => `"${c}" = excluded."${c}"`)
-      .join(', ')
-    await pg.query(
-      `insert into "${r.table}" (${colList}) values (${placeholders})
-       on conflict (id) do update set ${setClause}`,
-      columns.map((c) => r.current![c] ?? null),
-    )
+    if (!columns) continue
+    const byFrist = r.reason === 'frist' && !!r.current
+    if (!byFrist && !r.revert) continue
+    if (r.current) {
+      const colList = columns.map((c) => `"${c}"`).join(', ')
+      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
+      const setClause = columns
+        .filter((c) => c !== 'id')
+        .map((c) => `"${c}" = excluded."${c}"`)
+        .join(', ')
+      await pg.query(
+        `insert into "${r.table}" (${colList}) values (${placeholders})
+         on conflict (id) do update set ${setClause}`,
+        columns.map((c) => r.current![c] ?? null),
+      )
+    } else {
+      await pg.query(`delete from "${r.table}" where id = $1`, [r.id])
+    }
     await pg.query('delete from sync_outbox where table_name = $1 and row_id = $2', [r.table, r.id])
+    if (r.revert && r.table !== 'data_history' && syncTables.data_history) {
+      // noch nicht gesendeter Verlauf zu dieser Eingabe: beschreibt nie Geschehenes
+      await pg.query(
+        `delete from data_history h using sync_outbox o
+         where o.table_name = 'data_history' and o.row_id = h.id and h.table_name = $1 and h.row_id = $2`,
+        [r.table, r.id],
+      )
+      await pg.query(
+        `delete from sync_outbox o where o.table_name = 'data_history'
+         and not exists (select 1 from data_history h where h.id = o.row_id)`,
+      )
+    }
     reverted.push(r)
   }
   return reverted
@@ -87,5 +111,6 @@ export function describeRejected(rejected: RejectedRow[]): string {
   const n = rejected.length
   const what = first.reason === 'forbidden' ? 'fehlendes Schreibrecht' : first.detail
   if (first.reason === 'frist') return `${first.detail} — die Änderung wurde zurückgenommen (${first.table}).`
+  if (first.revert) return `Dafür fehlt dir das Recht — ${n === 1 ? 'die Eingabe wurde' : `${n} Eingaben wurden`} verworfen (${first.table}).`
   return `${n} ${n === 1 ? 'Eintrag wurde' : 'Einträge wurden'} vom Server abgelehnt — alle anderen Änderungen sind gesichert. ${first.table}: ${what}`
 }

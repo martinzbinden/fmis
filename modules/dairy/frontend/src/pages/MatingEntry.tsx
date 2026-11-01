@@ -15,6 +15,7 @@ import { InbreedingBadge } from './AnimalDetail'
 import { isoDate, localTodayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import type { Animal } from '../types'
+import { useOnUndo } from '@fmis/core/undo'
 
 async function loadData(pg: PGlite) {
   const [animals, sires, lastBirths, matings, inbreeding, events] = await Promise.all([
@@ -52,6 +53,8 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<number | null>(null)
+  // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
+  useOnUndo(() => setSaved(null))
 
   const females = data?.females ?? []
   const byId = useMemo(() => new Map(females.map((a) => [a.id, a])), [females])
@@ -61,6 +64,7 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
     const sireKey = sire.key ?? animalKey(sire.ear_tag)
     if (!sireKey && !sire.name.trim()) return setError('Vatertier angeben.')
     if (to && to < from) return setError('"bis" liegt vor "von".')
+    if (from > localTodayIso()) return setError('Das Datum liegt in der Zukunft.')
     setSaving(true)
     setError(null)
     try {
@@ -144,7 +148,7 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
         <div className="grid grid-cols-2 gap-2">
           <label className="block text-sm text-gray-600">
             {to ? 'von' : 'Datum'}
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={input} />
+            <input type="date" value={from} max={localTodayIso()} onChange={(e) => setFrom(e.target.value)} className={input} />
           </label>
           <label className="block text-sm text-gray-600">
             bis (Zeitraum, optional)

@@ -83,6 +83,7 @@ export default function TreatmentForm({
   async function save() {
     if (animalIds.length === 0) return setError('Zuerst ein Tier wählen.')
     if (!diagnosis.trim()) return setError('Indikation / Befund angeben (Pflicht im Behandlungsjournal).')
+    if (date > localTodayIso()) return setError('Das Datum liegt in der Zukunft.')
     const missing = items.find((i) => i.hint && !i.medication.trim())
     if (missing) return setError(`${missing.hint} — Präparat angeben.`)
     const used = items.filter((i) => i.medication.trim())
@@ -158,7 +159,7 @@ export default function TreatmentForm({
       <div className="grid grid-cols-2 gap-2">
         <label className="block text-sm text-gray-600">
           Datum (1. Anwendung)
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
+          <input type="date" value={date} max={localTodayIso()} onChange={(e) => setDate(e.target.value)} className={input} />
         </label>
         <label className="block text-sm text-gray-600">
           Uhrzeit

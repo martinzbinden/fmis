@@ -21,6 +21,8 @@ import bauModule from '@fmis/bau/module'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
 import { registerAnimalProviders, registerHerdLocator } from '@fmis/core/animals'
+import { syncPendingModules } from '@fmis/core/sync'
+import { getSharedDbRaw } from '@fmis/core/db'
 
 // Statische Registry der im Frontend-Build vorhandenen Module (Pendant zu
 // MODULE_SPECS in core/backend/fmis_core/module_registry.py) — welche davon
@@ -163,6 +165,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
     <>
     <Toaster />
     <ViewAsBar />
+    <PendingSync keys={enabledModules.map((m) => m.key)} />
     {enabledModules.map((m) => (m.globalOverlay ? <m.globalOverlay key={`overlay-${m.key}`} /> : null))}
     <Routes>
       <Route path="/dashboard" element={<Dashboard modules={enabledModules} onLoggedOut={onLoggedOut} />} />
@@ -189,6 +192,18 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
     </Routes>
     </>
   )
+}
+
+/** Einmal je App-Start: Module mit noch nicht gesendeten Änderungen
+ * synchronisieren, auch wenn sie nicht geöffnet werden (core sync.ts). */
+function PendingSync({ keys }: { keys: string[] }) {
+  const joined = keys.join(',')
+  useEffect(() => {
+    // etwas später: der Start der sichtbaren Seite geht vor
+    const t = setTimeout(() => void syncPendingModules(joined.split(','), getSharedDbRaw), 3000)
+    return () => clearTimeout(t)
+  }, [joined])
+  return null
 }
 
 /** Mountet die Routen EINES Moduls unter dessen eigenem, per module.tsx

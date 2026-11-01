@@ -197,7 +197,7 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
             <tbody>
               {visible.map((r) => {
                 const v = r.value
-                const idxTone = r.index == null ? 'text-gray-400' : r.index < 95 ? 'text-rose-700' : r.index > 105 ? 'text-green-700' : 'text-gray-900'
+                const idxTone = r.index == null ? 'text-gray-500' : r.index < 95 ? 'text-rose-700' : r.index > 105 ? 'text-green-700' : 'text-gray-900'
                 return (
                   <tr key={r.key} className="border-b border-gray-100 last:border-0">
                     <td className="px-2 py-1.5">
@@ -229,7 +229,7 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
                       {v.revenue != null ? chf(v.revenue) : <span className="text-xs text-gray-500">reif ab {fmtDate(v.readyFrom)}</span>}
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-gray-600">{chf(v.revenueAsSheep)}</td>
-                    <td className="px-2 py-1.5">{r.purpose === 'zucht' ? '⭐ Zucht' : r.purpose === 'mast' ? 'Mast' : <span className="text-gray-400">offen</span>}</td>
+                    <td className="px-2 py-1.5">{r.purpose === 'zucht' ? '⭐ Zucht' : r.purpose === 'mast' ? 'Mast' : <span className="text-gray-500">offen</span>}</td>
                   </tr>
                 )
               })}

@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useHasPermission } from './AuthContext'
 import { fetchHistory, type HistoryEntry } from './historyApi'
+import { describeRejected } from './outbox'
+import { syncModuleNow } from './sync'
 import { notifyError, notifySuccess } from './toast'
 
-/** Admins: Zeilen-Stand vor einer Änderung wiederherstellen; null = Zeile löschen. */
-export type RestoreRowState = (table: string, rowId: string, state: Record<string, unknown> | null) => Promise<void>
+/** Admins: Zeilen-Stand vor einer Änderung wiederherstellen; null = Zeile löschen.
+ * false = auf diesem Gerät änderte sich nichts. */
+export type RestoreRowState = (table: string, rowId: string, state: Record<string, unknown> | null) => Promise<boolean>
 
 function parse(snapshot: string): Record<string, unknown> | null {
   try {
@@ -53,8 +56,15 @@ export default function HistoryUndoButton({ moduleKey, entry, restore }: { modul
     if (!plan) return
     setBusy(true)
     try {
-      await restore(entry.table_name, entry.row_id, plan.state)
-      notifySuccess(plan.state ? 'Stand vor der Änderung wiederhergestellt' : 'Neuer Eintrag gelöscht')
+      if (!(await restore(entry.table_name, entry.row_id, plan.state))) {
+        notifyError('Auf diesem Gerät gibt es diesen Eintrag nicht (mehr) — zuerst synchronisieren (Punkt oben rechts), dann nochmals versuchen.')
+        return
+      }
+      // erst nach der Antwort des Servers Erfolg melden
+      const rejected = (await syncModuleNow(moduleKey)).filter((r) => r.table === entry.table_name && r.id === entry.row_id)
+      if (rejected.length > 0) notifyError(`Vom Server abgelehnt: ${describeRejected(rejected)}`)
+      else if (!navigator.onLine) notifySuccess('Zurückgenommen — wird gesendet, sobald das Gerät wieder Netz hat')
+      else notifySuccess(plan.state ? 'Stand vor der Änderung wiederhergestellt' : 'Neuer Eintrag gelöscht')
       setPlan(null)
     } catch (e) {
       notifyError(e instanceof Error ? e.message : String(e))

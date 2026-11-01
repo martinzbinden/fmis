@@ -42,6 +42,7 @@ export default function JournalForm({
   async function save() {
     if (animalIds.length === 0) return setError('Zuerst ein Tier wählen.')
     if (!hasDiagnosis && !text.trim()) return setError('Bitte eine Bemerkung erfassen.')
+    if (date > localTodayIso()) return setError('Das Datum liegt in der Zukunft.')
     setSaving(true)
     setError(null)
     try {
@@ -107,7 +108,7 @@ export default function JournalForm({
         <>
           <label className="block text-sm text-gray-600">
             Datum
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
+            <input type="date" value={date} max={localTodayIso()} onChange={(e) => setDate(e.target.value)} className={input} />
           </label>
           {hasDiagnosis && (
             <label className="block text-sm text-gray-600">

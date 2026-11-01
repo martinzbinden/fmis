@@ -191,7 +191,7 @@ export default function Pruefbericht({ moduleKey }: { moduleKey: string }) {
       <style>{PAPER_CSS}</style>
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Prüfbericht</h1>
-        <Link to=".." relative="path" className="text-sm text-brand-700">
+        <Link to="../leistung" relative="path" className="inline-flex min-h-11 items-center text-sm text-brand-700">
           ← Leistung
         </Link>
       </div>

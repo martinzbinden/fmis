@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { upsertRow } from '../db/write'
+import { useHasPermission } from '@fmis/core/AuthContext'
 import { fmtArea, num } from '../lib/format'
 import { classifyKultur, isGeholz, KULTUR_CATEGORY_LABEL, type KulturCategory } from '../lib/kulturCategory'
 import RotationTimeline from '../components/RotationTimeline'
@@ -43,6 +44,8 @@ interface CropOption {
 }
 
 export default function Rotation() {
+  // Kultur planen schreibt — ohne Recht (Rolle Mitarbeit) nur ansehen
+  const canWrite = useHasPermission('fields:fields:write')
   const navigate = useNavigate()
   const { data: lineages } = useQuery(loadLineages)
   const { data: declarations, refresh } = useQuery(loadDeclarations)
@@ -168,13 +171,13 @@ export default function Rotation() {
               ))}
             </tbody>
           </table>
-          <PlanForm
+          {canWrite && <PlanForm
             lineage={detailsLineage}
             latestDeclaration={detailsRows[0]}
             existingYears={detailsRows.map((r) => r.jahr)}
             cropOptions={cropOptions}
             onPlanned={refresh}
-          />
+          />}
         </Modal>
       )}
     </div>

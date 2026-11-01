@@ -2,13 +2,18 @@
 // Änderungen schliessen den bisherigen Zustand ab dem Vortag ab und öffnen
 // einen neuen ab dem gewählten Tag — so bleibt der Verlauf erhalten ("wer
 // stand wann wo"). Am selben Tag ersetzt eine Änderung die vorherige.
+// Jede Aktion läuft als EINE Transaktion (writeBatch): bricht sie ab oder wird
+// die App geschlossen, steht keine Gruppe halb umgestellt da, und
+// «Rückgängig» nimmt immer die ganze Aktion zurück.
 
 import type { PGlite } from '@electric-sql/pglite'
 import type { AnimalRef } from '@fmis/core/animals'
 import { animalProvider, type HerdLocator } from '@fmis/core/animals'
 import { getSyncedDb } from '../db/access'
 import { getSyncedDb as getWiesenjournalDb } from '@fmis/wiesenjournal/db/access'
-import { softDeleteRow, upsertRow } from '../db/write'
+import type { BatchWriter } from '@fmis/core/writer'
+import { writeBatch } from '../db/write'
+import type { SYNC_TABLES } from '../db/tables'
 import { addDaysIso, isoDate } from './format'
 import { activeAt, defaultCategory, locateAnimal } from './herdModel'
 import type { HerdCount, HerdGroup, HerdLaufhof, HerdLocation, HerdMember, HerdStay, StaySlot } from '../types'
@@ -60,17 +65,20 @@ export async function loadHerdData(seasonYear?: number): Promise<HerdData> {
 
 /** Bisherige Zeile ab `date` beenden: am selben Tag begonnen → entfernen,
  * sonst Ende auf den Vortag setzen. */
+type W = BatchWriter<typeof SYNC_TABLES>
+
 async function closeFrom<T extends 'herd_stays' | 'herd_members' | 'herd_counts'>(
+  w: W,
   table: T,
   row: { id: string; from_date: string; to_date: string | null },
   date: string,
 ) {
-  if (row.from_date >= date) await softDeleteRow(table, row.id)
-  else await upsertRow(table, { ...row, to_date: addDaysIso(date, -1) } as never)
+  if (row.from_date >= date) await w.softDelete(table, row.id)
+  else await w.upsert(table, { ...row, to_date: addDaysIso(date, -1) } as never)
 }
 
 export async function saveGroup(group: HerdGroup): Promise<void> {
-  await upsertRow('herd_groups', group as never)
+  await writeBatch((w) => w.upsert('herd_groups', group as never))
 }
 
 /** Stall oder Weide einer Gruppe ab `date` wechseln (target null = keine). */
@@ -81,11 +89,22 @@ export async function changeStay(
   target: { location_id: string | null; parcel_id: string | null; day_only?: boolean } | null,
   date: string,
 ): Promise<void> {
+  await writeBatch((w) => changeStayIn(w, data, groupId, slot, target, date))
+}
+
+async function changeStayIn(
+  w: W,
+  data: HerdData,
+  groupId: string,
+  slot: StaySlot,
+  target: { location_id: string | null; parcel_id: string | null; day_only?: boolean } | null,
+  date: string,
+): Promise<void> {
   for (const s of data.stays.filter((x) => x.group_id === groupId && x.slot === slot && (x.to_date == null || x.to_date >= date))) {
-    await closeFrom('herd_stays', s, date)
+    await closeFrom(w, 'herd_stays', s, date)
   }
   if (!target) return
-  await upsertRow('herd_stays', {
+  await w.upsert('herd_stays', {
     id: crypto.randomUUID(),
     group_id: groupId,
     slot,
@@ -100,11 +119,15 @@ export async function changeStay(
 
 /** Tiere ohne Nummer einer Kategorie ab `date` auf `count` setzen. */
 export async function setCount(data: HerdData, groupId: string, category: string, count: number, date: string): Promise<void> {
+  await writeBatch((w) => setCountIn(w, data, groupId, category, count, date))
+}
+
+async function setCountIn(w: W, data: HerdData, groupId: string, category: string, count: number, date: string): Promise<void> {
   for (const c of data.counts.filter((x) => x.group_id === groupId && x.category === category && (x.to_date == null || x.to_date >= date))) {
-    await closeFrom('herd_counts', c, date)
+    await closeFrom(w, 'herd_counts', c, date)
   }
   if (count > 0) {
-    await upsertRow('herd_counts', {
+    await w.upsert('herd_counts', {
       id: crypto.randomUUID(),
       group_id: groupId,
       category,
@@ -142,12 +165,24 @@ export interface MoveInput {
  * in der Herkunft abgezogen und im Ziel dazugezählt. Optional werden
  * Einzeltiere aus einer gemolkenen Gruppe trockengestellt. */
 export async function moveAnimals(data: HerdData, input: MoveInput): Promise<void> {
+  await writeBatch((w) => moveIn(w, data, input))
+  if (input.dryOff) {
+    // Milchschafe/-kühe haben ihre eigene Ablage — eigene Transaktion danach
+    const byModule = new Map<string, string[]>()
+    for (const a of input.animals) byModule.set(a.moduleKey, [...(byModule.get(a.moduleKey) ?? []), a.id])
+    for (const [key, ids] of byModule) {
+      await animalProvider(key)?.dryOff?.(ids, input.date, `trockengestellt, gezügelt nach «${input.toGroup.name}»`)
+    }
+  }
+}
+
+async function moveIn(w: W, data: HerdData, input: MoveInput): Promise<void> {
   const { toGroup, fromGroup, date } = input
   for (const a of input.animals) {
     for (const m of data.members.filter((x) => x.animal_id === a.id && (x.to_date == null || x.to_date >= date))) {
-      await closeFrom('herd_members', m, date)
+      await closeFrom(w, 'herd_members', m, date)
     }
-    await upsertRow('herd_members', {
+    await w.upsert('herd_members', {
       id: crypto.randomUUID(),
       group_id: toGroup.id,
       module_key: a.moduleKey,
@@ -160,22 +195,17 @@ export async function moveAnimals(data: HerdData, input: MoveInput): Promise<voi
   }
   for (const [cat, n] of Object.entries(input.counts)) {
     if (!n) continue
-    if (fromGroup) await setCount(data, fromGroup.id, cat, Math.max(0, countAt(data, fromGroup.id, cat, date) - n), date)
+    if (fromGroup) await setCountIn(w, data, fromGroup.id, cat, Math.max(0, countAt(data, fromGroup.id, cat, date) - n), date)
     // setCount liest data — das Ziel hat sich durch die Herkunft nicht verändert
-    await setCount(data, toGroup.id, cat, countAt(data, toGroup.id, cat, date) + n, date)
-  }
-  if (input.dryOff) {
-    const byModule = new Map<string, string[]>()
-    for (const a of input.animals) byModule.set(a.moduleKey, [...(byModule.get(a.moduleKey) ?? []), a.id])
-    for (const [key, ids] of byModule) {
-      await animalProvider(key)?.dryOff?.(ids, date, `trockengestellt, gezügelt nach «${toGroup.name}»`)
-    }
+    await setCountIn(w, data, toGroup.id, cat, countAt(data, toGroup.id, cat, date) + n, date)
   }
 }
 
 /** Einzeltiere aus der Gruppe nehmen (Abgang, Verkauf …) ab `date`. */
 export async function removeMembers(data: HerdData, memberIds: string[], date: string): Promise<void> {
-  for (const m of data.members.filter((x) => memberIds.includes(x.id))) await closeFrom('herd_members', m, date)
+  await writeBatch(async (w) => {
+    for (const m of data.members.filter((x) => memberIds.includes(x.id))) await closeFrom(w, 'herd_members', m, date)
+  })
 }
 
 /** Gruppe ab `date` neu zusammenstellen: die genannten Tiere kommen hinein (und
@@ -190,10 +220,14 @@ export async function constituteGroup(
   const ids = new Set(input.animals.map((a) => a.id))
   const inGroup = data.members.filter((m) => m.group_id === group.id && (m.to_date == null || m.to_date >= date))
   const leaving = input.replace ? inGroup.filter((m) => !ids.has(m.animal_id)) : []
-  for (const m of leaving) await closeFrom('herd_members', m, date)
   const already = new Set(inGroup.filter((m) => m.from_date <= date).map((m) => m.animal_id))
   const incoming = input.animals.filter((a) => !already.has(a.id))
-  if (incoming.length) await moveAnimals(data, { toGroup: group, fromGroup: null, date, animals: incoming, counts: {}, dryOff: false })
+  await writeBatch(async (w) => {
+    // die Gruppe selbst mit (neu oder wieder aktiviert): alles ein Schritt
+    await w.upsert('herd_groups', { ...group, active: true } as never)
+    for (const m of leaving) await closeFrom(w, 'herd_members', m, date)
+    if (incoming.length) await moveIn(w, data, { toGroup: group, fromGroup: null, date, animals: incoming, counts: {}, dryOff: false })
+  })
   return { added: incoming.length, left: leaving.length }
 }
 
@@ -203,24 +237,28 @@ export async function constituteGroup(
 export async function dissolveGroup(data: HerdData, group: HerdGroup, date: string): Promise<number> {
   const open = <T extends { group_id: string; to_date: string | null }>(r: T) => r.group_id === group.id && (r.to_date == null || r.to_date >= date)
   const members = data.members.filter(open)
-  for (const m of members) await closeFrom('herd_members', m, date)
-  for (const c of data.counts.filter(open)) await closeFrom('herd_counts', c, date)
-  for (const st of data.stays.filter(open)) await closeFrom('herd_stays', st, date)
-  await saveGroup({ ...group, active: false })
+  await writeBatch(async (w) => {
+    for (const m of members) await closeFrom(w, 'herd_members', m, date)
+    for (const c of data.counts.filter(open)) await closeFrom(w, 'herd_counts', c, date)
+    for (const st of data.stays.filter(open)) await closeFrom(w, 'herd_stays', st, date)
+    await w.upsert('herd_groups', { ...group, active: false } as never)
+  })
   return members.length
 }
 
 /** Laufhofgang einer Gruppe an `date` setzen oder entfernen. */
 export async function setLaufhof(data: HerdData, groupId: string, date: string, on: boolean): Promise<void> {
   const existing = data.laufhof.filter((l) => l.group_id === groupId && l.entry_date === date)
-  if (on && existing.length === 0) {
-    await upsertRow('herd_laufhof', { id: crypto.randomUUID(), group_id: groupId, entry_date: date, notes: null })
-  }
-  if (!on) for (const l of existing) await softDeleteRow('herd_laufhof', l.id)
+  await writeBatch(async (w) => {
+    if (on && existing.length === 0) {
+      await w.upsert('herd_laufhof', { id: crypto.randomUUID(), group_id: groupId, entry_date: date, notes: null })
+    }
+    if (!on) for (const l of existing) await w.softDelete('herd_laufhof', l.id)
+  })
 }
 
 export async function saveLocation(loc: HerdLocation): Promise<void> {
-  await upsertRow('locations', loc as never)
+  await writeBatch((w) => w.upsert('locations', loc as never))
 }
 
 /** Standort eines Tiers für das Tierdetail anderer Module (core animals.ts). */
@@ -244,13 +282,25 @@ export async function identifyAnimals(
   date: string,
   reduceCounts: boolean,
 ): Promise<void> {
+  await writeBatch((w) => identifyIn(w, data, group, animals, categories, date, reduceCounts))
+}
+
+async function identifyIn(
+  w: W,
+  data: HerdData,
+  group: HerdGroup,
+  animals: AnimalRef[],
+  categories: Record<string, string>,
+  date: string,
+  reduceCounts: boolean,
+): Promise<void> {
   const perCategory = new Map<string, number>()
   for (const a of animals) {
     const open = data.members.filter((m) => m.animal_id === a.id && (m.to_date == null || m.to_date >= date))
     if (open.some((m) => m.group_id === group.id && m.from_date <= date)) continue
-    for (const m of open) await closeFrom('herd_members', m, date)
+    for (const m of open) await closeFrom(w, 'herd_members', m, date)
     const category = categories[a.id] ?? defaultCategory(a, group.milking, date)
-    await upsertRow('herd_members', {
+    await w.upsert('herd_members', {
       id: crypto.randomUUID(),
       group_id: group.id,
       module_key: a.moduleKey,
@@ -265,6 +315,6 @@ export async function identifyAnimals(
   if (!reduceCounts) return
   for (const [cat, n] of perCategory) {
     const before = countAt(data, group.id, cat, date)
-    if (before > 0) await setCount(data, group.id, cat, Math.max(0, before - n), date)
+    if (before > 0) await setCountIn(w, data, group.id, cat, Math.max(0, before - n), date)
   }
 }

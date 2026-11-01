@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { animalProvider, type AnimalRef } from '@fmis/core/animals'
 import { notifyError, notifySuccess } from '@fmis/core/toast'
-import { constituteGroup, loadHerdData, memberAt, saveGroup, type HerdData } from '@fmis/tiere/lib/herds'
+import { undoAction } from '@fmis/core/undo'
+import { constituteGroup, loadHerdData, memberAt, type HerdData } from '@fmis/tiere/lib/herds'
 import type { HerdGroup } from '@fmis/tiere/types'
 import { fmtDate, todayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
@@ -52,25 +53,23 @@ export default function ToHerdGroup({ moduleKey, listName, animalIds, onDone }: 
     if (target === 'new' && !newName.trim()) return
     setBusy(true)
     try {
-      let g: HerdGroup
-      if (group) {
-        g = group.active ? group : { ...group, active: true }
-        if (!group.active) await saveGroup(g)
-      } else {
-        g = {
-          id: crypto.randomUUID(),
-          name: newName.trim(),
-          species,
-          milking: false,
-          active: true,
-          sort_order: (data.groups.length + 1) * 10,
-          notes: null,
-          updated_at: '',
-          deleted_at: null,
-        }
-        await saveGroup(g)
-      }
-      const { added, left } = await constituteGroup(data, { group: g, animals, date, replace: !!group && replace })
+      // constituteGroup speichert die Gruppe mit (neu oder wieder aktiviert) — ein Schritt
+      const g: HerdGroup = group
+        ? { ...group, active: true }
+        : {
+            id: crypto.randomUUID(),
+            name: newName.trim(),
+            species,
+            milking: false,
+            active: true,
+            sort_order: (data.groups.length + 1) * 10,
+            notes: null,
+            updated_at: '',
+            deleted_at: null,
+          }
+      const { added, left } = await undoAction(`Merkliste → Gruppe «${g.name}»`, () =>
+        constituteGroup(data, { group: g, animals, date, replace: !!group && replace }),
+      )
       notifySuccess(`«${g.name}»: ${added} Tiere dazu${left ? `, ${left} jetzt ohne Gruppe` : ''}`)
       onDone()
     } catch (e) {

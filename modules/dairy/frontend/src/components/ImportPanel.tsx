@@ -191,7 +191,7 @@ export default function ImportPanel({
               type="button"
               disabled={busy}
               onClick={() => void decide(plan, true)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${plan.older_than_stored ? 'border border-amber-400 bg-white' : 'bg-amber-600 text-white'}`}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${plan.older_than_stored ? 'border border-amber-400 bg-white' : 'bg-amber-700 text-white'}`}
             >
               Mit Ausweis überschreiben
             </button>
@@ -199,7 +199,7 @@ export default function ImportPanel({
               type="button"
               disabled={busy}
               onClick={() => void decide(plan, false)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${plan.older_than_stored ? 'bg-amber-600 text-white' : 'border border-amber-400 bg-white'}`}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${plan.older_than_stored ? 'bg-amber-700 text-white' : 'border border-amber-400 bg-white'}`}
             >
               Nur Neues ergänzen
             </button>

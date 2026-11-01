@@ -5,6 +5,7 @@ import AnimalPicker from '../components/AnimalPicker'
 import JournalForm from '../components/JournalForm'
 import { speciesTerms } from '../lib/species'
 import type { Animal } from '../types'
+import { useOnUndo } from '@fmis/core/undo'
 
 /** Beobachtung/Krankheit/Behandlung für ein oder mehrere Tiere erfassen. */
 export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
@@ -16,6 +17,8 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
   )
   const [ids, setIds] = useState<string[]>([])
   const [saved, setSaved] = useState<string[] | null>(null)
+  // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
+  useOnUndo(() => setSaved(null))
 
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4 pb-24">

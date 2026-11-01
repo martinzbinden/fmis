@@ -3,7 +3,8 @@ import { SYNC_TABLES, type SyncTable } from './tables'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 import { schemaOf } from '@fmis/core/db'
 import { recordUndo, type UndoChange, type UndoRestore } from '@fmis/core/undo'
-import { inTransaction, onTransactionCommit, undoBufferOf } from './transaction'
+import { scheduleSync } from '@fmis/core/sync'
+import { inTransaction, onTransactionCommit, rootOf, undoBufferOf } from './transaction'
 
 // Simpler Pub/Sub, damit Seiten nach lokalen Schreibungen oder einem Pull neu
 // laden können, ohne auf pglite Live-Queries angewiesen zu sein.
@@ -61,14 +62,26 @@ async function pruneSyncedHistory(pg: PGlite): Promise<void> {
 // instanziert werden (siehe module_registry.py, ModuleSpec.source), jede
 // Instanz hat ihre eigene PGlite-Instanz und damit ihre eigene Outbox.
 const outboxReadyByDb = new WeakMap<PGlite, Promise<void>>()
-async function ready(pg: PGlite): Promise<PGlite> {
+const outboxDone = new WeakSet<PGlite>()
+async function ready(client: PGlite): Promise<PGlite> {
+  // je Datenbank, nicht je Transaktions-Client (der ist bei jeder inTransaction neu)
+  const pg = rootOf(client)
+  if (client !== pg) {
+    // In einer laufenden Transaktion NIE auf die Datenbank selbst warten — pglite
+    // reiht deren Abfragen hinter die Transaktion (Verklemmung). Die Outbox
+    // gibt es praktisch immer schon; sonst hier in der Transaktion anlegen.
+    if (!outboxDone.has(pg)) await ensureOutbox(client)
+    return client
+  }
   let outboxReady = outboxReadyByDb.get(pg)
   if (!outboxReady) {
-    outboxReady = ensureOutbox(pg).then(() => pruneSyncedHistory(pg))
+    outboxReady = ensureOutbox(pg)
+      .then(() => pruneSyncedHistory(pg))
+      .then(() => void outboxDone.add(pg))
     outboxReadyByDb.set(pg, outboxReady)
   }
   await outboxReady
-  return pg
+  return client
 }
 
 type HistoryAction = 'insert' | 'update' | 'delete'
@@ -135,12 +148,14 @@ export async function upsertRows<T extends SyncTable>(pg: PGlite, table: T, rows
 
 async function writeRow<T extends SyncTable>(pg: PGlite, table: T, row: RowOf<T>, forcedAction?: HistoryAction): Promise<void> {
   const columns = SYNC_TABLES[table] as readonly string[]
-  const stamped: Record<string, unknown> = { ...row, updated_at: new Date().toISOString() }
 
-  // Stand davor: für den Verlauf (insert/update) und für «Rückgängig»
+  // Stand davor: für den Verlauf (insert/update), «Rückgängig» und fehlende
+  // Spalten — eine Teilzeile { id, notes } löscht nicht alle anderen Felder;
+  // wer eine Spalte leeren will, übergibt ausdrücklich null.
   const { rows: existing } = await pg.query<Record<string, unknown>>(`select * from "${table}" where id = $1`, [row.id])
   const before = existing[0] ?? null
   const action = forcedAction ?? (before ? 'update' : 'insert')
+  const stamped: Record<string, unknown> = { ...(before ?? {}), ...row, updated_at: new Date().toISOString() }
 
   const colList = columns.map((c) => `"${c}"`).join(', ')
   const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
@@ -165,7 +180,9 @@ async function writeRow<T extends SyncTable>(pg: PGlite, table: T, row: RowOf<T>
   // Guard gegen versehentliche Rekursion, falls table_name mal 'data_history'
   // wäre (kommt im normalen Betrieb nie vor, recordHistory() umgeht upsertRow).
   if (table !== 'data_history') {
-    await recordHistory(pg, table, row.id, action, stamped)
+    const snapshot: Record<string, unknown> = {}
+    for (const c of columns) snapshot[c] = stamped[c] ?? null
+    await recordHistory(pg, table, row.id, action, snapshot)
     undoBufferOf(pg)?.push({ table, id: row.id, kind: action, before })
   }
 }
@@ -187,10 +204,15 @@ function restoreFor(root: PGlite): UndoRestore {
       }
     })
     notifyDataChanged()
+    scheduleSync(schemaOf(root), 0)
   }
 }
 
-onTransactionCommit((root, changes) => recordUndo(schemaOf(root) ?? 'dairy', restoreFor(root), changes))
+onTransactionCommit((root, changes) => {
+  recordUndo(schemaOf(root) ?? 'dairy', restoreFor(root), changes)
+  // bald senden, auch wenn das Modul in dieser Sitzung nicht angezeigt wird
+  scheduleSync(schemaOf(root))
+})
 
 /** Soft-Delete: setzt deleted_at und stösst die Zeile erneut in die Outbox. */
 export async function softDeleteRow(pg: PGlite, table: SyncTable, id: string): Promise<void> {
@@ -217,15 +239,19 @@ export async function softDeleteRows(pg: PGlite, table: SyncTable, ids: string[]
 /** Admins im Protokoll (core/HistoryUndoButton): eine Zeile auf einen früheren
  * Stand setzen; state = null löscht sie. Über den normalen Schreibweg, also mit
  * Verlauf und Sync — und in dieser Sitzung wieder rückgängig zu machen. */
-export async function restoreRowState(pg: PGlite, table: string, id: string, state: Record<string, unknown> | null): Promise<void> {
+export async function restoreRowState(pg: PGlite, table: string, id: string, state: Record<string, unknown> | null): Promise<boolean> {
   if (!(table in SYNC_TABLES) || table === 'data_history') throw new Error(`Bereich ${table} lässt sich nicht zurücknehmen.`)
   const t = table as SyncTable
   await ready(pg)
-  await inTransaction(pg, async (tx) => {
+  // false: auf diesem Gerät änderte sich nichts (Zeile fehlt oder ist schon gelöscht)
+  const changed = await inTransaction(pg, async (tx) => {
     const { rows } = await tx.query<Record<string, unknown>>(`select * from "${t}" where id = $1`, [id])
     const current = rows[0] ?? null
-    if (state) await writeRow(tx, t, { ...(current ?? {}), ...state, id } as never)
+    if (state) await writeRow(tx, t, { ...state, id } as never)
     else if (current && !current.deleted_at) await writeRow(tx, t, { ...current, id, deleted_at: new Date().toISOString() } as never, 'delete')
+    else return false
+    return true
   })
   notifyDataChanged()
+  return changed
 }

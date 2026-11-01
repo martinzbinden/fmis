@@ -4,7 +4,7 @@ import { useQuery } from '../hooks/useQuery'
 import { useEarTagFilter } from '../hooks/useEarTagFilter'
 import EarTagFilterInput from '../components/EarTagFilterInput'
 import { useDb } from '@fmis/core/DbContext'
-import { upsertRow } from '../db/write'
+import { upsertRows } from '../db/write'
 import { todayIso, num } from '../lib/format'
 import {
   parseGenericCsv,
@@ -273,23 +273,18 @@ export default function WeighIn() {
     setSaving(true)
     setSavedMsg(null)
     try {
-      let count = 0
+      const rows = []
       for (const a of animals) {
         const raw = weights[a.animal_id]
         if (!raw || raw.trim() === '') continue
         const weightKg = Number(raw)
         if (Number.isNaN(weightKg) || weightKg <= 0) continue
-        await upsertRow('weighings', {
-          id: crypto.randomUUID(),
-          animal_id: a.animal_id,
-          date,
-          weight_kg: weightKg,
-          notes: null,
-        })
-        count++
+        rows.push({ id: crypto.randomUUID(), animal_id: a.animal_id, date, weight_kg: weightKg, notes: null })
       }
+      // alle Wägungen in EINER Transaktion (ganz oder gar nicht, ein Rückgängig-Schritt)
+      await upsertRows('weighings', rows)
       setWeights({})
-      setSavedMsg(`${count} Wägungen gespeichert.`)
+      setSavedMsg(rows.length === 1 ? '1 Wägung gespeichert.' : `${rows.length} Wägungen gespeichert.`)
     } finally {
       setSaving(false)
     }

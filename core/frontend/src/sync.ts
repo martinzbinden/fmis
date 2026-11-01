@@ -1,6 +1,7 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getToken, logout } from './auth'
 import { clearSent, describeRejected, readOutbox, revertRejected, type RejectedRow } from './outbox'
+import { notifyError } from './toast'
 
 export type SyncStatus = 'offline' | 'synced' | 'syncing' | 'error'
 
@@ -8,7 +9,8 @@ export interface SyncClient {
   /** Gibt die vom Server abgelehnten Zeilen zurück (bleiben in der Outbox). */
   push(): Promise<RejectedRow[]>
   pull(): Promise<void>
-  syncNow(): Promise<void>
+  /** Läuft schon einer, folgt danach genau einer mehr. Gibt die abgelehnten Zeilen zurück. */
+  syncNow(): Promise<RejectedRow[]>
   startSyncLoop(): void
   subscribeSyncStatus(listener: () => void): () => void
   getSyncStatus(): SyncStatus
@@ -196,8 +198,13 @@ export function createSyncClient(
     // Nur genau die gesendeten Stände quittieren (siehe outbox.ts)
     // (Zeilen unbekannter Tabellen wurden nicht gesendet und bleiben stehen.)
     await clearSent(pg, outbox.filter((e) => syncTables[e.table]), rejected)
-    // Nach Ablauf der Korrekturfrist abgelehnt: Änderung auf dem Gerät zurücknehmen
-    if (await revertRejected(pg, rejected, syncTables).then((r) => r.length > 0)) notifyDataChanged()
+    // Nach Ablauf der Korrekturfrist oder ohne Recht abgelehnt: Änderung auf dem Gerät zurücknehmen
+    const reverted = await revertRejected(pg, rejected, syncTables)
+    if (reverted.length > 0) {
+      notifyDataChanged()
+      const shown = reverted.filter((r) => r.table !== 'data_history')
+      if (shown.length > 0) notifyError(describeRejected(shown))
+    }
     return rejected
   }
 
@@ -254,28 +261,43 @@ export function createSyncClient(
     notifyDataChanged()
   }
 
-  let syncing = false
+  let running: Promise<RejectedRow[]> | null = null
+  let again: Promise<RejectedRow[]> | null = null
 
   /** Führt push() gefolgt von pull() aus und aktualisiert den Sync-Status für die UI. */
-  async function syncNow(): Promise<void> {
-    if (!getToken()) return
+  function syncNow(): Promise<RejectedRow[]> {
+    if (running) {
+      // läuft schon: danach genau einmal nochmals (für Änderungen seit dessen Start)
+      again ??= running.then(() => {
+        again = null
+        return syncNow()
+      })
+      return again
+    }
+    running = runSync().finally(() => {
+      running = null
+    })
+    return running
+  }
+
+  async function runSync(): Promise<RejectedRow[]> {
+    if (!getToken()) return []
     if (!navigator.onLine) {
       setStatus('offline')
-      return
+      return []
     }
-    if (syncing) return
-    syncing = true
     setStatus('syncing')
     try {
       const rejected = await push()
       await pull()
       if (rejected.length > 0) setStatus('error', describeRejected(rejected))
       else setStatus('synced')
+      return rejected
     } catch (err) {
       console.error(`Sync fehlgeschlagen (${moduleKey})`, err)
       setStatus('error', err instanceof Error ? err.message : String(err))
+      return []
     } finally {
-      syncing = false
       void refreshPending()
     }
   }
@@ -297,7 +319,7 @@ export function createSyncClient(
     setInterval(() => void syncNow(), 60_000)
   }
 
-  return {
+  const client: SyncClient = {
     push,
     pull,
     syncNow,
@@ -307,5 +329,58 @@ export function createSyncClient(
     getSyncError: () => lastError,
     getPendingCount: () => pending,
     refreshPending,
+  }
+  registry.set(moduleKey, client)
+  return client
+}
+
+/** Alle Sync-Clients nach Modul-Instanz (= Schema, siehe core db.ts schemaOf). */
+const registry = new Map<string, SyncClient>()
+const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** Nach dem Speichern: kurz danach senden, statt bis zu 60 s auf den Takt zu
+ * warten — auch wenn das Modul in dieser Sitzung nie angezeigt wurde (z.B.
+ * Gruppen aus einer Merkliste). Mehrere Schreibungen kurz hintereinander
+ * ergeben einen Sync. */
+export function scheduleSync(moduleKey: string | undefined, delayMs = 2000): void {
+  if (!moduleKey || !registry.has(moduleKey)) return
+  const t = timers.get(moduleKey)
+  if (t) clearTimeout(t)
+  timers.set(
+    moduleKey,
+    setTimeout(() => {
+      timers.delete(moduleKey)
+      void registry.get(moduleKey)?.syncNow()
+    }, delayMs),
+  )
+}
+
+/** Sofort synchronisieren und die Ablehnungen abwarten (z.B. nach Rückgängig). */
+export async function syncModuleNow(moduleKey: string): Promise<RejectedRow[]> {
+  const t = timers.get(moduleKey)
+  if (t) {
+    clearTimeout(t)
+    timers.delete(moduleKey)
+  }
+  return (await registry.get(moduleKey)?.syncNow()) ?? []
+}
+
+/** Beim App-Start: Module mit noch nicht gesendeten Änderungen (z.B. vor dem
+ * Neuladen offline gespeichert) synchronisieren, auch wenn sie in dieser
+ * Sitzung nicht geöffnet werden. Liest die Outbox direkt aus der gemeinsamen
+ * Datenbank; ein Modul ohne Schema auf diesem Gerät hat nichts offen. */
+export async function syncPendingModules(keys: string[], getSharedDb: () => Promise<PGlite>): Promise<void> {
+  const pg = await getSharedDb()
+  for (const key of keys) {
+    const client = registry.get(key)
+    if (!client) continue
+    try {
+      const { rows } = await pg.query<{ n: number }>(
+        `select count(*)::int as n from "${key}".sync_outbox where table_name <> 'data_history'`,
+      )
+      if ((rows[0]?.n ?? 0) > 0) client.startSyncLoop()
+    } catch {
+      // Schema oder Outbox gibt es auf diesem Gerät (noch) nicht
+    }
   }
 }

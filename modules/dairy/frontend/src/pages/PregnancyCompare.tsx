@@ -27,7 +27,7 @@ async function loadData(pg: PGlite) {
 const ICON: Record<PregnancyResult, { icon: string; cls: string }> = {
   ja: { icon: '✓', cls: 'text-green-600' },
   nein: { icon: '✗', cls: 'text-red-600' },
-  unsicher: { icon: '?', cls: 'text-amber-500' },
+  unsicher: { icon: '?', cls: 'text-amber-700' },
 }
 const METHOD_ICON: Record<PregnancyMethod, string> = { auge: '👁', farbtupfer: '🎨', ultraschall: '🔊' }
 
@@ -224,7 +224,7 @@ export default function PregnancyCompare() {
                               {c.weeks != null && <span className="block text-xs tabular-nums text-gray-700">{fmtDuration(c.weeks, c.duration_unit)}</span>}
                             </>
                           ) : (
-                            <span className="text-gray-400">–</span>
+                            <span className="text-gray-500">–</span>
                           )}
                         </td>
                       ))}
@@ -242,7 +242,7 @@ export default function PregnancyCompare() {
             </table>
           </div>
           <p className="px-1 text-xs text-gray-600">
-            <span className="font-bold text-green-600">✓</span> trächtig · <span className="font-bold text-red-600">✗</span> leer · <span className="font-bold text-amber-500">?</span> unsicher · – nicht untersucht. Gelb: Ergebnisse weichen ab.
+            <span className="font-bold text-green-600">✓</span> trächtig · <span className="font-bold text-red-600">✗</span> leer · <span className="font-bold text-amber-700">?</span> unsicher · – nicht untersucht. Gelb: Ergebnisse weichen ab.
           </p>
         </>
       )}

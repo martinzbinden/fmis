@@ -45,6 +45,7 @@ export function notify(kind: ToastKind, text: string, ttlMs?: number): void {
 
 export const notifyError = (text: string) => notify('error', text)
 export const notifySuccess = (text: string) => notify('success', text)
+export const notifyInfo = (text: string) => notify('info', text)
 
 /** Fehler (Exception/unbekannt) → lesbarer Text. */
 export function errorText(err: unknown): string {

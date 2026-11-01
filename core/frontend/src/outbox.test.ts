@@ -120,6 +120,35 @@ describe('revertRejected (Korrekturfrist)', () => {
     expect(await ids()).toEqual([B])
   })
 
+  it('fehlendes Recht: neue Zeile verschwindet samt Verlauf, bestehende bekommt den Serverstand', async () => {
+    await pg.exec(`create table if not exists data_history (id uuid primary key, table_name text, row_id uuid)`)
+    const H = '44444444-4444-4444-8444-444444444444'
+    await pg.query("insert into weighings values ($1, 70, now(), null)", [C])
+    await put('weighings', C, '2026-10-23T10:20:00Z')
+    await pg.query("insert into data_history values ($1, 'weighings', $2)", [H, C])
+    await put('data_history', H, '2026-10-23T10:20:00Z')
+    await pg.query("update weighings set weight_kg = 99 where id = $1", [A])
+    await put('weighings', A, '2026-10-23T10:30:00Z')
+    const t = { ...tables, data_history: ['id', 'table_name', 'row_id'] }
+    const done = await revertRejected(
+      pg,
+      [
+        { table: 'weighings', id: C, reason: 'forbidden', detail: 'x', current: null, revert: true },
+        { table: 'weighings', id: A, reason: 'forbidden', detail: 'x', current: { id: A, weight_kg: 58, updated_at: '2026-10-23T10:00:00Z', deleted_at: null }, revert: true },
+      ],
+      t,
+    )
+    expect(done).toHaveLength(2)
+    expect((await pg.query('select 1 from weighings where id = $1', [C])).rows).toHaveLength(0)
+    expect((await pg.query('select 1 from data_history where id = $1', [H])).rows).toHaveLength(0)
+    expect((await pg.query<{ w: string }>('select weight_kg::text as w from weighings where id = $1', [A])).rows[0].w).toBe('58')
+    expect(await ids()).toEqual([])
+  })
+
+  it('verständliche Meldung bei verworfener Eingabe', () => {
+    expect(describeRejected([{ table: 'field_declarations', id: A, reason: 'forbidden', detail: 'x', revert: true }])).toContain('Dafür fehlt dir das Recht')
+  })
+
   it('meldet die Frist verständlich', () => {
     expect(describeRejected([{ table: 'weighings', id: A, reason: 'frist', detail: 'Nach 10 Minuten nur das Büro' }])).toContain('zurückgenommen')
   })

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
+import { useHasPermission } from '@fmis/core/AuthContext'
 import {
   copyToPlan,
   createPlanParcel,
@@ -60,6 +61,8 @@ export default function Fields() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [copying, setCopying] = useState(false)
   const [layerMode, setLayerMode] = useState<'import' | 'planung'>('import')
+  // Planung und «In Planungs-Layer kopieren» schreiben — ohne Recht nur ansehen
+  const canWrite = useHasPermission('fields:fields:write')
   const [detailsPlanId, setDetailsPlanId] = useState<string | null>(null)
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
   const [showNewLayerForm, setShowNewLayerForm] = useState(false)
@@ -212,6 +215,7 @@ export default function Fields() {
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
       <h1 className="text-xl font-bold text-gray-800">Karte</h1>
 
+      {canWrite && (
       <div className="flex gap-2">
         {(['import', 'planung'] as const).map((m) => (
           <button
@@ -226,6 +230,7 @@ export default function Fields() {
           </button>
         ))}
       </div>
+      )}
 
       {layerMode === 'import' && (
       <>
@@ -260,6 +265,7 @@ export default function Fields() {
           <span className="text-xs text-gray-500">
             {filtered.length} Parzellen · {fmtArea(filtered.reduce((sum, d) => sum + (d.area_a ?? 0), 0))}
           </span>
+          {canWrite && (
           <button
             type="button"
             onClick={toggleSelectionMode}
@@ -269,6 +275,7 @@ export default function Fields() {
           >
             {selectionMode ? 'Auswahl beenden' : 'Parzellen auswählen'}
           </button>
+          )}
         </div>
       )}
 
@@ -312,7 +319,7 @@ export default function Fields() {
       </>
       )}
 
-      {layerMode === 'planung' && (
+      {canWrite && layerMode === 'planung' && (
         <>
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-sm text-gray-600" htmlFor="layer">

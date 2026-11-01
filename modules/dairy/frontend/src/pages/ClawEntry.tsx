@@ -460,7 +460,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
                           title={s.label}
                           onClick={() => setMh({ ...mh, [f]: mh[f] === s.score ? null : s.score })}
                           className={`min-h-11 flex-1 rounded-lg text-base font-bold ${
-                            mh[f] === s.score ? (s.score === 0 ? 'bg-green-700 text-white' : s.score >= 3 ? 'bg-red-700 text-white' : 'bg-amber-500 text-white') : 'bg-gray-100 text-gray-800'
+                            mh[f] === s.score ? (s.score === 0 ? 'bg-green-700 text-white' : s.score >= 3 ? 'bg-red-700 text-white' : 'bg-amber-700 text-white') : 'bg-gray-100 text-gray-800'
                           }`}
                         >
                           {s.score}

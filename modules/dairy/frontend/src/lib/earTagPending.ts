@@ -2,7 +2,7 @@
 // Geburtserfassung noch keine Ohrmarke hatten (schema/0018).
 
 import type { PGlite } from '@electric-sql/pglite'
-import { animalKey } from '@fmis/core/earTag'
+import { animalKey, earTagProblem } from '@fmis/core/earTag'
 import { softDeleteRow, upsertRow } from '../db/write'
 import { isoDate } from './format'
 import { addOffspringAnimal, compactEarTag, pedigreeEnsurer } from './recordBirth'
@@ -59,7 +59,8 @@ export async function loadPendingOffspring(pg: PGlite): Promise<PendingOffspring
  * (z.B. aus dem TVD-Import), wird der Nachkomme damit verknüpft statt neu angelegt. */
 export function checkEarTag(p: Pick<PendingOffspring, 'birth_date'>, earTag: string, animals: Animal[]): { error: string } | { existing: Animal | null } {
   const key = animalKey(earTag)
-  if (!key) return { error: 'Ohrmarke ungültig.' }
+  const problem = earTagProblem(earTag)
+  if (!key || problem) return { error: problem ?? 'Ohrmarke ungültig.' }
   const existing = animals.find((a) => animalKey(a.ear_tag) === key) ?? null
   if (existing && isoDate(existing.birth_date) !== p.birth_date) {
     return { error: `Ohrmarke ${earTag} gibt es schon (${existing.lauf_nr ?? existing.name ?? existing.ear_tag}).` }
