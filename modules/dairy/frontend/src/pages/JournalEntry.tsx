@@ -15,7 +15,11 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
       .query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' order by lauf_nr nulls last, ear_tag")
       .then((r) => r.rows),
   )
-  const [ids, setIds] = useState<string[]>([])
+  // ?tier=<id> (Aktionen auf der Tierseite) wählt das Tier vor
+  const [ids, setIds] = useState<string[]>(() => {
+    const t = new URLSearchParams(window.location.search).get('tier')
+    return t ? [t] : []
+  })
   const [saved, setSaved] = useState<string[] | null>(null)
   // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
   useOnUndo(() => setSaved(null))

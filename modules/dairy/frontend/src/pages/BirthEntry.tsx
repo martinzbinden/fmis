@@ -57,7 +57,11 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
   const word = species === 'sheep' ? { event: 'Ablammung', young: 'Lamm', youngPl: 'Lämmer', mother: 'Aue' } : { event: 'Abkalbung', young: 'Kalb', youngPl: 'Kälber', mother: 'Kuh' }
   const { data, refresh } = useQuery(loadData)
-  const [damIds, setDamIds] = useState<string[]>([])
+  // ?tier=<id> (Aktionen auf der Tierseite) wählt das Tier vor
+  const [damIds, setDamIds] = useState<string[]>(() => {
+    const t = new URLSearchParams(window.location.search).get('tier')
+    return t ? [t] : []
+  })
   const [date, setDate] = useState(localTodayIso)
   const [sire, setSire] = useState<SireValue>(EMPTY_SIRE)
   const [ease, setEase] = useState<number | null>(null)

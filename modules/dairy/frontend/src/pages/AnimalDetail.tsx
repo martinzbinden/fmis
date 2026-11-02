@@ -2,7 +2,7 @@ import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
 import PhotoThumbs from '../components/PhotoThumbs'
 import { loadPhotos, uploadPendingPhotos, type JournalPhoto } from '../lib/photos'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
 import { notifyError } from '@fmis/core/toast'
@@ -70,9 +70,42 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
   }
 }
 
+/** «‹ Zurück» zur vorigen Seite der App (Tier-Info, Merkliste, Durchgang …); ohne
+ * Vorgeschichte (direkt geöffnet) zur Tierliste. */
+function BackLink({ allLabel }: { allLabel: string }) {
+  const navigate = useNavigate()
+  const canGoBack = ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0
+  if (canGoBack)
+    return (
+      <button type="button" onClick={() => navigate(-1)} className="link-btn text-sm text-brand-700">
+        ‹ Zurück
+      </button>
+    )
+  return (
+    <Link to=".." relative="path" className="link-btn text-sm text-brand-700">
+      {allLabel}
+    </Link>
+  )
+}
+
+/** Sprungleiste zu den Abschnitten, angeheftet unter der Kopfzeile. */
+function JumpBar({ items }: { items: [string, string][] }) {
+  return (
+    <nav aria-label="Abschnitte" className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-10 -mx-4 overflow-x-auto bg-gray-50/95 px-4 py-1 backdrop-blur print:hidden">
+      <div className="flex gap-1.5">
+        {items.map(([id, label]) => (
+          <a key={id} href={`#${id}`} className="flex min-h-11 shrink-0 items-center rounded-full border border-gray-300 bg-white px-3 text-sm text-gray-800 active:bg-gray-100">
+            {label}
+          </a>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
 function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-20 rounded-lg bg-white p-4 shadow-sm">
+    <section id={id} className="scroll-mt-32 rounded-lg bg-white p-4 shadow-sm">
       <h2 className="mb-2 text-sm font-semibold text-gray-700">{title}</h2>
       {children}
     </section>
@@ -203,9 +236,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
       <div>
-        <Link to=".." relative="path" className="link-btn text-sm text-brand-700">
-          ← Alle {terms.plural}
-        </Link>
+        <BackLink allLabel={`← Alle ${terms.plural}`} />
         <h1 className="mt-1 text-xl font-bold text-gray-800">
           {a.lauf_nr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-lg">{a.lauf_nr}</span>}
           {animalLabel(a)}
@@ -216,6 +247,35 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
           {ageYears ? ` (${ageYears} J.)` : ''} · {a.status}
         </p>
       </div>
+
+      {/* Erfassen für dieses Tier (Tier vorgewählt) */}
+      {a.status === 'aktiv' && (
+        <div className="flex flex-wrap gap-2 print:hidden">
+          {[
+            ['journal', '💉 Behandlung / Beobachtung'],
+            ...(a.sex !== 'm' ? [['belegung', `❤️ ${species === 'sheep' ? 'Belegung' : 'Besamung'}`], ['geburt', `${species === 'sheep' ? '🐑' : '🐄'} ${birthWord}`]] : []),
+            ['tierinfo', '🔎 Tier-Info · Merkliste'],
+          ].map(([to, text]) => (
+            <Link key={to} to={`/${moduleKey}/${to}?tier=${a.id}`} className="flex min-h-11 items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm active:bg-gray-50">
+              {text}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <JumpBar
+        items={[
+          ['journal', 'Journal'],
+          ['geburten', `${birthWord}en`],
+          ['belegungen', 'Belegungen'],
+          ['abstammung', 'Abstammung'],
+          ['milchproben', 'Milchproben'],
+          ...(claws.length > 0 ? [['klauen', 'Klauen'] as [string, string]] : []),
+          ['kennzahlen', 'Kennzahlen'],
+          ['zuchtwerte', 'Zuchtwerte'],
+          ['laktationen', 'Laktationen'],
+        ]}
+      />
 
       {(milkUntil || meatUntil) && (
         <div className="rounded-lg bg-red-600 p-3 text-sm font-semibold text-white">
@@ -303,7 +363,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         </Section>
       )}
 
-      <Section title="Zuchtwerte">
+      <Section title="Zuchtwerte" id="zuchtwerte">
         <BreedingValues ctx={ctx} />
       </Section>
 
@@ -366,10 +426,32 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                     </span>
                   </div>
                   <div className="text-xs text-gray-600">
-                    Vater {b.sire_name ?? pedigreeByKey.get(b.sire_key ?? '')?.name ?? b.sire_ear_tag ?? 'unbekannt'} ·{' '}
-                    {b.offspring
-                      .map((o) => `${o.sex === 'w' ? '♀' : o.sex === 'm' ? '♂' : '?'}${o.stillborn || o.died_24h || o.died_on ? '†' : ''}${o.ear_tag ? ` ${shortEarTag(o.ear_tag)}` : o.stillborn || o.died_24h || o.died_on ? '' : ' 🏷️ offen'}`)
-                      .join(', ')}
+                    Vater{' '}
+                    {b.sire_key ? (
+                      <Link to={pedigreeLink(moduleKey, herdIdByKey, b.sire_key)} className="link-btn text-brand-700">
+                        {b.sire_name ?? pedigreeByKey.get(b.sire_key)?.name ?? b.sire_ear_tag ?? shortEarTag(b.sire_key)}
+                      </Link>
+                    ) : (
+                      (b.sire_name ?? b.sire_ear_tag ?? 'unbekannt')
+                    )}{' '}
+                    ·{' '}
+                    {b.offspring.map((o, i) => {
+                      const dead = o.stillborn || o.died_24h || o.died_on
+                      const text = `${o.sex === 'w' ? '♀' : o.sex === 'm' ? '♂' : '?'}${dead ? '†' : ''}${o.ear_tag ? ` ${shortEarTag(o.ear_tag)}` : dead ? '' : ' 🏷️ offen'}`
+                      const key = o.ear_tag ? animalKey(o.ear_tag) : null
+                      return (
+                        <span key={o.id}>
+                          {i > 0 && ', '}
+                          {key ? (
+                            <Link to={pedigreeLink(moduleKey, herdIdByKey, key)} className="link-btn text-brand-700">
+                              {text}
+                            </Link>
+                          ) : (
+                            text
+                          )}
+                        </span>
+                      )
+                    })}
                   </div>
                 </li>
               )
@@ -390,7 +472,14 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                   {m.service_to ? ` – ${fmtDate(m.service_to)}` : ''}
                 </span>
                 <span className="flex items-center gap-1 text-right text-xs text-gray-600">
-                  {m.kind === 'kb' ? 'KB' : m.kind === 'natursprung' ? 'Natursprung' : ''} · {m.sire_name ?? m.sire_ear_tag ?? '?'}
+                  {m.kind === 'kb' ? 'KB' : m.kind === 'natursprung' ? 'Natursprung' : ''} ·{' '}
+                  {m.sire_key ? (
+                    <Link to={pedigreeLink(moduleKey, herdIdByKey, m.sire_key)} className="link-btn text-brand-700">
+                      {m.sire_name ?? m.sire_ear_tag ?? shortEarTag(m.sire_key)}
+                    </Link>
+                  ) : (
+                    (m.sire_name ?? m.sire_ear_tag ?? '?')
+                  )}
                   {m.source === 'manual' && <DeleteButton onConfirm={() => softDeleteRow(db, 'matings', m.id)} />}
                 </span>
               </li>
@@ -399,7 +488,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         )}
       </Section>
 
-      <Section title="Laktationen">
+      <Section title="Laktationen" id="laktationen">
         {lactations.length === 0 ? (
           <p className="text-sm text-gray-500">Keine erfasst.</p>
         ) : (

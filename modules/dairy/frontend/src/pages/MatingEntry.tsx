@@ -44,7 +44,11 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
   const terms = speciesTerms(moduleKey)
   const { data, refresh } = useQuery(loadData)
-  const [ids, setIds] = useState<string[]>([])
+  // ?tier=<id> (Aktionen auf der Tierseite) wählt das Tier vor
+  const [ids, setIds] = useState<string[]>(() => {
+    const t = new URLSearchParams(window.location.search).get('tier')
+    return t ? [t] : []
+  })
   const [sire, setSire] = useState<SireValue>(EMPTY_SIRE)
   const [kind, setKind] = useState<'natursprung' | 'kb'>(species === 'sheep' ? 'natursprung' : 'kb')
   const [from, setFrom] = useState(localTodayIso)
