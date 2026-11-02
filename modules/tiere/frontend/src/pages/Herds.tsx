@@ -343,14 +343,19 @@ interface MoveBlock {
   checked: Set<string>
 }
 
+const UNASSIGNED = '__ohne'
+
 function MoveDialog({
   data,
   from,
+  startUnassigned,
   date: initialDate,
   onClose,
 }: {
   data: HerdData
   from: HerdGroup | null
+  /** «Ohne Gruppe» schon als Block gewählt */
+  startUnassigned?: boolean
   date: string
   onClose: () => void
 }) {
@@ -381,9 +386,20 @@ function MoveDialog({
 
   const byId = useMemo(() => new Map((animals ?? []).map((a) => [a.id, a])), [animals])
   const to = data.groups.find((g) => g.id === toId) ?? null
-  const groupsForSearch = data.groups
-    .filter((g) => g.active && g.species === speciesSel && g.id !== to?.id && !blocks.some((b) => b.groupId === g.id))
-    .map((g) => ({ id: g.id, name: g.name, animalIds: groupIds(g.id) }))
+  // Tiere ohne Gruppe lassen sich wie eine Gruppe wählen
+  const unassignedIds = (animals ?? []).filter((a) => !memberAt(data, a.id, date)).map((a) => a.id)
+  const groupsForSearch = [
+    ...(unassignedIds.length && !blocks.some((b) => b.groupId === UNASSIGNED) ? [{ id: UNASSIGNED, name: 'Ohne Gruppe', animalIds: unassignedIds }] : []),
+    ...data.groups
+      .filter((g) => g.active && g.species === speciesSel && g.id !== to?.id && !blocks.some((b) => b.groupId === g.id))
+      .map((g) => ({ id: g.id, name: g.name, animalIds: groupIds(g.id) })),
+  ]
+  useEffect(() => {
+    if (!startUnassigned || !animals || blocks.some((b) => b.groupId === UNASSIGNED)) return
+    const ids = animals.filter((a) => !memberAt(data, a.id, initialDate)).map((a) => a.id)
+    if (ids.length) setBlocks((prev) => [...prev, { key: `g:${UNASSIGNED}`, kind: 'group', name: 'Ohne Gruppe', groupId: UNASSIGNED, animalIds: ids, checked: new Set(ids) }])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animals])
   const suggestions = animals
     ? searchMoveSources(query, { animals, groups: groupsForSearch, lists: lists.filter((l) => !blocks.some((b) => b.key === `l:${l.id}`)) })
     : []
@@ -420,7 +436,7 @@ function MoveDialog({
 
   // Alle angehakten Tiere ziehen einzeln um (Kategorie und Trockenstellen wie gewohnt). Ist eine
   // Gruppe ganz angehakt, kann sie danach aufgelöst werden.
-  const wholeGroups = blocks.filter((b) => b.kind === 'group' && b.groupId !== to?.id && b.animalIds.length > 0 && b.checked.size === b.animalIds.length)
+  const wholeGroups = blocks.filter((b) => b.kind === 'group' && b.groupId !== UNASSIGNED && b.groupId !== to?.id && b.animalIds.length > 0 && b.checked.size === b.animalIds.length)
   const chosen = [...new Set(blocks.flatMap((b) => [...b.checked]))].filter((id) => byId.has(id)).map((id) => byId.get(id)!)
   const total = chosen.length
   const fromMilking = chosen.some((a) => groupOf(a.id)?.milking)
@@ -538,7 +554,7 @@ function MoveDialog({
                       <AnimalOption animal={s.animal} extra={<span className="text-gray-500">{groupOf(s.animal.id)?.name ?? 'ohne Gruppe'}</span>} />
                     ) : (
                       <span className="font-medium text-gray-900">
-                        {s.kind === 'group' ? `${SPECIES_ICON[speciesSel]} Gruppe` : '🔖 Merkliste'} «{s.name}» <span className="font-normal text-gray-500">· {s.animalIds.length} {s.animalIds.length === 1 ? 'Tier' : 'Tiere'}</span>
+                        {s.kind === 'group' ? (s.id === UNASSIGNED ? '📥' : `${SPECIES_ICON[speciesSel]} Gruppe`) : '🔖 Merkliste'} «{s.name}» <span className="font-normal text-gray-500">· {s.animalIds.length} {s.animalIds.length === 1 ? 'Tier' : 'Tiere'}</span>
                       </span>
                     )}
                   </button>
@@ -553,7 +569,7 @@ function MoveDialog({
           <div key={b.key} className="rounded-lg border border-gray-200">
             <div className="flex items-center justify-between gap-2 border-b bg-gray-50 px-3 py-1.5">
               <span className="font-medium text-gray-900">
-                {b.kind === 'group' ? `${SPECIES_ICON[speciesSel]} Gruppe «${b.name}»` : b.kind === 'list' ? `🔖 Merkliste «${b.name}»` : b.name}
+                {b.kind === 'group' ? (b.groupId === UNASSIGNED ? '📥 Ohne Gruppe' : `${SPECIES_ICON[speciesSel]} Gruppe «${b.name}»`) : b.kind === 'list' ? `🔖 Merkliste «${b.name}»` : b.name}
                 <span className="font-normal text-gray-600">
                   {' '}
                   · {b.checked.size} von {b.animalIds.length}
@@ -878,7 +894,7 @@ type DialogState = { seq: number } & (
   | { kind: 'group'; group: HerdGroup | null }
   | { kind: 'stay'; group: HerdGroup; slot: StaySlot }
   | { kind: 'count'; group: HerdGroup }
-  | { kind: 'move'; from: HerdGroup | null }
+  | { kind: 'move'; from: HerdGroup | null; unassigned?: boolean }
   | { kind: 'identify'; group: HerdGroup | null; preselected?: AnimalRef[] }
   | { kind: 'locations' }
 )
@@ -977,8 +993,8 @@ export default function Herds() {
 
       {groups.length === 0 && (
         <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
-          Noch keine Gruppen. Lege z.B. «Melkherde Schafe» (gemolken) und «Schafe Wyden» an, setze Stall und Weide und teile die Tiere zu — per
-          Nummer oder als Anzahl ohne Nummer.
+          Noch keine Gruppen. Lege z.B. «Melkherde Schafe» (gemolken) und «Schafe Wyden» an, setze Stall und Weide und teile die Tiere zu — einzeln,
+          aus einer Merkliste oder alle «Ohne Gruppe».
         </p>
       )}
 
@@ -1153,7 +1169,10 @@ export default function Herds() {
                       {comp.members.map((m) => (
                         <li key={m.id} className="flex items-center justify-between gap-2 py-1">
                           <span>
-                            {m.label ?? m.animal_id.slice(0, 8)} <span className="text-xs text-gray-500">{categoryLabel(m.category)} · seit {fmtDate(m.from_date)}</span>
+                            <Link to={`/${m.module_key}/tiere/${m.animal_id}`} className="link-btn font-medium text-brand-700">
+                              {m.label ?? m.animal_id.slice(0, 8)}
+                            </Link>{' '}
+                            <span className="text-xs text-gray-500">{categoryLabel(m.category)} · seit {fmtDate(m.from_date)}</span>
                           </span>
                           {canWrite && (
                             <button
@@ -1192,85 +1211,44 @@ export default function Herds() {
       </ul>
 
       {unassigned && unassigned.length > 0 && (
-        <section className="rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 p-3 text-sm">
-          <h2 className="font-semibold text-amber-900">📥 Ohne Gruppe ({unassigned.length})</h2>
-          <p className="text-xs text-amber-900/80">Aktive Tiere, die keiner Gruppe angehören — z.B. nach dem Auflösen einer Gruppe. Auswählen und zuteilen; steht das Tier dort schon als Anzahl ohne Nummer, wird diese verringert.</p>
+        <details className="rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 p-3 text-sm">
+          <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 font-semibold text-amber-900">
+            <span>📥 Ohne Gruppe ({unassigned.length})</span>
+            <span className="text-sm font-normal">anzeigen ▾</span>
+          </summary>
+          <p className="text-xs text-amber-900/80">Aktive Tiere, die keiner Gruppe angehören — z.B. nach dem Auflösen einer Gruppe.</p>
+          {canWrite && (
+            <button type="button" onClick={() => setDialog({ kind: 'move', from: null, unassigned: true })} className="mt-2 min-h-11 rounded-lg bg-brand-600 px-3 font-medium text-white">
+              Einer Gruppe zuteilen…
+            </button>
+          )}
           {(['schafe', 'rinder'] as HerdSpecies[]).map((sp) => {
             const list = unassigned.filter((a) => a.species === sp)
             if (!list.length) return null
             return (
               <div key={sp} className="mt-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-gray-700">
-                    {SPECIES_ICON[sp]} {SPECIES_LABEL[sp]} ({list.length})
-                  </span>
-                  {canWrite && (
-                    <span className="flex gap-1">
-                      <button
-                        type="button"
-                        className={btn}
-                        onClick={() => {
-                          const next = new Set(pick)
-                          const all = list.every((a) => next.has(a.id))
-                          for (const a of list) {
-                            if (all) next.delete(a.id)
-                            else next.add(a.id)
-                          }
-                          setPick(next)
-                        }}
-                      >
-                        alle
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!list.some((a) => pick.has(a.id))}
-                        className={`${btn} disabled:opacity-40`}
-                        onClick={() =>
-                          setDialog({
-                            kind: 'identify',
-                            group: groups.find((g) => g.species === sp) ?? null,
-                            preselected: list.filter((a) => pick.has(a.id)),
-                          })
-                        }
-                      >
-                        {list.filter((a) => pick.has(a.id)).length} zuteilen…
-                      </button>
-                    </span>
-                  )}
-                </div>
-                <ul className="mt-1 grid grid-cols-2 gap-x-2 text-xs text-gray-700 sm:grid-cols-3">
+                <span className="text-xs font-medium text-gray-700">
+                  {SPECIES_ICON[sp]} {SPECIES_LABEL[sp]} ({list.length})
+                </span>
+                <ul className="mt-1 grid grid-cols-2 gap-x-2 text-sm sm:grid-cols-3">
                   {list.map((a) => (
-                    <li key={`${a.moduleKey}-${a.id}`}>
-                      <label className="flex items-center gap-1">
-                        {canWrite && (
-                          <input
-                            type="checkbox"
-                            checked={pick.has(a.id)}
-                            onChange={(e) => {
-                              const next = new Set(pick)
-                              if (e.target.checked) next.add(a.id)
-                              else next.delete(a.id)
-                              setPick(next)
-                            }}
-                          />
-                        )}
-                        <span className="truncate">
-                          {a.label} <span className="text-gray-500">{categoryLabel(defaultCategory(a, false, date))}</span>
-                        </span>
-                      </label>
+                    <li key={`${a.moduleKey}-${a.id}`} className="truncate">
+                      <Link to={`/${a.moduleKey}/tiere/${a.id}`} className="link-btn text-brand-700">
+                        {a.label}
+                      </Link>
                     </li>
                   ))}
                 </ul>
               </div>
             )
           })}
-        </section>
+        </details>
       )}
 
       {dialog?.kind === 'group' && <GroupDialog key={dialog.seq} data={data} group={dialog.group} date={date} onClose={close} />}
       {dialog?.kind === 'stay' && <StayDialog key={dialog.seq} data={data} group={dialog.group} slot={dialog.slot} date={date} onClose={close} />}
       {dialog?.kind === 'count' && <CountDialog key={dialog.seq} data={data} group={dialog.group} date={date} onClose={close} />}
-      {dialog?.kind === 'move' && <MoveDialog key={dialog.seq} data={data} from={dialog.from} date={date} onClose={close} />}
+      {dialog?.kind === 'move' && <MoveDialog key={dialog.seq} data={data} from={dialog.from} startUnassigned={dialog.unassigned} date={date} onClose={close} />}
       {dialog?.kind === 'locations' && <LocationsDialog key={dialog.seq} data={data} onClose={close} />}
       {dialog?.kind === 'identify' && (
         <IdentifyDialog key={dialog.seq} data={data} group={dialog.group} preselected={dialog.preselected} date={date} onClose={close} />
