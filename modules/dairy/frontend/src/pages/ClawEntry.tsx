@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 import AnimalOption from '@fmis/core/AnimalOption'
@@ -108,6 +108,10 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
     }
     return [...m.values()]
   }, [exams, species])
+  // früheren Durchgang nur ansehen (?durchgang=…), ohne ihn fortzusetzen
+  const [params, setParams] = useSearchParams()
+  const viewing = params.get('durchgang')
+  const setViewing = (id: string | null) => setParams(id ? { durchgang: id } : {}, { replace: !id })
   const ofRound = round ? exams.filter((e) => e.round_id === round.id) : []
   const inRound = useMemo(() => new Map(ofRound.map((e) => [e.animal_id, e])), [ofRound])
 
@@ -254,6 +258,55 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
   const chip = (on: boolean) => `min-h-11 shrink-0 rounded-full border-2 px-3 text-sm ${on ? 'border-brand-700 bg-brand-700 font-semibold text-white' : 'border-gray-400 bg-white text-gray-800'}`
   const status = useMemo(() => clawStatusByAnimal(exams, species, today), [exams, species, today])
 
+  // ---- früherer Durchgang zum Nachschauen
+  const viewed = viewing ? rounds.find((r) => r.id === viewing) : undefined
+  if (viewed) {
+    const list = exams
+      .filter((e) => e.round_id === viewed.id)
+      .sort((a, b) => Number(lesions(b).length > 0 || isLame(b, species)) - Number(lesions(a).length > 0 || isLame(a, species)) || (byId.get(a.animal_id)?.lauf_nr ?? '').localeCompare(byId.get(b.animal_id)?.lauf_nr ?? '', 'de-CH', { numeric: true }))
+    return (
+      <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
+        <button type="button" onClick={() => setViewing(null)} className="link-btn text-sm text-brand-700">
+          ‹ Alle Durchgänge
+        </button>
+        <h1 className="text-xl font-bold text-gray-900">
+          Klauen {fmtDate(viewed.date)} · {viewed.examiner ?? 'ohne Angabe'}
+        </h1>
+        <p className="text-sm text-gray-700">
+          {viewed.n} Tiere, {viewed.affected} mit Befund (zuerst)
+        </p>
+        <ul className="divide-y rounded-xl bg-white shadow-sm">
+          {list.map((e) => {
+            const bad = lesions(e).length > 0 || isLame(e, species)
+            return (
+              <li key={e.id}>
+                <Link to={`/${moduleKey}/tiere/${e.animal_id}#klauen`} className="flex min-h-12 items-center gap-2 px-3 py-1.5 active:bg-gray-50">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-gray-900">{label(byId.get(e.animal_id))}</span>
+                    <span className={`block text-sm ${bad ? 'font-medium text-red-800' : 'text-gray-600'}`}>{examSummary(e, species)}</span>
+                  </span>
+                  <span className="text-gray-500" aria-hidden>
+                    ›
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+        <button
+          type="button"
+          onClick={() => {
+            setRound({ id: viewed.id, date: viewed.date, examiner: viewed.examiner })
+            setViewing(null)
+          }}
+          className="min-h-12 w-full rounded-xl border-2 border-brand-700 bg-white font-semibold text-brand-800 active:bg-gray-50"
+        >
+          Diesen Durchgang fortsetzen (weitere Tiere erfassen)
+        </button>
+      </div>
+    )
+  }
+
   // ---- Start: neuer Durchgang, frühere Durchgänge, Herdenstand
   if (!round) {
     const active = animals.map((a) => status.get(a.id))
@@ -301,7 +354,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
             <ul className="divide-y rounded-xl bg-white shadow-sm">
               {rounds.slice(0, 10).map((r) => (
                 <li key={r.id}>
-                  <button type="button" onClick={() => setRound({ id: r.id, date: r.date, examiner: r.examiner })} className="flex min-h-12 w-full items-center gap-2 px-3 py-1.5 text-left">
+                  <button type="button" onClick={() => setViewing(r.id)} className="flex min-h-12 w-full items-center gap-2 px-3 py-1.5 text-left">
                     <span className="min-w-0 flex-1">
                       <span className="block font-medium text-gray-900">
                         {fmtDate(r.date)} · {r.examiner ?? 'ohne Angabe'}
@@ -310,7 +363,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
                         {r.n} Tiere, {r.affected} mit Befund
                       </span>
                     </span>
-                    <span className="text-sm font-medium text-brand-700">fortsetzen ›</span>
+                    <span className="text-sm font-medium text-brand-700">ansehen ›</span>
                   </button>
                 </li>
               ))}

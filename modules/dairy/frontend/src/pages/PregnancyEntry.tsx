@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 import AnimalOption from '@fmis/core/AnimalOption'
@@ -116,6 +116,10 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rounds.length])
   const [editRound, setEditRound] = useState(false)
+  // früheren Durchgang nur ansehen (?durchgang=…), ohne ihn fortzusetzen — bleibt beim Zurück aus der Tierseite
+  const [params, setParams] = useSearchParams()
+  const viewing = params.get('durchgang')
+  const setViewing = (id: string | null) => setParams(id ? { durchgang: id } : {}, { replace: !id })
 
   // Einzeln: Tier → Ergebnis. Liste: mehrere Tiere sammeln (+ oder Lesegerät), dann ein Ergebnis für alle.
   const [mode, setModeState] = useState<'einzeln' | 'liste'>(() => (readJson<string>(modeKey(moduleKey)) === 'liste' ? 'liste' : 'einzeln'))
@@ -412,6 +416,24 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     </section>
   )
 
+  const viewed = viewing && !editRound ? rounds.find((r) => r.id === viewing) : undefined
+  if (viewed) {
+    return (
+      <RoundView
+        round={viewed}
+        checks={checks.filter((c) => (c.round_id ?? `tag:${c.check_date}`) === viewed.id)}
+        byId={byId}
+        moduleKey={moduleKey}
+        active={round?.id === viewed.id}
+        onBack={() => setViewing(null)}
+        onResume={() => {
+          setRound({ id: viewed.id, date: viewed.date, examiner: viewed.examiner, method: viewed.method, unit: viewed.unit })
+          setViewing(null)
+        }}
+      />
+    )
+  }
+
   if (!round || editRound) {
     return (
       <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
@@ -426,7 +448,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                   <button
                     type="button"
                     className="flex min-h-12 w-full items-center gap-2 px-3 py-1.5 text-left active:bg-gray-50"
-                    onClick={() => setRound({ id: r.id, date: r.date, examiner: r.examiner, method: r.method, unit: r.unit })}
+                    onClick={() => setViewing(r.id)}
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium text-gray-900">{roundTitle(r)}</span>
@@ -434,7 +456,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                         {fmtTimeRange(r.first, r.last)} Uhr · {r.count} {r.count === 1 ? 'Tier' : 'Tiere'}: {r.results.ja} trächtig, {r.results.nein} leer, {r.results.unsicher} unsicher
                       </span>
                     </span>
-                    <span className="shrink-0 text-sm font-medium text-brand-700">fortsetzen ›</span>
+                    <span className="shrink-0 text-sm font-medium text-brand-700">ansehen ›</span>
                   </button>
                 </li>
               ))}
@@ -664,6 +686,84 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
       </ul>
       {ofRound.length > 0 && <p className="px-1 text-xs text-gray-600">Eintrag antippen zum Ändern oder Löschen.</p>}
       {rounds.length > 1 && <CompareLink />}
+    </div>
+  )
+}
+
+const RESULT_TONE: Record<PregnancyResult, string> = { ja: 'bg-green-100 text-green-900', nein: 'bg-red-100 text-red-900', unsicher: 'bg-amber-100 text-amber-900' }
+
+/** Früherer Durchgang zum Nachschauen: je Tier das letzte Ergebnis, filterbar;
+ * Tiere verlinkt. Fortsetzen nur auf ausdrücklichen Knopfdruck. */
+function RoundView({
+  round,
+  checks,
+  byId,
+  moduleKey,
+  active,
+  onBack,
+  onResume,
+}: {
+  round: ReturnType<typeof groupRounds>[number]
+  checks: PregnancyCheck[]
+  byId: Map<string, Animal>
+  moduleKey: string
+  active: boolean
+  onBack: () => void
+  onResume: () => void
+}) {
+  const [filter, setFilter] = useState<PregnancyResult | 'alle'>('alle')
+  // je Tier der neueste Eintrag (Korrekturen ersetzen frühere)
+  const latest = useMemo(() => {
+    const m = new Map<string, PregnancyCheck>()
+    for (const c of checks) if (!m.get(c.animal_id) || c.recorded_at > m.get(c.animal_id)!.recorded_at) m.set(c.animal_id, c)
+    const order: PregnancyResult[] = ['ja', 'unsicher', 'nein']
+    return [...m.values()].sort(
+      (a, b) =>
+        order.indexOf(a.result) - order.indexOf(b.result) ||
+        (byId.get(a.animal_id)?.lauf_nr ?? '').localeCompare(byId.get(b.animal_id)?.lauf_nr ?? '', 'de-CH', { numeric: true }),
+    )
+  }, [checks, byId])
+  const shown = filter === 'alle' ? latest : latest.filter((c) => c.result === filter)
+  const chip = (on: boolean) => `min-h-11 rounded-full border-2 px-3 text-sm ${on ? 'border-brand-700 bg-brand-700 font-semibold text-white' : 'border-gray-300 bg-white text-gray-800'}`
+  return (
+    <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
+      <button type="button" onClick={onBack} className="link-btn text-sm text-brand-700">
+        ‹ Alle Durchgänge
+      </button>
+      <h1 className="text-xl font-bold text-gray-900">{roundTitle(round)}</h1>
+      <p className="text-sm text-gray-700">
+        {fmtTimeRange(round.first, round.last)} Uhr · {round.count} {round.count === 1 ? 'Tier' : 'Tiere'}
+      </p>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Ergebnis">
+        <button type="button" role="radio" aria-checked={filter === 'alle'} onClick={() => setFilter('alle')} className={chip(filter === 'alle')}>
+          alle {latest.length}
+        </button>
+        {(['ja', 'nein', 'unsicher'] as PregnancyResult[]).map((r) => (
+          <button key={r} type="button" role="radio" aria-checked={filter === r} onClick={() => setFilter(r)} className={chip(filter === r)}>
+            {RESULT_LABEL[r]} {round.results[r]}
+          </button>
+        ))}
+      </div>
+      <ul className="divide-y rounded-xl bg-white shadow-sm">
+        {shown.map((c) => {
+          const a = byId.get(c.animal_id)
+          return (
+            <li key={c.id}>
+              <Link to={`/${moduleKey}/tiere/${c.animal_id}`} className="flex min-h-12 items-center gap-2 px-3 py-1.5 active:bg-gray-50">
+                <span className="min-w-0 flex-1 truncate font-medium text-gray-900">{label(a)}</span>
+                <span className={`shrink-0 rounded px-2 py-0.5 text-sm font-semibold ${RESULT_TONE[c.result]}`}>
+                  {RESULT_LABEL[c.result]}
+                  {c.weeks != null ? ` · ${fmtDuration(c.weeks, c.duration_unit)}` : ''}
+                </span>
+              </Link>
+            </li>
+          )
+        })}
+        {shown.length === 0 && <li className="px-3 py-3 text-sm text-gray-600">Keine Tiere mit diesem Ergebnis.</li>}
+      </ul>
+      <button type="button" onClick={onResume} className="min-h-12 w-full rounded-xl border-2 border-brand-700 bg-white font-semibold text-brand-800 active:bg-gray-50">
+        {active ? 'Zum laufenden Durchgang' : 'Diesen Durchgang fortsetzen (weitere Tiere erfassen)'}
+      </button>
     </div>
   )
 }
