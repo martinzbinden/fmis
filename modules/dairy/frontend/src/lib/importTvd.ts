@@ -9,6 +9,7 @@ import { read, utils, type WorkSheet } from 'xlsx'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey } from '@fmis/core/earTag'
 import { writeImportRow } from './importMerge'
+import { parseParentCell, tvdParentColumns, type ParentageRow, type ParentRef } from './importParentage'
 import type { AnimalSex, AnimalStatus } from '../types'
 
 export interface TvdAnimal {
@@ -20,6 +21,9 @@ export interface TvdAnimal {
   status: AnimalStatus
   entry_date: string | null
   exit_date: string | null
+  /** nur, wenn die TVD-Liste Mutter/Vater-Spalten hat (Ersatz, falls das Tier im Zuchtbuch fehlt) */
+  dam?: ParentRef | null
+  sire?: ParentRef | null
 }
 
 function excelDateToIso(value: unknown): string | null {
@@ -71,6 +75,7 @@ export async function parseTierbestand(file: File): Promise<TvdAnimal[]> {
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
   fixSheetRange(sheet)
   const rows = utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: null })
+  const parents = tvdParentColumns(rows.length ? Object.keys(rows[0]) : [])
 
   return rows
     .map((row): TvdAnimal | null => {
@@ -90,6 +95,8 @@ export async function parseTierbestand(file: File): Promise<TvdAnimal[]> {
         status: exit_date ? 'abgegangen' : 'aktiv',
         entry_date: excelDateToIso(row['Zugangsdatum']),
         exit_date,
+        dam: parents.dam ? parseParentCell(row[parents.dam]) : null,
+        sire: parents.sire ? parseParentCell(row[parents.sire]) : null,
       }
     })
     .filter((a): a is TvdAnimal => a !== null)
@@ -103,7 +110,7 @@ export async function importTierbestand(pg: PGlite, tierbestand: TvdAnimal[]): P
   const { rows: existing } = await pg.query<Record<string, unknown> & { id: string; ear_tag: string }>('select * from animals')
   const byKey = new Map(existing.map((a) => [animalKey(a.ear_tag) ?? a.ear_tag, a]))
   let written = 0
-  for (const animal of tierbestand) {
+  for (const { dam: _dam, sire: _sire, ...animal } of tierbestand) {
     const key = animalKey(animal.ear_tag) ?? animal.ear_tag
     const prev = byKey.get(key)
     // Name und Rasse aus dem Herdebuch haben Vorrang (dort "BLÜMLISALP"/
@@ -121,4 +128,14 @@ export async function importTierbestand(pg: PGlite, tierbestand: TvdAnimal[]): P
     byKey.set(key, prev ?? row)
   }
   return written
+}
+
+/** Mutter/Vater aus der TVD-Liste für den Stammbaum (lib/importParentage.ts). */
+export function tvdParentage(tierbestand: TvdAnimal[]): ParentageRow[] {
+  return tierbestand
+    .filter((a) => a.dam || a.sire)
+    .flatMap((a) => {
+      const key = animalKey(a.ear_tag)
+      return key ? [{ key, ear_tag: key, name: a.name, birth_date: a.birth_date, sex: a.sex === 'w' || a.sex === 'm' ? a.sex : null, sire: a.sire ?? null, dam: a.dam ?? null }] : []
+    })
 }

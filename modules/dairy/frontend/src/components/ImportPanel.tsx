@@ -4,7 +4,9 @@ import type { ImportFile } from '../lib/importFiles'
 import { openDairyImport } from '../lib/importSession'
 import type { ImportSession } from '@fmis/core/importSession'
 import { stagedProgress, type ImportPanelProps } from '@fmis/core/upload'
-import { parseTierbestand, importTierbestand } from '../lib/importTvd'
+import { parseTierbestand, importTierbestand, tvdParentage } from '../lib/importTvd'
+import { importParentage, parseSmgAnimalList } from '../lib/importParentage'
+import { read, utils } from 'xlsx'
 import { inTransaction } from '../db/transaction'
 import { fmtDate, todayIso } from '../lib/format'
 import { parseSmgCertificate, readPdfText } from '../lib/smgCertificate'
@@ -31,6 +33,7 @@ export default function ImportPanel({
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [tvdCount, setTvdCount] = useState<{ read: number; written: number } | null>(null)
+  const [parentageCount, setParentageCount] = useState<{ read: number; filled: number } | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [certificates, setCertificates] = useState<CertificateImportResult[]>([])
   const [pending, setPending] = useState<CertificatePlan[]>([])
@@ -69,6 +72,7 @@ export default function ImportPanel({
       [
         { key: 'session', label: 'Serverstand laden', weight: 4 },
         { key: 'herdbook', label: 'Herdebuch', weight: herdbook.length ? 5 : 0 },
+        { key: 'parentage', label: 'Abstammung (SMG-Tierliste)', weight: of('parentage').length ? 1 : 0 },
         { key: 'tvd', label: 'TVD-Tierbestand', weight: of('tvd').length ? 1 : 0 },
         { key: 'cert', label: 'Leistungsausweise', weight: certs.length ? 1 + certs.length / 4 : 0 },
         { key: 'commit', label: 'Speichern', weight: 1 },
@@ -96,6 +100,20 @@ export default function ImportPanel({
         nextWarnings.push(...parsed.warnings)
       }
 
+      // Abstammung: Herdebuch (oben) zuerst, dann SMG-Tierliste, dann TVD — jedes füllt nur Lücken
+      const parentage = { read: 0, filled: 0 }
+      for (const f of of('parentage')) {
+        progress('parentage', 0)
+        try {
+          const wb = read(f.data.slice(0), { type: 'array' })
+          const rows = parseSmgAnimalList(utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: null }))
+          parentage.read += rows.length
+          parentage.filled += (await inTransaction(db, (tx) => importParentage(tx, rows))).filled
+        } catch (err) {
+          nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
+        }
+      }
+
       const tvd = { read: 0, written: 0 }
       for (const f of of('tvd')) {
         progress('tvd', 0)
@@ -107,6 +125,8 @@ export default function ImportPanel({
           }
           tvd.read += animals.length
           tvd.written += await inTransaction(db, (tx) => importTierbestand(tx, animals))
+          const fromTvd = tvdParentage(animals)
+          if (fromTvd.length) parentage.filled += (await inTransaction(db, (tx) => importParentage(tx, fromTvd))).filled
         } catch (err) {
           nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
         }
@@ -131,6 +151,7 @@ export default function ImportPanel({
       onStatus(toDecide.length ? { phase: 'input', step: 'Rückfrage zu Leistungsausweisen', fraction: 1 } : { phase: 'done', fraction: 1 })
       setSummary(herdbookSummary)
       if (of('tvd').length) setTvdCount(tvd)
+      if (of('parentage').length || parentage.filled) setParentageCount(parentage)
       setCertificates(results)
       setPending(toDecide)
       setWarnings(nextWarnings)
@@ -168,6 +189,12 @@ export default function ImportPanel({
             </p>
           )}
         </div>
+      )}
+      {parentageCount != null && (
+        <p className="rounded bg-brand-50 p-3 text-brand-900">
+          Abstammung: {parentageCount.read > 0 ? `${parentageCount.read} Tiere aus der SMG-Tierliste gelesen, ` : ''}
+          {parentageCount.filled} Stammbaum-Einträge neu oder ergänzt (bestehende Angaben bleiben).
+        </p>
       )}
       {tvdCount != null && (
         <p className="rounded bg-brand-50 p-3 text-brand-900">TVD-Tierbestand: {tvdCount.read} Tiere gelesen, {tvdCount.written} neu oder ergänzt.</p>

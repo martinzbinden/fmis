@@ -7,11 +7,13 @@
 //   «Erstablammung» bzw. «Erstabkalbung», sonst die Ohrmarken (Rinder
 //   CH120…, Schafe kurz "CH" + 8 Ziffern).
 // - SMG-Abstammungs- und Leistungsausweis (PDF): immer Schafe.
+// - SMG-Tierliste (Excel, Spalten «Orig.-Nr.», «Vater», «Mutter»): Abstammung.
 
 import { read, utils } from 'xlsx'
 import type { ImportClaim, ImportDetection, ModuleImporter, UploadFile } from '@fmis/core/upload'
 import { classifyFile, type ImportFile } from './importFiles'
 import { isSmgCertificate, readPdfText } from './smgCertificate'
+import { isSmgAnimalList } from './importParentage'
 import { speciesOf } from './species'
 
 type Species = 'cattle' | 'sheep'
@@ -72,6 +74,18 @@ function readTvdList(data: ArrayBuffer): { headers: string[]; earTags: string[] 
   }
 }
 
+/** SMG-Tierliste: Kopfzeile mit Orig.-Nr., Vater, Mutter; gibt die Ohrmarken zurück. */
+function readSmgList(data: ArrayBuffer): { earTags: string[] } | null {
+  try {
+    const wb = read(data.slice(0), { type: 'array' })
+    const rows = utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[wb.SheetNames[0]], { defval: null })
+    if (!rows.length || !isSmgAnimalList(Object.keys(rows[0]))) return null
+    return { earTags: rows.map((r) => String(r['Orig.-Nr.'] ?? '').trim()).filter(Boolean) }
+  } catch {
+    return null
+  }
+}
+
 const stem = (name: string) => name.split('.')[0].toLowerCase()
 
 type DairyClaim = ImportClaim & { dairyFiles: ImportFile[] }
@@ -120,9 +134,23 @@ export function createDairyImporter(moduleKey: string, title: string, Panel: Mod
       skipped.push({ file: f, reason: 'Codetabelle, wird nicht gebraucht' })
     }
 
-    // TVD-Tierbestand (Excel).
+    // SMG-Tierliste (Excel): Abstammung (Vater, Mutter) aller Tiere.
+    const parentageFiles = new Set<UploadFile>()
     for (const f of files) {
       if (!/\.xlsx?$/i.test(f.name)) continue
+      const list = readSmgList(f.data)
+      if (!list) continue
+      parentageFiles.add(f)
+      const species = tvdSpecies([], list.earTags.map((t) => `CH${t.replace(/\D/g, '')}`))
+      if (species !== mine) continue
+      claimed.push(f)
+      taken.push({ name: f.name, data: f.data, kind: 'parentage' })
+      formats.push(`SMG-Tierliste ${f.name} (${list.earTags.length} Tiere, Abstammung)`)
+    }
+
+    // TVD-Tierbestand (Excel).
+    for (const f of files) {
+      if (!/\.xlsx?$/i.test(f.name) || parentageFiles.has(f)) continue
       const list = readTvdList(f.data)
       if (!list) continue
       const species = tvdSpecies(list.headers, list.earTags)
@@ -169,7 +197,7 @@ export function createDairyImporter(moduleKey: string, title: string, Panel: Mod
   return {
     formats:
       mine === 'sheep'
-        ? ['Herdebuch-Export SMG (b<nr>.K04, .Y01 … oder ZIP)', 'TVD-Tierbestand Schafe (Excel)', 'SMG-Abstammungs- und Leistungsausweis (PDF)']
+        ? ['Herdebuch-Export SMG (b<nr>.K04, .Y01 … oder ZIP)', 'SMG-Tierliste mit Vater/Mutter (Excel)', 'TVD-Tierbestand Schafe (Excel)', 'SMG-Abstammungs- und Leistungsausweis (PDF)']
         : ['Herdebuch-Export Rindvieh (b<nr>.K04, .Y01 … oder ZIP)', 'TVD-Tierbestand Rinder (Excel)'],
     permission: `${moduleKey}:animals:write`,
     detect,
