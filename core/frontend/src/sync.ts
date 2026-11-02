@@ -1,7 +1,8 @@
+import { isUniqueViolation, mergeInto, setAsideConflicts } from './pullConflicts'
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getToken, logout } from './auth'
 import { clearSent, describeRejected, readOutbox, revertRejected, type RejectedRow } from './outbox'
-import { notifyError } from './toast'
+import { notifyError, notifyInfo } from './toast'
 
 export type SyncStatus = 'offline' | 'synced' | 'syncing' | 'error'
 
@@ -233,7 +234,15 @@ export function createSyncClient(
     // pglite jede Query einzeln nach IndexedDB — bei einem Erst-Pull mit
     // tausenden Zeilen (z.B. data_history nach einem Import) dauert das
     // Minuten und wird von jedem Seiten-Reload wieder abgebrochen.
+    const merged: string[] = []
     await pg.transaction(async (tx) => {
+      // Tabellen mit weiteren eindeutigen Feldern (Ohrmarke, import_key …): dort kann eine
+      // Server-Zeile mit einer lokalen Doppelzeile zusammenstossen (core pullConflicts.ts)
+      const { rows: uniq } = await tx.query<{ tablename: string }>(
+        `select distinct tablename from pg_indexes
+         where schemaname = current_schema() and indexdef ilike 'create unique%' and indexname not like '%_pkey'`,
+      )
+      const guarded = new Set(uniq.map((u) => u.tablename))
       for (const [table, columns] of Object.entries(syncTables)) {
         const rows = data.tables[table]
         if (!rows || rows.length === 0) continue
@@ -243,22 +252,38 @@ export function createSyncClient(
           .filter((c) => c !== 'id')
           .map((c) => `"${c}" = excluded."${c}"`)
           .join(', ')
+        // Last-write-wins, identisch zum Backend-Push-Handler: nur übernehmen
+        // wenn die Zeile lokal fehlt oder remote.updated_at neuer ist.
+        const sql = `insert into "${table}" (${colList}) values (${placeholders})
+             on conflict (id) do update set ${setClause}
+             where "${table}".updated_at < excluded.updated_at`
         for (const row of rows) {
           const values = columns.map((c) => row[c] ?? null)
-          // Last-write-wins, identisch zum Backend-Push-Handler: nur übernehmen
-          // wenn die Zeile lokal fehlt oder remote.updated_at neuer ist.
-          await tx.query(
-            `insert into "${table}" (${colList}) values (${placeholders})
-             on conflict (id) do update set ${setClause}
-             where "${table}".updated_at < excluded.updated_at`,
-            values,
-          )
+          if (!guarded.has(table)) {
+            await tx.query(sql, values)
+            continue
+          }
+          await tx.query('savepoint pull_row')
+          try {
+            await tx.query(sql, values)
+            await tx.query('release savepoint pull_row')
+          } catch (e) {
+            await tx.query('rollback to savepoint pull_row')
+            if (!isUniqueViolation(e)) throw e
+            const aside = await setAsideConflicts(tx, table, row, e)
+            if (!aside) throw e
+            await tx.query(sql, values)
+            for (const localId of aside) await mergeInto(tx, table, localId, String(row.id))
+            merged.push(String(row.ear_tag ?? row.animal_key ?? row.import_key ?? row.id))
+          }
         }
       }
     })
 
     localStorage.setItem(sinceKey, data.server_time)
     notifyDataChanged()
+    if (merged.length)
+      notifyInfo(`Doppelt erfasst und mit dem Stand des Servers zusammengeführt: ${merged.slice(0, 5).join(', ')}${merged.length > 5 ? ` und ${merged.length - 5} weitere` : ''}`)
   }
 
   let running: Promise<RejectedRow[]> | null = null
