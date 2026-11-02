@@ -40,5 +40,5 @@ describe('Pull: Doppelzeile mit dem Server zusammenführen', () => {
     expect((await pg.query<{ animal_id: string }>('select animal_id from animal_journal')).rows[0].animal_id).toBe('server')
     const outbox = (await pg.query<{ table_name: string; row_id: string }>('select table_name, row_id from sync_outbox order by 1')).rows
     expect(outbox).toEqual([{ table_name: 'animal_journal', row_id: 'j1' }])
-  })
+  }, 60_000) // pglite startet im vollen Testlauf langsam
 })
