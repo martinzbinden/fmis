@@ -25,6 +25,8 @@ import type { CoverageParcel } from '../lib/coverage'
 import type { Paddock, Parcel, WeedObservation } from '../types'
 import type { Track } from '@fmis/betrieb/types'
 import { errorText } from '@fmis/core/toast'
+import ParcelColorLayer from './ParcelColorLayer'
+import { COLOR_MODE_LABEL, type ColorMode } from '../lib/parcelColor'
 
 const BACKGROUND_LAYERS = {
   pixelkarte: { label: 'Pixelkarte', wmtsLayer: 'ch.swisstopo.pixelkarte-farbe', maxZoom: 18 },
@@ -677,6 +679,8 @@ export default function PaddockMap({
   // den übrigen Overlays die Hauptsache, wenn man auf die Karte schaut.
   const [showAnimals, setShowAnimals] = useState(true)
   const [showSheep, setShowSheep] = useState(false)
+  // Parzellen einfärben (ParcelColorLayer): aus, Kultur, Schnitte, Weidetage, Ruhe
+  const [colorMode, setColorMode] = useState<ColorMode | ''>('')
   const [sheepWindow, setSheepWindow] = useState<'2months' | 'year'>('2months')
   const [sheepInfo, setSheepInfo] = useState<string | null>(null)
   const today = todayIso()
@@ -745,6 +749,22 @@ export default function PaddockMap({
             </button>
           ),
         )}
+        <label className={`flex items-center gap-1 rounded px-1 font-medium ${colorMode ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600'}`}>
+          <span className="pl-1">🎨</span>
+          <select
+            value={colorMode}
+            onChange={(e) => setColorMode(e.target.value as ColorMode | '')}
+            className="bg-transparent py-1 pr-1 text-xs font-medium outline-none"
+            aria-label="Parzellen einfärben nach"
+          >
+            <option value="">Einfärben…</option>
+            {(Object.keys(COLOR_MODE_LABEL) as ColorMode[]).map((m) => (
+              <option key={m} value={m} className="text-gray-800">
+                {COLOR_MODE_LABEL[m]}
+              </option>
+            ))}
+          </select>
+        </label>
         <button
           type="button"
           onClick={() => setShowTemplate((v) => !v)}
@@ -835,6 +855,7 @@ export default function PaddockMap({
           attribution="&copy; swisstopo"
         />
         <BaseGeometryLayer parcels={parcels} />
+        {colorMode && <ParcelColorLayer parcels={parcels} mode={colorMode} seasonYear={seasonYear} />}
         {focusParcelId && <FocusHighlightLayer parcel={focusParcel} />}
         {showFertilization && <FertilizationLayer features={fertilization} />}
         {coverage && coverage.length > 0 && <CoverageLayer parcels={coverage} />}
