@@ -26,6 +26,9 @@ import type { Paddock, Parcel, WeedObservation } from '../types'
 import type { Track } from '@fmis/betrieb/types'
 import { errorText } from '@fmis/core/toast'
 import ParcelColorLayer from './ParcelColorLayer'
+import ReplayLayer, { workColors } from './ReplayLayer'
+import ReplayControls from './ReplayControls'
+import { buildReplay } from '../lib/replay'
 import { COLOR_MODE_LABEL, type ColorMode } from '../lib/parcelColor'
 
 const BACKGROUND_LAYERS = {
@@ -422,6 +425,8 @@ function FieldsTemplateLayer({ onAdopt }: { onAdopt: (geometry: string, label: s
 /** Vergangene (abgeschlossene) Tracks als dünne Linien, plus die gerade
  * laufende Aufzeichnung live in Rot — Tracks sind nicht nutzer-editiert
  * (anders als paddocks), deshalb reines L.polyline statt leaflet-draw. */
+const NO_TRACKS: Track[] = []
+
 function TracksLayer({ tracks, livePoints }: { tracks: Track[]; livePoints: TrackPoint[] | null }) {
   const map = useMap()
   useEffect(() => {
@@ -681,6 +686,12 @@ export default function PaddockMap({
   const [showSheep, setShowSheep] = useState(false)
   // Parzellen einfärben (ParcelColorLayer): aus, Kultur, Schnitte, Weidetage, Ruhe
   const [colorMode, setColorMode] = useState<ColorMode | ''>('')
+  // Feldarbeiten-Wiedergabe: GPS-Spuren der Saison nacheinander (lib/replay.ts)
+  const [replayOn, setReplayOn] = useState(false)
+  const [replayAt, setReplayAt] = useState(0)
+  const replay = useMemo(() => (replayOn ? buildReplay(tracks) : null), [replayOn, tracks])
+  const replayColors = useMemo(() => (replay ? workColors(replay.segments) : []), [replay])
+  const replayColorMap = useMemo(() => new Map(replayColors), [replayColors])
   const [sheepWindow, setSheepWindow] = useState<'2months' | 'year'>('2months')
   const [sheepInfo, setSheepInfo] = useState<string | null>(null)
   const today = todayIso()
@@ -765,6 +776,19 @@ export default function PaddockMap({
             ))}
           </select>
         </label>
+        {tracks.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setReplayAt(0)
+              setReplayOn((v) => !v)
+            }}
+            title="GPS-Spuren der Saison nacheinander abspielen, nach Arbeit eingefärbt"
+            className={`rounded px-2 py-1 font-medium ${replayOn ? 'bg-brand-700 text-white' : 'bg-gray-100 text-gray-600'}`}
+          >
+            ▶ Feldarbeiten
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setShowTemplate((v) => !v)}
@@ -864,11 +888,22 @@ export default function PaddockMap({
         {showSheep && <SheepPressureLayer parcels={parcels} from={sheepFrom} to={sheepTo} onInfo={setSheepInfo} />}
         {showTemplate && <FieldsTemplateLayer onAdopt={onAdoptFieldsGeometry} />}
         <DrawLayer paddocks={paddocks} onCreated={onCreated} onEdited={onEdited} onDeleted={onDeleted} onSelect={onSelect} />
-        <TracksLayer tracks={tracks} livePoints={livePoints} />
+        <TracksLayer tracks={replayOn ? NO_TRACKS : tracks} livePoints={livePoints} />
+        {replay && <ReplayLayer segments={replay.segments} at={replayAt} colors={replayColorMap} />}
         <WeedMarkersLayer observations={weedObservations} onSelect={onWeedSelect} />
         <LocateControl onLocationFound={onLocationFound} />
         {onPickLocation && <MapClickCatcher active={pickingLocation} onPick={onPickLocation} />}
       </MapContainer>
+      {replay && (
+        <ReplayControls
+          segments={replay.segments}
+          total={replay.total}
+          at={replayAt}
+          onAt={setReplayAt}
+          colors={replayColors}
+          onClose={() => setReplayOn(false)}
+        />
+      )}
       {showHeat && heatError && (
         <div className="border-t bg-amber-50 p-2 text-center text-xs text-amber-800">{heatError}</div>
       )}
