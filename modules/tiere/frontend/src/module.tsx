@@ -18,11 +18,12 @@ function TiereDbProvider({ children }: { children: ReactNode }) {
 // Weidebelegung im Wiesenjournal-Raster wird aus diesen Daten abgeleitet.
 const tiereModule: ModuleDescriptor = {
   key: 'tiere',
-  title: 'Tiere',
+  // «Tiergruppen»: der Reiter «Tiere» in Milchkühe/Milchschafe ist etwas anderes
+  title: 'Tiergruppen',
   icon: '🐾',
   group: 'tiere',
   navItems: [
-    { to: '', label: 'Herden', icon: '🐑' },
+    { to: '', label: 'Gruppen', icon: '🐾' },
     { to: 'auslauf', label: 'Auslauf', icon: '🌤️' },
   ],
   historyPermission: 'tiere:history:read',

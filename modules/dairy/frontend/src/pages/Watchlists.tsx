@@ -8,7 +8,7 @@ import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
 import ToHerdGroup from '../components/ToHerdGroup'
 import { useHasPermission } from '@fmis/core/AuthContext'
-import { animalProvider, herdLocator } from '@fmis/core/animals'
+import { animalProvider, herdLocator, refreshHerdData } from '@fmis/core/animals'
 import { fmtAge, fmtDate, localTodayIso } from '../lib/format'
 import { addToWatchlist, createWatchlist, duplicateEntries, loadWatchlists, removeDuplicateEntries, removeEntry, saveWatchlist, setEntryDone, setEntryReason, type Watchlist, type WatchlistEntry } from '../lib/watchlists'
 import type { Animal } from '../types'
@@ -145,7 +145,10 @@ function ListCard({
   const entryIds = entries.map((e) => e.animal_id).join(',')
   useEffect(() => {
     let live = true
-    void herdLocator()?.groupNames?.(entryIds.split(',').filter(Boolean), today).then((m) => live && setGroupOf(m))
+    const load = () => herdLocator()?.groupNames?.(entryIds.split(',').filter(Boolean), today).then((m) => live && setGroupOf(m))
+    void load()
+      ?.then(() => refreshHerdData())
+      .then((fresh) => fresh && live && load())
     return () => {
       live = false
     }

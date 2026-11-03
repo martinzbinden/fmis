@@ -835,17 +835,17 @@ function BankTable({
       <div className="flex items-center justify-end gap-2 text-xs">
         {editing ? (
           <>
-            <button type="button" onClick={() => setEditing(false)} className="rounded px-2 py-1 text-gray-600">
+            <button type="button" onClick={() => setEditing(false)} className="min-h-11 rounded px-3 text-sm text-gray-600">
               Abbrechen
             </button>
-            <button type="button" onClick={saveOrder} className="rounded bg-brand-700 px-3 py-1 font-medium text-white">
+            <button type="button" onClick={saveOrder} className="min-h-11 rounded-lg bg-brand-700 px-3 text-sm font-medium text-white">
               Reihenfolge speichern
             </button>
           </>
         ) : (
           canWrite &&
           slots.length > 1 && (
-            <button type="button" onClick={startEdit} title="Reihenfolge nachträglich anpassen" className="link-btn rounded px-2 py-1 text-brand-700">
+            <button type="button" onClick={startEdit} title="Reihenfolge nachträglich anpassen" className="link-btn rounded px-2 py-1 text-sm text-brand-700">
               ✎ Umsortieren
             </button>
           )
@@ -855,13 +855,14 @@ function BankTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-gray-500">
-              {editing && <th className="w-6 px-1 py-1" />}
-              {editing && <th className="px-2 py-1">Gelesen</th>}
-              <th className="w-8 px-2 py-1" />
+              {/* Umsortieren: ohne Häkchen und Notiz, damit die Tabelle aufs Handy passt */}
+              {editing && <th className="w-8 px-1 py-1" />}
+              {editing && <th className="px-1 py-1">Gelesen</th>}
+              {!editing && <th className="w-11 px-1 py-1" />}
               <th className="px-2 py-1">Nr.</th>
               <th className="px-2 py-1">{terms.singular}</th>
-              <th className="px-2 py-1">Notiz</th>
-              <th className="px-2 py-2" />
+              {!editing && <th className="px-2 py-1">Notiz</th>}
+              <th className="px-1 py-2" />
             </tr>
           </thead>
           <tbody>
@@ -886,27 +887,31 @@ function BankTable({
                       role="button"
                       aria-label={`${label(s)} verschieben`}
                       title="Zum Verschieben ziehen"
-                      className="flex h-9 w-6 cursor-grab touch-none select-none items-center justify-center text-lg leading-none text-gray-500 active:cursor-grabbing active:text-brand-700"
+                      className="flex h-11 w-8 cursor-grab touch-none select-none items-center justify-center text-lg leading-none text-gray-500 active:cursor-grabbing active:text-brand-700"
                     >
                       ⣿
                     </span>
                   </td>
                 )}
                 {editing && (
-                  <td className="px-2 py-0.5 align-top text-xs text-gray-500">
+                  <td className="px-1 py-0.5 align-middle text-xs text-gray-500">
                     {byOriginal[idx] ? `${byOriginal[idx].original_position}. ${label(byOriginal[idx])}` : ''}
                   </td>
                 )}
-                <td className="px-2 py-0.5 align-middle">
-                  <input
-                    type="checkbox"
-                    checked={s.weighed}
-                    disabled={!canWrite || editing}
-                    onChange={() => toggleWeighed(s)}
-                    className="h-5 w-5"
-                    title="gewogen"
-                  />
-                </td>
+                {!editing && (
+                  <td className="px-0 py-0 align-middle">
+                    <label className="grid h-11 w-11 place-items-center" title="gewogen">
+                      <input
+                        type="checkbox"
+                        checked={s.weighed}
+                        disabled={!canWrite}
+                        onChange={() => toggleWeighed(s)}
+                        className="h-6 w-6"
+                        aria-label={`${label(s)} gewogen`}
+                      />
+                    </label>
+                  </td>
+                )}
                 <td className="px-2 py-0.5 align-middle">
                   <span className="text-2xl font-bold leading-none text-gray-800">{s.animal?.lauf_nr ?? '–'}</span>
                   <span className="ml-1 text-xs text-gray-500">{editing ? idx + 1 : s.position}.</span>
@@ -928,6 +933,7 @@ function BankTable({
                     {s.transponder && s.transponder !== s.ear_tag ? ` · ${s.transponder}` : ''}
                   </div>
                 </td>
+                {!editing && (
                 <td className="px-2 py-0.5 align-middle">
                   {noteFor === s.id ? (
                     <form
@@ -960,28 +966,30 @@ function BankTable({
                     </button>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-2 py-0.5 align-middle text-xs">
-                  {editing && (
-                    <>
-                      <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0} className="rounded px-1.5 py-0.5 text-gray-600 disabled:opacity-30">
+                )}
+                <td className="whitespace-nowrap px-1 py-0.5 align-middle text-xs">
+                  {editing ? (
+                    <div className="flex">
+                      <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0} className="grid h-11 w-11 place-items-center rounded text-base text-gray-600 disabled:opacity-30" aria-label="nach oben">
                         ▲
                       </button>
-                      <button type="button" onClick={() => move(idx, 1)} disabled={idx === rows.length - 1} className="rounded px-1.5 py-0.5 text-gray-600 disabled:opacity-30">
+                      <button type="button" onClick={() => move(idx, 1)} disabled={idx === rows.length - 1} className="grid h-11 w-11 place-items-center rounded text-base text-gray-600 disabled:opacity-30" aria-label="nach unten">
                         ▼
                       </button>
-                    </>
-                  )}
-                  {canWrite && (
+                    </div>
+                  ) : (
+                    canWrite && (
                     <button type="button" onClick={() => removeSlot(s)} className="grid h-11 w-11 place-items-center rounded text-lg leading-none text-red-700" title="Zeile löschen (falsch eingegeben)">
                       ×
                     </button>
+                    )
                   )}
                 </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={editing ? 6 : 5} className="px-3 py-4 text-center text-gray-500">
+                <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
                   Noch keine Lesung.
                 </td>
               </tr>

@@ -221,6 +221,7 @@ function ModuleRoute({ mod, onLoggedOut }: { mod: ModuleDescriptor; onLoggedOut:
         moduleKey={mod.key}
         title={mod.title}
         navItems={mod.navItems}
+        pageTitles={mod.pageTitles}
         historyPermission={mod.historyPermission}
         sync={mod.sync}
         onLoggedOut={onLoggedOut}
@@ -251,6 +252,9 @@ function CoreShell({ children, onLoggedOut }: { children: ReactNode; onLoggedOut
 
 /** Kopfzeile ohne Modul-Navigation: Zurück zur Übersicht + Abmelden. */
 function PageShell({ title, children, onLoggedOut }: { title: string; children: ReactNode; onLoggedOut: () => void }) {
+  useEffect(() => {
+    document.title = `${title} · FMIS`
+  }, [title])
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">

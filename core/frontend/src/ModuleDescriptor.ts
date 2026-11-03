@@ -47,6 +47,10 @@ export interface ModuleDescriptor {
   historyPermission: string
   /** Relativ zu /<key>/* gemountet, siehe frontend/src/App.tsx. */
   routes: RouteObject[]
+  /** Seitentitel in der Kopfzeile für Seiten ausserhalb der Fussleiste,
+   * Schlüssel = Pfad wie in routes (z.B. 'tiere/:id'). Sonst gilt die
+   * Beschriftung des Menüpunkts (core/frontend/src/Layout.tsx). */
+  pageTitles?: Record<string, string>
   /** Umschliesst die Routen dieses Moduls mit dessen eigener pglite-Instanz. */
   DbProvider: ComponentType<{ children: ReactNode }>
   sync: SyncClient

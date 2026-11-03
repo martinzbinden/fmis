@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import AdminMenu from '@fmis/core/AdminMenu'
@@ -31,6 +32,9 @@ export default function Dashboard({
   onLoggedOut: () => void
 }) {
   const canImport = useHasPermission('core:import:write')
+  useEffect(() => {
+    document.title = 'FMIS'
+  }, [])
   const tiles = (section: 'top' | 'maschinen') =>
     modules.flatMap((m) => (m.dashboardTiles ?? []).filter((t) => t.section === section).map(({ Tile }, i) => <Tile key={`${m.key}-${section}-${i}`} />))
 

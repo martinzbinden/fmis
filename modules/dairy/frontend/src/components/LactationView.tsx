@@ -308,6 +308,8 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
   const { data, loading } = useQuery(loadLactations)
   const [settings, setSettingsState] = useState<Settings>(() => loadSettings(storageKey))
   const [open, setOpen] = useState<Set<string>>(new Set())
+  // am Handy füllten die Auswahlfelder einen ganzen Bildschirm vor der Liste
+  const [showFilters, setShowFilters] = useState(false)
   const { view, metric, skipFirst, filter, animalSort, rowSort, rowDesc } = settings
 
   function setSettings(patch: Partial<Settings>) {
@@ -429,6 +431,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
 
   const select = 'rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
   const filtered = filter.search || filter.status !== 'alle' || filter.parity !== 'alle' || filter.year || !filter.activeOnly || filter.curve
+  const activeFilters = [filter.status !== 'alle', filter.parity !== 'alle', !!filter.year, !!filter.curve, !filter.activeOnly].filter(Boolean).length
   const metricUnit = metric === 'fe' ? 'kg F+E' : 'kg Milch'
 
   return (
@@ -440,7 +443,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
             placeholder="Suche: Laufnummer, Name, Ohrmarke"
             value={filter.search}
             onChange={(e) => setFilter({ search: e.target.value })}
-            className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm"
+            className="min-w-[12rem] flex-1 rounded border border-gray-300 px-3 py-1.5 text-base sm:text-sm"
           />
           <div className="flex rounded border border-gray-300 text-xs">
             {(
@@ -460,7 +463,15 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
             ))}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowFilters((v) => !v)}
+          aria-expanded={showFilters}
+          className="link-btn text-sm font-medium text-brand-700 sm:hidden"
+        >
+          {showFilters ? '▾' : '▸'} Filter und Darstellung{activeFilters ? ` (${activeFilters} aktiv)` : ''}
+        </button>
+        <div className={`${showFilters ? 'flex' : 'hidden'} flex-wrap items-center gap-2 sm:flex`}>
           <select className={select} value={filter.status} onChange={(e) => setFilter({ status: e.target.value as LactationFilter['status'] })}>
             <option value="alle">Alle Status</option>
             <option value="laufend">Nur laufende</option>

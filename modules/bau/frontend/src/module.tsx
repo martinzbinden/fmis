@@ -25,6 +25,7 @@ const bauModule: ModuleDescriptor = {
   group: 'betrieb',
   navItems: [{ to: '', label: 'Projekte', icon: '🏗️' }],
   historyPermission: 'bau:history:read',
+  pageTitles: { 'projekt/:id': 'Projekt' },
   routes: [
     { path: '', element: <Projects /> },
     { path: 'projekt/:id', element: <ProjectView /> },

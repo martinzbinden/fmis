@@ -4,6 +4,8 @@
 // stellt dafür einen AnimalProvider bereit (ModuleDescriptor.animals); die
 // Shell registriert die aktivierten beim Start (frontend/src/App.tsx).
 
+import { syncModuleNow } from './sync'
+
 export type HerdSpecies = 'schafe' | 'rinder'
 
 export interface AnimalRef {
@@ -107,9 +109,24 @@ export interface HerdLocator {
 }
 
 let locator: HerdLocator | null = null
+let locatorKey: string | null = null
+let herdSyncedAt = 0
 
-export function registerHerdLocator(entries: { herdLocator?: HerdLocator }[]): void {
-  locator = entries.find((e) => e.herdLocator)?.herdLocator ?? null
+export function registerHerdLocator(entries: { key: string; herdLocator?: HerdLocator }[]): void {
+  const entry = entries.find((e) => e.herdLocator)
+  locator = entry?.herdLocator ?? null
+  locatorKey = entry?.key ?? null
+}
+
+/** Die Gruppen gehören einem anderen Modul, das sonst nur abgleicht, wenn man
+ * es öffnet — die Tierseite zeigte sonst längst aufgelöste Gruppen. Vor dem
+ * Anzeigen kurz abgleichen (höchstens einmal pro Minute). true = eben
+ * abgeglichen, also neu lesen. */
+export async function refreshHerdData(): Promise<boolean> {
+  if (!locatorKey || Date.now() - herdSyncedAt < 60_000) return false
+  herdSyncedAt = Date.now()
+  await syncModuleNow(locatorKey)
+  return true
 }
 
 /** null, wenn kein Modul Herden führt (Wiesenjournal nicht aktiviert). */

@@ -32,6 +32,7 @@ import GroupCompare from './pages/GroupCompare'
 import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
 import { createDairyAnimalProvider } from './lib/animalProvider'
+import { speciesTerms } from './lib/species'
 import './theme.css'
 
 /**
@@ -47,20 +48,43 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     return <DbProvider getDb={() => getDb(key)}>{children}</DbProvider>
   }
 
+  const sheep = key === 'dairy_schafe'
+  const terms = speciesTerms(key)
   return {
     key,
     title,
-    icon: '🥛',
+    // Kühe und Schafe auf der Übersicht unterscheidbar
+    icon: sheep ? '🐑' : '🐄',
     group: 'tiere',
     navItems: [
       // Stall zuerst: Milchwägung und Ausmerzliste stehen auf «Heute» und im Menü «Erfassen»
       { to: '', label: 'Heute', icon: '🏠' },
       { to: 'erfassen', label: 'Erfassen', icon: '✏️' },
       { to: 'tierinfo', label: 'Tier-Info', icon: '🔎' },
-      { to: 'tiere', label: 'Tiere', icon: key === 'dairy_schafe' ? '🐑' : '🐄' },
+      { to: 'tiere', label: 'Tiere', icon: sheep ? '🐑' : '🐄' },
       { to: 'leistung', label: 'Leistung', icon: '🥛' },
     ],
     historyPermission: `${key}:history:read`,
+    pageTitles: {
+      'tiere/:id': 'Tier',
+      'stammbaum/:key': 'Stammbaum',
+      ausmerzen: 'Ausmerzliste',
+      'ausmerzen/laemmer': 'Lämmer zum Schlachttermin',
+      geburt: terms.calving,
+      ohrmarken: 'Ohrmarken nachtragen',
+      belegung: sheep ? 'Belegung' : 'Besamung / Belegung',
+      traechtigkeit: 'Trächtigkeit',
+      'traechtigkeit/vergleich': 'Trächtigkeit vergleichen',
+      merklisten: 'Merklisten',
+      klauen: 'Klauen',
+      gruppen: 'Gruppen vergleichen',
+      journal: 'Beobachtung / Behandlung',
+      behandlungen: 'Behandlungsjournal',
+      anpaarung: 'Anpaarung planen',
+      selektion: sheep ? 'Lämmer-Selektion' : 'Kälber-Selektion',
+      pruefbericht: 'Prüfbericht',
+      milchwaegung: 'Milchwägung',
+    },
     routes: [
       { path: '', element: <Today moduleKey={key} /> },
       { path: 'leistung', element: <Milk moduleKey={key} /> },

@@ -39,6 +39,7 @@ const wiesenjournalModule: ModuleDescriptor = {
     { to: 'auswertung', label: 'Auswertung', icon: '📊' },
   ],
   historyPermission: 'wiesenjournal:history:read',
+  pageTitles: { duengerarten: 'Düngerarten' },
   routes: [
     { path: '', element: <JournalGrid /> },
     { path: 'liste', element: <Journal /> },

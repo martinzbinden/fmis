@@ -31,7 +31,8 @@ function LivestockDbProvider({ children }: { children: ReactNode }) {
 const livestockModule: ModuleDescriptor = {
   key: 'livestock',
   title: 'Mastplaner',
-  icon: '🐑',
+  // 🐑 = Milchschafe auf der Übersicht
+  icon: '📈',
   group: 'tiere',
   navItems: [
     { to: '', label: 'Dashboard', icon: '🏠' },
@@ -41,6 +42,17 @@ const livestockModule: ModuleDescriptor = {
     { to: 'wirtschaftlichkeit', label: 'Erlös', icon: '💰' },
   ],
   historyPermission: 'livestock:history:read',
+  pageTitles: {
+    'tiere/:id': 'Tier',
+    'gruppen/:id': 'Gruppe',
+    gewichte: 'Gewichte',
+    medikamente: 'Medikamente',
+    'medikamente/referenz': 'Medikamenten-Referenz',
+    futter: 'Futter',
+    'futter/referenz': 'Futtermittel-Referenz',
+    schlachtung: 'Schlachtung',
+    vermarktung: 'Vermarktung',
+  },
   routes: [
     { path: '', element: <Dashboard /> },
     { path: 'tiere', element: <Animals /> },

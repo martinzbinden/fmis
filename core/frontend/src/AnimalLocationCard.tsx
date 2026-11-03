@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { herdLocator, type AnimalLocation } from './animals'
+import { herdLocator, refreshHerdData, type AnimalLocation } from './animals'
 import { localTodayIso } from './dates'
 
 const fmt = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('de-CH') : 'heute')
 const today = () => localTodayIso()
 
-/** Standort eines Tiers aus den Herdengruppen (Wiesenjournal → Herden):
+/** Standort eines Tiers aus den Tiergruppen (Modul Tiergruppen):
  * aktuelle Gruppe mit Stall und Weide, darunter der Verlauf. Ohne
  * Wiesenjournal-Modul nichts. */
 export default function AnimalLocationCard({ moduleKey, animalId, active = true }: { moduleKey: string; animalId: string; active?: boolean }) {
@@ -17,10 +17,12 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
   useEffect(() => {
     if (!locator) return
     let alive = true
-    locator.locate(moduleKey, animalId, today()).then(
-      (l) => alive && setLoc(l),
-      () => alive && setError(true),
-    )
+    const load = () =>
+      locator.locate(moduleKey, animalId, today()).then(
+        (l) => alive && setLoc(l),
+        () => alive && setError(true),
+      )
+    void load().then(() => refreshHerdData()).then((fresh) => fresh && alive && load())
     return () => {
       alive = false
     }
@@ -37,7 +39,7 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-700">Standort</h2>
         <Link to={locator.herdsPath} className="link-btn text-xs text-brand-700">
-          Herden →
+          Tiergruppen →
         </Link>
       </div>
       {cur ? (
@@ -75,7 +77,7 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
         </div>
       ) : (
         <p className="text-sm text-gray-500">
-          {active ? 'Keiner Herdengruppe zugeteilt — unter Herden → «Bestand klären» zuordnen.' : 'Nicht mehr in einer Herdengruppe.'}
+          {active ? 'Keiner Tiergruppe zugeteilt — unter Tiergruppen → «Ohne Gruppe» zuteilen.' : 'Nicht mehr in einer Tiergruppe.'}
         </p>
       )}
       {loc.history.length > (cur ? 1 : 0) && (
