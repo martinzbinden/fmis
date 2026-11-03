@@ -33,6 +33,7 @@ import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
 import { createDairyAnimalProvider } from './lib/animalProvider'
 import { speciesTerms } from './lib/species'
+import { dairyYearSummary } from './lib/yearSummary'
 import './theme.css'
 
 /**
@@ -50,6 +51,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
 
   const sheep = key === 'dairy_schafe'
   const terms = speciesTerms(key)
+  const sync = createDairySyncClient(key)
   return {
     key,
     title,
@@ -117,10 +119,15 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: '*', element: <Navigate to="." replace /> },
     ],
     DbProvider: DairyDbProvider,
-    sync: createDairySyncClient(key),
+    sync,
     pasteImporters: [treatmentPasteImporter(key)],
     importer: createDairyImporter(key, title, ({ claim, ...run }) => <ImportPanel moduleKey={key} files={dairyFilesOf(claim)} {...run} />),
     animals: createDairyAnimalProvider(key, title),
+    yearSummary: (year) => {
+      // Daten auch ohne Besuch des Moduls aktuell halten
+      sync.startSyncLoop()
+      return dairyYearSummary(key, title, year)
+    },
   }
 }
 

@@ -79,7 +79,8 @@ export function cropLabel(name: string | null, code: string): string {
     .replace(/\s*\((BFF|Biodiversitätsförderfläche)\)\s*$/i, '')
     .replace(/^insitu\s+/i, '')
     .trim()
-  return n || `Code ${code}`
+  // «insitu übrige Dauerwiese» → «Übrige Dauerwiese»
+  return n ? n.charAt(0).toUpperCase() + n.slice(1) : `Code ${code}`
 }
 
 export function cropInfo(code: string, name: string | null): CropInfo {

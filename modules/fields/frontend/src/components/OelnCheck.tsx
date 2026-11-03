@@ -30,7 +30,7 @@ export default function OelnCheck({ farms, plannedYears }: { farms: { name: stri
                         {plannedYears.has(c.jahr) && <span className="block text-[10px] font-normal text-gray-500">mit Plan</span>}
                       </span>
                       <span className="min-w-0 flex-1 text-xs text-gray-600">
-                        {ha(c.openHa)} ha offen · {ha(c.arableHa)} ha Acker · {c.cultures} Kulturen
+                        {ha(c.openHa)} ha offen · {ha(c.arableHa)} ha Acker · {c.cultures} {c.cultures === 1 ? 'Kultur' : 'Kulturen'}
                         {bad.length > 0 && <span className="block text-red-700">{bad.map((b) => `${b.rule.label} ${b.pct} % (max. ${b.rule.maxPct} %)`).join(' · ')}</span>}
                         {c.applies && !c.culturesOk && <span className="block text-red-700">weniger als 4 Kulturen</span>}
                       </span>

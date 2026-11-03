@@ -12,6 +12,7 @@ import Report from './pages/Report'
 import History from './pages/History'
 import FertilizerTypes from './pages/FertilizerTypes'
 import './theme.css'
+import { wiesenjournalYearSummary } from './lib/yearSummary'
 
 // Bis 2026-10 lagen Dienste, Tracking, Maschinen, Arbeitsplan und Herden im
 // Wiesenjournal. Alte Links/Lesezeichen (auch Mail-/Kalender-Links) leiten
@@ -61,6 +62,7 @@ const wiesenjournalModule: ModuleDescriptor = {
   ],
   DbProvider: WiesenjournalDbProvider,
   sync: syncClient,
+  yearSummary: wiesenjournalYearSummary,
 }
 
 export default wiesenjournalModule

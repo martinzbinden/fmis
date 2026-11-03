@@ -4,6 +4,7 @@ import type { SyncClient } from './sync'
 import type { ModuleImporter } from './upload'
 import type { AnimalProvider, HerdLocator } from './animals'
 import type { PasteImporter } from './pasteImport'
+import type { YearSection } from './yearSummary'
 
 export interface NavItem {
   to: string
@@ -71,4 +72,7 @@ export interface ModuleDescriptor {
   /** Liegt über allen Seiten der App (auch anderer Module), z.B. das
    * Badge einer laufenden GPS-Aufzeichnung. Prüft selbst, ob es etwas zeigt. */
   globalOverlay?: ComponentType
+  /** Kennzahlen und Diagramme eines Jahres für die Jahresübersicht
+   * (frontend/src/pages/YearOverview.tsx, core/frontend/src/yearSummary.ts). */
+  yearSummary?: (year: number) => Promise<YearSection | null>
 }

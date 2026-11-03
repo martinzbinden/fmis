@@ -19,6 +19,7 @@ import TrackingBadge from './components/TrackingBadge'
 import { maintenancePasteImporter } from './lib/pasteMaintenance'
 import { dutyPasteImporter } from './lib/pasteDuty'
 import './theme.css'
+import { betriebYearSummary } from './lib/yearSummary'
 
 function BetriebDbProvider({ children }: { children: ReactNode }) {
   return <DbProvider getDb={getDb}>{children}</DbProvider>
@@ -55,6 +56,7 @@ const betriebModule: ModuleDescriptor = {
   ],
   DbProvider: BetriebDbProvider,
   sync: syncClient,
+  yearSummary: betriebYearSummary,
   dashboardTiles: [
     { Tile: DutyTile, section: 'top' },
     { Tile: MaintenanceTile, section: 'maschinen' },

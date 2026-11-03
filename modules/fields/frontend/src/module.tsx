@@ -10,6 +10,7 @@ import History from './pages/History'
 import ImportPanel from './components/ImportPanel'
 import { createFieldsImporter } from './lib/importDetect'
 import './theme.css'
+import { fieldsYearSummary } from './lib/yearSummary'
 
 function FieldsDbProvider({ children }: { children: ReactNode }) {
   return <DbProvider getDb={getDb}>{children}</DbProvider>
@@ -33,6 +34,7 @@ const fieldsModule: ModuleDescriptor = {
   ],
   DbProvider: FieldsDbProvider,
   sync: syncClient,
+  yearSummary: fieldsYearSummary,
   importer: createFieldsImporter(ImportPanel),
 }
 

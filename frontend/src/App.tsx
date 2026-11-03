@@ -20,6 +20,7 @@ import tiereModule from '@fmis/tiere/module'
 import bauModule from '@fmis/bau/module'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
+import YearOverview from './pages/YearOverview'
 import { registerAnimalProviders, registerHerdLocator } from '@fmis/core/animals'
 import { syncPendingModules } from '@fmis/core/sync'
 import { getSharedDbRaw } from '@fmis/core/db'
@@ -169,6 +170,14 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
     {enabledModules.map((m) => (m.globalOverlay ? <m.globalOverlay key={`overlay-${m.key}`} /> : null))}
     <Routes>
       <Route path="/dashboard" element={<Dashboard modules={enabledModules} onLoggedOut={onLoggedOut} />} />
+      <Route
+        path="/jahr"
+        element={
+          <PageShell title="Jahresübersicht" onLoggedOut={onLoggedOut}>
+            <YearOverview modules={enabledModules} />
+          </PageShell>
+        }
+      />
       <Route
         path="/import"
         element={

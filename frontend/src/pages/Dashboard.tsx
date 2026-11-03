@@ -98,6 +98,15 @@ export default function Dashboard({
             })}
           </>
         )}
+        {modules.some((m) => m.yearSummary) && (
+          <Link to="/jahr" className="mt-5 flex items-center gap-3 rounded-xl bg-white p-4 shadow-sm active:bg-gray-100">
+            <span className="text-3xl">📊</span>
+            <span>
+              <span className="block font-semibold text-gray-800">Jahresübersicht</span>
+              <span className="block text-xs text-gray-500">Flächen, Tiere, Düngung, Schnitte, Maschinen – Jahr für Jahr</span>
+            </span>
+          </Link>
+        )}
         {canImport && modules.some((m) => m.importer) && (
           <Link to="/import" className="mt-4 block rounded-xl bg-white p-4 text-center text-sm shadow-sm active:bg-gray-100">
             <span className="font-semibold text-brand-700">📥 Daten importieren</span>
