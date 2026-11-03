@@ -19,6 +19,7 @@ import { loadPendingOffspring } from '../lib/earTagPending'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import type { Animal } from '../types'
+import { errorText } from '@fmis/core/toast'
 
 async function loadData(pg: PGlite) {
   const [animals, sires, lastMatings, births, pending, events] = await Promise.all([
@@ -155,7 +156,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
       setEase(null)
       refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+      setError(errorText(err, 'Speichern fehlgeschlagen'))
     } finally {
       setSaving(false)
     }

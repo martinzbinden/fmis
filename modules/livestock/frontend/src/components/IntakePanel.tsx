@@ -3,6 +3,7 @@ import type { ImportPanelProps } from '@fmis/core/upload'
 import { importAnimalRows, type SeedRow } from '../lib/importCsv'
 import { syncClient } from '../db/sync'
 import { localTodayIso } from '@fmis/core/dates'
+import { errorText } from '@fmis/core/toast'
 
 const today = () => localTodayIso()
 
@@ -37,7 +38,7 @@ export default function IntakePanel({
       onStatus({ phase: 'done', fraction: 1 })
       void syncClient.syncNow()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+      setError(errorText(err, 'Import fehlgeschlagen'))
     } finally {
       setImporting(false)
     }

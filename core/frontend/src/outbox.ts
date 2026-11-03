@@ -9,6 +9,7 @@
 // auf dem Gerät, bis die Zeile irgendwann nochmals geändert wurde.
 
 import type { PGlite } from '@electric-sql/pglite'
+import { translateDbError } from './toast'
 
 export interface OutboxEntry {
   table: string
@@ -109,7 +110,7 @@ export async function revertRejected(
 export function describeRejected(rejected: RejectedRow[]): string {
   const first = rejected[0]
   const n = rejected.length
-  const what = first.reason === 'forbidden' ? 'fehlendes Schreibrecht' : first.detail
+  const what = first.reason === 'forbidden' ? 'fehlendes Schreibrecht' : (translateDbError(first.detail) ?? first.detail)
   if (first.reason === 'frist') return `${first.detail} — die Änderung wurde zurückgenommen (${first.table}).`
   if (first.revert) return `Dafür fehlt dir das Recht — ${n === 1 ? 'die Eingabe wurde' : `${n} Eingaben wurden`} verworfen (${first.table}).`
   return `${n} ${n === 1 ? 'Eintrag wurde' : 'Einträge wurden'} vom Server abgelehnt — alle anderen Änderungen sind gesichert. ${first.table}: ${what}`

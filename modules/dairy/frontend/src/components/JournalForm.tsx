@@ -12,6 +12,7 @@ import { undoAction } from '@fmis/core/undo'
 import { savePhotos, type PreparedPhoto } from '../lib/photos'
 import { diagnosisByKey } from '../lib/diagnoses'
 import type { AnimalJournalEntry, JournalCategory } from '../types'
+import { errorText } from '@fmis/core/toast'
 
 const labelOf = (key: string) => diagnosisByKey(key)?.label ?? ''
 
@@ -96,7 +97,7 @@ export default function JournalForm({
       setPhotos([])
       onSaved()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+      setError(errorText(err, 'Speichern fehlgeschlagen'))
     } finally {
       setSaving(false)
     }

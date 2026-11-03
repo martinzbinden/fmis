@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { animalProvider, type AnimalRef } from '@fmis/core/animals'
-import { notifyError, notifySuccess } from '@fmis/core/toast'
+import { notifyError, notifySuccess, errorText } from '@fmis/core/toast'
 import { undoAction } from '@fmis/core/undo'
 import { constituteGroup, loadHerdData, memberAt, type HerdData } from '@fmis/tiere/lib/herds'
 import type { HerdGroup } from '@fmis/tiere/types'
@@ -73,7 +73,7 @@ export default function ToHerdGroup({ moduleKey, listName, animalIds, onDone }: 
       notifySuccess(`«${g.name}»: ${added} Tiere dazu${left ? `, ${left} jetzt ohne Gruppe` : ''}`)
       onDone()
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setBusy(false)
     }

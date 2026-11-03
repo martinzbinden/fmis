@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import AsyncButton from '@fmis/core/AsyncButton'
-import { notifyError } from '@fmis/core/toast'
+import { notifyError, errorText } from '@fmis/core/toast'
 import Modal from './Modal'
 import { CATEGORIES } from '../lib/categories'
 import { addVariant, chooseVariant, removeVariant, renameVariant } from '../lib/data'
@@ -45,7 +45,7 @@ export default function VariantsDialog({
       onShow(id)
       onClose()
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     }
   }
 

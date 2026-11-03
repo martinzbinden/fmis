@@ -14,6 +14,7 @@ import { changeStay, countAt, dissolveGroup, type HerdData, identifyAnimals, loa
 import { accessIndex, ACCESS_LABEL, monthCounter, type AccessIndex } from '../lib/outdoorAccess'
 import CounterBadge from '../components/CounterBadge'
 import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LaufhofMode, LocationKind, StaySlot } from '../types'
+import { errorText } from '@fmis/core/toast'
 
 const SPECIES_ICON: Record<HerdSpecies, string> = { schafe: '🐑', rinder: '🐄' }
 const SPECIES_LABEL: Record<HerdSpecies, string> = { schafe: 'Schafe', rinder: 'Rinder' }
@@ -468,7 +469,7 @@ function MoveDialog({
       })
       onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(errorText(e))
     } finally {
       setBusy(false)
     }

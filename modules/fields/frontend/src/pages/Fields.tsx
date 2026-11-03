@@ -21,6 +21,7 @@ import { fmtArea, num } from '../lib/format'
 import { colorForKultur } from '../lib/kulturColor'
 import type { Farm, FieldDeclaration, PlanLayer, PlanParcel } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 async function loadFarms(pg: PGlite): Promise<Farm[]> {
   const { rows } = await pg.query<Farm>('select * from farms where deleted_at is null order by name')
@@ -503,7 +504,7 @@ function NewLayerForm({
           : await createLayer(trimmed)
       onCreated(layerId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Anlegen fehlgeschlagen')
+      setError(errorText(err, 'Anlegen fehlgeschlagen'))
     } finally {
       setBusy(false)
     }
@@ -631,7 +632,7 @@ function PlanBulkEditForm({
       }
       onApplied()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Anwenden fehlgeschlagen')
+      setError(errorText(err, 'Anwenden fehlgeschlagen'))
     } finally {
       setBusy(false)
     }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { verifyToken } from './auth'
+import { errorText } from './toast'
 
 export default function VerifyToken({ onVerified }: { onVerified: () => void }) {
   const [error, setError] = useState<string | null>(null)
@@ -28,7 +29,7 @@ export default function VerifyToken({ onVerified }: { onVerified: () => void }) 
         // wegen der /verify-Sonderbehandlung weiter diese Seite rendern.
         navigate('/dashboard', { replace: true })
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen'))
+      .catch((err) => setError(errorText(err, 'Anmeldung fehlgeschlagen')))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

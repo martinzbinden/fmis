@@ -3,7 +3,7 @@ import { useHasPermission } from './AuthContext'
 import { fetchHistory, type HistoryEntry } from './historyApi'
 import { describeRejected } from './outbox'
 import { syncModuleNow } from './sync'
-import { notifyError, notifySuccess } from './toast'
+import { notifyError, notifySuccess, errorText } from './toast'
 
 /** Admins: Zeilen-Stand vor einer Änderung wiederherstellen; null = Zeile löschen.
  * false = auf diesem Gerät änderte sich nichts. */
@@ -46,7 +46,7 @@ export default function HistoryUndoButton({ moduleKey, entry, restore }: { modul
       if ('error' in p) notifyError(p.error)
       else setPlan(p)
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setBusy(false)
     }
@@ -67,7 +67,7 @@ export default function HistoryUndoButton({ moduleKey, entry, restore }: { modul
       else notifySuccess(plan.state ? 'Stand vor der Änderung wiederhergestellt' : 'Neuer Eintrag gelöscht')
       setPlan(null)
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setBusy(false)
     }

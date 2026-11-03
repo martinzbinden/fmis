@@ -2,7 +2,7 @@ import { isUniqueViolation, mergeInto, setAsideConflicts } from './pullConflicts
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getToken, logout } from './auth'
 import { clearSent, describeRejected, readOutbox, revertRejected, type RejectedRow } from './outbox'
-import { notifyError, notifyInfo } from './toast'
+import { notifyError, notifyInfo, errorText } from './toast'
 
 export type SyncStatus = 'offline' | 'synced' | 'syncing' | 'error'
 
@@ -320,7 +320,7 @@ export function createSyncClient(
       return rejected
     } catch (err) {
       console.error(`Sync fehlgeschlagen (${moduleKey})`, err)
-      setStatus('error', err instanceof Error ? err.message : String(err))
+      setStatus('error', errorText(err))
       return []
     } finally {
       void refreshPending()

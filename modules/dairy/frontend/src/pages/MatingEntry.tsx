@@ -16,6 +16,7 @@ import { isoDate, localTodayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import type { Animal } from '../types'
 import { useOnUndo } from '@fmis/core/undo'
+import { errorText } from '@fmis/core/toast'
 
 async function loadData(pg: PGlite) {
   const [animals, sires, lastBirths, matings, inbreeding, events] = await Promise.all([
@@ -103,7 +104,7 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
       setNotes('')
       refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+      setError(errorText(err, 'Speichern fehlgeschlagen'))
     } finally {
       setSaving(false)
     }

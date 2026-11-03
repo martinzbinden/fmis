@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import NumberInput from '@fmis/core/NumberInput'
-import { notifyError, notifySuccess } from '@fmis/core/toast'
+import { notifyError, notifySuccess, errorText } from '@fmis/core/toast'
 import { loadFieldsBackground } from '@fmis/wiesenjournal/lib/fieldsBackground'
 import { useQuery } from '../hooks/useQuery'
 import { culturesInArea, DEFAULT_BUFFER_M, exportArea, WMS_LAYERS, type Area, type WmsKey } from '../lib/basemapExport'
@@ -80,7 +80,7 @@ export default function ExportPanel({
       downloadFile(file)
       notifySuccess(`${file.name} erstellt`)
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setBusy(null)
     }

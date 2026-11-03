@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { dismissToast, getToasts, notify, notifyError, errorText } from './toast'
+import { dismissToast, getToasts, notify, notifyError, errorText, translateDbError } from './toast'
 
 describe('toast', () => {
   beforeEach(() => vi.useFakeTimers())
@@ -38,5 +38,21 @@ describe('toast', () => {
   it('errorText liest Exceptions und Unbekanntes', () => {
     expect(errorText(new Error('kaputt'))).toBe('kaputt')
     expect(errorText('x')).toBe('x')
+  })
+
+  it('übersetzt Datenbankfehler ins Deutsche', () => {
+    const dup = Object.assign(new Error('duplicate key value violates unique constraint "animals_ear_tag_key"'), {
+      code: '23505',
+      detail: 'Key (ear_tag)=(CH20041511) already exists.',
+    })
+    expect(errorText(dup)).toBe('Gibt es schon: Ohrmarke «CH20041511» ist bereits erfasst.')
+    expect(translateDbError('null value in column "lauf_nr" of relation "animals" violates not-null constraint')).toBe('Angabe fehlt: Laufnummer.')
+    expect(translateDbError('invalid input syntax for type numeric: "1,5x"')).toBe('Ungültige Eingabe: «1,5x» ist keine Zahl.')
+    expect(
+      translateDbError('update or delete on table "animals" violates foreign key constraint "births_dam_id_fkey" on table "births"'),
+    ).toBe('Kann nicht gelöscht werden: es hängen noch Einträge daran (Geburten).')
+    expect(errorText(new TypeError('Failed to fetch'))).toBe('Keine Verbindung zum Server. Später nochmals versuchen.')
+    expect(errorText(new Error('Ohrmarke fehlt'))).toBe('Ohrmarke fehlt')
+    expect(errorText(undefined, 'Speichern fehlgeschlagen')).toBe('Speichern fehlgeschlagen')
   })
 })

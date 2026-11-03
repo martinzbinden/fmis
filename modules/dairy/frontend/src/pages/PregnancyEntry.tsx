@@ -7,7 +7,7 @@ import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import FooterBar from '@fmis/core/FooterBar'
 import NumberInput from '@fmis/core/NumberInput'
-import { notifyError, notifyInfo } from '@fmis/core/toast'
+import { notifyError, notifyInfo, errorText } from '@fmis/core/toast'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import AnimalWarnings from '../components/AnimalWarnings'
@@ -248,7 +248,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
       setAfter(followUp)
       reset()
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setSaving(false)
     }
@@ -268,7 +268,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
       setList([])
       setWeeks('')
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setSaving(false)
     }
@@ -315,7 +315,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
       await upsertRow(db, 'pregnancy_checks', { ...editing, result, weeks: toWeeks(editWeeks, editing.duration_unit ?? 'wochen') })
       setEditId(null)
     } catch (e) {
-      notifyError(`Nicht gespeichert: ${e instanceof Error ? e.message : String(e)}`)
+      notifyError(`Nicht gespeichert: ${errorText(e)}`)
     }
   }
 

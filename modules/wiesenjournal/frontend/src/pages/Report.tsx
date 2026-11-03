@@ -12,6 +12,7 @@ import {
 import { fmtArea, fmtDate, PARCEL_CATEGORY_LABEL } from '../lib/format'
 import { isSmallParcel, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import AckerToggle from '../components/AckerToggle'
+import { errorText } from '@fmis/core/toast'
 
 const CURRENT_YEAR = new Date().getFullYear()
 type Tab = 'naehrstoffe' | 'weidegaenge'
@@ -79,7 +80,7 @@ function NutrientsTab({ seasonYear }: { seasonYear: number }) {
     setError(null)
     fetchNutrientReport(seasonYear)
       .then(setReport)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(errorText(err)))
       .finally(() => setLoading(false))
   }
   useEffect(load, [seasonYear])
@@ -109,7 +110,7 @@ function NutrientsTab({ seasonYear }: { seasonYear: number }) {
       )
       load()
     } catch (err) {
-      setRecomputeMsg(err instanceof Error ? err.message : String(err))
+      setRecomputeMsg(errorText(err))
     } finally {
       setRecomputing(false)
     }
@@ -260,7 +261,7 @@ function OverlapTab({ seasonYear }: { seasonYear: number }) {
         if (!cancelled) setReport(r)
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled) setError(errorText(err))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

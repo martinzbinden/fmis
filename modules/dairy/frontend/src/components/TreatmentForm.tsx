@@ -14,6 +14,7 @@ import { loadTreatmentContext, saveTemplate, saveTreatment } from '../lib/treatm
 import { DEFAULT_WITHDRAWAL_FACTOR, parseItems } from '../lib/treatments'
 import { QUICK_DAYS, dueIn } from '../lib/reminders'
 import type { AnimalJournalEntry, TemplateItem, TreatmentTemplate } from '../types'
+import { errorText } from '@fmis/core/toast'
 
 const LS = { by: 'dairy_journal_last_administered_by', supplier: 'dairy_treatment_supplier' }
 const load = (k: string) => {
@@ -161,7 +162,7 @@ export default function TreatmentForm({
       setPhotos([])
       onSaved()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+      setError(errorText(err, 'Speichern fehlgeschlagen'))
     } finally {
       setSaving(false)
     }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_URL, getToken } from './auth'
 import { animalKey } from './earTag'
+import { errorText } from './toast'
 
 // Zentrale Leser-Funktion (APR600 über den Server, core/backend/fmis_core/reader_scan.py)
 // für alle Stellen, an denen Tiernummern eingegeben werden. Das Formular bekommt jede
@@ -205,7 +206,7 @@ export function useTagReader(opts: TagReaderOptions): TagReader {
       } catch (e) {
         if (controller.signal.aborted) return
         setPhase('error')
-        setMessage({ text: e instanceof Error ? e.message : String(e), tone: 'error' })
+        setMessage({ text: errorText(e), tone: 'error' })
         setOn(false)
       }
     })()

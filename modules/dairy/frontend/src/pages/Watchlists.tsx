@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
 import { animalLabel } from '@fmis/core/earTag'
-import { notifyError, notifySuccess } from '@fmis/core/toast'
+import { notifyError, notifySuccess, errorText } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
 import ToHerdGroup from '../components/ToHerdGroup'
@@ -44,7 +44,7 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
     if (!data || dupCount === 0) return
     removeDuplicateEntries(db, data.entries)
       .then((n) => n > 0 && notifySuccess(`${n} doppelte Einträge entfernt`))
-      .catch((e) => notifyError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => notifyError(errorText(e)))
   }, [db, data, dupCount])
 
   async function create() {
@@ -54,7 +54,7 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
       setName('')
       setOpenId(id)
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     }
   }
 
@@ -169,7 +169,7 @@ function ListCard({
       await write()
     } catch (err) {
       setHidden((h) => new Set([...h].filter((x) => x !== id)))
-      notifyError(err instanceof Error ? err.message : String(err))
+      notifyError(errorText(err))
     }
   }
   const openEntries = entries.filter((e) => !e.done_at && !hidden.has(e.id)).sort((a, b) => Number(!!b.reason) - Number(!!a.reason))
@@ -184,7 +184,7 @@ function ListCard({
       setAdding([])
       setReason('')
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setBusy(false)
     }

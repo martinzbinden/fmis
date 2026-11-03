@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
+import { errorText } from './toast'
 
 /**
  * Generischer pglite-Context — nimmt eine beliebige getDb()-Funktion entgegen
@@ -31,7 +32,7 @@ export function DbProvider({
       })
       .catch((err) => {
         console.error('pglite Initialisierung fehlgeschlagen', err)
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled) setError(errorText(err))
       })
     return () => {
       cancelled = true

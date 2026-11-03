@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { toWebp, type PreparedPhoto } from '../lib/photos'
+import { errorText } from '@fmis/core/toast'
 
 /** Fotos zu einem Eintrag: aufnehmen oder aus der Galerie, sofort verkleinert
  * (WebP). Gespeichert werden sie erst mit dem Eintrag (lib/photos.ts savePhotos). */
@@ -22,7 +23,7 @@ export default function PhotoPicker({ photos, onChange, disabledReason }: { phot
       for (const f of images) added.push(await toWebp(f))
       onChange([...photos, ...added])
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Foto liess sich nicht verarbeiten.')
+      setError(errorText(e, 'Foto liess sich nicht verarbeiten.'))
     } finally {
       setBusy(false)
     }

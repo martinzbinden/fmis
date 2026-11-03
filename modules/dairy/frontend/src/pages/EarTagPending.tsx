@@ -11,6 +11,7 @@ import { assignEarTag, checkEarTag, daysSince, loadPendingOffspring, markDied, M
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import type { Animal } from '../types'
+import { errorText } from '@fmis/core/toast'
 
 async function loadData(pg: PGlite) {
   const [pending, animals] = await Promise.all([loadPendingOffspring(pg), pg.query<Animal>('select * from animals where deleted_at is null')])
@@ -141,7 +142,7 @@ function PendingCard({
       const r = await inTransaction(db, (tx) => assignEarTag(tx, p, { earTag, sex }, dam, animals))
       onSaved({ earTag, ...r })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+      setError(errorText(err, 'Speichern fehlgeschlagen'))
       setBusy(false)
     }
   }
@@ -152,7 +153,7 @@ function PendingCard({
     try {
       await markDied(db, p, diedOn)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+      setError(errorText(err, 'Speichern fehlgeschlagen'))
       setBusy(false)
     }
   }

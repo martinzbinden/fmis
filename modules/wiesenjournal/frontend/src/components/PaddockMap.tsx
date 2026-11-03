@@ -24,6 +24,7 @@ import type { TrackPoint } from '@fmis/betrieb/lib/tracking'
 import type { CoverageParcel } from '../lib/coverage'
 import type { Paddock, Parcel, WeedObservation } from '../types'
 import type { Track } from '@fmis/betrieb/types'
+import { errorText } from '@fmis/core/toast'
 
 const BACKGROUND_LAYERS = {
   pixelkarte: { label: 'Pixelkarte', wmtsLayer: 'ch.swisstopo.pixelkarte-farbe', maxZoom: 18 },
@@ -612,7 +613,7 @@ function FertilizationHeatLayer({ seasonYear, onError }: { seasonYear: number; o
         if (fc.features.length === 0) onError('Keine Massnahmen mit Fläche und Nährstoffen in diesem Jahr.')
       })
       .catch((err) => {
-        if (!cancelled) onError(err instanceof Error ? err.message : 'Düngungskarte nicht verfügbar (offline?)')
+        if (!cancelled) onError(errorText(err, 'Düngungskarte nicht verfügbar (offline?)'))
       })
     return () => {
       cancelled = true

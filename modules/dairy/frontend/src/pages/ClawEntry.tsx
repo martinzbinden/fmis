@@ -5,7 +5,7 @@ import { getCurrentUserEmail } from '@fmis/core/auth'
 import AnimalOption from '@fmis/core/AnimalOption'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
-import { notifyError } from '@fmis/core/toast'
+import { notifyError, errorText } from '@fmis/core/toast'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import { inTransaction } from '../db/transaction'
@@ -240,7 +240,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
       setAfter(warnings.length ? { animalId: animal.id, warnings: warnings.map((w) => ({ ...w, tone: 'warn' as const })) } : null)
       reset()
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setSaving(false)
     }

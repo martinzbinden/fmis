@@ -26,7 +26,7 @@ import { fetchCoverage, fieldShapes, localDay, sameJob, timeMs, type CoveragePar
 import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import type { Paddock, Parcel, WeedObservation } from '../types'
-import { notifyError } from '@fmis/core/toast'
+import { notifyError, errorText } from '@fmis/core/toast'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -133,7 +133,7 @@ export default function Map() {
       setCoverage({ title: `${track.work_type ?? 'Arbeit'} ${fmtDate(localDay(track.started_at))}${track.machine ? ` · ${track.machine}` : ''}`, widthM: width, tracks: job.length, parcels: parcelsResult })
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setCoverageBusy(null)
     }

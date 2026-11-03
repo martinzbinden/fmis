@@ -10,6 +10,7 @@ import { fmtKg, fmtAge, num } from '../lib/format'
 import type { AnimalStatus } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
 import { localTodayIso } from '@fmis/core/dates'
+import { errorText } from '@fmis/core/toast'
 
 interface Row {
   id: string
@@ -106,7 +107,7 @@ function OwnLambsForm({ onDone }: { onDone: () => void }) {
       )
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Übernahme fehlgeschlagen')
+      setError(errorText(err, 'Übernahme fehlgeschlagen'))
     } finally {
       setBusy(false)
     }

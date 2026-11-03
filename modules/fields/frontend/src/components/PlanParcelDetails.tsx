@@ -4,6 +4,7 @@ import { deletePlanParcel, loadVersionHistory, revertToVersion, saveNewVersion }
 import { fmtArea, fmtDateTime, num } from '../lib/format'
 import type { Farm, PlanParcel } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 interface CropOption {
   code: string
@@ -88,7 +89,7 @@ export default function PlanParcelDetails({
       await reload()
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+      setError(errorText(err, 'Speichern fehlgeschlagen'))
     } finally {
       setBusy(false)
     }
@@ -102,7 +103,7 @@ export default function PlanParcelDetails({
       await reload()
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Wiederherstellen fehlgeschlagen')
+      setError(errorText(err, 'Wiederherstellen fehlgeschlagen'))
     } finally {
       setBusy(false)
     }
@@ -116,7 +117,7 @@ export default function PlanParcelDetails({
       onChanged()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen')
+      setError(errorText(err, 'Löschen fehlgeschlagen'))
       setBusy(false)
     }
   }

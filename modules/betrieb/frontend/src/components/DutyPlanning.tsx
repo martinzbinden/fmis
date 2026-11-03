@@ -4,6 +4,7 @@ import { addDays, canDo, groupTypes, isoWeek, localToday as todayIso, mondayOf, 
 import { adjustWeek, copyTemplate, deleteTemplate, generateWeeks, saveTemplate, setTemplateSlot, setWeekStatus, templateFromWeek, type DutyData } from '../lib/dutyData'
 import { confirmDeadline, GENERATE_AHEAD_WEEKS, templateOn, templateSlotsFromWeek, weekStates } from '../lib/dutyPlan'
 import type { DutyTemplate, DutyType } from '../types'
+import { errorText } from '@fmis/core/toast'
 
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 const field = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
@@ -40,7 +41,7 @@ export default function Planning({ d, refresh, openWeek }: { d: DutyData; refres
     try {
       setMsg(await job())
     } catch (e) {
-      setMsg(`Fehler: ${e instanceof Error ? e.message : String(e)}`)
+      setMsg(`Fehler: ${errorText(e)}`)
     } finally {
       setBusy(false)
       refresh()

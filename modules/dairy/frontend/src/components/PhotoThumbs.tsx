@@ -9,7 +9,7 @@ function Thumb({ moduleKey, photo, onOpen }: { moduleKey: string; photo: Journal
     let live = true
     photoObjectUrl(moduleKey, photo.id).then(
       (u) => live && setUrl(u),
-      (e: unknown) => live && setError(e instanceof Error ? e.message : 'Foto nicht verfügbar'),
+      (e: unknown) => live && setError(errorText(e, 'Foto nicht verfügbar')),
     )
     return () => {
       live = false

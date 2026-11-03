@@ -15,6 +15,7 @@ import {
 } from '../lib/importWeights'
 import { shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 interface GroupOption {
   id: string
@@ -116,7 +117,7 @@ function CsvImportForm({ onDone }: { onDone: () => void }) {
       setResult(res)
       onDone()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+      setError(errorText(err, 'Import fehlgeschlagen'))
     } finally {
       setImporting(false)
     }

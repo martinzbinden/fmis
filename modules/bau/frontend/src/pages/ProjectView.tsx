@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { lineLengthM, type LngLat } from '@fmis/core/lv95'
 import { BACKGROUND_LAYERS, type BackgroundKey } from '@fmis/core/swisstopo'
-import { notifyError, notifySuccess } from '@fmis/core/toast'
+import { notifyError, notifySuccess, errorText } from '@fmis/core/toast'
 import BauMap, { type MapLayers, type MapMode } from '../components/BauMap'
 import ExportPanel from '../components/ExportPanel'
 import ImportDialog from '../components/ImportDialog'
@@ -107,7 +107,7 @@ export default function ProjectView() {
       const n = await uploadOverlayZip(file)
       notifySuccess(`Grundlage mit ${n} ${n === 1 ? 'Ebene' : 'Ebenen'} hinzugefügt.`)
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setOverlayBusy(false)
     }
@@ -229,7 +229,7 @@ export default function ProjectView() {
       }
       cancelDraft()
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     }
   }
 

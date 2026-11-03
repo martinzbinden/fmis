@@ -12,6 +12,7 @@ import { fmtDate, todayIso } from '../lib/format'
 import { parseSmgCertificate, readPdfText } from '../lib/smgCertificate'
 import { speciesOf } from '../lib/species'
 import { applyCertificatePlan, planCertificateImport, type CertificateImportResult, type CertificatePlan } from '../lib/importCertificate'
+import { errorText } from '@fmis/core/toast'
 
 /** Import einer Herde (Instanz) von der zentralen Upload-Seite
  * (lib/importDetect.ts): Herdebuch-Export, TVD-Tierbestand (Excel; bei den
@@ -58,7 +59,7 @@ export default function ImportPanel({
         onStatus({ phase: 'done', fraction: 1 })
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+      setError(errorText(err, 'Import fehlgeschlagen'))
     } finally {
       setBusy(false)
     }
@@ -110,7 +111,7 @@ export default function ImportPanel({
           parentage.read += rows.length
           parentage.filled += (await inTransaction(db, (tx) => importParentage(tx, rows))).filled
         } catch (err) {
-          nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
+          nextWarnings.push(`${f.name}: ${errorText(err, 'nicht lesbar')}`)
         }
       }
 
@@ -128,7 +129,7 @@ export default function ImportPanel({
           const fromTvd = tvdParentage(animals)
           if (fromTvd.length) parentage.filled += (await inTransaction(db, (tx) => importParentage(tx, fromTvd))).filled
         } catch (err) {
-          nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
+          nextWarnings.push(`${f.name}: ${errorText(err, 'nicht lesbar')}`)
         }
       }
 
@@ -142,7 +143,7 @@ export default function ImportPanel({
           if (plan.conflicts.length) toDecide.push(plan)
           else results.push(await inTransaction(db, (tx) => applyCertificatePlan(tx, plan, true)))
         } catch (err) {
-          nextWarnings.push(`${f.name}: ${err instanceof Error ? err.message : 'nicht lesbar'}`)
+          nextWarnings.push(`${f.name}: ${errorText(err, 'nicht lesbar')}`)
         }
       }
       progress('commit', 0)
@@ -157,7 +158,7 @@ export default function ImportPanel({
       setWarnings(nextWarnings)
     } catch (err) {
       await closeSession()
-      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+      setError(errorText(err, 'Import fehlgeschlagen'))
       onStatus({ phase: 'error' })
     } finally {
       setBusy(false)

@@ -34,6 +34,7 @@ import type {
 import type { Track } from '@fmis/betrieb/types'
 import { getSyncedDb as getBetriebDb } from '@fmis/betrieb/db/access'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 // Reihenfolge der Typ-Chips: erst das Alltägliche (Weide/Schnitte), dann Pflege.
 const USAGE_TYPE_ORDER: UsageType[] = [
@@ -351,7 +352,7 @@ export default function DayEntryEditor({
       onSaved()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen')
+      setError(errorText(err, 'Speichern fehlgeschlagen'))
     } finally {
       setSaving(false)
     }

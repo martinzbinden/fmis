@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Modal from './Modal'
 import { describeRejected } from './outbox'
 import { syncModuleNow } from './sync'
-import { notifyError, notifySuccess } from './toast'
+import { notifyError, notifySuccess, errorText } from './toast'
 import { describeStep, markNotUndone, undoStep, useUndoSteps, type UndoStep } from './undo'
 
 /** Wie lange die Leiste nach dem Speichern sichtbar bleibt (mit Handschuhen
@@ -26,7 +26,7 @@ async function runUndo(step: UndoStep): Promise<void> {
     }
     notifySuccess(`Zurückgenommen – ${describeStep(step)}`)
   } catch (e) {
-    notifyError(`Rückgängig fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`)
+    notifyError(`Rückgängig fehlgeschlagen: ${errorText(e)}`)
   }
 }
 

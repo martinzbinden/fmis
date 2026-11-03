@@ -13,6 +13,7 @@ import AckerToggle from '../components/AckerToggle'
 import Modal from '../components/Modal'
 import type { Intensitaet, Parcel, ParcelCategory } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 const CURRENT_YEAR = new Date().getFullYear()
 
@@ -136,7 +137,7 @@ export default function Parcels() {
       await syncClient.syncNow()
       refresh()
     } catch (err) {
-      setImportResult(err instanceof Error ? err.message : 'Übernahme fehlgeschlagen')
+      setImportResult(errorText(err, 'Übernahme fehlgeschlagen'))
     } finally {
       setImporting(false)
     }

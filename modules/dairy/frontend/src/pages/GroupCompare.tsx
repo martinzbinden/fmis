@@ -4,7 +4,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
-import { notifyError } from '@fmis/core/toast'
+import { notifyError, errorText } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
 import { clawStatusByAnimal, loadClawExams } from '../lib/clawHealth'
@@ -129,7 +129,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
       setNewName('')
       setNewIds([])
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setSaving(false)
     }

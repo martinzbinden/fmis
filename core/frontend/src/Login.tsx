@@ -6,6 +6,7 @@ import {
   requestMagicLink,
   ssoLogin,
 } from './auth'
+import { errorText } from './toast'
 
 // Der Sprung ins Portal darf sich nicht wiederholen: käme man von dort ohne
 // brauchbare Anmeldung zurück, liefe die Seite sonst im Kreis. Einmal pro
@@ -87,7 +88,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
         } catch (err) {
           // Portal-Anmeldung vorhanden, aber abgelehnt — etwa weil das Konto
           // noch auf die Freischaltung wartet. Das gehört auf den Schirm.
-          if (active) setSsoError(err instanceof Error ? err.message : 'Anmeldung abgelehnt')
+          if (active) setSsoError(errorText(err, 'Anmeldung abgelehnt'))
         }
       }
       if (active) setSsoPending(false)
@@ -147,7 +148,7 @@ function EmailLogin() {
       await requestMagicLink(email)
       setSent(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Anfrage fehlgeschlagen')
+      setError(errorText(err, 'Anfrage fehlgeschlagen'))
     } finally {
       setBusy(false)
     }
@@ -215,7 +216,7 @@ function PasswordLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
       await passwordLogin(password)
       onLoggedIn()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen')
+      setError(errorText(err, 'Anmeldung fehlgeschlagen'))
     } finally {
       setBusy(false)
     }

@@ -16,6 +16,7 @@ import { addDays, fmtDate, isoDate, localTodayIso } from '../lib/format'
 import { deleteTemplate, importTreatments, loadTreatmentContext, saveTemplate, type TreatmentContext } from '../lib/treatmentData'
 import { DEFAULT_WITHDRAWAL_FACTOR, parseCownect, parseItems, suggestTemplates, withdrawalUntil, type TemplateSuggestion } from '../lib/treatments'
 import type { AnimalJournalEntry, TemplateItem, TreatmentTemplate } from '../types'
+import { errorText } from '@fmis/core/toast'
 
 type Row = AnimalJournalEntry & { a_name: string | null; a_lauf_nr: string | null; a_ear_tag: string | null }
 interface Case {
@@ -307,7 +308,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
         `${r.added} Behandlungen neu importiert (${r.matched} Herdentieren zugeordnet, übrige mit Ohrmarke und Name), ${r.existing} waren schon da${skipped ? `, ${skipped} Zeilen ohne Tier/Datum übersprungen` : ''}.`,
       )
     } catch (e) {
-      setImportMsg(`Import fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`)
+      setImportMsg(`Import fehlgeschlagen: ${errorText(e)}`)
     } finally {
       setBusy(false)
       if (fileRef.current) fileRef.current.value = ''

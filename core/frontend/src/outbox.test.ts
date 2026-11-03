@@ -20,7 +20,7 @@ beforeAll(async () => {
   await pg.exec(`create table sync_outbox (
     table_name text not null, row_id uuid not null, updated_at timestamptz not null default now(),
     primary key (table_name, row_id))`)
-})
+}, 60_000) // pglite startet im vollen Testlauf langsam
 beforeEach(async () => {
   await pg.exec('delete from sync_outbox')
 })

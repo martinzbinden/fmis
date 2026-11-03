@@ -31,6 +31,7 @@ import type {
   YieldUnit,
 } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 const WINDOW_DAYS = 180
 
@@ -207,7 +208,7 @@ export default function DayEntryEditorClassic({
       }
       setTypes(ftypes)
       } catch (err) {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Laden fehlgeschlagen')
+        if (!cancelled) setLoadError(errorText(err, 'Laden fehlgeschlagen'))
       } finally {
         if (!cancelled) setLoading(false)
       }

@@ -16,6 +16,7 @@ import PlanCreateDialog from '../components/PlanCreateDialog'
 import { loadPlan, type PlanTask } from '../lib/workPlan'
 import { adjustWeek, assignWork, respondRequest, saveSkills, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
+import { errorText } from '@fmis/core/toast'
 
 type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'planung' | 'einstellungen'
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
@@ -611,7 +612,7 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
   const done = visible.filter((r) => r.status !== 'offen')
   const run = (job: Promise<unknown>) => {
     setErr(null)
-    job.then(refresh).catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+    job.then(refresh).catch((e: unknown) => setErr(errorText(e)))
   }
   return (
     <div className="space-y-3">
@@ -996,7 +997,7 @@ function Feeds({ d }: { d: DutyData }) {
     if (!res.ok) throw new Error(`Server ${res.status}`)
     return res.json()
   }
-  const load = () => call('/betrieb/duty/feed-tokens').then(setLinks).catch((e) => setErr(e instanceof Error ? e.message : String(e)))
+  const load = () => call('/betrieb/duty/feed-tokens').then(setLinks).catch((e) => setErr(errorText(e)))
   const full = (p: string) => (/^https?:/.test(API_URL) ? `${API_URL}${p}` : `${window.location.origin}${API_URL}${p}`)
   return (
     <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
@@ -1083,7 +1084,7 @@ function SchoolSync() {
       setRes(await r.json())
       await syncClient.pull()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(errorText(e))
     } finally {
       setBusy(false)
     }

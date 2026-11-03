@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { API_URL, getToken } from './auth'
+import { errorText } from './toast'
 
 export type HistoryAction = 'insert' | 'update' | 'delete'
 
@@ -72,7 +73,7 @@ export function useServerHistory(
       .catch((err: unknown) => {
         if (!active) return
         setEntries(null)
-        setError(err instanceof Error ? err.message : String(err))
+        setError(errorText(err))
       })
       .finally(() => {
         if (active) setLoading(false)

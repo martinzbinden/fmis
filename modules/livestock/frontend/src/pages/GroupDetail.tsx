@@ -10,6 +10,7 @@ import { fmtDate, fmtChf, num, todayIso } from '../lib/format'
 import type { AnimalGroup, FeedRecord, Expense, GroupStatus } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 const GROUP_STATUS_OPTIONS: GroupStatus[] = ['aktiv', 'abgeschlossen']
 
@@ -550,7 +551,7 @@ function ReaderImportPanel({ groupId, onImported }: { groupId: string; onImporte
       if (!res.ok) throw new Error(`Fehler ${res.status}`)
       setDatapools(await res.json())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Datenpools konnten nicht geladen werden')
+      setError(errorText(err, 'Datenpools konnten nicht geladen werden'))
     } finally {
       setBusy(false)
     }
@@ -568,7 +569,7 @@ function ReaderImportPanel({ groupId, onImported }: { groupId: string; onImporte
       const rows: { ear_tag: string }[] = await res.json()
       setTags(rows.map((r) => r.ear_tag))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ohrmarken konnten nicht geladen werden')
+      setError(errorText(err, 'Ohrmarken konnten nicht geladen werden'))
     } finally {
       setBusy(false)
     }
@@ -583,7 +584,7 @@ function ReaderImportPanel({ groupId, onImported }: { groupId: string; onImporte
       setResult(res)
       onImported()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import fehlgeschlagen')
+      setError(errorText(err, 'Import fehlgeschlagen'))
     } finally {
       setBusy(false)
     }

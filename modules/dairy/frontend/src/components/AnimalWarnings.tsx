@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useDb } from '@fmis/core/DbContext'
-import { notifyError } from '@fmis/core/toast'
+import { notifyError, errorText } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import type { AnimalWarning } from '../lib/animalWarnings'
 import { addToWatchlist, createWatchlist, loadWatchlists } from '../lib/watchlists'
@@ -123,7 +123,7 @@ export function WatchlistPicker({ animalIds, reason, suggest, onDone }: { animal
       const n = await addToWatchlist(db, id, animalIds, reason)
       onDone(n > 0 ? `Auf «${listName}» gesetzt` : `Stand schon auf «${listName}»`)
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     } finally {
       setBusy(false)
     }

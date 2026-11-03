@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
-import { notifyError } from '@fmis/core/toast'
+import { notifyError, errorText } from '@fmis/core/toast'
 import { inTransaction } from '../db/transaction'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { softDeleteRow } from '../db/write'
@@ -540,7 +540,7 @@ function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
         setBusy(true)
         onConfirm()
           .then(() => setConfirm(false))
-          .catch((e) => notifyError(`Nicht gelöscht: ${e instanceof Error ? e.message : String(e)}`))
+          .catch((e) => notifyError(`Nicht gelöscht: ${errorText(e)}`))
           .finally(() => setBusy(false))
       }}
       className="min-h-11 rounded-lg bg-red-700 px-3 text-sm font-semibold text-white disabled:opacity-50"

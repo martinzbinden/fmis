@@ -10,6 +10,7 @@ import RotationTimeline from '../components/RotationTimeline'
 import Modal from '../components/Modal'
 import type { FieldDeclaration, FieldLineageSummary } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 const FILTERS: ('alle' | KulturCategory)[] = ['alle', 'acker', 'futter']
 const FILTER_LABEL: Record<'alle' | KulturCategory, string> = {
@@ -250,7 +251,7 @@ function PlanForm({
       setZwischenfutter(false)
       onPlanned()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Planen fehlgeschlagen')
+      setError(errorText(err, 'Planen fehlgeschlagen'))
     } finally {
       setBusy(false)
     }

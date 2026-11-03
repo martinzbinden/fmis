@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import JSZip from 'jszip'
 import AsyncButton from '@fmis/core/AsyncButton'
-import { notifyError, notifySuccess } from '@fmis/core/toast'
+import { notifyError, notifySuccess, errorText } from '@fmis/core/toast'
 import Modal from './Modal'
 import { CATEGORIES, CATEGORY_ORDER } from '../lib/categories'
 import { importFeatures } from '../lib/data'
@@ -34,7 +34,7 @@ export default function ImportDialog({ projectId, existing, variantId = null, on
       setItems(parsed)
       setCats({})
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : String(e))
+      notifyError(errorText(e))
     }
   }
 

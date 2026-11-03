@@ -3,6 +3,7 @@ import { rezip, stagedProgress, type ImportPanelProps } from '@fmis/core/upload'
 import type { ImportSession } from '@fmis/core/importSession'
 import { importFieldsZips, type ImportSummary } from '../lib/importFields'
 import { openFieldsImport } from '../lib/importSession'
+import { errorText } from '@fmis/core/toast'
 
 /** GELAN-Import von der zentralen Upload-Seite (lib/importDetect.ts): gegen
  * den Serverstand und in einem Stück gespeichert (lib/importSession.ts) —
@@ -39,7 +40,7 @@ export default function ImportPanel({ claim, active, onStatus }: ImportPanelProp
           farmsImported: 0,
           managementUnitsImported: 0,
           fieldDeclarationsImported: 0,
-          warnings: [err instanceof Error ? err.message : 'Import fehlgeschlagen'],
+          warnings: [errorText(err, 'Import fehlgeschlagen')],
         })
         onStatus({ phase: 'error' })
       } finally {

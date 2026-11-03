@@ -17,6 +17,7 @@ import { inTransaction } from '../db/transaction'
 import { notSupersededSql } from '../lib/journal'
 import { MILK_UNTIL_SQL } from '../lib/treatments'
 import NumberInput from '@fmis/core/NumberInput'
+import { errorText } from '@fmis/core/toast'
 
 interface SessionState {
   active: boolean
@@ -236,7 +237,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
     try {
       await fn()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorText(err))
     } finally {
       setBusy(false)
     }
