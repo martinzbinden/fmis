@@ -2,15 +2,19 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { upsertRow } from '../db/write'
+import { softDeleteRow, upsertRow } from '../db/write'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { fmtArea, num } from '../lib/format'
 import { classifyKultur, isGeholz, KULTUR_CATEGORY_LABEL, type KulturCategory } from '../lib/kulturCategory'
 import RotationTimeline from '../components/RotationTimeline'
 import Modal from '../components/Modal'
+import OelnCheck from '../components/OelnCheck'
+import PlanDialog, { type CropOption } from '../components/PlanDialog'
+import { checkYear, parcelHints, ruleText, type MainCrop } from '../lib/rotationRules'
 import type { FieldDeclaration, FieldLineageSummary } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
-import { errorText } from '@fmis/core/toast'
+import { errorText, notifyError } from '@fmis/core/toast'
+import { undoAction } from '@fmis/core/undo'
 
 const FILTERS: ('alle' | KulturCategory)[] = ['alle', 'acker', 'futter']
 const FILTER_LABEL: Record<'alle' | KulturCategory, string> = {
@@ -39,9 +43,9 @@ async function loadDeclarations(pg: PGlite): Promise<FieldDeclaration[]> {
   return rows.map((r) => ({ ...r, area_a: num(r.area_a) }))
 }
 
-interface CropOption {
-  code: string
-  name: string
+async function loadFarms(pg: PGlite): Promise<Map<string, string>> {
+  const { rows } = await pg.query<{ id: string; name: string }>('select id, name from farms where deleted_at is null')
+  return new Map(rows.map((r) => [r.id, r.name]))
 }
 
 export default function Rotation() {
@@ -50,6 +54,9 @@ export default function Rotation() {
   const navigate = useNavigate()
   const { data: lineages } = useQuery(loadLineages)
   const { data: declarations, refresh } = useQuery(loadDeclarations)
+  const { data: farmNames } = useQuery(loadFarms)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [planning, setPlanning] = useState(false)
   const [filter, setFilter] = useState<'alle' | KulturCategory>('alle')
   const [showGeholz, setShowGeholz] = useState(false)
   const [detailsLineage, setDetailsLineage] = useState<FieldLineageSummary | null>(null)
@@ -79,6 +86,37 @@ export default function Rotation() {
     })
   }, [lineages, filter, showGeholz])
 
+  // ÖLN-Fruchtfolge (lib/rotationRules.ts): je Betrieb und Jahr, und Anbaupausen je Parzelle
+  const mainCrops = useMemo<MainCrop[]>(() => (declarations ?? []).map((d) => ({ ...d })), [declarations])
+  const oeln = useMemo(() => {
+    // ÖLN gilt je Betrieb; Zeilen ohne bekannten Betrieb (alter Stand auf dem Gerät) zählen nicht
+    const farmIds = [...new Set(mainCrops.map((c) => c.farm_id))].filter((id) => farmNames?.has(id))
+    return farmIds
+      .map((id) => {
+        const crops = mainCrops.filter((c) => c.farm_id === id)
+        const years = [...new Set(crops.map((c) => c.jahr))].sort((a, b) => b - a)
+        return { name: farmNames?.get(id) ?? '', checks: years.map((y) => checkYear(y, crops)).filter((c) => c.arableHa > 0) }
+      })
+      .filter((f) => f.checks.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+  }, [mainCrops, farmNames])
+  const plannedYears = useMemo(() => new Set((declarations ?? []).filter((d) => d.source === 'plan').map((d) => d.jahr)), [declarations])
+  const hints = useMemo(() => {
+    const m = new Map<string, string[]>()
+    for (const h of parcelHints(mainCrops)) {
+      const k = `${h.lineage_id}|${h.jahr}`
+      m.set(k, [...(m.get(k) ?? []), ruleText(h.rule)])
+    }
+    return m
+  }, [mainCrops])
+  const toggle = (id: string) =>
+    setSelected((cur) => {
+      const next = new Set(cur)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
   // Kultur-Auswahl wächst organisch mit jedem Import — kein separates
   // Katalog-Schema nötig (siehe Plan).
   const cropOptions = useMemo<CropOption[]>(() => {
@@ -102,6 +140,8 @@ export default function Rotation() {
   return (
     <div className="mx-auto max-w-3xl space-y-3 p-4 pb-24">
       <h1 className="text-xl font-bold text-gray-800">Fruchtfolge</h1>
+
+      <OelnCheck farms={oeln} plannedYears={plannedYears} />
 
       <div className="flex flex-wrap items-center gap-2">
         {FILTERS.map((f) => (
@@ -130,16 +170,53 @@ export default function Rotation() {
         <p className="text-center text-gray-500">Keine Parzellen für diesen Filter.</p>
       ) : (
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-gray-500">Zeitstrahl</h2>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-gray-500">Zeitstrahl</h2>
+            <span className="text-xs text-gray-500">
+              <span className="text-red-600">|</span> heute · gestrichelt = geplant · <span className="text-amber-700">⚠</span> Anbaupause
+            </span>
+          </div>
+          {canWrite && (
+            <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-20 mb-2 flex flex-wrap items-center gap-2 rounded-lg bg-white/95 p-2 text-sm shadow-sm">
+              {selected.size === 0 ? (
+                <span className="text-gray-500">Parzellen ankreuzen, um gemeinsam zu planen.</span>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setPlanning(true)} className="min-h-11 rounded-lg bg-brand-700 px-3 font-semibold text-white">
+                    {selected.size} {selected.size === 1 ? 'Parzelle' : 'Parzellen'} planen…
+                  </button>
+                  <button type="button" onClick={() => setSelected(new Set())} className="min-h-11 px-2 text-gray-600">
+                    Auswahl aufheben
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <RotationTimeline
             lineages={filteredLineages}
             declarationsByLineage={byLineage}
+            hints={hints}
+            selected={canWrite ? selected : undefined}
+            onToggle={canWrite ? toggle : undefined}
             onFocusMap={(lineage) =>
               navigate('/fields', { state: { focusLineageId: lineage.lineage_id, focusJahr: lineage.latest_jahr } })
             }
             onOpenDetails={(lineage) => setDetailsLineage(lineage)}
           />
         </div>
+      )}
+
+      {planning && (
+        <PlanDialog
+          lineages={(lineages ?? []).filter((l) => selected.has(l.lineage_id))}
+          byLineage={byLineage}
+          allCrops={mainCrops}
+          cropOptions={cropOptions}
+          onClose={(saved) => {
+            setPlanning(false)
+            if (saved) setSelected(new Set())
+          }}
+        />
       )}
 
       {detailsLineage && (
@@ -167,7 +244,24 @@ export default function Rotation() {
                   <td className="py-1 pr-2 text-gray-800">{r.kultur_name_de ?? r.kultur_code}</td>
                   <td className="py-1 pr-2 text-gray-600">{r.sorte ?? '–'}</td>
                   <td className="py-1 pr-2 text-gray-600">{fmtArea(r.area_a)}</td>
-                  <td className="py-1 text-gray-500">{SOURCE_LABEL[r.source]}</td>
+                  <td className="py-1 text-gray-500">
+                    {SOURCE_LABEL[r.source]}
+                    {canWrite && r.source === 'plan' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void undoAction(`Planung gelöscht: ${r.kultur_name_de ?? r.kultur_code} ${r.jahr}`, () => softDeleteRow('field_declarations', r.id)).catch((e) =>
+                            notifyError(errorText(e)),
+                          )
+                        }
+                        className="ml-1 rounded px-1 text-red-700"
+                        title="Planung löschen"
+                        aria-label={`Planung ${r.jahr} löschen`}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

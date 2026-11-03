@@ -11,6 +11,11 @@ interface Props {
   declarationsByLineage: Map<string, FieldDeclaration[]>
   onFocusMap: (lineage: FieldLineageSummary) => void
   onOpenDetails: (lineage: FieldLineageSummary) => void
+  /** Anbaupausen-Hinweise je `${lineage_id}|${jahr}` (lib/rotationRules.ts) */
+  hints?: Map<string, string[]>
+  /** Auswahl zum gemeinsamen Planen; ohne = keine Kästchen */
+  selected?: Set<string>
+  onToggle?: (lineageId: string) => void
 }
 
 interface Run {
@@ -75,6 +80,9 @@ export default function RotationTimeline({
   declarationsByLineage,
   onFocusMap,
   onOpenDetails,
+  hints,
+  selected,
+  onToggle,
 }: Props) {
   const years = useMemo(() => {
     let min = Infinity
@@ -96,6 +104,17 @@ export default function RotationTimeline({
   }
 
   const trackWidth = years.length * YEAR_COL_WIDTH
+  // «Heute»-Linie: Lage im laufenden Jahr
+  const now = new Date()
+  const nowIdx = years.indexOf(now.getFullYear())
+  const startOfYear = new Date(now.getFullYear(), 0, 1).getTime()
+  const yearFraction = (now.getTime() - startOfYear) / (new Date(now.getFullYear() + 1, 0, 1).getTime() - startOfYear)
+  const todayLeft = nowIdx >= 0 ? (nowIdx + yearFraction) * YEAR_COL_WIDTH : null
+  const runHints = (lineageId: string, run: Run) => {
+    const out = new Set<string>()
+    for (let i = 0; i < run.length; i++) for (const h of hints?.get(`${lineageId}|${run.decl.jahr + i}`) ?? []) out.add(h)
+    return [...out]
+  }
 
   return (
     <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
@@ -128,6 +147,15 @@ export default function RotationTimeline({
                 style={{ width: LABEL_COL_WIDTH }}
                 title={lineage.flurname ?? undefined}
               >
+                {onToggle && (
+                  <input
+                    type="checkbox"
+                    checked={selected?.has(lineage.lineage_id) ?? false}
+                    onChange={() => onToggle(lineage.lineage_id)}
+                    className="h-4 w-4 shrink-0"
+                    aria-label={`${lineage.flurname ?? lineage.kultur_name_de ?? lineage.kultur_code} zum Planen auswählen`}
+                  />
+                )}
                 <span className="min-w-0 flex-1 truncate">
                   {lineage.flurname ?? lineage.kultur_name_de ?? lineage.kultur_code}
                 </span>
@@ -157,28 +185,37 @@ export default function RotationTimeline({
                   backgroundImage: `repeating-linear-gradient(to right, #f3f4f6 0, #f3f4f6 1px, transparent 1px, transparent ${YEAR_COL_WIDTH}px)`,
                 }}
               >
+                {todayLeft != null && (
+                  <div className="pointer-events-none absolute bottom-0 top-0 z-[1] w-0.5 bg-red-500/70" style={{ left: todayLeft }} />
+                )}
                 {lanes.map((runs, laneIdx) =>
-                  runs.map((run) => (
+                  runs.map((run) => {
+                    const warn = laneIdx === 0 ? runHints(lineage.lineage_id, run) : []
+                    const planned = run.decl.source === 'plan'
+                    return (
                     <div
                       key={run.key}
-                      className="absolute overflow-hidden rounded-sm px-1.5 py-0.5"
+                      className={`absolute overflow-hidden rounded-sm px-1.5 py-0.5 ${warn.length ? 'ring-2 ring-amber-400 ring-offset-1' : ''} ${planned ? 'border-2 border-dashed border-white/80' : ''}`}
                       style={{
                         left: run.startIdx * YEAR_COL_WIDTH + 2,
                         width: run.length * YEAR_COL_WIDTH - 4,
                         top: laneIdx * ROW_HEIGHT + 2,
                         height: ROW_HEIGHT - 4,
                         backgroundColor: colorForKultur(run.decl.kultur_code),
+                        opacity: planned ? 0.75 : 1,
                       }}
-                      title={`${run.decl.kultur_name_de ?? run.decl.kultur_code}${run.decl.sorte ? ' · ' + run.decl.sorte : ''} (${run.decl.jahr}${run.length > 1 ? `–${run.decl.jahr + run.length - 1}` : ''}${run.decl.source === 'plan' ? ', geplant' : ''})`}
+                      title={`${run.decl.kultur_name_de ?? run.decl.kultur_code}${run.decl.sorte ? ' · ' + run.decl.sorte : ''} (${run.decl.jahr}${run.length > 1 ? `–${run.decl.jahr + run.length - 1}` : ''}${planned ? ', geplant' : ''})${warn.length ? `\n⚠ ${warn.join('\n⚠ ')}` : ''}`}
                     >
                       <div className="truncate text-[11px] font-semibold leading-tight text-white">
+                        {warn.length > 0 && '⚠ '}
                         {run.decl.kultur_name_de ?? run.decl.kultur_code}
                       </div>
                       {run.decl.sorte && (
                         <div className="truncate text-[10px] leading-tight text-white/80">{run.decl.sorte}</div>
                       )}
                     </div>
-                  )),
+                    )
+                  }),
                 )}
               </div>
             </div>
