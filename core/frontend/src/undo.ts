@@ -186,7 +186,7 @@ export const TABLE_LABELS: Record<string, string> = {
   // Betrieb
   machines: 'Maschine', machine_files: 'Maschinendatei', maintenance_tasks: 'Wartung', maintenance_log: 'Wartungsjournal', machine_todos: 'Maschinen-Pendenz',
   tracks: 'Spur', tank_events: 'Tanken', duty_people: 'Person', duty_types: 'Dienst', duty_absences: 'Abwesenheit', duty_shifts: 'Dienstplan',
-  duty_templates: 'Dienstvorlage', duty_weeks: 'Dienstwoche', work_assignments: 'Arbeitsauftrag', duty_requests: 'Wunsch', duty_changes: 'Diensttausch',
+  duty_templates: 'Dienstvorlage', duty_weeks: 'Dienstwoche', work_assignments: 'Arbeitsauftrag', duty_requests: 'Wunsch', duty_changes: 'Diensttausch', farm_numbers: 'Betriebsnummer',
   // Wiesenjournal
   parcels: 'Parzelle', paddocks: 'Weide', usage_entries: 'Nutzung', fertilizer_types: 'Dünger', fertilization_entries: 'Düngung',
   daily_farm_log: 'Tagesmeldung', weed_observations: 'Unkraut', sowing_details: 'Saat',

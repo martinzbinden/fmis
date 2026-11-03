@@ -80,6 +80,9 @@ SYNC_TABLES: dict[str, list[str]] = {
         "other_date", "other_type_id", "from_date", "to_date", "notes", "status", "decided_by", "decided_at", "decision_note",
         "created_by", "updated_at", "deleted_at", "absence_kind", "counter_status", "counter_at",
     ],
+    "farm_numbers": [
+        "id", "farm", "label", "value", "notes", "sort_order", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at", "snapshot",
         "updated_at",
@@ -111,6 +114,8 @@ TABLE_AREA: dict[str, str] = {
     "duty_template_slots": "betrieb:dienste",
     "duty_weeks": "betrieb:dienste",
     "work_assignments": "betrieb:dienste",
+    # Betriebsdaten führt das Büro (wie der Dienstplan); Mitarbeit liest
+    "farm_numbers": "betrieb:dienste",
     "data_history": "betrieb:history",
 }
 

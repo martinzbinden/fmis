@@ -10,9 +10,11 @@ import Machines from './pages/Machines'
 import MachineDetail from './pages/MachineDetail'
 import Maintenance from './pages/Maintenance'
 import WorkPlan from './pages/WorkPlan'
+import FarmData from './pages/FarmData'
 import History from './pages/History'
 import DutyTile from './components/DutyTile'
 import MaintenanceTile from './components/MaintenanceTile'
+import FarmDataTile from './components/FarmDataTile'
 import TrackingBadge from './components/TrackingBadge'
 import { maintenancePasteImporter } from './lib/pasteMaintenance'
 import { dutyPasteImporter } from './lib/pasteDuty'
@@ -38,6 +40,7 @@ const betriebModule: ModuleDescriptor = {
     { to: 'wartung', label: 'Wartung', icon: '🔧' },
   ],
   historyPermission: 'betrieb:history:read',
+  pageTitles: { betriebsdaten: 'Betriebsdaten', 'maschinen/:id': 'Maschine' },
   routes: [
     { path: '', element: <Navigate to="dienste" replace /> },
     { path: 'dienste', element: <Duty /> },
@@ -46,6 +49,7 @@ const betriebModule: ModuleDescriptor = {
     { path: 'maschinen', element: <Machines /> },
     { path: 'maschinen/:id', element: <MachineDetail /> },
     { path: 'wartung', element: <Maintenance /> },
+    { path: 'betriebsdaten', element: <FarmData /> },
     { path: 'verlauf', element: <History /> },
     { path: '*', element: <Navigate to="dienste" replace /> },
   ],
@@ -54,6 +58,7 @@ const betriebModule: ModuleDescriptor = {
   dashboardTiles: [
     { Tile: DutyTile, section: 'top' },
     { Tile: MaintenanceTile, section: 'maschinen' },
+    { Tile: FarmDataTile, section: 'maschinen' },
   ],
   // Tracking & Fahrhilfe: Symbol oben neben dem Import statt grosser Kachel
   quickLinks: [{ to: '/betrieb/tracking', icon: '🧭', title: 'Tracking & Fahrhilfe', permission: 'betrieb:tracking:write' }],
