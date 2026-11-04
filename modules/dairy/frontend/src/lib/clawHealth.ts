@@ -111,11 +111,13 @@ export interface ClawExam {
 
 const ts = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v))
 
-/** Alle Untersuchungen mit Befunden, neueste zuerst. */
-export async function loadClawExams(pg: PGlite): Promise<ClawExam[]> {
+/** Alle Untersuchungen mit Befunden, neueste zuerst (mit `animalId` nur die eines Tiers). */
+export async function loadClawExams(pg: PGlite, animalId?: string): Promise<ClawExam[]> {
+  const one = animalId ? ' and animal_id = $1' : ''
+  const params = animalId ? [animalId] : []
   const [exams, findings] = await Promise.all([
-    pg.query<Record<string, unknown>>('select * from claw_exams where deleted_at is null order by exam_date desc, recorded_at desc'),
-    pg.query<Record<string, unknown>>('select * from claw_findings where deleted_at is null'),
+    pg.query<Record<string, unknown>>(`select * from claw_exams where deleted_at is null${one} order by exam_date desc, recorded_at desc`, params),
+    pg.query<Record<string, unknown>>(`select * from claw_findings where deleted_at is null${one}`, params),
   ])
   const byExam = new Map<string, ClawFinding[]>()
   for (const f of findings.rows) {

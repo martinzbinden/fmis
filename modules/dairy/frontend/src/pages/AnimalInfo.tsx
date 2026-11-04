@@ -7,6 +7,7 @@ import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useQuery } from '../hooks/useQuery'
 import { WatchlistPicker } from '../components/AnimalWarnings'
+import AnimalTimeline from '../components/AnimalTimeline'
 import { loadPedigreeData } from '../components/PedigreeTree'
 import { eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
 import { cullingReasons, fmtCells } from '../lib/culling'
@@ -360,6 +361,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
                 }}
               />
             )}
+            <AnimalTimeline animal={a} species={species} moduleKey={moduleKey} />
           </article>
         )
       })()}
