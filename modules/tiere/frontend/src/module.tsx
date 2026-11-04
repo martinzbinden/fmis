@@ -6,8 +6,10 @@ import { getDb } from './db/pglite'
 import { syncClient } from './db/sync'
 import Herds from './pages/Herds'
 import OutdoorJournal from './pages/OutdoorJournal'
+import GrazingYear from './pages/GrazingYear'
 import History from './pages/History'
 import { herdLocator } from './lib/herds'
+import { tiereYearSummary } from './lib/yearSummary'
 import './theme.css'
 
 function TiereDbProvider({ children }: { children: ReactNode }) {
@@ -25,17 +27,21 @@ const tiereModule: ModuleDescriptor = {
   navItems: [
     { to: '', label: 'Gruppen', icon: '🐾' },
     { to: 'auslauf', label: 'Auslauf', icon: '🌤️' },
+    { to: 'weide', label: 'Weide', icon: '🌿' },
   ],
+  pageTitles: { auslauf: 'Auslaufjournal', weide: 'Weidenutzung' },
   historyPermission: 'tiere:history:read',
   routes: [
     { path: '', element: <Herds /> },
     { path: 'auslauf', element: <OutdoorJournal /> },
+    { path: 'weide', element: <GrazingYear /> },
     { path: 'verlauf', element: <History /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],
   DbProvider: TiereDbProvider,
   sync: syncClient,
   herdLocator,
+  yearSummary: tiereYearSummary,
 }
 
 export default tiereModule

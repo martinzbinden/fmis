@@ -67,6 +67,9 @@ export default function OutdoorJournal() {
           <button type="button" onClick={() => window.print()} className="rounded border border-gray-300 px-2 py-1 text-sm">
             🖨
           </button>
+          <Link to={`/tiere/weide?jahr=${month.slice(0, 4)}`} className="text-sm text-brand-700">
+            Jahr
+          </Link>
           <Link to="/tiere" className="text-sm text-brand-700">
             Herden
           </Link>

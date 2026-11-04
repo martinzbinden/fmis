@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { accessIndex, categoryDay, categoryMark, monthCounter, type AccessInput } from './outdoorAccess'
+import { accessIndex, categoryDay, categoryMark, groupYear, monthCounter, type AccessInput } from './outdoorAccess'
 import type { HerdGroup, HerdStay } from '../types'
 
 const base = { updated_at: '2026-10-03T00:00:00Z', deleted_at: null }
@@ -87,5 +87,16 @@ describe('outdoorAccess', () => {
     expect(d5.get('kuehe')).toMatchObject({ animals: 22, withAccess: 4 })
     expect(categoryMark(d5.get('kuehe'))).toBe('◐')
     expect(categoryMark(d5.get('schafe'))).toBe('✓')
+  })
+
+  it('Weidenutzung je Monat: Weide-, Laufhof- und Tier-Weidetage bis heute', () => {
+    const year = groupYear(idx, 'jung', 2026, '2026-11-10')
+    expect(year).toHaveLength(12)
+    expect(year[8]).toMatchObject({ present: 0, counter: null })
+    expect(year[9]).toMatchObject({ month: '2026-10', present: 31, weide: 0 })
+    // 1.–5. Weide (4 Tiere), Laufhof am 3. zählt nicht doppelt
+    expect(year[10]).toMatchObject({ present: 10, weide: 5, laufhof: 0, animalWeideDays: 20 })
+    expect(year[10].counter?.winter).toBe(true)
+    expect(year[11].present).toBe(0)
   })
 })

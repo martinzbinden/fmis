@@ -18,6 +18,19 @@ export interface YearBars {
   data: { name: string; value: number }[]
 }
 
+/** Monatswerte für den Jahresvergleich (frontend/src/components/YearCompare.tsx):
+ * gleicher `key` in jedem Jahr. Diagramme mit kind 'months' werden
+ * automatisch auch verglichen; hier nur zusätzliche Grössen. */
+export interface YearSeries {
+  key: string
+  title: string
+  unit: string
+  /** 12 Werte Januar–Dezember; null = kein Wert (z.B. keine Probe im Monat) */
+  values: (number | null)[]
+  /** false = Mittelwerte (z.B. kg Milch je Tier): nicht aufsummierbar */
+  summable: boolean
+}
+
 export interface YearSection {
   title: string
   icon: string
@@ -25,7 +38,30 @@ export interface YearSection {
   to?: string
   figures: YearFigure[]
   charts: YearBars[]
+  series?: YearSeries[]
   note?: string
+}
+
+/** Alle vergleichbaren Monatsreihen eines Abschnitts: eigene `series` und die Monatsdiagramme. */
+export function sectionSeries(section: YearSection): YearSeries[] {
+  const fromCharts = section.charts
+    .filter((c) => c.kind === 'months')
+    .map((c): YearSeries => ({ key: c.title, title: c.title, unit: c.unit, values: c.data.map((d) => d.value), summable: true }))
+  return [...fromCharts, ...(section.series ?? [])]
+}
+
+/** Mittelwert je Monat (null ohne Werte). */
+export function averageByMonth(rows: { date: string | null; value: number }[]): (number | null)[] {
+  const sum = new Array(12).fill(0) as number[]
+  const n = new Array(12).fill(0) as number[]
+  for (const r of rows) {
+    const m = r.date ? Number(r.date.slice(5, 7)) - 1 : -1
+    if (m >= 0 && m < 12) {
+      sum[m] += r.value
+      n[m]++
+    }
+  }
+  return sum.map((s, i) => (n[i] ? Math.round((s / n[i]) * 10) / 10 : null))
 }
 
 export const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']

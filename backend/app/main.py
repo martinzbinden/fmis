@@ -19,6 +19,7 @@ from modules.dairy.backend.app import reader as dairy_reader
 from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import dev_seed as livestock_dev_seed
+from modules.tiere.backend.app import dev_seed as tiere_dev_seed
 from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
 from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
@@ -67,6 +68,9 @@ async def lifespan(app: FastAPI):
         created = await livestock_dev_seed.seed_if_empty(get_pool("livestock"))
         if created:
             logging.getLogger("uvicorn.error").info("DEV_SEED: %s Testtiere im Mastplaner angelegt", created)
+        groups = await tiere_dev_seed.seed_if_empty(get_pool("tiere"))
+        if groups:
+            logging.getLogger("uvicorn.error").info("DEV_SEED: %s Testgruppen in den Tiergruppen angelegt", groups)
     # Schultage aus dem Stundenplan, jede Nacht (modules/betrieb/backend/app/school_timetable.py)
     school = asyncio.create_task(betrieb_school.nightly())
     yield

@@ -39,5 +39,10 @@ export async function wiesenjournalYearSummary(year: number): Promise<YearSectio
       { title: 'Schnitte je Monat', unit: 'Einträge', kind: 'months', data: byMonth(cuts) },
       { title: 'Stickstoff je Düngerart', unit: 'kg N', kind: 'ranking', data: ranking(nByType, 8) },
     ],
+    series: [
+      { key: 'stickstoff', title: 'Stickstoff je Monat', unit: 'kg N', summable: true, values: byMonth(fert.map((f) => ({ date: f.date, value: Number(f.n_kg ?? 0) }))).map((d) => d.value) },
+      { key: 'duengergaben', title: 'Düngergaben je Monat', unit: 'Einträge', summable: true, values: byMonth(fert).map((d) => d.value) },
+      { key: 'weide', title: 'Weide-Einträge je Monat', unit: 'Einträge', summable: true, values: byMonth(grazing).map((d) => d.value) },
+    ],
   }
 }

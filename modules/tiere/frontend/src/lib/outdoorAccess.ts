@@ -178,3 +178,39 @@ export function categoryMark(c: CategoryDay | undefined): '✓' | '◐' | null {
 export function categoryTitle(c: CategoryDay): string {
   return c.groups.map((g) => `${g.name} (${g.animals}): ${g.kind ? ACCESS_LABEL[g.kind] : 'kein Auslauf'}`).join('\n')
 }
+
+// --- Weidenutzung je Monat (Jahresansicht, Jahresübersicht) ---
+
+export interface MonthUsage {
+  month: string
+  /** Tage mit Tieren auf der Weide */
+  weide: number
+  /** Tage mit Laufhof (gang oder ständig), ohne Weidetage */
+  laufhof: number
+  /** Tage mit Tieren in der Gruppe */
+  present: number
+  /** Tiere × Weidetage */
+  animalWeideDays: number
+  /** RAUS-Zähler; null für Monate ohne Tiere oder in der Zukunft */
+  counter: MonthCounter | null
+}
+
+/** Je Monat des Jahres (12 Einträge): Weide-, Laufhof- und Tier-Weidetage einer Gruppe bis `today`. */
+export function groupYear(idx: AccessIndex, groupId: string, year: number, today: string): MonthUsage[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const month = `${year}-${String(i + 1).padStart(2, '0')}`
+    const usage: MonthUsage = { month, weide: 0, laufhof: 0, present: 0, animalWeideDays: 0, counter: null }
+    const last = `${month}-${String(daysInMonth(month)).padStart(2, '0')}`
+    for (let d = `${month}-01`; d <= last && d <= today; d = addDaysIso(d, 1)) {
+      const day = idx.groupDay(groupId, d)
+      if (day.animals <= 0) continue
+      usage.present++
+      if (day.kind === 'weide') {
+        usage.weide++
+        usage.animalWeideDays += day.animals
+      } else if (day.kind) usage.laufhof++
+    }
+    if (usage.present > 0) usage.counter = monthCounter(idx, groupId, month, today)
+    return usage
+  })
+}

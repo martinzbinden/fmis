@@ -1,12 +1,12 @@
 import type { MonthCounter } from '../lib/outdoorAccess'
 
-const COUNTER_STYLE: Record<MonthCounter['state'], string> = {
+export const COUNTER_STYLE: Record<MonthCounter['state'], string> = {
   erfuellt: 'bg-emerald-100 text-emerald-800',
   offen: 'bg-gray-100 text-gray-700',
   knapp: 'bg-amber-100 text-amber-900',
   verfehlt: 'bg-red-100 text-red-800',
 }
-const COUNTER_TEXT: Record<MonthCounter['state'], string> = { erfuellt: 'erfüllt', offen: 'offen', knapp: 'knapp', verfehlt: 'nicht mehr erreichbar' }
+export const COUNTER_TEXT: Record<MonthCounter['state'], string> = { erfuellt: 'erfüllt', offen: 'offen', knapp: 'knapp', verfehlt: 'nicht mehr erreichbar' }
 
 /** "Nov: 3 von 13 Auslauftagen · knapp" */
 export default function CounterBadge({ c, compact = false }: { c: MonthCounter; compact?: boolean }) {

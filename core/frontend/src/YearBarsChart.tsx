@@ -17,6 +17,8 @@ export default function YearBarsChart({ chart }: { chart: YearBars }) {
     />
   )
   const empty = chart.data.every((d) => d.value === 0)
+  // Achse so breit wie die längste Beschriftung (z.B. «1'800»)
+  const axisWidth = 14 + 7 * fmtNum(Math.max(...chart.data.map((d) => d.value), 0), digits).length
   return (
     <figure className="min-w-0">
       <figcaption className="mb-1 text-xs font-semibold text-gray-600">
@@ -29,7 +31,7 @@ export default function YearBarsChart({ chart }: { chart: YearBars }) {
           <BarChart data={chart.data} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
             <CartesianGrid vertical={false} stroke="#eef0f2" />
             <XAxis dataKey="name" tick={AXIS} tickLine={false} axisLine={false} interval={0} tickFormatter={(m: string) => m.slice(0, 1)} />
-            <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={digits > 0} width={44} />
+            <YAxis tick={AXIS} tickLine={false} axisLine={false} allowDecimals={digits > 0} width={axisWidth} tickFormatter={(v: number) => fmtNum(v, Number.isInteger(v) ? 0 : 1)} />
             {tooltip}
             <Bar dataKey="value" fill={BAR} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false} />
           </BarChart>
