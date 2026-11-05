@@ -7,6 +7,7 @@ import { syncClient } from './db/sync'
 import Fields from './pages/Fields'
 import Rotation from './pages/Rotation'
 import History from './pages/History'
+import DirectPayments from './pages/DirectPayments'
 import ImportPanel from './components/ImportPanel'
 import { createFieldsImporter } from './lib/importDetect'
 import './theme.css'
@@ -24,11 +25,13 @@ const fieldsModule: ModuleDescriptor = {
   navItems: [
     { to: '', label: 'Karte', icon: '🗺️' },
     { to: 'fruchtfolge', label: 'Fruchtfolge', icon: '🔄' },
+    { to: 'direktzahlungen', label: 'Direktzahlungen', icon: '💰' },
   ],
   historyPermission: 'fields:history:read',
   routes: [
     { path: '', element: <Fields /> },
     { path: 'fruchtfolge', element: <Rotation /> },
+    { path: 'direktzahlungen', element: <DirectPayments /> },
     { path: 'verlauf', element: <History /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],

@@ -52,6 +52,19 @@ zukünftiges Jahr kann direkt eine geplante Kultur erfasst werden (inkl.
 Zwischenfutter als zweiter Eintrag im selben Jahr); Fläche/Geometrie/
 Flurname werden dabei von der letzten bekannten Deklaration übernommen.
 
+## Direktzahlungen
+
+Unter "Direktzahlungen" steht eine Schätzung je Parzelle und Betrieb nach
+DZV Anhang 7 (`frontend/src/lib/directPayments.ts`, Ansätze je Jahr in
+`DP_RATES`, zurzeit 2026). Die Tests rechnen dieselben Eingaben wie der
+Beitragsrechner von AGRIDEA V 4.11; die Excel-Datei selbst kommt nicht ins
+Repo, sie ist urheberrechtlich geschützt. Neue Jahresansätze aus der
+Verordnung übernehmen und die Sollwerte neu gegenrechnen.
+
+Bio, GMF, RGVE, Hanglagen und Qualitätsstufe II stehen nicht in den Raumdaten:
+Der Benutzer gibt sie an, sie bleiben im Browser. Kulturcodes ohne klare
+Zuordnung werden nicht gerechnet und auf der Seite ausgewiesen.
+
 ## Deployment & lokale Entwicklung
 
 Es gibt kein eigenständiges Deployment/Dev-Setup für dieses Modul mehr —
