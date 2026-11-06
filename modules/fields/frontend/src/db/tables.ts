@@ -27,6 +27,14 @@ export const SYNC_TABLES = {
     'kultur_name_fr', 'sorte', 'flurname', 'area_a', 'geometry',
     'notes', 'created_by', 'updated_at', 'deleted_at',
   ],
+  dp_settings: [
+    'id', 'farm_id', 'jahr', 'bio', 'gmf', 'rgve', 'hang_18', 'hang_35',
+    'hang_50', 'q2', 'updated_at', 'deleted_at',
+  ],
+  dp_statement_lines: [
+    'id', 'farm_id', 'jahr', 'section', 'label', 'zone', 'quantity',
+    'rate', 'factor', 'amount', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -44,5 +52,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   field_declarations: new Set(['start_date', 'end_date']),
   plan_layers: new Set(),
   plan_parcels: new Set(),
+  dp_settings: new Set(),
+  dp_statement_lines: new Set(),
   data_history: new Set(),
 }

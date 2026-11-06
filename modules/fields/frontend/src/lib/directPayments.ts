@@ -6,10 +6,13 @@
 // Hier gerechnet: Offenhaltung (Art. 42), Hang (Art. 43) und Steillagen (Art. 44),
 // Basis (Art. 50), Produktionserschwernis (Art. 52), offene Ackerfläche und
 // Dauerkulturen (Art. 53), Qualitätsbeitrag der Biodiversitätsförderflächen
-// (Art. 55–59), Bio (Art. 66) und GMF. Massgebend bleibt die Abrechnung des Kantons.
+// (Art. 55–59), Bio (Art. 66), GMF und Tierwohl (Ansatz × GVE). Vernetzung und
+// Landschaftsqualität legt der Kanton fest: sie folgen der jüngsten Abrechnung, ebenso
+// die GVE, weil Abgänge in FMIS nicht vollständig erfasst sind. Beide Beiträge laufen laut
+// Art. 115i nur bis 2027. Massgebend bleibt die Abrechnung des Kantons.
 //
 // Die Neigung steht nicht in den Raumdaten: Hang und Steillagen rechnen darum aus den
-// Hektaren je Hangklasse, die der Benutzer angibt, und zählen nur beim Betrieb.
+// Hektaren je Hangklasse (angegeben oder aus der Abrechnung) und zählen nur beim Betrieb.
 // Spezialkulturen auf Codes 500–599 (z.B. Gemüse) zählen beim Bio-Beitrag als Ackerfläche.
 
 import { cropInfo } from './rotationRules'
@@ -80,7 +83,8 @@ const RATES_2026 = {
   tierbesatzBff: 0.3,
 }
 
-export const DP_RATES: Record<number, typeof RATES_2026> = { 2026: RATES_2026 }
+// 2025 und 2026 gleich: die Abrechnungen 2025 nennen dieselben Ansätze
+export const DP_RATES: Record<number, typeof RATES_2026> = { 2025: RATES_2026, 2026: RATES_2026 }
 
 type Rates = typeof RATES_2026
 
@@ -183,7 +187,22 @@ export interface DpSettings {
 
 export const DP_DEFAULTS: DpSettings = { bio: false, gmf: false, rgve: null, hang: [0, 0, 0], q2: {} }
 
-export type DpLineKey = 'offenhaltung' | 'basis' | 'erschwernis' | 'offeneAckerflaeche' | 'q1' | 'q2' | 'bio' | 'gmf' | 'hang' | 'steillagen'
+export type DpLineKey =
+  | 'offenhaltung'
+  | 'basis'
+  | 'erschwernis'
+  | 'offeneAckerflaeche'
+  | 'q1'
+  | 'q2'
+  | 'vernetzung'
+  | 'lq'
+  | 'bio'
+  | 'gmf'
+  | 'weide'
+  | 'raus'
+  | 'bts'
+  | 'hang'
+  | 'steillagen'
 
 export const DP_LINE_LABEL: Record<DpLineKey, string> = {
   offenhaltung: 'Offenhaltung',
@@ -192,8 +211,13 @@ export const DP_LINE_LABEL: Record<DpLineKey, string> = {
   offeneAckerflaeche: 'Offene Ackerfläche, Dauerkulturen',
   q1: 'Biodiversität Qualitätsstufe I',
   q2: 'Biodiversität Qualitätsstufe II',
+  vernetzung: 'Vernetzung',
+  lq: 'Landschaftsqualität',
   bio: 'Biologische Landwirtschaft',
   gmf: 'Graslandbasierte Produktion (GMF)',
+  weide: 'Weidebeitrag',
+  raus: 'Tierwohl RAUS',
+  bts: 'Tierwohl BTS',
   hang: 'Hangbeitrag',
   steillagen: 'Steillagenbeitrag',
 }
@@ -267,8 +291,154 @@ export function steillagenAnsatz(anteil: number): number {
 
 const isZone = (z: string | null): z is ZoneCode => z != null && z in ZONE_LABEL
 
-export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSettings): DpFarmEstimate {
+// Abrechnung des Kantons: Abschnitte, die der Rechner nicht selbst herleitet
+export const DP_STATEMENT_ONLY: Record<string, string> = {
+  alpung: 'Alpung',
+  nutzungsdauer: 'Nutzungsdauer der Kühe',
+  psm: 'Verzicht auf Pflanzenschutzmittel',
+  herbizid: 'Verzicht auf Herbizide',
+  bodenbedeckung: 'Bedeckung des Bodens',
+  stickstoff: 'Effizienter Stickstoffeinsatz',
+  ekb: 'Einzelkulturbeiträge',
+  insitu: 'In-situ-Beiträge',
+}
+
+export const DP_STATEMENT_SECTIONS = [...(Object.keys(DP_LINE_LABEL) as DpLineKey[]).filter((k) => k !== 'steillagen'), ...Object.keys(DP_STATEMENT_ONLY)]
+
+export interface DpStatementLine {
+  section: string
+  label: string
+  zone: string | null
+  quantity: number | null
+  rate: number | null
+  factor: number | null
+  amount: number
+}
+
+export interface DpReference {
+  jahr: number
+  /** Zeilen dieses Betriebs */
+  lines: DpStatementLine[]
+  /** Vernetzungsansätze aus den Abrechnungen aller Betriebe: Fr./ha bzw. Fr./Baum */
+  vernetzung: Partial<Record<VnKind, number>>
+}
+
+export type VnKind = DpKind | 'einzelbaum' | 'giwr'
+
+/** Bezeichnung einer Abrechnungszeile → Nutzung; Getreide in weiter Reihe und Einzelbäume kennt nur die Vernetzung. */
+export function kindOfLabel(label: string): VnKind | null {
+  const l = label.toLowerCase()
+  if (l.includes('extensiv genutzte wiesen')) return 'ext_wiese'
+  if (l.includes('wenig intensiv')) return 'wenig_wiese'
+  if (l.includes('extensive weiden')) return 'bff_weide'
+  if (l.includes('uferwiese')) return 'uferwiese'
+  if (l.includes('streue')) return 'streue'
+  if (l.includes('hecken')) return 'hecke'
+  if (l.includes('hochstamm')) return 'obstbaum'
+  if (l.includes('nussbäume')) return 'nussbaum'
+  if (l.includes('einzelbäume')) return 'einzelbaum'
+  if (l.includes('weiter reihe')) return 'giwr'
+  return null
+}
+
+const TREE_KINDS = new Set<VnKind>(['obstbaum', 'nussbaum', 'einzelbaum'])
+
+/** Vernetzungsansätze aus Abrechnungszeilen (Fr./Are → Fr./ha, Bäume bleiben Fr./Baum). */
+export function vernetzungRates(lines: DpStatementLine[]): Partial<Record<VnKind, number>> {
+  const out: Partial<Record<VnKind, number>> = {}
+  for (const l of lines) {
+    const kind = l.section === 'vernetzung' ? kindOfLabel(l.label) : null
+    if (kind && l.rate != null) out[kind] = TREE_KINDS.has(kind) ? l.rate : l.rate * 100
+  }
+  return out
+}
+
+const quantityKey = (kind: VnKind, zone: string | null) => `${kind}|${zone ?? ''}`
+
+function quantitiesOf(lines: DpStatementLine[], section: string): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const l of lines) {
+    const kind = l.section === section ? kindOfLabel(l.label) : null
+    if (kind) out.set(quantityKey(kind, l.zone), (out.get(quantityKey(kind, l.zone)) ?? 0) + (l.quantity ?? 0))
+  }
+  return out
+}
+
+function vnKindOf(parcel: DpParcel, cls: DpClass): VnKind | null {
+  if (parcel.kultur_code === '924') return 'einzelbaum'
+  if (/^giwr/i.test(parcel.kultur_name_de ?? '')) return 'giwr'
+  return 'kind' in cls ? cls.kind : null
+}
+
+const quantityOf = (parcel: DpParcel, kind: VnKind) => (TREE_KINDS.has(kind) ? (parcel.baeume ?? 0) : (parcel.area_a ?? 0))
+
+/** Hektaren je Hangklasse aus der Abrechnung. */
+export function hangFromStatement(lines: DpStatementLine[]): DpSettings['hang'] {
+  const hang: DpSettings['hang'] = [0, 0, 0]
+  for (const l of lines) {
+    if (l.section !== 'hang') continue
+    const i = /18/.test(l.label) ? 0 : /35/.test(l.label) ? 1 : 2
+    hang[i] += (l.quantity ?? 0) / 100
+  }
+  return hang
+}
+
+/** Qualitätsstufe II je Parzelle aus der Abrechnung: dort stehen nur Summen je Nutzung und
+ * Zone, darum anteilig verteilt (Aren bzw. Bäume). */
+export function q2FromStatement(parcels: DpParcel[], lines: DpStatementLine[]): Record<string, number> {
+  const quantities = quantitiesOf(lines, 'q2')
+  const totals = new Map<string, number>()
+  const rows = parcels.flatMap((parcel) => {
+    const cls = classifyDp(parcel.kultur_code, parcel.kultur_name_de)
+    if (!('kind' in cls)) return []
+    const key = quantityKey(cls.kind, parcel.zone)
+    const q = quantityOf(parcel, cls.kind)
+    totals.set(key, (totals.get(key) ?? 0) + q)
+    return [{ parcel, key, q }]
+  })
+  const out: Record<string, number> = {}
+  for (const { parcel, key, q } of rows) {
+    const total = quantities.get(key)
+    if (total) out[parcel.lineage_id] = Math.round((q * Math.min(1, total / (totals.get(key) ?? 1))) * 100) / 100
+  }
+  return out
+}
+
+/** Ansatz je GVE nach Anhang 7 Ziff. 5.12; Code am Anfang der Bezeichnung (A = Rind, B = Pferd, C = Ziege, D = Schaf). */
+export function tierRate(section: string, label: string): number | null {
+  const code = /^([A-D])(\d{2})\b/.exec(label.trim())
+  if (!code) return null
+  const jung = code[1] === 'A' && (code[2] === '05' || code[2] === '09')
+  if (section === 'weide') return code[1] === 'A' ? (jung ? 530 : 350) : null
+  if (section === 'raus') return jung ? 370 : 190
+  if (section === 'bts') {
+    if (code[1] === 'A') return jung ? null : 75
+    return (code[1] === 'B' || code[1] === 'C') && code[2] === '01' ? 75 : null
+  }
+  return null
+}
+
+export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSettings, ref?: DpReference): DpFarmEstimate {
   const rows = parcels.map((parcel) => ({ parcel, ha: (parcel.area_a ?? 0) / 100, cls: classifyDp(parcel.kultur_code, parcel.kultur_name_de) }))
+
+  // Vernetzung: Anteil je Nutzung und Zone, soweit in der jüngsten Abrechnung (neue Flächen
+  // ändern die Summe nicht); Getreide in weiter Reihe wechselt die Parzelle und zählt immer
+  const vnQuantities = ref ? quantitiesOf(ref.lines, 'vernetzung') : new Map<string, number>()
+  const vnTotals = new Map<string, number>()
+  for (const { parcel, cls } of rows) {
+    const kind = vnKindOf(parcel, cls)
+    if (kind) vnTotals.set(quantityKey(kind, parcel.zone), (vnTotals.get(quantityKey(kind, parcel.zone)) ?? 0) + quantityOf(parcel, kind))
+  }
+  const vnAmount = (parcel: DpParcel, cls: DpClass): { rate: number; amount: number } | null => {
+    const kind = vnKindOf(parcel, cls)
+    const rate = kind ? ref?.vernetzung[kind] : undefined
+    if (!kind || !rate) return null
+    const key = quantityKey(kind, parcel.zone)
+    const allowed = kind === 'giwr' ? (vnTotals.get(key) ?? 0) : (vnQuantities.get(key) ?? 0)
+    const share = Math.min(1, allowed / (vnTotals.get(key) || 1))
+    const q = quantityOf(parcel, kind) * share
+    return q > 0 ? { rate, amount: (rate * q) / (TREE_KINDS.has(kind) ? 1 : 100) } : null
+  }
 
   // Betriebsgrössen vorab: Mindesttierbesatz, Flächenabstufung, Baumzahl
   let rgveMin = 0
@@ -305,7 +475,11 @@ export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSett
   const estimates = rows.map(({ parcel, ha, cls }): DpParcelEstimate => {
     const zoneLabel = isZone(parcel.zone) ? ZONE_LABEL[parcel.zone] : null
     const base = { parcel, ha, zoneLabel, lines: [] as DpLine[], total: 0, q2Possible: false, q2: 0, hangPossible: false, isTree: false }
-    if ('ohne' in cls) return { ...base, ohne: cls.ohne }
+    if ('ohne' in cls) {
+      const vn = vnAmount(parcel, cls)
+      const lines: DpLine[] = vn ? [{ key: 'vernetzung', ...vn }] : []
+      return { ...base, lines, total: vn?.amount ?? 0, ohne: cls.ohne, isTree: parcel.kultur_code === '924' }
+    }
     if ('offen' in cls) {
       offenHa += ha
       return { ...base, offen: cls.offen }
@@ -322,6 +496,8 @@ export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSett
       if (treesOk) {
         add('q1', rates.baumQ1[kind], rates.baumQ1[kind] * n)
         if (q2 > 0) add('q2', rates.baumQ2[kind], rates.baumQ2[kind] * q2)
+        const vn = vnAmount(parcel, cls)
+        if (vn) add('vernetzung', vn.rate, vn.amount)
       }
       const total = lines.reduce((s, l) => s + l.amount, 0)
       return { ...base, lines, total, q2Possible: treesOk, q2, isTree: true, ohne: treesOk ? undefined : `Erst ab ${rates.baumMin} Bäumen im Betrieb` }
@@ -350,6 +526,8 @@ export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSett
     const q2 = q2Possible ? Math.min(settings.q2[parcel.lineage_id] ?? 0, parcel.area_a ?? 0) : 0
     if (q1Rates[kind]) perHa('q1', q1Rates[kind][zone])
     if (q2 > 0) add('q2', q2Rates[kind]![zone], (q2Rates[kind]![zone] * q2) / 100)
+    const vn = vnAmount(parcel, cls)
+    if (vn) add('vernetzung', vn.rate, vn.amount)
 
     if (settings.bio) perHa('bio', kind === 'dauerkultur' ? rates.bio.spezial : kind === 'acker' ? rates.bio.acker : rates.bio.uebrige)
     if (settings.gmf && (BFF_GRUEN.has(kind) || kind === 'dauergruen' || kind === 'kunstwiese')) perHa('gmf', rates.gmf * factorGmf)
@@ -368,6 +546,14 @@ export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSett
   const steillagenAnteil = lnHa > 0 ? steilHa / lnHa : 0
   const steilRate = steillagenAnsatz(steillagenAnteil)
   if (steilRate > 0) sums.set('steillagen', steilRate * steilHa)
+  for (const l of ref?.lines ?? []) {
+    if (l.section === 'lq') sums.set('lq', (sums.get('lq') ?? 0) + l.amount)
+    if (l.section === 'weide' || l.section === 'raus' || l.section === 'bts') {
+      const rate = tierRate(l.section, l.label)
+      const amount = rate != null && l.quantity != null ? rate * l.quantity : l.amount
+      sums.set(l.section, (sums.get(l.section) ?? 0) + amount)
+    }
+  }
 
   const order = Object.keys(DP_LINE_LABEL) as DpLineKey[]
   const lines = order.filter((k) => sums.has(k)).map((key) => ({ key, rate: 0, amount: sums.get(key)! }))
@@ -385,5 +571,59 @@ export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSett
     factorGmf,
     steillagenAnteil,
     hangZuKlein,
+  }
+}
+
+export interface DpCompareRow {
+  key: string
+  label: string
+  /** null: nur in der Abrechnung */
+  calc: number | null
+  /** null: nur im Rechner oder keine Abrechnung */
+  statement: number | null
+}
+
+/** Rechner und Abrechnung Zeile für Zeile; Abschnitte ohne Rechner-Wert kommen am Schluss. */
+export function compareWithStatement(estimate: DpFarmEstimate, lines: DpStatementLine[]): DpCompareRow[] {
+  const statement = new Map<string, number>()
+  for (const l of lines) statement.set(l.section, (statement.get(l.section) ?? 0) + l.amount)
+  const calc = new Map<string, number>(estimate.lines.map((l) => [l.key, l.amount]))
+  const known = (Object.keys(DP_LINE_LABEL) as DpLineKey[])
+    .filter((k) => calc.has(k) || statement.has(k))
+    .map((k) => ({ key: k as string, label: DP_LINE_LABEL[k], calc: calc.get(k) ?? null, statement: statement.get(k) ?? null }))
+  const only = [...statement.keys()]
+    .filter((k) => !(k in DP_LINE_LABEL))
+    .map((k) => ({ key: k, label: DP_STATEMENT_ONLY[k] ?? k, calc: null, statement: statement.get(k)! }))
+  return [...known, ...only]
+}
+
+/** Gespeicherte Angaben (dp_settings); null heisst: aus der Abrechnung ableiten. */
+export interface DpStored {
+  bio: boolean | null
+  gmf: boolean | null
+  rgve: number | null
+  hang: [number | null, number | null, number | null]
+  q2: Record<string, number>
+}
+
+export const DP_STORED_EMPTY: DpStored = { bio: null, gmf: null, rgve: null, hang: [null, null, null], q2: {} }
+
+/** Jüngste Abrechnung bis zu diesem Jahr; die Vernetzungsansätze aus den Abrechnungen beider Betriebe. */
+export function referenceFor(all: (DpStatementLine & { farm_id: string; jahr: number })[], farmId: string, year: number): DpReference | undefined {
+  const jahr = Math.max(0, ...all.filter((l) => l.farm_id === farmId && l.jahr <= year).map((l) => l.jahr))
+  if (!jahr) return undefined
+  return { jahr, lines: all.filter((l) => l.farm_id === farmId && l.jahr === jahr), vernetzung: vernetzungRates(all.filter((l) => l.jahr === jahr)) }
+}
+
+/** Angaben für die Rechnung: Gespeichertes vor Abrechnung. Ohne Abrechnung sind Bio und GMF vorbelegt, abwählbar. */
+export function resolveSettings(stored: DpStored, parcels: DpParcel[], ref?: DpReference): DpSettings {
+  const hang = ref ? hangFromStatement(ref.lines) : DP_DEFAULTS.hang
+  const has = (section: string) => (ref ? ref.lines.some((l) => l.section === section) : true)
+  return {
+    bio: stored.bio ?? has('bio'),
+    gmf: stored.gmf ?? has('gmf'),
+    rgve: stored.rgve,
+    hang: [stored.hang[0] ?? hang[0], stored.hang[1] ?? hang[1], stored.hang[2] ?? hang[2]],
+    q2: { ...(ref ? q2FromStatement(parcels, ref.lines) : {}), ...stored.q2 },
   }
 }

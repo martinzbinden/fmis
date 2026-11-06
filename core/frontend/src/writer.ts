@@ -75,8 +75,8 @@ async function recordHistory(pg: Queryable, table: string, rowId: string, action
   )
 }
 
-export function createWriter<S extends Tables>(opts: { getDb: () => Promise<PGlite>; tables: S; notifyDataChanged: () => void }) {
-  const { getDb, tables, notifyDataChanged } = opts
+export function createWriter<S extends Tables>(opts: { getDb: () => Promise<PGlite>; tables: S; notifyDataChanged: () => void ; withoutHistory?: Set<string> }) {
+  const { getDb, tables, notifyDataChanged, withoutHistory } = opts
 
   let outboxReady: Promise<void> | null = null
   async function ready(): Promise<PGlite> {
@@ -124,9 +124,11 @@ export function createWriter<S extends Tables>(opts: { getDb: () => Promise<PGli
 
     // Guard gegen versehentliche Rekursion (recordHistory() umgeht writeRow).
     if (table === 'data_history') return null
-    const snapshot: Record<string, unknown> = {}
-    for (const c of columns) snapshot[c] = stamped[c] ?? null
-    await recordHistory(pg, table, row.id, action, snapshot)
+    if (!withoutHistory?.has(table)) {
+      const snapshot: Record<string, unknown> = {}
+      for (const c of columns) snapshot[c] = stamped[c] ?? null
+      await recordHistory(pg, table, row.id, action, snapshot)
+    }
     return { table, id: row.id, kind: action, before }
   }
 

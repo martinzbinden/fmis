@@ -12,6 +12,7 @@ import ImportPanel from './components/ImportPanel'
 import { createFieldsImporter } from './lib/importDetect'
 import './theme.css'
 import { fieldsYearSummary } from './lib/yearSummary'
+import { statementPasteImporter } from './lib/pasteStatement'
 
 function FieldsDbProvider({ children }: { children: ReactNode }) {
   return <DbProvider getDb={getDb}>{children}</DbProvider>
@@ -39,6 +40,7 @@ const fieldsModule: ModuleDescriptor = {
   sync: syncClient,
   yearSummary: fieldsYearSummary,
   importer: createFieldsImporter(ImportPanel),
+  pasteImporters: [statementPasteImporter],
 }
 
 export default fieldsModule

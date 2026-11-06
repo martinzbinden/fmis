@@ -54,16 +54,24 @@ Flurname werden dabei von der letzten bekannten Deklaration übernommen.
 
 ## Direktzahlungen
 
-Unter "Direktzahlungen" steht eine Schätzung je Parzelle und Betrieb nach
-DZV Anhang 7 (`frontend/src/lib/directPayments.ts`, Ansätze je Jahr in
-`DP_RATES`, zurzeit 2026). Die Tests rechnen dieselben Eingaben wie der
-Beitragsrechner von AGRIDEA V 4.11; die Excel-Datei selbst kommt nicht ins
-Repo, sie ist urheberrechtlich geschützt. Neue Jahresansätze aus der
-Verordnung übernehmen und die Sollwerte neu gegenrechnen.
+Unter "Direktzahlungen" steht eine Schätzung je Parzelle und Betrieb
+(`frontend/src/lib/directPayments.ts`). Flächenbeiträge und Tierwohl rechnen mit
+den Ansätzen aus DZV Anhang 7 (`DP_RATES`, 2025 und 2026 gleich). Die Tests
+rechnen dieselben Eingaben wie der Beitragsrechner von AGRIDEA V 4.11; die
+Excel-Datei selbst kommt nicht ins Repo, sie ist urheberrechtlich geschützt. Neue
+Jahresansätze aus der Verordnung übernehmen und die Sollwerte neu gegenrechnen.
 
-Bio, GMF, RGVE, Hanglagen und Qualitätsstufe II stehen nicht in den Raumdaten:
-Der Benutzer gibt sie an, sie bleiben im Browser. Kulturcodes ohne klare
-Zuordnung werden nicht gerechnet und auf der Seite ausgewiesen.
+Die Abrechnungen des Kantons kommen über "Strukturierte Daten einfügen" (Bereich
+`fields.abrechnung`) in `dp_statement_lines`. Daraus stammen Vernetzung,
+Landschaftsqualität, GVE, Hanglagen und Qualitätsstufe II; die Seite stellt Rechner
+und jüngste Abrechnung nebeneinander. Abweichende Angaben stehen in `dp_settings`
+und gelten bis zu neuen Angaben in einem späteren Jahr.
+
+Das Repo ist öffentlich: echte Beträge nur in der Datenbank, nie in Code oder Tests.
+Beide Tabellen haben das eigene Recht `fields:dz` (nicht in der Rolle Mitarbeit) und
+schreiben keinen Verlauf, weil die Rolle Mitarbeit den Verlauf lesen darf.
+
+Kulturcodes ohne klare Zuordnung werden nicht gerechnet und auf der Seite ausgewiesen.
 
 ## Deployment & lokale Entwicklung
 

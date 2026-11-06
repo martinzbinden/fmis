@@ -22,6 +22,7 @@ export function subscribeDataChanged(listener: () => void): () => void {
 }
 
 // Schreibweg samt Outbox, Verlauf, Rückgängig und Sync: core/frontend/src/writer.ts
-const writer = createWriter({ getDb, tables: SYNC_TABLES, notifyDataChanged })
+// Direktzahlungen ohne Verlauf: den Verlauf liest auch die Rolle Mitarbeit (fields:history)
+const writer = createWriter({ getDb, tables: SYNC_TABLES, notifyDataChanged, withoutHistory: new Set(['dp_settings', 'dp_statement_lines']) })
 export { ensureOutbox } from '@fmis/core/writer'
 export const { upsertRow, upsertRows, softDeleteRow, writeBatch, restoreRowState } = writer

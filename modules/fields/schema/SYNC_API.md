@@ -17,6 +17,8 @@ Diese Reihenfolge ist verbindlich für Push-Payloads (Backend validiert per Name
 - `farms`: id, external_uid, bur_nr, name, updated_at, deleted_at
 - `management_units`: id, farm_id, external_id, jahr, gemeinde_bfs_nr, zone, name, area_total_a, area_unprod_a, area_wald_a, area_land_a, updated_at, deleted_at
 - `field_declarations`: id, farm_id, lineage_id, management_unit_external_id, external_kultur_id, jahr, sequence_in_year, kultur_code, kultur_name_de, kultur_name_fr, flurname, area_a, baeume, geometry, source, notes, updated_at, deleted_at
+- `dp_settings`: id, farm_id, jahr, bio, gmf, rgve, hang_18, hang_35, hang_50, q2, updated_at, deleted_at — Recht `fields:dz`, ohne Verlauf
+- `dp_statement_lines`: id, farm_id, jahr, section, label, zone, quantity, rate, factor, amount, updated_at, deleted_at — Recht `fields:dz`, ohne Verlauf
 - `data_history`: id, table_name, row_id, action, changed_by, changed_at, snapshot, updated_at — Audit-Log, wird
   ausschliesslich automatisch von `upsertRow()`/`softDeleteRow()` befüllt (siehe `frontend/src/db/write.ts`),
   nie direkt von einem Formular. Kein `deleted_at` (unveränderlich). `snapshot` ist die komplette Zeile NACH
