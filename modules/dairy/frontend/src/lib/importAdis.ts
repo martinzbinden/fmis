@@ -411,7 +411,8 @@ async function importBreedingData(
       sire_name: (prev?.sire_name as string | null) ?? null,
       ease: first.ease,
       conception_date: lines.find((l) => l.conception_date)?.conception_date ?? null,
-      source: 'import',
+      // von Hand erfasst bleibt von Hand erfasst: offene Ohrmarken bleiben so Pendenz (lib/earTagPending.ts)
+      source: prev?.source === 'manual' ? 'manual' : 'import',
       import_key: importKey,
       notes: prev?.notes ?? null,
     }

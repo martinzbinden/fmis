@@ -13,8 +13,8 @@ import { speciesOf } from '../lib/species'
 import type { Animal } from '../types'
 import { errorText } from '@fmis/core/toast'
 
-async function loadData(pg: PGlite) {
-  const [pending, animals] = await Promise.all([loadPendingOffspring(pg), pg.query<Animal>('select * from animals where deleted_at is null')])
+async function loadData(pg: PGlite, requestedId: string | null) {
+  const [pending, animals] = await Promise.all([loadPendingOffspring(pg, requestedId), pg.query<Animal>('select * from animals where deleted_at is null')])
   return { pending, animals: animals.rows }
 }
 
@@ -22,13 +22,15 @@ async function loadData(pg: PGlite) {
 export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
   const word = species === 'sheep' ? { young: 'Lamm', youngPl: 'Lämmer', event: 'Ablammung' } : { young: 'Kalb', youngPl: 'Kälber', event: 'Abkalbung' }
-  const { data } = useQuery(loadData)
+  // ?lamm=<id> (Liste der letzten Geburten auf der Erfassungsseite) stellt dieses Lamm zuoberst
+  const [requestedId] = useState(() => new URLSearchParams(window.location.search).get('lamm'))
+  const { data } = useQuery((pg) => loadData(pg, requestedId))
   const byId = useMemo(() => new Map((data?.animals ?? []).map((a) => [a.id, a])), [data])
   const [saved, setSaved] = useState<{ earTag: string; animalId: string; created: boolean }[]>([])
   const today = localTodayIso()
   const pending = data?.pending ?? []
   // Lesegerät: die Lesung geht an das gewählte (sonst das oberste) Lamm
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(requestedId)
   const active = pending.find((p) => p.id === activeId) ?? pending[0]
   const [scanned, setScanned] = useState<{ id: string; earTag: string; n: number } | null>(null)
   const reader = useTagReader({

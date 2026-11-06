@@ -15,14 +15,16 @@ import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarning
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
 import { recordBirth, validateBirth, type OffspringFate, type OffspringInput } from '../lib/recordBirth'
-import { loadPendingOffspring } from '../lib/earTagPending'
+import { loadPendingOffspring, loadRecentBirths } from '../lib/earTagPending'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import type { Animal } from '../types'
 import { errorText } from '@fmis/core/toast'
 
+const RECENT_LIST = 15
+
 async function loadData(pg: PGlite) {
-  const [animals, sires, lastMatings, births, pending, events] = await Promise.all([
+  const [animals, sires, lastMatings, births, pending, events, recent] = await Promise.all([
     pg.query<Animal>('select * from animals where deleted_at is null order by lauf_nr nulls last, ear_tag'),
     loadSireOptions(pg),
     pg.query<{ animal_id: string; service_date: unknown; sire_key: string | null; sire_ear_tag: string | null; sire_name: string | null }>(
@@ -34,9 +36,12 @@ async function loadData(pg: PGlite) {
     ),
     loadPendingOffspring(pg),
     loadAnimalEvents(pg),
+    loadRecentBirths(pg, RECENT_LIST),
   ])
   return {
     events,
+    recent,
+    animalIdByKey: new Map(animals.rows.map((a) => [animalKey(a.ear_tag), a.id])),
     animals: animals.rows,
     sires,
     lastMating: new Map(lastMatings.rows.map((m) => [m.animal_id, { ...m, service_date: isoDate(m.service_date)! }])),
@@ -327,6 +332,55 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
       >
         {saving ? 'Speichere…' : `${word.event} speichern`}
       </button>
+
+      {data && data.recent.length > 0 && (
+        <section className="rounded-lg bg-white p-4 shadow-sm" aria-labelledby="letzte-geburten">
+          <h2 id="letzte-geburten" className="mb-1 text-sm font-semibold text-gray-700">
+            Letzte {word.event}en
+          </h2>
+          <ul className="divide-y text-sm">
+            {data.recent.map((b) => (
+              <li key={b.id} className="flex items-baseline gap-2 py-1.5">
+                <span className="w-[4.6rem] shrink-0 text-xs tabular-nums text-gray-500">{fmtDate(b.birth_date)}</span>
+                <div className="min-w-0 flex-1">
+                  <Link to={`../tiere/${b.dam_id}`} relative="path" className="block min-h-11 content-center truncate font-medium text-gray-900">
+                    {b.dam_lauf_nr ? `${b.dam_lauf_nr} · ` : ''}
+                    {animalLabel({ ear_tag: b.dam_ear_tag ?? '', name: b.dam_name })}
+                  </Link>
+                  {(b.sire_name || b.sire_ear_tag) && <span className="block truncate text-xs text-gray-600">Vater {b.sire_name || shortEarTag(b.sire_ear_tag)}</span>}
+                  <ul>
+                    {b.offspring.map((o) => {
+                      const sex = o.sex === 'w' ? '♀ ' : o.sex === 'm' ? '♂ ' : ''
+                      const animalId = data.animalIdByKey.get(animalKey(o.ear_tag))
+                      return (
+                        <li key={o.id} className="text-gray-700">
+                          {sex}
+                          {o.ear_tag && animalId ? (
+                            <Link to={`../tiere/${animalId}`} relative="path" className="link-btn font-medium text-brand-700">
+                              {shortEarTag(o.ear_tag)}
+                            </Link>
+                          ) : (
+                            o.ear_tag && shortEarTag(o.ear_tag)
+                          )}
+                          {o.death && <span className="text-gray-600">{o.ear_tag ? ' · ' : ''}† {o.death}</span>}
+                          {o.untagged && (
+                            <>
+                              <span className={b.source === 'manual' ? 'text-amber-800' : 'text-gray-600'}>{b.source === 'manual' ? 'Ohrmarke offen' : 'ohne Ohrmarke (Import)'}</span>{' '}
+                              <Link to={`../ohrmarken?lamm=${o.id}`} relative="path" className="link-btn font-semibold text-brand-700">
+                                nachtragen ›
+                              </Link>
+                            </>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   )
 }
