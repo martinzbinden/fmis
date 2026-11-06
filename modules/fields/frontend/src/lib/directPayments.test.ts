@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basisAbstufung, classifyDp, DP_DEFAULTS, DP_RATES, estimateFarm, steillagenAnsatz, type DpFarmEstimate, type DpLineKey, type DpParcel } from './directPayments'
+import { basisAbstufung, classifyDp, dpCropName, DP_DEFAULTS, DP_RATES, estimateFarm, steillagenAnsatz, type DpFarmEstimate, type DpLineKey, type DpParcel } from './directPayments'
 
 const rates = DP_RATES[2026]
 
@@ -10,7 +10,7 @@ const parcel = (kultur_code: string, kultur_name_de: string | null, ha: number, 
 }
 const sum = (e: DpFarmEstimate, key: DpLineKey) => e.lines.find((l) => l.key === key)?.amount ?? 0
 
-describe('Schafweidli (10.61 a Weide, Bergzone I)', () => {
+describe('kleine Weide (10.61 a, Bergzone I)', () => {
   const weide = parcel('616', 'Weiden', 0.1061)
 
   it('rechnet Offenhaltung, Basis und Erschwernis, keinen Hangbeitrag', () => {
@@ -56,7 +56,7 @@ describe('Gegenrechnung mit dem AGRIDEA-Rechner', () => {
     gmf: true,
     rgve: 20,
     hang: [10, 20, 5] as [number, number, number],
-    q2: [ext.lineage_id, weideBff.lineage_id, hecke.lineage_id, obst.lineage_id, nuss.lineage_id],
+    q2: { [ext.lineage_id]: 400, [weideBff.lineage_id]: 300, [hecke.lineage_id]: 50, [obst.lineage_id]: 25, [nuss.lineage_id]: 5 },
   }
 
   it('Betrieb mit Abstufung, GMF unter dem Tierbesatz', () => {
@@ -94,15 +94,19 @@ describe('classifyDp', () => {
     expect(classifyDp('901', 'Wald')).toHaveProperty('ohne')
     expect(classifyDp('698', 'übrige Dauergrünfläche (ohne Beitrag)')).toHaveProperty('ohne')
     expect(classifyDp('924', 'Einzelbäume')).toHaveProperty('ohne')
-    expect(classifyDp('99999', 'Bitte Kultur wählen')).toHaveProperty('offen')
-    expect(classifyDp('569', '')).toHaveProperty('offen')
-    expect(classifyDp('857', 'Hecken (mit Pufferstreifen)')).toHaveProperty('offen')
+    expect(classifyDp('857', 'Hecken (mit Pufferstreifen)')).toHaveProperty('ohne')
+    expect(classifyDp('568', '')).toHaveProperty('offen')
     expect(classifyDp('556', 'Buntbrache')).toHaveProperty('offen')
     expect(classifyDp('660', 'Unbekannt')).toHaveProperty('offen')
   })
 
   it('Getreide in weiter Reihe zählt als Acker', () => {
     expect(classifyDp('516', 'GiwR Dinkel (BFF)')).toEqual({ kind: 'acker' })
+  })
+
+  it('Code 569 hat in den Raumdaten keinen Namen und zählt als Acker', () => {
+    expect(classifyDp('569', '')).toEqual({ kind: 'acker' })
+    expect(dpCropName('569', '')).toMatch(/Körnerleguminosen/)
   })
 
   it('«insitu» bleibt dieselbe Nutzung', () => {
@@ -130,6 +134,20 @@ describe('Regeln am Rand', () => {
     expect(sum(e, 'steillagen')).toBe(0)
   })
 
+  it('Qualitätsstufe II auch für einen Teil der Parzelle, höchstens die ganze', () => {
+    const wiese = parcel('611', 'Extensiv genutzte Wiesen', 1)
+    const baum = parcel('921', 'Hochstammfeldobstbäume', 0, '51', 25)
+    const e = estimateFarm(rates, [wiese, baum], { ...DP_DEFAULTS, q2: { [wiese.lineage_id]: 50, [baum.lineage_id]: 15 } })
+    expect(sum(e, 'q2')).toBeCloseTo(0.5 * 1700 + 15 * 31.5, 6)
+    const voll = estimateFarm(rates, [wiese], { ...DP_DEFAULTS, q2: { [wiese.lineage_id]: 500 } })
+    expect(sum(voll, 'q2')).toBeCloseTo(1700, 6)
+  })
+
+  it('ohne gültige Kultur: Basis und Bio, aber nicht offene Ackerfläche und GMF', () => {
+    const e = estimateFarm(rates, [parcel('99999', 'Bitte Kultur wählen', 1)], { ...DP_DEFAULTS, bio: true, gmf: true })
+    expect(e.parcels[0].lines.map((l) => l.key)).toEqual(['offenhaltung', 'basis', 'erschwernis', 'bio'])
+  })
+
   it('unter 20 Bäumen kein Baumbeitrag', () => {
     const e = estimateFarm(rates, [parcel('921', 'Hochstammfeldobstbäume', 0, '51', 19)], DP_DEFAULTS)
     expect(e.total).toBe(0)
@@ -137,7 +155,7 @@ describe('Regeln am Rand', () => {
   })
 
   it('Fläche ohne Zone oder Zuordnung bleibt draussen und wird ausgewiesen', () => {
-    const e = estimateFarm(rates, [parcel('613', 'Übrige Dauerwiesen', 2, null), parcel('99999', 'Bitte Kultur wählen', 1)], DP_DEFAULTS)
+    const e = estimateFarm(rates, [parcel('613', 'Übrige Dauerwiesen', 2, null), parcel('660', 'Unbekannt', 1)], DP_DEFAULTS)
     expect(e.total).toBe(0)
     expect(e.offenHa).toBe(3)
   })

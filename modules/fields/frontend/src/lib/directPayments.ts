@@ -1,6 +1,7 @@
 // Direktzahlungen: Schätzung je Parzelle und Betrieb nach DZV (SR 910.13), Ansätze
 // aus Anhang 7, Stand Verordnungspaket Oktober 2025 (gilt ab 2026). Gegengerechnet
-// mit dem Beitragsrechner von AGRIDEA V 4.11 (siehe directPayments.test.ts).
+// mit dem Beitragsrechner von AGRIDEA V 4.11 (siehe directPayments.test.ts) und lokal
+// mit den kantonalen Abrechnungen 2025 (dieselben Ansätze, Flächen auf die Are gleich).
 //
 // Hier gerechnet: Offenhaltung (Art. 42), Hang (Art. 43) und Steillagen (Art. 44),
 // Basis (Art. 50), Produktionserschwernis (Art. 52), offene Ackerfläche und
@@ -96,11 +97,14 @@ export type DpKind =
   | 'hecke'
   | 'obstbaum'
   | 'nussbaum'
+  // ohne gültige Kultur: laut Abrechnung Offenhaltung, Basis, Erschwernis und Bio, aber weder offene Ackerfläche noch GMF
+  | 'unbestimmt'
 
 /** Einordnung einer Kultur: `ohne` gibt sicher nichts, `offen` ist hier nicht zuzuordnen. */
 export type DpClass = { kind: DpKind } | { ohne: string } | { offen: string }
 
 const KIND_BY_CODE: Record<string, DpKind> = {
+  '569': 'acker', // kommt in den Raumdaten ohne Namen
   '611': 'ext_wiese',
   '622': 'ext_wiese',
   '612': 'wenig_wiese',
@@ -117,10 +121,22 @@ const KIND_BY_CODE: Record<string, DpKind> = {
   '921': 'obstbaum',
   '923': 'obstbaum',
   '922': 'nussbaum',
+  '99999': 'unbestimmt',
+}
+
+// Flächenkatalog BLW; die Raumdaten liefern für diesen Code keinen Namen
+const CODE_NAME: Record<string, string> = {
+  '569': 'Mischung Körnerleguminosen mit Getreide',
+}
+
+/** Kulturname aus den Raumdaten, sonst aus dem Flächenkatalog. */
+export function dpCropName(code: string, name: string | null): string | null {
+  return name?.trim() ? name : (CODE_NAME[code] ?? null)
 }
 
 const OHNE_BEITRAG: Record<string, string> = {
   '698': 'Dauergrünfläche ohne Beitrag',
+  '857': 'Hecke mit Pufferstreifen: nur Landschaftsqualität (Kanton)',
   '901': 'Wald',
   '902': 'unproduktive Fläche',
   '924': 'Einzelbäume und Alleen: kein Qualitätsbeitrag mehr, nur Vernetzung',
@@ -130,10 +146,9 @@ const OHNE_BEITRAG: Record<string, string> = {
 const OHNE_HANG = new Set(['616', '617', '618', '852'])
 
 export function classifyDp(code: string, name: string | null): DpClass {
-  if (code === '99999' || !name?.trim()) return { offen: 'Kultur fehlt in den Raumdaten' }
   if (OHNE_BEITRAG[code]) return { ohne: OHNE_BEITRAG[code] }
-  if (code === '857') return { offen: 'Hecke mit Pufferstreifen: Beitrag laut Merkblatt 6.2 prüfen' }
   if (KIND_BY_CODE[code]) return { kind: KIND_BY_CODE[code] }
+  if (!name?.trim()) return { offen: 'Kultur fehlt in den Raumdaten' }
   const info = cropInfo(code, name)
   if (info.kunstwiese) return { kind: 'kunstwiese' }
   if (info.open) {
@@ -162,11 +177,11 @@ export interface DpSettings {
   rgve: number | null
   /** Hektaren je Hangklasse: 18–35 %, >35–50 %, >50 % */
   hang: [number, number, number]
-  /** Parzellen-Linien mit Qualitätsstufe II */
-  q2: string[]
+  /** Qualitätsstufe II je Parzellen-Linie: Aren, bei Bäumen deren Anzahl; oft nur ein Teil der Parzelle */
+  q2: Record<string, number>
 }
 
-export const DP_DEFAULTS: DpSettings = { bio: false, gmf: false, rgve: null, hang: [0, 0, 0], q2: [] }
+export const DP_DEFAULTS: DpSettings = { bio: false, gmf: false, rgve: null, hang: [0, 0, 0], q2: {} }
 
 export type DpLineKey = 'offenhaltung' | 'basis' | 'erschwernis' | 'offeneAckerflaeche' | 'q1' | 'q2' | 'bio' | 'gmf' | 'hang' | 'steillagen'
 
@@ -201,7 +216,8 @@ export interface DpParcelEstimate {
   offen?: string
   /** Qualitätsstufe II möglich */
   q2Possible: boolean
-  q2: boolean
+  /** eingegebene Aren bzw. Bäume, höchstens die ganze Parzelle */
+  q2: number
   /** Fläche kann Hangbeitrag auslösen (je nach Neigung) */
   hangPossible: boolean
   isTree: boolean
@@ -252,7 +268,6 @@ export function steillagenAnsatz(anteil: number): number {
 const isZone = (z: string | null): z is ZoneCode => z != null && z in ZONE_LABEL
 
 export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSettings): DpFarmEstimate {
-  const q2Set = new Set(settings.q2)
   const rows = parcels.map((parcel) => ({ parcel, ha: (parcel.area_a ?? 0) / 100, cls: classifyDp(parcel.kultur_code, parcel.kultur_name_de) }))
 
   // Betriebsgrössen vorab: Mindesttierbesatz, Flächenabstufung, Baumzahl
@@ -289,7 +304,7 @@ export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSett
   let offenHa = 0
   const estimates = rows.map(({ parcel, ha, cls }): DpParcelEstimate => {
     const zoneLabel = isZone(parcel.zone) ? ZONE_LABEL[parcel.zone] : null
-    const base = { parcel, ha, zoneLabel, lines: [] as DpLine[], total: 0, q2Possible: false, q2: false, hangPossible: false, isTree: false }
+    const base = { parcel, ha, zoneLabel, lines: [] as DpLine[], total: 0, q2Possible: false, q2: 0, hangPossible: false, isTree: false }
     if ('ohne' in cls) return { ...base, ohne: cls.ohne }
     if ('offen' in cls) {
       offenHa += ha
@@ -303,13 +318,13 @@ export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSett
 
     if (kind === 'obstbaum' || kind === 'nussbaum') {
       const n = parcel.baeume ?? 0
-      const q2 = q2Set.has(parcel.lineage_id)
+      const q2 = treesOk ? Math.min(settings.q2[parcel.lineage_id] ?? 0, n) : 0
       if (treesOk) {
         add('q1', rates.baumQ1[kind], rates.baumQ1[kind] * n)
-        if (q2) add('q2', rates.baumQ2[kind], rates.baumQ2[kind] * n)
+        if (q2 > 0) add('q2', rates.baumQ2[kind], rates.baumQ2[kind] * q2)
       }
       const total = lines.reduce((s, l) => s + l.amount, 0)
-      return { ...base, lines, total, q2Possible: treesOk, q2: q2 && treesOk, isTree: true, ohne: treesOk ? undefined : `Erst ab ${rates.baumMin} Bäumen im Betrieb` }
+      return { ...base, lines, total, q2Possible: treesOk, q2, isTree: true, ohne: treesOk ? undefined : `Erst ab ${rates.baumMin} Bäumen im Betrieb` }
     }
     if (!isZone(parcel.zone)) {
       offenHa += ha
@@ -332,9 +347,9 @@ export function estimateFarm(rates: Rates, parcels: DpParcel[], settings: DpSett
     const q2Rates = rates.q2 as Partial<Record<DpKind, ByZone>>
     const q1Rates = rates.q1 as Partial<Record<DpKind, ByZone>>
     const q2Possible = q2Rates[kind] != null
-    const q2 = q2Possible && q2Set.has(parcel.lineage_id)
+    const q2 = q2Possible ? Math.min(settings.q2[parcel.lineage_id] ?? 0, parcel.area_a ?? 0) : 0
     if (q1Rates[kind]) perHa('q1', q1Rates[kind][zone])
-    if (q2) perHa('q2', q2Rates[kind]![zone])
+    if (q2 > 0) add('q2', q2Rates[kind]![zone], (q2Rates[kind]![zone] * q2) / 100)
 
     if (settings.bio) perHa('bio', kind === 'dauerkultur' ? rates.bio.spezial : kind === 'acker' ? rates.bio.acker : rates.bio.uebrige)
     if (settings.gmf && (BFF_GRUEN.has(kind) || kind === 'dauergruen' || kind === 'kunstwiese')) perHa('gmf', rates.gmf * factorGmf)

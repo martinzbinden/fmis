@@ -4,12 +4,14 @@ import { useHasPermission } from '@fmis/core/AuthContext'
 import NumberInput from '@fmis/core/NumberInput'
 import { fmtNum } from '@fmis/core/yearSummary'
 import { useQuery } from '../hooks/useQuery'
-import { DP_DEFAULTS, DP_LINE_LABEL, DP_RATES, estimateFarm, type DpParcel, type DpParcelEstimate, type DpSettings } from '../lib/directPayments'
+import { dpCropName, DP_DEFAULTS, DP_LINE_LABEL, DP_RATES, estimateFarm, type DpParcel, type DpParcelEstimate, type DpSettings } from '../lib/directPayments'
 import { cropLabel } from '../lib/rotationRules'
 
 const YEAR = 2026
 const PREF = 'fmis:fields:direktzahlungen'
 const HANG_LABEL = ['18–35 %', 'über 35–50 %', 'über 50 %']
+// Vorbelegung auf dieser Instanz, je Betrieb abwählbar
+const SETTINGS_START: DpSettings = { ...DP_DEFAULTS, bio: true, gmf: true }
 
 type Row = DpParcel & { farm_id: string }
 
@@ -57,7 +59,9 @@ export default function DirectPayments() {
 
   const farmsWithData = useMemo(() => (data?.farms ?? []).filter((f) => data?.rows.some((r) => r.farm_id === f.id)), [data])
   const farm = farmsWithData.find((f) => f.id === farmId) ?? farmsWithData[0]
-  const settings: DpSettings = { ...DP_DEFAULTS, ...(farm ? prefs[farm.id] : undefined) }
+  const saved = farm ? prefs[farm.id] : undefined
+  // q2 war in der ersten Fassung eine Liste
+  const settings: DpSettings = { ...SETTINGS_START, ...saved, q2: saved?.q2 && !Array.isArray(saved.q2) ? saved.q2 : {} }
   const estimate = useMemo(
     () => (farm && data ? estimateFarm(DP_RATES[YEAR], data.rows.filter((r) => r.farm_id === farm.id), settings) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,8 +79,7 @@ export default function DirectPayments() {
     setPrefsState(next)
     savePrefs(next)
   }
-  const toggleQ2 = (lineage: string) =>
-    update({ q2: settings.q2.includes(lineage) ? settings.q2.filter((x) => x !== lineage) : [...settings.q2, lineage] })
+  const setQ2 = (lineage: string, value: number) => update({ q2: { ...settings.q2, [lineage]: value } })
 
   const q = search.trim().toLowerCase()
   const parcels = estimate.parcels
@@ -196,10 +199,10 @@ export default function DirectPayments() {
             </div>
             <p className={`mt-1 text-xs ${estimate.hangZuKlein ? 'font-semibold text-red-700' : 'text-gray-500'}`}>
               {estimate.hangZuKlein ? 'Unter 50 a Hanglagen gibt es keinen Beitrag. ' : ''}
-              Laut Verzeichnis des Kantons. Weiden, Reben und Hecken zählen nicht.
+              Weiden, Reben und Hecken zählen nicht.
             </p>
           </fieldset>
-          <p className="text-xs text-gray-500">Diese Angaben und die Qualitätsstufe II bleiben nur auf diesem Gerät.</p>
+          <p className="text-xs text-gray-500">Diese Angaben und die Qualitätsstufe II bleiben nur auf diesem Gerät. Hanglagen und Qualitätsstufe II stehen in der Abrechnung des Kantons.</p>
         </div>
       </details>
 
@@ -225,7 +228,8 @@ export default function DirectPayments() {
                 p={p}
                 expanded={open === p.parcel.id}
                 onToggle={() => setOpen(open === p.parcel.id ? null : p.parcel.id)}
-                onToggleQ2={() => toggleQ2(p.parcel.lineage_id)}
+                q2Input={settings.q2[p.parcel.lineage_id] ?? 0}
+                onQ2={(v) => setQ2(p.parcel.lineage_id, v)}
               />
             ))}
           </ul>
@@ -254,8 +258,8 @@ export default function DirectPayments() {
   )
 }
 
-function ParcelRow({ p, expanded, onToggle, onToggleQ2 }: { p: DpParcelEstimate; expanded: boolean; onToggle: () => void; onToggleQ2: () => void }) {
-  const name = cropLabel(p.parcel.kultur_name_de, p.parcel.kultur_code)
+function ParcelRow({ p, expanded, onToggle, q2Input, onQ2 }: { p: DpParcelEstimate; expanded: boolean; onToggle: () => void; q2Input: number; onQ2: (v: number) => void }) {
+  const name = cropLabel(dpCropName(p.parcel.kultur_code, p.parcel.kultur_name_de), p.parcel.kultur_code)
   const trees = p.parcel.baeume ?? 0
   const size = trees > 0 ? `${fmtNum(trees, 0)} ${trees === 1 ? 'Baum' : 'Bäume'}` : `${fmtNum(p.ha * 100, 2)} a`
   return (
@@ -264,7 +268,7 @@ function ParcelRow({ p, expanded, onToggle, onToggleQ2 }: { p: DpParcelEstimate;
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-gray-900">
             {p.parcel.flurname || name}
-            {p.q2 && <span className="ml-1.5 rounded bg-green-100 px-1 text-[10px] font-semibold text-green-800">Q II</span>}
+            {p.q2 > 0 && <span className="ml-1.5 rounded bg-green-100 px-1 text-[10px] font-semibold text-green-800">Q II</span>}
           </span>
           <span className="block truncate text-xs text-gray-600">
             {p.parcel.flurname ? `${name}, ` : ''}
@@ -298,8 +302,14 @@ function ParcelRow({ p, expanded, onToggle, onToggleQ2 }: { p: DpParcelEstimate;
           )}
           {p.q2Possible && (
             <label className="flex min-h-11 items-center gap-2 font-medium">
-              <input type="checkbox" className="h-5 w-5" checked={p.q2} onChange={onToggleQ2} />
-              Qualitätsstufe II
+              Davon Qualitätsstufe II
+              <NumberInput
+                value={q2Input || ''}
+                onChange={(e) => onQ2(Number(e.target.value) || 0)}
+                placeholder="0"
+                className="min-h-11 w-24 rounded-lg border-2 border-gray-300 bg-white px-2 text-sm font-normal"
+              />
+              {p.isTree ? 'Bäume' : 'a'}
             </label>
           )}
         </div>
