@@ -57,7 +57,7 @@ export const SYNC_TABLES = {
   ],
   birth_offspring: [
     'id', 'birth_id', 'ear_tag', 'animal_key', 'sex', 'stillborn', 'died_24h',
-    'birth_weight_kg', 'import_key', 'updated_at', 'deleted_at', 'died_on',
+    'birth_weight_kg', 'import_key', 'updated_at', 'deleted_at', 'died_on', 'loss_cause', 'defects', 'loss_note',
   ],
   ear_tag_stock: ['id', 'ear_tag', 'animal_key', 'tag_type', 'stock_date', 'updated_at', 'deleted_at'],
   watchlists: ['id', 'name', 'color', 'notes', 'created_by', 'created_at', 'archived_at', 'updated_at', 'deleted_at'],
@@ -89,7 +89,7 @@ export const SYNC_TABLES = {
   pedigree_performance: [
     'id', 'animal_key', 'kind', 'lactation_number', 'calving_date', 'age', 'test_type', 'count', 'interval_days', 'days', 'milk_kg', 'fat_pct', 'fat_kg', 'protein_pct', 'protein_kg', 'cell_count', 'persistency', 'document_date', 'source', 'import_key', 'updated_at', 'deleted_at',
   ],
-  lamb_selection: ['id', 'animal_key', 'purpose', 'decided_on', 'notes', 'updated_at', 'deleted_at'],
+  lamb_selection: ['id', 'animal_key', 'offspring_id', 'leaning', 'purpose', 'decided_on', 'notes', 'updated_at', 'deleted_at'],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',

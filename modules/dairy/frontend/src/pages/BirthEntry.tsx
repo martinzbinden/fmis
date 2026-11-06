@@ -10,12 +10,15 @@ import { undoAction, useOnUndo } from '@fmis/core/undo'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
 import AnimalPicker from '../components/AnimalPicker'
+import BirthFollowUp from '../components/BirthFollowUp'
 import AnimalWarnings from '../components/AnimalWarnings'
 import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
 import { recordBirth, validateBirth, type OffspringFate, type OffspringInput } from '../lib/recordBirth'
 import { loadPendingOffspring, loadRecentBirths } from '../lib/earTagPending'
+import { lossLabel } from '../lib/lambLoss'
+import { preselectionLabel } from '../lib/lambRecommendation'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import type { Animal } from '../types'
@@ -75,7 +78,9 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   const [offspring, setOffspring] = useState<OffspringInput[]>([{ ...EMPTY_OFFSPRING }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<{ damId: string; count: number; later: number } | null>(null)
+  const [done, setDone] = useState<{ birthId: string; damId: string; count: number; later: number } | null>(null)
+  // Entscheid einer früheren Geburt aus der Liste geöffnet
+  const [openBirth, setOpenBirth] = useState<string | null>(null)
   // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
   useOnUndo(() => setDone(null))
 
@@ -154,7 +159,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
     try {
       const n = offspring.length
       const result = await undoAction(`${word.event} ${animalLabel(dam)}, ${n} ${n === 1 ? word.young : word.youngPl}`, () => inTransaction(db, (tx) => recordBirth(tx, input)))
-      setDone({ damId: dam.id, count: result.newAnimalIds.length, later: offspring.filter((o) => o.fate === 'lebend' && o.tag_later && !o.ear_tag.trim()).length })
+      setDone({ birthId: result.birthId, damId: dam.id, count: result.newAnimalIds.length, later: offspring.filter((o) => o.fate === 'lebend' && o.tag_later && !o.ear_tag.trim()).length })
       setDamIds([])
       setOffspring([{ ...EMPTY_OFFSPRING }])
       setNotes('')
@@ -196,6 +201,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
           <div className="mt-1 text-xs text-green-800">Die Geburtsmeldung an die TVD bleibt wie bisher separat.</div>
         </div>
       )}
+      {done && <BirthFollowUp birthId={done.birthId} moduleKey={moduleKey} />}
 
       <TagReaderButton reader={reader} hint={`erst ${word.mother}, dann ${word.youngPl}`} />
 
@@ -340,7 +346,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
           </h2>
           <ul className="divide-y text-sm">
             {data.recent.map((b) => (
-              <li key={b.id} className="flex items-baseline gap-2 py-1.5">
+              <li key={b.id} className="flex flex-wrap items-baseline gap-2 py-1.5">
                 <span className="w-[4.6rem] shrink-0 text-xs tabular-nums text-gray-500">{fmtDate(b.birth_date)}</span>
                 <div className="min-w-0 flex-1">
                   <Link to={`../tiere/${b.dam_id}`} relative="path" className="block min-h-11 content-center truncate font-medium text-gray-900">
@@ -363,6 +369,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                             o.ear_tag && shortEarTag(o.ear_tag)
                           )}
                           {o.death && <span className="text-gray-600">{o.ear_tag ? ' · ' : ''}† {o.death}</span>}
+                          {o.loss_cause && <span className="text-gray-600"> · {lossLabel(o.loss_cause)}</span>}
                           {o.untagged && (
                             <>
                               <span className={b.source === 'manual' ? 'text-amber-800' : 'text-gray-600'}>{b.source === 'manual' ? 'Ohrmarke offen' : 'ohne Ohrmarke (Import)'}</span>{' '}
@@ -371,11 +378,20 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                               </Link>
                             </>
                           )}
+                          {o.preselection && <span className="text-gray-600"> · {preselectionLabel(o.preselection)}</span>}
                         </li>
                       )
                     })}
                   </ul>
+                  <button type="button" aria-expanded={openBirth === b.id} onClick={() => setOpenBirth(openBirth === b.id ? null : b.id)} className="link-btn text-sm font-medium text-brand-700">
+                    {openBirth === b.id ? 'Eltern und Entscheid schliessen' : 'Eltern und Entscheid ›'}
+                  </button>
                 </div>
+                {openBirth === b.id && (
+                  <div className="w-full">
+                    <BirthFollowUp birthId={b.id} moduleKey={moduleKey} />
+                  </div>
+                )}
               </li>
             ))}
           </ul>

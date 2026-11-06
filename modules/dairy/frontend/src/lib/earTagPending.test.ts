@@ -29,8 +29,9 @@ beforeAll(async () => {
     create table animals (id uuid primary key, ear_tag text, lauf_nr text, name text);
     create table births (id uuid primary key, dam_id uuid, birth_date date, sire_key text, sire_ear_tag text, sire_name text,
       source text, import_key text, updated_at timestamptz not null default now(), deleted_at timestamptz);
-    create table birth_offspring (id uuid primary key, birth_id uuid, ear_tag text, sex text, stillborn boolean, died_24h boolean,
-      died_on date, import_key text, deleted_at timestamptz);
+    create table birth_offspring (id uuid primary key, birth_id uuid, ear_tag text, animal_key text, sex text, stillborn boolean, died_24h boolean,
+      died_on date, import_key text, loss_cause text, deleted_at timestamptz);
+    create table lamb_selection (animal_key text, offspring_id uuid, purpose text, leaning text, updated_at timestamptz default now(), deleted_at timestamptz);
     insert into animals (id, ear_tag, lauf_nr) values ('${DAM}', 'CH1', '2106');
   `)
 }, 60_000) // pglite startet im vollen Testlauf langsam
@@ -73,5 +74,14 @@ describe('loadRecentBirths', () => {
     expect(recent[0]).toMatchObject({ source: 'manual', dam_lauf_nr: '2106' })
     expect(recent[0].offspring.map((o) => [o.untagged, o.death])).toEqual([[true, null], [false, 'tot geboren']])
     expect(recent[1].offspring.map((o) => [o.untagged, o.death])).toEqual([[true, null], [false, 'verendet 1.11.2026'], [false, 'verendet < 24 h']])
+  })
+
+  it('nennt Ursache und Vorauswahl, die neueste Zeile gewinnt', async () => {
+    const [live, dead] = await birth('2026-11-06', 'manual', [{ sex: 'w' }, { stillborn: true }])
+    await pg.query(`update birth_offspring set loss_cause = 'fehllage' where id = $1`, [dead])
+    await pg.query(`insert into lamb_selection (offspring_id, leaning, updated_at) values ($1, 'spaeter', now() - interval '1 hour'), ($1, 'eher_ja', now())`, [live])
+    const [b] = await loadRecentBirths(pg, 1)
+    expect(b.offspring.map((o) => [o.preselection, o.loss_cause])).toEqual([['eher_ja', null], [null, 'fehllage']])
+    await pg.exec('delete from lamb_selection')
   })
 })

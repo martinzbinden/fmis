@@ -6,6 +6,7 @@ import { animalKey, earTagProblem } from '@fmis/core/earTag'
 import { softDeleteRow, upsertRow } from '../db/write'
 import { fmtDate, isoDate } from './format'
 import { addOffspringAnimal, compactEarTag, pedigreeEnsurer } from './recordBirth'
+import type { Preselection } from './lambRecommendation'
 import type { Animal } from '../types'
 
 export interface PendingOffspring {
@@ -69,6 +70,8 @@ export interface RecentOffspring {
   death: string | null
   /** lebend ohne Ohrmarke */
   untagged: boolean
+  loss_cause: string | null
+  preselection: Preselection | null
 }
 
 export interface RecentBirth {
@@ -87,7 +90,7 @@ export interface RecentBirth {
 /** Die letzten Geburten mit ihren Nachkommen, neueste zuerst. */
 export async function loadRecentBirths(pg: PGlite, limit: number): Promise<RecentBirth[]> {
   const recent = `select id from births where deleted_at is null order by birth_date desc, updated_at desc limit ${limit}`
-  const [births, offspring] = await Promise.all([
+  const [births, offspring, selection] = await Promise.all([
     pg.query<Record<string, unknown>>(
       `select b.id, b.birth_date, b.source, b.dam_id, b.sire_name, b.sire_ear_tag,
               a.ear_tag as dam_ear_tag, a.lauf_nr as dam_lauf_nr, a.name as dam_name
@@ -95,10 +98,19 @@ export async function loadRecentBirths(pg: PGlite, limit: number): Promise<Recen
        where b.id in (${recent}) order by b.birth_date desc, b.updated_at desc`,
     ),
     pg.query<Record<string, unknown>>(
-      `select id, birth_id, ear_tag, sex, stillborn, died_24h, died_on from birth_offspring
+      `select id, birth_id, ear_tag, animal_key, sex, stillborn, died_24h, died_on, loss_cause from birth_offspring
        where deleted_at is null and birth_id in (${recent}) order by import_key`,
     ),
+    pg.query<{ animal_key: string | null; offspring_id: string | null; purpose: Preselection | null; leaning: Preselection | null }>(
+      'select animal_key, offspring_id, purpose, leaning from lamb_selection where deleted_at is null order by updated_at',
+    ),
   ])
+  // neueste Zeile gewinnt (aufsteigend geladen)
+  const chosen = new Map<string, Preselection | null>()
+  for (const s of selection.rows) {
+    if (s.offspring_id) chosen.set(s.offspring_id, s.purpose ?? s.leaning)
+    if (s.animal_key) chosen.set(s.animal_key, s.purpose ?? s.leaning)
+  }
   return births.rows.map((b) => ({
     id: String(b.id),
     birth_date: isoDate(b.birth_date)!,
@@ -113,7 +125,8 @@ export async function loadRecentBirths(pg: PGlite, limit: number): Promise<Recen
       .filter((o) => o.birth_id === b.id)
       .map((o) => {
         const death = o.stillborn ? 'tot geboren' : o.died_24h ? 'verendet < 24 h' : o.died_on ? `verendet ${fmtDate(isoDate(o.died_on))}` : null
-        return { id: String(o.id), ear_tag: (o.ear_tag as string | null) ?? null, sex: (o.sex as 'w' | 'm' | null) ?? null, death, untagged: !o.ear_tag && !death }
+        const preselection = chosen.get(String(o.id)) ?? chosen.get(String(o.animal_key ?? '')) ?? null
+        return { id: String(o.id), ear_tag: (o.ear_tag as string | null) ?? null, sex: (o.sex as 'w' | 'm' | null) ?? null, death, untagged: !o.ear_tag && !death, loss_cause: (o.loss_cause as string | null) ?? null, preselection }
       }),
   }))
 }
@@ -153,6 +166,9 @@ export async function assignEarTag(
   )
   if (dup.length > 0) await softDeleteRow(pg, 'birth_offspring', p.id)
   else await upsertRow(pg, 'birth_offspring', { ...rows[0], id: p.id, ear_tag: earTag, animal_key: key, sex: input.sex, import_key: importKey })
+  // Vorauswahl nach der Geburt (lib/birthFollowUp.ts) gilt jetzt für das Tier
+  const { rows: chosen } = await pg.query<Record<string, unknown>>('select * from lamb_selection where offspring_id = $1 and deleted_at is null', [p.id])
+  for (const s of chosen) await upsertRow(pg, 'lamb_selection', { ...s, id: String(s.id), animal_key: key })
   if (check.existing) return { animalId: check.existing.id, created: false }
   const ensurePedigree = await pedigreeEnsurer(pg)
   const animalId = await addOffspringAnimal(pg, ensurePedigree, { earTag, key, sex: input.sex, birth_date: p.birth_date, dam, sireKey: p.sire_key })

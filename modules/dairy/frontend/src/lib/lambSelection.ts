@@ -108,6 +108,12 @@ export function lambIndex(
   )
 }
 
+/** Tendenz über alle Mütter mit mind. 2 bewerteten Laktationen auf 100/10 skalieren
+ * (indexScale braucht positive Werte — Steigung verschoben). */
+export function damTrendIndex(dams: Map<string, DamInfo>): Map<string, number | null> {
+  return indexScale(new Map([...dams].map(([key, d]) => [key, d.trend?.slope != null ? 10 + d.trend.slope : null])))
+}
+
 export function rankLambs(input: {
   candidates: LambCandidate[]
   dams: Map<string, DamInfo>
@@ -120,11 +126,7 @@ export function rankLambs(input: {
   const { settings: s } = input
   const todayMs = Date.parse(`${input.today}T00:00:00Z`)
   const maxDays = s.maxAgeMonths * DAYS_PER_MONTH
-  // Tendenz über alle Mütter mit mind. 2 bewerteten Laktationen auf 100/10
-  // skalieren (indexScale braucht positive Werte — Steigung verschoben).
-  const trendIdx = indexScale(
-    new Map([...input.dams].map(([key, d]) => [key, d.trend?.slope != null ? 10 + d.trend.slope : null])),
-  )
+  const trendIdx = damTrendIndex(input.dams)
   const rows: LambRow[] = []
   for (const c of input.candidates) {
     const age = Math.round((todayMs - Date.parse(`${c.birth_date}T00:00:00Z`)) / 86_400_000)

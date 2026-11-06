@@ -9,6 +9,7 @@ import { fmtCells } from '../lib/culling'
 import { todayIso } from '../lib/format'
 import { DEFAULT_SELECTION_SETTINGS, rankLambs, type LambRow, type Purpose, type SelectionSettings } from '../lib/lambSelection'
 import { loadLambSelection, saveDecision, SIRE_TRAIT } from '../lib/lambSelectionData'
+import { preselectionLabel, type Preselection } from '../lib/lambRecommendation'
 import { speciesOf } from '../lib/species'
 import { InbreedingBadge } from './AnimalDetail'
 import NumberInput from '@fmis/core/NumberInput'
@@ -328,6 +329,9 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                           </button>
                         ))}
                       </div>
+                      {!r.purpose && data?.decisions.get(r.key)?.leaning && (
+                        <div className="mt-0.5 text-xs text-gray-600">Vorauswahl: {preselectionLabel(data.decisions.get(r.key)!.leaning as Preselection)}</div>
+                      )}
                     </td>
                   </tr>
                 )

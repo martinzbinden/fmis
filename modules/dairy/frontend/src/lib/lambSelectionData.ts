@@ -19,7 +19,7 @@ export interface LambSelectionData {
   sireValues: Map<string, number>
   /** Herkunft des Vater-Zuchtwerts: eigener ZW oder Elternmittel (Pedigree-Index). */
   sireValueBasis: Map<string, 'eigen' | 'eltern'>
-  decisions: Map<string, { id: string; purpose: Purpose | null; decided_on: string | null; notes: string | null }>
+  decisions: Map<string, { id: string; purpose: Purpose | null; decided_on: string | null; notes: string | null; offspring_id: string | null; leaning: string | null }>
   inbreeding: Inbreeding
   /** Herdenkontext (Kennzahlen je Tier), aus dem die Mütter-Infos stammen */
   context: Map<string, AnimalContext>
@@ -109,11 +109,14 @@ export async function loadLambSelection(pg: PGlite, species: Species, today: str
   // Neueste Zeile je Tier gewinnt (aufsteigend nach updated_at geladen).
   const decisionMap: LambSelectionData['decisions'] = new Map()
   for (const d of decisions.rows) {
+    if (!d.animal_key) continue // Vorauswahl ohne Ohrmarke (lib/birthFollowUp.ts)
     decisionMap.set(String(d.animal_key), {
       id: String(d.id),
       purpose: (d.purpose as Purpose | null) ?? null,
       decided_on: isoDate(d.decided_on),
       notes: (d.notes as string | null) ?? null,
+      offspring_id: (d.offspring_id as string | null) ?? null,
+      leaning: (d.leaning as string | null) ?? null,
     })
   }
 
@@ -139,13 +142,16 @@ export async function saveDecision(
   pg: PGlite,
   key: string,
   purpose: Purpose | null,
-  existing: { id: string; notes: string | null } | undefined,
+  existing: { id: string; notes: string | null; offspring_id?: string | null; leaning?: string | null } | undefined,
   today: string,
 ): Promise<void> {
   await upsertRow(pg, 'lamb_selection', {
     id: existing?.id ?? crypto.randomUUID(),
     animal_key: key,
+    offspring_id: existing?.offspring_id ?? null,
     purpose,
+    // der Entscheid ersetzt die Vorauswahl; zurückgenommen gilt sie wieder
+    leaning: purpose ? null : (existing?.leaning ?? null),
     decided_on: purpose ? today : null,
     notes: existing?.notes ?? null,
   })

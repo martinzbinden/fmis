@@ -40,7 +40,7 @@ export async function loadOwnMastLambs(pg: PGlite): Promise<OwnLamb[] | null> {
     decisions = (
       await shared.query<{ animal_key: string; purpose: string | null; decided_on: unknown }>(
         `select distinct on (animal_key) animal_key, purpose, decided_on
-         from "${SCHEMA}"."lamb_selection" where deleted_at is null
+         from "${SCHEMA}"."lamb_selection" where deleted_at is null and animal_key is not null
          order by animal_key, updated_at desc`,
       )
     ).rows
