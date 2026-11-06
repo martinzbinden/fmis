@@ -6,6 +6,7 @@ import type { ImportSession } from '@fmis/core/importSession'
 import { stagedProgress, type ImportPanelProps } from '@fmis/core/upload'
 import { parseTierbestand, importTierbestand, tvdParentage } from '../lib/importTvd'
 import { importParentage, parseSmgAnimalList } from '../lib/importParentage'
+import { importEarTagStock, readStockList, stockDateOf } from '../lib/earTagStock'
 import { read, utils } from 'xlsx'
 import { inTransaction } from '../db/transaction'
 import { fmtDate, todayIso } from '../lib/format'
@@ -35,6 +36,7 @@ export default function ImportPanel({
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [tvdCount, setTvdCount] = useState<{ read: number; written: number } | null>(null)
   const [parentageCount, setParentageCount] = useState<{ read: number; filled: number } | null>(null)
+  const [stockCount, setStockCount] = useState<{ read: number; written: number; date: string } | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [certificates, setCertificates] = useState<CertificateImportResult[]>([])
   const [pending, setPending] = useState<CertificatePlan[]>([])
@@ -75,6 +77,7 @@ export default function ImportPanel({
         { key: 'herdbook', label: 'Herdebuch', weight: herdbook.length ? 5 : 0 },
         { key: 'parentage', label: 'Abstammung (SMG-Tierliste)', weight: of('parentage').length ? 1 : 0 },
         { key: 'tvd', label: 'TVD-Tierbestand', weight: of('tvd').length ? 1 : 0 },
+        { key: 'stock', label: 'Ohrmarken-Vorrat', weight: of('stock').length ? 1 : 0 },
         { key: 'cert', label: 'Leistungsausweise', weight: certs.length ? 1 + certs.length / 4 : 0 },
         { key: 'commit', label: 'Speichern', weight: 1 },
       ],
@@ -133,6 +136,21 @@ export default function ImportPanel({
         }
       }
 
+      const stock = { read: 0, written: 0, date: '' }
+      for (const f of of('stock')) {
+        progress('stock', 0)
+        try {
+          const rows = (readStockList(read(f.data.slice(0), { type: 'array' })) ?? []).filter((r) => r.species === speciesOf(moduleKey))
+          const date = stockDateOf(f.name, todayIso())
+          const written = await inTransaction(db, (tx) => importEarTagStock(tx, rows, date))
+          stock.read += rows.length
+          stock.written += written
+          stock.date = date
+        } catch (err) {
+          nextWarnings.push(`${f.name}: ${errorText(err, 'nicht lesbar')}`)
+        }
+      }
+
       // Ohne Abweichungen direkt speichern, sonst zuerst nachfragen.
       const results: CertificateImportResult[] = []
       const toDecide: CertificatePlan[] = []
@@ -152,6 +170,7 @@ export default function ImportPanel({
       onStatus(toDecide.length ? { phase: 'input', step: 'Rückfrage zu Leistungsausweisen', fraction: 1 } : { phase: 'done', fraction: 1 })
       setSummary(herdbookSummary)
       if (of('tvd').length) setTvdCount(tvd)
+      if (of('stock').length) setStockCount(stock)
       if (of('parentage').length || parentage.filled) setParentageCount(parentage)
       setCertificates(results)
       setPending(toDecide)
@@ -199,6 +218,11 @@ export default function ImportPanel({
       )}
       {tvdCount != null && (
         <p className="rounded bg-brand-50 p-3 text-brand-900">TVD-Tierbestand: {tvdCount.read} Tiere gelesen, {tvdCount.written} neu oder ergänzt.</p>
+      )}
+      {stockCount != null && (
+        <p className="rounded bg-brand-50 p-3 text-brand-900">
+          Ohrmarken-Vorrat: {stockCount.read} Marken gelesen, {stockCount.written} neu oder aktualisiert, Stand {fmtDate(stockCount.date)}.
+        </p>
       )}
       {pending.map((plan) => (
         <div key={plan.subject} className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-amber-900">

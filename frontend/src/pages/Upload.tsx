@@ -42,19 +42,22 @@ async function analyze(
   let rest: UploadFile[] = files
   const reasons = new Map<string, string>()
   const assigned: { mod: ModuleDescriptor; claim: ImportClaim }[] = []
+  const sharedTaken = new Set<string>()
   for (const [i, mod] of importers.entries()) {
     onProgress(`Erkennen: ${mod.title}`, 0.3 + (0.7 * i) / importers.length)
     try {
       const { claims, rejected } = await mod.importer!.detect(rest)
       for (const r of rejected ?? []) if (!reasons.has(r.file.path)) reasons.set(r.file.path, r.reason)
-      const taken = new Set(claims.flatMap((c) => c.files.map((f) => f.path)))
+      const shared = new Set(claims.flatMap((c) => (c.shared ?? []).map((f) => f.path)))
+      shared.forEach((p) => sharedTaken.add(p))
+      const taken = new Set(claims.flatMap((c) => c.files.map((f) => f.path)).filter((p) => !shared.has(p)))
       rest = rest.filter((f) => !taken.has(f.path))
       for (const claim of claims) assigned.push({ mod, claim })
     } catch (err) {
       console.error(`Erkennung ${mod.key} fehlgeschlagen`, err)
     }
   }
-  const unknown = [...ignored, ...rest.map((f) => ({ path: f.path, reason: reasons.get(f.path) ?? 'Format nicht bekannt' }))]
+  const unknown = [...ignored, ...rest.filter((f) => !sharedTaken.has(f.path)).map((f) => ({ path: f.path, reason: reasons.get(f.path) ?? 'Format nicht bekannt' }))]
   return { assigned, unknown }
 }
 

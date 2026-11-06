@@ -6,7 +6,7 @@
 
 import JSZip from 'jszip'
 
-export type ImportKind = 'herdbook' | 'certificate' | 'tvd' | 'parentage' | 'ignored'
+export type ImportKind = 'herdbook' | 'certificate' | 'tvd' | 'parentage' | 'stock' | 'ignored'
 
 export interface ImportFile {
   name: string

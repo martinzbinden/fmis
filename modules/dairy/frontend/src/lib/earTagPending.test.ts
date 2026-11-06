@@ -59,7 +59,7 @@ describe('loadPendingOffspring', () => {
   it('zählt die Geschwister trotzdem zum Wurf', async () => {
     await birth('2026-10-30', 'manual', [{ sex: 'w' }, { ear_tag: 'CH3', sex: 'm' }, { stillborn: true }])
     const [p] = await loadPendingOffspring(pg)
-    expect(p).toMatchObject({ litter: 3, siblings: ['CH3'] })
+    expect(p).toMatchObject({ litter: 3, dead: 1, siblings: ['CH3'] })
   })
 })
 

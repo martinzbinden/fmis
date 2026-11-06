@@ -32,6 +32,8 @@ export interface ImportClaim {
   skipped?: { file: UploadFile; reason: string }[]
   /** Zusatz, z.B. "71 Tiere, Lacaune". */
   detail?: string
+  /** Dateien, die auch weitere Module übernehmen können (z.B. eine Liste mit Schafen und Rindern). */
+  shared?: UploadFile[]
 }
 
 export interface ImportDetection {

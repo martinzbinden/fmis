@@ -8,14 +8,15 @@ import { useDb } from '@fmis/core/DbContext'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
 import { assignEarTag, checkEarTag, daysSince, loadPendingOffspring, markDied, MARKING_DAYS, type PendingOffspring } from '../lib/earTagPending'
+import { loadTagStock } from '../lib/earTagStock'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import type { Animal } from '../types'
 import { errorText } from '@fmis/core/toast'
 
 async function loadData(pg: PGlite, requestedId: string | null) {
-  const [pending, animals] = await Promise.all([loadPendingOffspring(pg, requestedId), pg.query<Animal>('select * from animals where deleted_at is null')])
-  return { pending, animals: animals.rows }
+  const [pending, animals, stock] = await Promise.all([loadPendingOffspring(pg, requestedId), pg.query<Animal>('select * from animals where deleted_at is null'), loadTagStock(pg)])
+  return { pending, animals: animals.rows, stock }
 }
 
 /** Lebende Nachkommen ohne Ohrmarke (bei der Geburt als «später» erfasst) nachtragen. */
@@ -71,6 +72,21 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
+      {data && (
+        <p className="text-sm text-gray-600">
+          {data.stock.date ? (
+            `Vorrat: ${data.stock.free.length} ${data.stock.free.length === 1 ? 'Marke' : 'Marken'} frei, Stand ${fmtDate(data.stock.date)}.`
+          ) : (
+            <>
+              Vorrat noch nicht eingelesen:{' '}
+              <Link to="/import" className="link-btn font-medium text-brand-700">
+                TVD-Lagerbestand importieren
+              </Link>
+            </>
+          )}
+        </p>
+      )}
+
       {pending.length > 0 && <TagReaderButton reader={reader} hint={`Lesung geht an das markierte ${word.young}`} />}
 
       {data && pending.length === 0 && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Keine offenen Ohrmarken. 👍</p>}
@@ -85,6 +101,8 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
           today={today}
           deadline={MARKING_DAYS[species]}
           young={word.young}
+          youngPl={word.youngPl}
+          suggestion={data?.stock.free[i] ?? null}
           active={reader.on && active?.id === p.id}
           onActivate={() => setActiveId(p.id)}
           scanned={scanned?.id === p.id ? scanned : null}
@@ -103,6 +121,8 @@ function PendingCard({
   today,
   deadline,
   young,
+  youngPl,
+  suggestion,
   active,
   onActivate,
   scanned,
@@ -115,6 +135,9 @@ function PendingCard({
   today: string
   deadline: number
   young: string
+  youngPl: string
+  /** nächste freie Marke aus dem Vorrat */
+  suggestion: string | null
   active: boolean
   onActivate: () => void
   scanned: { earTag: string; n: number } | null
@@ -168,7 +191,7 @@ function PendingCard({
           {dam?.lauf_nr && <span className="ml-1 text-xs font-normal text-gray-600">{shortEarTag(dam.ear_tag)}</span>}
         </span>
         <span className="text-right text-xs text-gray-600">
-          {p.litter > 1 ? `Wurf ${p.litter}` : 'Einling'}
+          {p.litter > 1 ? `${p.litter} ${youngPl} im Wurf${p.dead > 0 ? `, ${p.dead} tot` : ''}` : 'Einling'}
           {p.siblings.length > 0 && <span className="block">Geschwister {p.siblings.map(shortEarTag).join(', ')}</span>}
         </span>
       </div>
@@ -208,6 +231,11 @@ function PendingCard({
           Speichern
         </button>
       </div>
+      {suggestion && !earTag.trim() && (
+        <button type="button" onClick={() => setEarTag(suggestion)} className="link-btn w-full rounded-lg border border-brand-700 px-3 text-sm text-brand-700">
+          Nächste Marke: <b className="ml-1">{shortEarTag(suggestion)}</b>&nbsp;übernehmen
+        </button>
+      )}
       {check && 'error' in check && <p className="text-sm text-red-600">{check.error}</p>}
       {check && 'existing' in check && check.existing && (
         <p className="text-sm text-gray-700">Schon im Bestand (z.B. aus dem TVD-Import) – wird mit dieser {young === 'Lamm' ? 'Ablammung' : 'Abkalbung'} verknüpft.</p>

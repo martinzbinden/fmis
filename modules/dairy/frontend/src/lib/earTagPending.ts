@@ -16,8 +16,9 @@ export interface PendingOffspring {
   dam_id: string
   sire_key: string | null
   sex: 'w' | 'm' | null
-  /** Wurfgrösse (inkl. tote) und Ohrmarken der schon markierten Geschwister */
+  /** Wurfgrösse (inkl. tote), davon tot, und Ohrmarken der schon markierten Geschwister */
   litter: number
+  dead: number
   siblings: string[]
 }
 
@@ -52,6 +53,7 @@ export async function loadPendingOffspring(pg: PGlite, requestedId?: string | nu
         sire_key: (r.sire_key as string | null) ?? null,
         sex: (r.sex as 'w' | 'm' | null) ?? null,
         litter: litter.length,
+        dead: litter.filter((o) => o.stillborn || o.died_24h || o.died_on).length,
         siblings: litter.filter((o) => o.ear_tag).map((o) => String(o.ear_tag)),
       })
     }

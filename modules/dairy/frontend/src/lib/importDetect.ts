@@ -14,6 +14,7 @@ import type { ImportClaim, ImportDetection, ModuleImporter, UploadFile } from '@
 import { classifyFile, type ImportFile } from './importFiles'
 import { isSmgCertificate, readPdfText } from './smgCertificate'
 import { isSmgAnimalList } from './importParentage'
+import { readStockList } from './earTagStock'
 import { speciesOf } from './species'
 
 type Species = 'cattle' | 'sheep'
@@ -148,9 +149,30 @@ export function createDairyImporter(moduleKey: string, title: string, Panel: Mod
       formats.push(`SMG-Tierliste ${f.name} (${list.earTags.length} Tiere, Abstammung)`)
     }
 
-    // TVD-Tierbestand (Excel).
+    // TVD-Lagerbestand (Excel): eine Datei für alle Gattungen, darum auch für die andere Herde.
+    const stockFiles = new Set<UploadFile>()
+    const sharedFiles: UploadFile[] = []
     for (const f of files) {
       if (!/\.xlsx?$/i.test(f.name) || parentageFiles.has(f)) continue
+      let rows: ReturnType<typeof readStockList> = null
+      try {
+        rows = readStockList(read(f.data.slice(0), { type: 'array' }))
+      } catch {
+        continue
+      }
+      if (!rows) continue
+      stockFiles.add(f)
+      const n = rows.filter((r) => r.species === mine).length
+      if (n === 0) continue
+      claimed.push(f)
+      sharedFiles.push(f)
+      taken.push({ name: f.name, data: f.data, kind: 'stock' })
+      formats.push(`Ohrmarken-Lagerbestand ${f.name} (${n} Marken)`)
+    }
+
+    // TVD-Tierbestand (Excel).
+    for (const f of files) {
+      if (!/\.xlsx?$/i.test(f.name) || parentageFiles.has(f) || stockFiles.has(f)) continue
       const list = readTvdList(f.data)
       if (!list) continue
       const species = tvdSpecies(list.headers, list.earTags)
@@ -189,6 +211,7 @@ export function createDairyImporter(moduleKey: string, title: string, Panel: Mod
       detail: `→ ${title} (${herd})`,
       files: claimed,
       skipped,
+      shared: sharedFiles,
       dairyFiles: taken,
     }
     return { claims: [claim], rejected }
@@ -197,8 +220,8 @@ export function createDairyImporter(moduleKey: string, title: string, Panel: Mod
   return {
     formats:
       mine === 'sheep'
-        ? ['Herdebuch-Export SMG (b<nr>.K04, .Y01 … oder ZIP)', 'SMG-Tierliste mit Vater/Mutter (Excel)', 'TVD-Tierbestand Schafe (Excel)', 'SMG-Abstammungs- und Leistungsausweis (PDF)']
-        : ['Herdebuch-Export Rindvieh (b<nr>.K04, .Y01 … oder ZIP)', 'TVD-Tierbestand Rinder (Excel)'],
+        ? ['Herdebuch-Export SMG (b<nr>.K04, .Y01 … oder ZIP)', 'SMG-Tierliste mit Vater/Mutter (Excel)', 'TVD-Tierbestand Schafe (Excel)', 'TVD-Ohrmarken-Lagerbestand (Excel)', 'SMG-Abstammungs- und Leistungsausweis (PDF)']
+        : ['Herdebuch-Export Rindvieh (b<nr>.K04, .Y01 … oder ZIP)', 'TVD-Tierbestand Rinder (Excel)', 'TVD-Ohrmarken-Lagerbestand (Excel)'],
     permission: `${moduleKey}:animals:write`,
     detect,
     Panel,
