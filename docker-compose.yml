@@ -9,7 +9,7 @@ services:
     image: postgis/postgis:16-3.4
     environment:
       POSTGRES_USER: fmis
-      POSTGRES_PASSWORD: fmis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD muss in .env gesetzt sein}
       POSTGRES_DB: fmis
     # Kein ports-Mapping: nur intern (im Docker-Netz) für den Backend-Container erreichbar.
     volumes:
@@ -26,7 +26,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
-      DATABASE_URL: postgresql://fmis:fmis@postgres:5432/fmis
+      DATABASE_URL: postgresql://fmis:${POSTGRES_PASSWORD}@postgres:5432/fmis
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET muss in .env gesetzt sein}
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-365}
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:?INITIAL_ADMIN_EMAIL muss in .env gesetzt sein}

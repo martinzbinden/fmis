@@ -1,2 +1,3 @@
 # Fingerabdrücke aus der Meldung von pruefung.py, die keine Funde sind: <Fingerabdruck> <Grund>
 # Eine Ausnahme entscheidet der Betriebsleiter.
+0b861d86b64fdc5b .claude/launch.json: Wegwerf-Datenbank der lokalen Vorschau, kein echtes Passwort (Entscheid Betriebsleiter 2026-11-06)
