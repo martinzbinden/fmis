@@ -9,31 +9,52 @@ import AnimalWarnings from '../components/AnimalWarnings'
 import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
-import { animalKey, animalLabel } from '@fmis/core/earTag'
+import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { loadInbreeding } from '../lib/pedigreeData'
 import { InbreedingBadge } from './AnimalDetail'
-import { isoDate, localTodayIso } from '../lib/format'
+import { fmtDate, isoDate, localTodayIso } from '../lib/format'
+import { recentMating } from '../lib/matingEntry'
 import { speciesOf, speciesTerms } from '../lib/species'
 import type { Animal } from '../types'
 import { useOnUndo } from '@fmis/core/undo'
 import { errorText } from '@fmis/core/toast'
 
+const RECENT_LIST = 15
+
+interface RecentRow {
+  id: string
+  service_date: unknown
+  service_to: unknown
+  kind: string | null
+  sire_name: string | null
+  sire_ear_tag: string | null
+  ear_tag: string | null
+  lauf_nr: string | null
+  name: string | null
+}
+
 async function loadData(pg: PGlite) {
-  const [animals, sires, lastBirths, matings, inbreeding, events] = await Promise.all([
+  const [animals, sires, lastBirths, matings, inbreeding, events, recent] = await Promise.all([
     pg.query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' and coalesce(sex, 'w') = 'w' order by lauf_nr nulls last, ear_tag"),
     loadSireOptions(pg, { presentOnly: true }),
     pg.query<{ dam_id: string; last_birth: unknown }>('select dam_id, max(birth_date) as last_birth from births where deleted_at is null group by dam_id'),
-    pg.query<{ animal_id: string; service_date: unknown }>('select animal_id, service_date from matings where deleted_at is null'),
+    pg.query<{ animal_id: string; service_date: unknown; service_to: unknown }>('select animal_id, service_date, service_to from matings where deleted_at is null'),
     loadInbreeding(pg),
     loadAnimalEvents(pg),
+    pg.query<RecentRow>(
+      `select m.id, m.service_date, m.service_to, m.kind, m.sire_name, m.sire_ear_tag, a.ear_tag, a.lauf_nr, a.name
+       from matings m left join animals a on a.id = m.animal_id
+       where m.deleted_at is null order by m.service_date desc, m.updated_at desc limit ${RECENT_LIST}`,
+    ),
   ])
   return {
     events,
     females: animals.rows,
     sires,
     lastBirth: new Map(lastBirths.rows.map((b) => [b.dam_id, isoDate(b.last_birth)])),
-    matings: matings.rows.map((m) => ({ animal_id: m.animal_id, service_date: isoDate(m.service_date)! })),
+    matings: matings.rows.map((m) => ({ animal_id: m.animal_id, service_date: isoDate(m.service_date)!, service_to: isoDate(m.service_to) })),
     inbreeding,
+    recent: recent.rows,
   }
 }
 
@@ -58,11 +79,24 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<number | null>(null)
+  const [skipped, setSkipped] = useState<string[]>([])
   // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
-  useOnUndo(() => setSaved(null))
+  useOnUndo(() => {
+    setSaved(null)
+    setSkipped([])
+  })
 
   const females = data?.females ?? []
   const byId = useMemo(() => new Map(females.map((a) => [a.id, a])), [females])
+  const tierName = (id: string) => {
+    const a = byId.get(id)!
+    return `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${animalLabel(a)}`
+  }
+  // schon in den letzten 7 Tagen gemeldet: wird nicht gespeichert
+  const duplicateText = (id: string) => {
+    const hit = data ? recentMating(data.matings, id, from, to || null) : null
+    return hit ? `${tierName(id)}: schon gemeldet am ${fmtDate(hit.service_date)}` : null
+  }
 
   async function save() {
     if (!data || ids.length === 0) return setError(`Zuerst ${terms.plural} wählen.`)
@@ -70,11 +104,13 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
     if (!sireKey && !sire.name.trim()) return setError('Vatertier angeben.')
     if (to && to < from) return setError('"bis" liegt vor "von".')
     if (from > localTodayIso()) return setError('Das Datum liegt in der Zukunft.')
+    const duplicates = ids.map(duplicateText).filter((t): t is string => t != null)
+    const toSave = ids.filter((id) => duplicateText(id) == null)
     setSaving(true)
     setError(null)
     try {
       await inTransaction(db, async (tx) => {
-        for (const id of ids) {
+        for (const id of toSave) {
           const animal = byId.get(id)!
           const damKey = animalKey(animal.ear_tag) ?? animal.ear_tag
           const last = data.lastBirth.get(id) ?? null
@@ -99,7 +135,8 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
           })
         }
       })
-      setSaved(ids.length)
+      setSaved(toSave.length > 0 ? toSave.length : null)
+      setSkipped(duplicates)
       setIds([])
       setNotes('')
       refresh()
@@ -122,6 +159,8 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
         <AnimalPicker animals={females} selected={ids} onChange={setIds} multiple readerModule={moduleKey} />
         {data &&
           ids.map((id) => {
+            const duplicate = duplicateText(id)
+            if (duplicate) return <p key={id} className="mt-2 rounded-lg bg-amber-50 p-2 text-sm font-medium text-amber-900">⚠ {duplicate}. Wird nicht nochmals gemeldet.</p>
             const warnings = animalWarnings(id, eventsOf(data.events, id), { kind: 'mating', date: from }, species)
             if (warnings.length === 0) return null
             return (
@@ -196,6 +235,40 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
       >
         {saving ? 'Speichere…' : ids.length > 1 ? `Für ${ids.length} ${terms.plural} speichern` : 'Speichern'}
       </button>
+      {skipped.length > 0 && (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <p className="font-semibold">Nicht gemeldet, in den letzten 7 Tagen schon erfasst:</p>
+          <ul className="mt-1 space-y-0.5">
+            {skipped.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data && data.recent.length > 0 && (
+        <section className="rounded-lg bg-white p-4 shadow-sm" aria-labelledby="letzte-meldungen">
+          <h2 id="letzte-meldungen" className="mb-1 text-sm font-semibold text-gray-700">
+            Letzte Meldungen
+          </h2>
+          <ul className="divide-y text-sm">
+            {data.recent.map((m) => (
+              <li key={m.id} className="flex items-baseline gap-2 py-1.5">
+                <span className="w-[4.6rem] shrink-0 text-xs tabular-nums text-gray-500">{fmtDate(isoDate(m.service_date))}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-gray-900">
+                    {m.lauf_nr ? `${m.lauf_nr} · ` : ''}
+                    {animalLabel({ ear_tag: m.ear_tag ?? '', name: m.name })}
+                  </span>
+                  <span className="block truncate text-xs text-gray-600">
+                    {[m.sire_name || (m.sire_ear_tag ? shortEarTag(m.sire_ear_tag) : null), m.kind === 'kb' ? 'KB' : m.kind === 'natursprung' ? 'Natursprung' : null, m.service_to ? `bis ${fmtDate(isoDate(m.service_to))}` : null].filter(Boolean).join(' · ')}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   )
 }
