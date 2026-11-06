@@ -1,0 +1,2 @@
+# Fingerabdrücke aus der Meldung von pruefung.py, die keine Funde sind: <Fingerabdruck> <Grund>
+# Eine Ausnahme entscheidet der Betriebsleiter.

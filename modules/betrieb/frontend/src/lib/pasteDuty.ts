@@ -157,7 +157,7 @@ export const dutyPasteImporter: PasteImporter = {
   example: [
     { datum: '2026-11-07', person: 'Eymann', dienst: 'Schafe' },
     { datum: '2026-11-07', person: 'F+V', dienst: 'Kühe', teil: 'morgens' },
-    { datum: '2026-11-08', person: 'Lambert', dienst: 'Kühe', hilfe: 'M+M' },
+    { datum: '2026-11-08', person: 'Anna', dienst: 'Kühe', hilfe: 'M+M' },
   ],
   check: async (db, rows) => {
     const { people, types, shifts } = await loadForCheck(db)

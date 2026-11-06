@@ -15,7 +15,7 @@ const types = [
   T('sa', 'Schafe', 'Melken abends', '17:00', '1111111', false),
   T('sc', 'Schafe', 'Milch zur Käserei', '07:30', '0100100'),
 ]
-const people = [P('a', 'Lambert Athony'), P('m', 'Zbinden Martin')]
+const people = [P('a', 'Anna Muster'), P('m', 'Zbinden Martin')]
 const shift = (type_id: string, date: string, person_id: string): DutyShift => ({ id: shiftId(type_id, date, 0), type_id, date, slot: 0, person_id, notes: null, assigned_by: null, updated_at: '', deleted_at: null })
 const v = (r: { value: unknown }) => r.value as DutyPasteValue
 
@@ -23,7 +23,7 @@ describe('Dienstplan einfügen', () => {
   it('Tierart = alle Dienste des Tages, teil morgens/abends', () => {
     const [kuehe, morgens, abends, schafeFr] = checkDuty(
       [
-        { datum: '2026-11-08', person: 'Lambert', dienst: 'Kühe', hilfe: 'M+M' },
+        { datum: '2026-11-08', person: 'Anna', dienst: 'Kühe', hilfe: 'M+M' },
         { datum: '2026-11-07', person: 'F+V', dienst: 'Kühe', teil: 'morgens' },
         { datum: '2026-11-07', person: 'M+M', dienst: 'kühe', teil: 'abends' },
         { datum: '2026-12-25', person: 'M+M', dienst: 'Schafe' },
@@ -44,8 +44,8 @@ describe('Dienstplan einfügen', () => {
     const shifts = [shift('km', '2026-11-08', 'm'), shift('sm', '2026-11-14', 'a')]
     const [busy, same, twice1, twice2, none] = checkDuty(
       [
-        { datum: '2026-11-08', person: 'Lambert', dienst: 'Kühe' },
-        { datum: '2026-11-14', person: 'Lambert Athony', dienst: 'Schafe' },
+        { datum: '2026-11-08', person: 'Anna', dienst: 'Kühe' },
+        { datum: '2026-11-14', person: 'Anna Muster', dienst: 'Schafe' },
         { datum: '2026-11-15', person: 'Eymann', dienst: 'Schafe' },
         { datum: '2026-11-15', person: 'F+V', dienst: 'Schafe' },
         { datum: '2026-11-15', person: 'Eymann', dienst: 'Hühner' },

@@ -59,3 +59,28 @@ Eigenständige Hilfsskripte, kein Teil der laufenden App.
   nicht leerer Ebene), das in FMIS unter Bauprojekte → Karte → 🗂️ →
   «Grundlage hinzufügen» hochgeladen wird. Braucht mutool, poppler,
   GDAL, Pillow und numpy.
+
+## Commit-Prüfung (`git-hooks/`)
+
+Das Repo ist öffentlich. `git-hooks/pruefung.py` stoppt jeden Commit und Push mit Geheimnissen, Personendaten und echten
+Betriebsdaten. Geprüft werden Pfade, hinzugefügte Zeilen und die Commit-Nachricht. Die Meldung nennt Datei, Zeile und Art, nie den Wert.
+
+- **Muster:** private Schlüssel, Tokens, JWT, Passwort-Hashes, Passwörter in URLs, Klartext-Zuweisungen, IBAN, AHV-Nummern und
+  Kartennummern (mit Prüfziffer), Zufallswerte, Mailadressen, verbotene Pfade und Dateitypen (`.env`, `secrets/`, Dumps, PDF, Excel, CSV).
+- **Echte Werte:** Geheimnisse aller Stacks und lokalen Projekte, Mailadressen, Namen, Ohrmarken, Beträge und Betriebsnummern, nur als
+  gesalzene Hashes in `.git/fmis-pruefung/werte.json`. Der Server berechnet sie; die Klartexte verlassen ihn nicht.
+
+Nach einem neuen Klon:
+
+```bash
+git config core.hooksPath tools/git-hooks
+git config fmis.server <ssh-ziel>
+tools/git-hooks/pruefung.py --werte-holen
+```
+
+Auf dem Server selbst ist `fmis.server` der Wert `lokal`. Ohne Vergleichswerte wird abgelehnt. Nach dem Ändern von Geheimnissen oder
+monatlich `--werte-holen` neu ausführen. `--alle` prüft den aktuellen Stand, `--historie` die ganze Geschichte.
+Tests: `python3 -m unittest tools/git-hooks/test_pruefung.py`.
+
+Die Prüfung nie mit `--no-verify` umgehen. Ein Fund, der keiner ist: Der Betriebsleiter entscheidet, der Fingerabdruck aus der Meldung
+kommt dann mit Grund in `git-hooks/ausnahmen.txt`.
