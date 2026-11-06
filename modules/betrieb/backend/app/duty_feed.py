@@ -5,6 +5,13 @@ Jede Person bekommt einen geheimen Link (duty_feed_tokens, schema/server/
 Kalender ruft ihn ohne Anmeldung ab — darum ist der Link selbst das
 Geheimnis und kann jederzeit gesperrt werden. Inhalt: eingeteilte Dienste
 von 30 Tagen zurück bis 180 Tage voraus, Ortszeit Europe/Zurich.
+
+Die Zeit-App (Repo zeitlohn, app/common/dienstplan.py) liest denselben Link intern.
+Darauf verlässt sie sich, test_duty_feed.py hält es fest:
+- X-FMIS-SCOPE: `person` oder `alle`; die Zeit-App zeigt nur `person` an
+- UID beginnt mit duty_shifts.id (für den Link ?dienst= im Dienstplan)
+- DTSTART/DTEND mit TZID als Ortszeit, SUMMARY als Titel
+- STATUS:TENTATIVE: Woche noch nicht vom Büro bestätigt
 """
 
 import json
@@ -152,9 +159,9 @@ def _fold(line: str) -> str:
     return "\r\n".join(out)
 
 
-def build_ics(name: str, shifts: list[dict[str, Any]], stamp: datetime) -> str:
+def build_ics(name: str, shifts: list[dict[str, Any]], stamp: datetime, scope: str = "person") -> str:
     """Kalenderdatei aus Diensten (date, start_time 'HH:MM', duration_min,
-    type_name, description, notes, person_name, id)."""
+    type_name, description, notes, person_name, id, tentative)."""
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -162,6 +169,7 @@ def build_ics(name: str, shifts: list[dict[str, Any]], stamp: datetime) -> str:
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
         f"X-WR-CALNAME:{_esc(name)}",
+        f"X-FMIS-SCOPE:{scope}",
         "X-WR-TIMEZONE:Europe/Zurich",
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
         "X-PUBLISHED-TTL:PT1H",
@@ -182,6 +190,8 @@ def build_ics(name: str, shifts: list[dict[str, Any]], stamp: datetime) -> str:
             f"DTEND;TZID=Europe/Zurich:{end.strftime('%Y%m%dT%H%M%S')}",
             f"SUMMARY:{_esc(summary)}",
         ]
+        if s.get("tentative"):
+            lines.append("STATUS:TENTATIVE")
         if desc:
             lines.append(f"DESCRIPTION:{_esc(desc)}")
         lines.append("END:VEVENT")
@@ -204,7 +214,9 @@ async def feed(token: str) -> Response:
         rows = await (
             await conn.execute(
                 """select s.id, s.date, t.start_time, t.duration_min, t.name, t.description, s.notes, p.name,
-                          t.animal, t.times, t.summer_from, t.summer_to, t.active_from, t.active_to, t.active
+                          t.animal, t.times, t.summer_from, t.summer_to, t.active_from, t.active_to, t.active,
+                          exists (select 1 from duty_weeks w where w.deleted_at is null and w.status = 'entwurf'
+                                  and w.week_start = date_trunc('week', s.date)::date)
                    from duty_shifts s
                    join duty_types t on t.id = s.type_id
                    left join duty_people p on p.id = s.person_id
@@ -226,8 +238,9 @@ async def feed(token: str) -> Response:
                 {
                     "id": str(r[0]) if i == 0 else f"{r[0]}-{i}", "date": r[1], "start_time": start, "duration_min": duration,
                     "type_name": f"{r[8]} · {r[4]}" if r[8] and str(r[8]).strip() else r[4],
-                    "description": r[5], "notes": r[6], "person_name": r[7], "with_person": person_id is None,
+                    "description": r[5], "notes": r[6], "person_name": r[7], "with_person": person_id is None, "tentative": r[15],
                 }
             )
     name = f"Dienste {person_name}" if person_name else "Dienste Riedackerhof"
-    return Response(content=build_ics(name, shifts, datetime.utcnow()), media_type="text/calendar; charset=utf-8")
+    scope = "person" if person_id else "alle"
+    return Response(content=build_ics(name, shifts, datetime.utcnow(), scope), media_type="text/calendar; charset=utf-8")

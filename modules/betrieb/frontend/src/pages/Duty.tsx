@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { API_URL, getToken } from '@fmis/core/auth'
 import { useHasPermission } from '@fmis/core/AuthContext'
@@ -51,7 +51,7 @@ function SlotRow({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; c
   const skilled = d.people.filter((p) => p.active && d.skills.some((k) => k.person_id === p.id && k.type_id === s.type.id))
   const options = pid && !skilled.some((p) => p.id === pid) ? [...skilled, d.people.find((p) => p.id === pid)!].filter(Boolean) : skilled
   return (
-    <li className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 ${!pid ? 'bg-red-50' : ''}`}>
+    <li data-dienst={s.id} className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 ${!pid ? 'bg-red-50' : ''}`}>
       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: s.type.color ?? '#64748b' }} />
       <span className="w-24 shrink-0 text-xs tabular-nums text-gray-500">
         {timeText(s.type)}
@@ -103,7 +103,7 @@ function SlotCell({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; 
   const skilled = d.people.filter((p) => p.active && d.skills.some((k) => k.person_id === p.id && k.type_id === s.type.id))
   const options = pid && !skilled.some((p) => p.id === pid) ? [...skilled, ...d.people.filter((p) => p.id === pid)] : skilled
   return (
-    <div className={`rounded border px-1 py-0.5 ${tone}`} title={[why, s.shift?.notes].filter(Boolean).join(' · ') || undefined}>
+    <div data-dienst={s.id} className={`rounded border px-1 py-0.5 ${tone}`} title={[why, s.shift?.notes].filter(Boolean).join(' · ') || undefined}>
       {canWrite ? (
         <select value={pid ?? ''} onChange={(e) => void assignSlots([{ slot: s, personId: e.target.value || null }])} className="w-full bg-transparent text-xs" aria-label={`${typeLabel(s.type)} ${dm(s.date)}`}>
           <option value="">— offen —</option>
@@ -1353,12 +1353,31 @@ export default function Duty() {
     if (t && ['woche', 'meine', 'antraege', 'abwesend', 'planung', 'einstellungen'].includes(t)) setTab(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
+  // Link aus der Zeit-App: /betrieb/dienste?tab=woche&datum=2026-11-07&dienst=<id> öffnet die Woche und markiert den Dienst
+  useEffect(() => {
+    const datum = new URLSearchParams(search).get('datum')
+    if (datum && /^\d{4}-\d{2}-\d{2}$/.test(datum)) setMonday(mondayOf(datum))
+  }, [search])
   const from = addDays(monday < todayIso() ? monday : todayIso(), -7)
   const near = addDays(monday > todayIso() ? monday : todayIso(), 28)
   // Planung zeigt die Wochen bis zur Erzeugungsgrenze
   const far = addDays(mondayOf(todayIso()), GENERATE_AHEAD_WEEKS * 7 + 6)
   const to = tab === 'planung' && far > near ? far : near
   const { data, refresh } = useQuery((pg) => loadDuty(pg, from, to), [from, to])
+  const scrolledTo = useRef<string | null>(null)
+  useEffect(() => {
+    const id = new URLSearchParams(search).get('dienst')
+    if (!id || !data) return
+    const el = Array.from(document.querySelectorAll<HTMLElement>('[data-dienst]')).find((x) => x.dataset.dienst === id && x.offsetParent !== null)
+    if (!el) return
+    el.classList.add('ring-2', 'ring-brand-700')
+    // nur einmal hinscrollen: die Daten laden bei jeder Änderung und jedem Sync neu
+    if (scrolledTo.current !== id) {
+      scrolledTo.current = id
+      el.scrollIntoView({ block: 'center', inline: 'center' })
+    }
+    return () => el.classList.remove('ring-2', 'ring-brand-700')
+  }, [search, data, tab, monday])
   const overdue = data && canWrite ? weekStates(data.weeks, todayIso()).filter((w) => w.overdue).length : 0
   if (!canRead) return <p className="p-4 text-sm text-gray-600">Keine Berechtigung für den Dienstplan.</p>
   const tabs: [Tab, string][] = [
