@@ -53,17 +53,19 @@ function SlotRow({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; c
   return (
     <li data-dienst={s.id} className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 ${!pid ? 'bg-red-50' : ''}`}>
       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: s.type.color ?? '#64748b' }} />
-      <span className="w-24 shrink-0 text-xs tabular-nums text-gray-500">
-        {timeText(s.type)}
-      </span>
-      <span className="min-w-0 flex-1 text-sm text-gray-800">
-        <TypeName t={s.type} />
+      {/* am Handy die Zeit über dem Namen; die Mindestbreite lässt die Auswahl umbrechen, statt den Namen zu überdecken */}
+      <span className="min-w-[6.5rem] flex-1 sm:flex sm:items-center sm:gap-2">
+        <span className="block text-xs tabular-nums text-gray-500 sm:w-24 sm:shrink-0">{timeText(s.type)}</span>
+        <span className="block min-w-0 break-words text-sm text-gray-800 sm:flex-1">
+          <TypeName t={s.type} />
+        </span>
       </span>
       {canWrite ? (
         <select
           value={pid ?? ''}
+          aria-label={`${typeLabel(s.type)} ${dm(s.date)}`}
           onChange={(e) => void assignSlots([{ slot: s, personId: e.target.value || null }])}
-          className={`${field} max-w-[11rem] ${!pid ? 'border-red-400 text-red-700' : c && hasConflict(c) ? 'border-amber-500' : ''}`}
+          className={`${field} min-h-11 max-w-[10rem] sm:min-h-0 sm:max-w-[11rem] ${!pid ? 'border-red-400 text-red-700' : c && hasConflict(c) ? 'border-amber-500' : ''}`}
         >
           <option value="">— offen —</option>
           {options.map((p) => {
