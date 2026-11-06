@@ -481,7 +481,9 @@ def push_pruefen(p: Pruefer, referenzen: str) -> None:
         if len(teile) != 4 or set(teile[1]) == {"0"}:
             continue
         lokal, entfernt = teile[1], teile[3]
-        bereich = [lokal, "--not", "--remotes"] if set(entfernt) == {"0"} else [f"{entfernt}..{lokal}"]
+        # neuer Zweig oder Stand, den wir noch nicht geholt haben: alles prüfen, was keine bekannte Gegenstelle hat
+        bekannt = set(entfernt) != {"0"} and subprocess.run(["git", "cat-file", "-e", f"{entfernt}^{{commit}}"], capture_output=True).returncode == 0
+        bereich = [f"{entfernt}..{lokal}"] if bekannt else [lokal, "--not", "--remotes"]
         for commit in git("rev-list", *bereich).decode().split():
             kurz = commit[:9]
             nachricht_pruefen(p, git("log", "-1", "--format=%B", commit).decode("utf-8", "ignore"), f"{kurz}, Nachricht")

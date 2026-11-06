@@ -232,6 +232,22 @@ class ImEchtenRepo(unittest.TestCase):
         self.assertIn("a.ts:1", r.stderr)
         self.assertNotIn(GEHEIM, r.stderr)
 
+    def test_push_mit_unbekanntem_stand_der_gegenstelle(self):
+        ziel = self.tmp / "ziel.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(ziel)], check=True, env=self.env)
+        self.git("remote", "add", "origin", str(ziel))
+        self.assertEqual(self.git("push", "-q", "origin", "main").returncode, 0)
+        (self.repo / "a.ts").write_text(f"const a = '{GEHEIM}'\n", encoding="utf-8")
+        self.git("add", "a.ts")
+        self.git("commit", "--no-verify", "-qm", "umgangen")
+        lokal = self.git("rev-parse", "HEAD").stdout.strip()
+        unbekannt = "a" * 40
+        eingabe = f"refs/heads/main {lokal} refs/heads/main {unbekannt}\n"
+        r = subprocess.run(["python3", "tools/git-hooks/pruefung.py", "--push"], cwd=self.repo, env=self.env, capture_output=True, text=True, input=eingabe)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("a.ts:1", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
     def test_historie_findet_geloeschtes(self):
         (self.repo / "a.ts").write_text(f"const a = '{GEHEIM}'\n", encoding="utf-8")
         self.git("add", "a.ts")
