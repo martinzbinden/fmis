@@ -21,8 +21,8 @@ const test = (animal_id: string, test_date: string, extra: Partial<ReportTest> =
 })
 
 const animals = [
-  { id: 'a', ear_tag: 'CH120163915453', name: 'NEUCHATEL', lauf_nr: null },
-  { id: 'b', ear_tag: 'CH120136152533', name: 'ALMA', lauf_nr: null },
+  { id: 'a', ear_tag: 'CH120900000403', name: 'NEUCHATEL', lauf_nr: null },
+  { id: 'b', ear_tag: 'CH120900000203', name: 'ALMA', lauf_nr: null },
 ]
 
 describe('testReport', () => {

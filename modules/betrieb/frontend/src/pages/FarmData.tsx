@@ -47,7 +47,7 @@ async function load(pg: PGlite): Promise<{ numbers: FarmNumber[]; gelan: GelanFa
   return { numbers, gelan }
 }
 
-/** CHE439865378 → CHE-439.865.378 (Schreibweise im UID-Register). */
+/** CHE123456789 → CHE-439.865.378 (Schreibweise im UID-Register). */
 export function formatUid(uid: string): string {
   const m = /^CHE-?(\d{3})\.?(\d{3})\.?(\d{3})$/.exec(uid.trim())
   return m ? `CHE-${m[1]}.${m[2]}.${m[3]}` : uid

@@ -54,8 +54,8 @@ _READER_PADDED_RE = re.compile(r"^CH0000(\d{8})$")
 
 def reader_tag_candidates(long_tag: str) -> tuple[str, str | None]:
     """Der APR600 liefert die 12-stellige nationale ID der ISO-Ohrmarke —
-    bei Schweizer Schafen mit vier führenden Nullen ("CH000021728063"). Die
-    TVD-Kurzform ist "CH" + die letzten 8 Ziffern ("CH21728063"), die in der
+    bei Schweizer Schafen mit vier führenden Nullen ("CH000900000103"). Die
+    TVD-Kurzform ist "CH" + die letzten 8 Ziffern ("CH90000210"), die in der
     App gespeicherte Langform "CH113" + dieselben 8 Ziffern + Prüfziffer
     (siehe sheep_short_tag). Gibt (anzeigbare Kurzform, 8-Ziffern-Kern)
     zurück; ohne führende Nullen bleibt es bei der Langform."""
@@ -69,8 +69,8 @@ def reader_tag_candidates(long_tag: str) -> tuple[str, str | None]:
 
 
 def sheep_short_tag(long_tag: str) -> str | None:
-    """Wandelt die lange Ohrmarke (RFID-Chip-Format, z.B. "CH113200415115")
-    in die kurze, offizielle TVD-Ohrmarke ("CH20041511") um.
+    """Wandelt die lange Ohrmarke (RFID-Chip-Format, z.B. "CH113900001305")
+    in die kurze, offizielle TVD-Ohrmarke ("CH90000130") um.
 
     Empirisch hergeleitet, nicht aus einer Spezifikation: ein Abgleich aller
     67 Schafe mit sowohl SMG- als auch TVD-Tierbestandsdatensatz zeigt

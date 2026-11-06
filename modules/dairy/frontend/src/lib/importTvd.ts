@@ -1,7 +1,7 @@
 // TVD-Tierbestand (Excel aus der TVD) für die Milchschafe: der SMG-Herdebuch-
 // export (lib/importAdis.ts) enthält nur Auen mit Milchleistungsdaten —
 // Jungtiere und Widder kommen von hier. Die TVD liefert die Ohrmarke in der
-// Kurzform ("CH20041511"); der Abgleich mit Tieren, die der Herdebuch-Import
+// Kurzform ("CH90000130"); der Abgleich mit Tieren, die der Herdebuch-Import
 // in der Langform "CH113…" angelegt hat, läuft über den normalisierten
 // Schlüssel (core/frontend/src/earTag.ts).
 

@@ -12,7 +12,7 @@ const animal = (ear_tag: string, extra: Partial<Animal> = {}): Animal => ({
 })
 
 const birth = (offspring: BirthInput['offspring']): BirthInput => ({
-  dam: animal('CH113197110291'),
+  dam: animal('CH113900000901'),
   birth_date: '2027-01-20',
   sire: { key: null, ear_tag: '', name: '' },
   ease: null,

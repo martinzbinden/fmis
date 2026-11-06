@@ -6,7 +6,7 @@
 
 create table farms (
   id uuid primary key,
-  external_uid text,     -- 'UID' aus dem Export, z.B. CHE113280045
+  external_uid text,     -- 'UID' aus dem Export, z.B. CHE123456789
   bur_nr text,            -- 'BUR_NR'
   name text not null,     -- 'Name' aus betrieb_betrieb, z.B. "Wyden"
   updated_at timestamptz not null default now(),

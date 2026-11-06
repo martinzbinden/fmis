@@ -13,7 +13,7 @@ interface Tx {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>
 }
 
-/** "Key (ear_tag)=(CH20041511) already exists." → { ear_tag: 'CH20041511' }.
+/** "Key (ear_tag)=(CH90000130) already exists." → { ear_tag: 'CH90000130' }.
  * Mehrteilige Schlüssel: "Key (a, b)=(1, x)". Gibt null, wenn nicht lesbar. */
 export function parseUniqueDetail(detail: string | undefined): Record<string, string> | null {
   const m = /^Key \((.+)\)=\((.*)\) already exists\.?$/.exec(detail ?? '')

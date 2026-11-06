@@ -15,7 +15,7 @@ import { DEFAULT_WITHDRAWAL_FACTOR, normalizeEarTag, releaseDate, stableUuid } f
 import type { JournalCategory } from '../types'
 
 export const TREATMENT_FIELDS: PasteField[] = [
-  { name: 'ohrmarke', type: 'Text', description: 'TVD-Ohrmarke, z.B. "CH 120.1639.1520.0" oder "CH120163915200" — bevorzugt; Pflicht, wenn "tier" fehlt' },
+  { name: 'ohrmarke', type: 'Text', description: 'TVD-Ohrmarke, z.B. "CH 120.9000.0030.0" oder "CH120900000300" — bevorzugt; Pflicht, wenn "tier" fehlt' },
   { name: 'tier', type: 'Text', description: 'Name oder Laufnummer, falls keine Ohrmarke (muss eindeutig sein)' },
   { name: 'tiername', type: 'Text', description: 'Name, für Tiere ausserhalb der Herde (Kälber, abgegangene)' },
   { name: 'datum', required: true, type: 'Datum JJJJ-MM-TT', description: 'erste Anwendung (bzw. Diagnose)' },

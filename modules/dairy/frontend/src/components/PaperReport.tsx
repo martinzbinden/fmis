@@ -64,7 +64,7 @@ export function ddmmyyyy(iso: string): string {
 }
 const ddmmyy = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(2, 4)}`
 
-/** TVD-Nummer wie auf dem Papier: "CH 120.1639.1545.3" bzw. "CH 2004.1511". */
+/** TVD-Nummer wie auf dem Papier: "CH 120.9000.0040.3" bzw. "CH 9000.0130". */
 function tvdNumber(earTag: string): string {
   const key = animalKey(earTag)
   if (key && /^CH120\d{9}$/.test(key)) return `CH 120.${shortEarTag(key)}`

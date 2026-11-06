@@ -98,7 +98,7 @@ const page2: PdfPageText = {
 
 describe('certificateEarTag', () => {
   it('normalisiert Schweizer und ausländische Nummern', () => {
-    expect(certificateEarTag('2004.5434')).toBe('CH20045434')
+    expect(certificateEarTag('9000.0150')).toBe('CH90000150')
     expect(certificateEarTag('372.457.830 AT')).toBe('AT372457830')
     expect(certificateEarTag('20010495')).toBe('20010495')
   })

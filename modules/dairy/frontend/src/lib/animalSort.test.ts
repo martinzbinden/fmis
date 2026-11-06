@@ -5,7 +5,7 @@ const a = (id: string, lauf_nr: string | null, ear_tag: string, birth_date: stri
 
 describe('Tiere sortieren', () => {
   it('Laufnummer numerisch, ohne Laufnummer ans Ende', () => {
-    const list = [a('x', null, 'CH20533161'), a('b', '101', 'CH20041511'), a('c', '23', 'CH1'), a('d', '1001', 'CH2')]
+    const list = [a('x', null, 'CH90000170'), a('b', '101', 'CH90000130'), a('c', '23', 'CH1'), a('d', '1001', 'CH2')]
     expect(sortAnimals(list, undefined, 'nr').map((t) => t.id)).toEqual(['c', 'b', 'd', 'x'])
   })
   it('jüngste zuerst, ohne Geburtsdatum ans Ende', () => {

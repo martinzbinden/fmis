@@ -43,9 +43,9 @@ describe('toast', () => {
   it('übersetzt Datenbankfehler ins Deutsche', () => {
     const dup = Object.assign(new Error('duplicate key value violates unique constraint "animals_ear_tag_key"'), {
       code: '23505',
-      detail: 'Key (ear_tag)=(CH20041511) already exists.',
+      detail: 'Key (ear_tag)=(CH90000130) already exists.',
     })
-    expect(errorText(dup)).toBe('Gibt es schon: Ohrmarke «CH20041511» ist bereits erfasst.')
+    expect(errorText(dup)).toBe('Gibt es schon: Ohrmarke «CH90000130» ist bereits erfasst.')
     expect(translateDbError('null value in column "lauf_nr" of relation "animals" violates not-null constraint')).toBe('Angabe fehlt: Laufnummer.')
     expect(translateDbError('invalid input syntax for type numeric: "1,5x"')).toBe('Ungültige Eingabe: «1,5x» ist keine Zahl.')
     expect(

@@ -14,7 +14,7 @@ export interface AnimalRef {
   ear_tag: string
   lauf_nr: string | null
   name: string | null
-  /** "2212 · 1967.8805" — Laufnummer und kurze Ohrmarke */
+  /** "2212 · 9000.0080" — Laufnummer und kurze Ohrmarke */
   label: string
   sex: 'w' | 'm' | 'k' | null
   birth_date: string | null

@@ -34,7 +34,7 @@ export function withdrawalUntil(j: WithdrawalFields, kind: 'milk' | 'meat'): str
 export const MILK_UNTIL_SQL = `coalesce(j.release_milk_date - 1,
   case when j.withdrawal_milk_days > 0 then coalesce(j.last_date, j.entry_date) + j.withdrawal_milk_days * coalesce(j.withdrawal_factor, 1) end)`
 
-/** "CH 120.1639.1520.0" → "CH120163915200" (Schreibweise in animals). */
+/** "CH 120.9000.0030.0" → "CH120900000300" (Schreibweise in animals). */
 export const normalizeEarTag = (s: string) => s.replace(/[\s.]/g, '').toUpperCase()
 
 /** Deterministische UUID aus einem Text (FNV-1a, 4 Seeds) — gleiche

@@ -19,9 +19,9 @@ import { errorText } from './toast'
 //   «Doppelte zulassen».
 
 export interface TagRead {
-  /** Rohform vom Gerät, z.B. CH000021728063 */
+  /** Rohform vom Gerät, z.B. CH000900000103 */
   tag: string
-  /** anzeigbare Ohrmarke (bei Schafen die TVD-Kurzform CH21728063) */
+  /** anzeigbare Ohrmarke (bei Schafen die TVD-Kurzform CH90000210) */
   earTag: string
   /** Vergleichsschlüssel wie animalKey(animals.ear_tag) */
   key: string | null

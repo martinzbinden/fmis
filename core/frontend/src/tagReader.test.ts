@@ -6,13 +6,13 @@ const read = (earTag: string) => ({ earTag, key: animalKey(earTag) })
 
 describe('matchRead', () => {
   const animals = [
-    { id: 'a', ear_tag: 'CH113217280631' }, // Schaf in Langform
-    { id: 'b', ear_tag: 'CH21728064' }, // Schaf in Kurzform
+    { id: 'a', ear_tag: 'CH113900002101' }, // Schaf in Langform
+    { id: 'b', ear_tag: 'CH90000220' }, // Schaf in Kurzform
     { id: 'c', ear_tag: 'CH120.1234.5678.9' }, // Rind
   ]
   it('findet Schafe in Lang- und Kurzform', () => {
-    expect(matchRead(read('CH21728063'), animals)?.id).toBe('a')
-    expect(matchRead(read('CH21728064'), animals)?.id).toBe('b')
+    expect(matchRead(read('CH90000210'), animals)?.id).toBe('a')
+    expect(matchRead(read('CH90000220'), animals)?.id).toBe('b')
   })
   it('findet Rinder', () => {
     expect(matchRead(read('CH120123456789'), animals)?.id).toBe('c')
@@ -24,7 +24,7 @@ describe('matchRead', () => {
 
 describe('readDigits', () => {
   it('Schaf: 8 Ziffern, Rind: 9 Ziffern nach CH120', () => {
-    expect(readDigits({ earTag: 'CH21728063' })).toBe('21728063')
+    expect(readDigits({ earTag: 'CH90000210' })).toBe('90000210')
     expect(readDigits({ earTag: 'CH120123456789' })).toBe('123456789')
   })
 })

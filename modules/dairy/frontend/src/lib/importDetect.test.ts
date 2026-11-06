@@ -6,10 +6,10 @@ const rec = (type: string, id: string) => `${type} 300121099391345285${id}LAC   
 
 describe('herdbookSpecies', () => {
   it('erkennt Rinder an CH120…', () => {
-    expect(herdbookSpecies([[rec('K04', 'CH120136152533'), rec('K01', 'CH120115806778')].join('\r\n')])).toBe('cattle')
+    expect(herdbookSpecies([[rec('K04', 'CH120900000203'), rec('K01', 'CH120115806778')].join('\r\n')])).toBe('cattle')
   })
   it('erkennt Schafe an anderen CH-Nummern', () => {
-    expect(herdbookSpecies([rec('K04', 'CH113197110291'), rec('K11', 'CH113200065914')])).toBe('sheep')
+    expect(herdbookSpecies([rec('K04', 'CH113900000901'), rec('K11', 'CH113900001204')])).toBe('sheep')
   })
   it('ohne Tiernummern unentschieden', () => {
     expect(herdbookSpecies(['B01 300121099391345285 Zbinden', ''])).toBeNull()
@@ -22,8 +22,8 @@ describe('tvdSpecies', () => {
     expect(tvdSpecies(['Ohrmarkennummer', 'Erstabkalbung'], [])).toBe('cattle')
   })
   it('nach Ohrmarken', () => {
-    expect(tvdSpecies(['Ohrmarkennummer'], ['CH19756317', 'CH20041511'])).toBe('sheep')
-    expect(tvdSpecies(['Ohrmarkennummer'], ['CH 120.1361.5253.3', 'CH120115806778'])).toBe('cattle')
+    expect(tvdSpecies(['Ohrmarkennummer'], ['CH90000110', 'CH90000130'])).toBe('sheep')
+    expect(tvdSpecies(['Ohrmarkennummer'], ['CH 120.9000.0020.3', 'CH120115806778'])).toBe('cattle')
     expect(tvdSpecies(['Ohrmarkennummer'], ['DE0123'])).toBeNull()
   })
 })

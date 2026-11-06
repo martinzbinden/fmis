@@ -7,14 +7,14 @@ import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyRe
 export const RESULT_LABEL: Record<PregnancyResult, string> = { ja: 'trächtig', nein: 'leer', unsicher: 'unsicher' }
 export const METHOD_LABEL: Record<PregnancyMethod, string> = { auge: 'Auge', farbtupfer: 'Farbtupfer', ultraschall: 'Ultraschall' }
 
-/** Ziffern der Ohrmarke in Kurzform (CH 2172 8023 → 21728023). */
+/** Ziffern der Ohrmarke in Kurzform (CH 9000 0200 → 90000200). */
 export const tagDigits = (a: Pick<Animal, 'ear_tag'>) => shortEarTag(a.ear_tag).replace(/\D/g, '')
 
 /** Ganz eingetippt: Laufnummer oder die letzten 4 (und mehr) Ziffern der Ohrmarke. */
 const isComplete = (a: Animal, q: string) => a.lauf_nr === q || (q.length >= 4 && tagDigits(a).endsWith(q))
 
 /** Alle Tiere, die zur (auch erst halb) eingetippten Nummer passen: Ohrmarke
- * endet darauf, die letzten 4 Ziffern beginnen damit («15» → 2004.1511) oder
+ * endet darauf, die letzten 4 Ziffern beginnen damit («01» → 9000.0130) oder
  * die Laufnummer beginnt damit. Ganz eingetippte Treffer zuerst. */
 export function matchAnimals(animals: Animal[], input: string): Animal[] {
   const q = input.replace(/\D/g, '')
@@ -27,7 +27,7 @@ export function matchAnimals(animals: Animal[], input: string): Animal[] {
 }
 
 /** Automatisch gewählt nur, wenn genau ein Tier passt UND die Nummer ganz
- * eingetippt ist — sonst springt «151» auf 2053.3151, wo 2004.1511 gemeint war. */
+ * eingetippt ist — sonst springt «016» auf 9000.0160, wo 9000.0165 gemeint war. */
 export function uniqueMatch(animals: Animal[], input: string): Animal | null {
   const q = input.replace(/\D/g, '')
   if (q.length < 3) return null

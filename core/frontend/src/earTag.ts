@@ -2,12 +2,12 @@
  * Normalisierter Schlüssel einer Tier-ID für Abstammung, Belegungen und
  * Geburten. Schweizer Schafe tragen im Herdebuch-Export die Langform
  * "CH113" + 8 Ziffern + Prüfziffer, auf der Ohrmarke (und in der TVD) aber die
- * Kurzform "CH" + dieselben 8 Ziffern, gedruckt oft mit Punkt ("CH2004.1511").
- * Beide ergeben hier "CH20041511" — gleiche Regel wie
+ * Kurzform "CH" + dieselben 8 Ziffern, gedruckt oft mit Punkt ("CH9000.0130").
+ * Beide ergeben hier "CH90000130" — gleiche Regel wie
  * core/backend/fmis_core/agrident.py:sheep_short_tag. Alle anderen IDs
  * (Rinder "CH120…", ausländische Stiere/Widder "FR0099…") bleiben unverändert,
  * nur Leerzeichen und Punkte fallen weg. Von Hand ohne «CH» getippte
- * Nummern ("2004.1511", "120136152533") bekommen das «CH» dazu — sonst würde
+ * Nummern ("9000.0130", "120900000203") bekommen das «CH» dazu — sonst würde
  * die eigene Mutter als neues Lamm nicht erkannt.
  */
 export function animalKey(id: string | null | undefined): string | null {
@@ -21,19 +21,19 @@ export function animalKey(id: string | null | undefined): string | null {
 }
 
 /** Ist eine von Hand eingetragene Ohrmarke vollständig? Gibt den Grund
- * zurück, wenn nicht — Ländercode und mindestens 8 Ziffern (Schafe "2004.1511",
- * Rinder "120 1361 5253 3"); nur die letzten Ziffern oder Buchstaben reichen nicht. */
+ * zurück, wenn nicht — Ländercode und mindestens 8 Ziffern (Schafe "9000.0130",
+ * Rinder "120 9000 0020 3"); nur die letzten Ziffern oder Buchstaben reichen nicht. */
 export function earTagProblem(input: string | null | undefined): string | null {
   const key = animalKey(input)
   if (!key) return 'Ohrmarke fehlt.'
-  if (!/^[A-Z]{2}\d{8,14}$/.test(key)) return `Ohrmarke «${(input ?? '').trim()}» ist unvollständig – die ganze Nummer eintragen, z.B. 2004.1511.`
+  if (!/^[A-Z]{2}\d{8,14}$/.test(key)) return `Ohrmarke «${(input ?? '').trim()}» ist unvollständig – die ganze Nummer eintragen, z.B. 9000.0130.`
   return null
 }
 
 /**
  * Ohrmarke für Listen: nur die Nummer, die auf der Marke steht — bei
- * Schafen die 8 Ziffern der TVD-Nummer ("2004.1511" aus CH113200415115 oder
- * CH2004.1511), bei Rindern die 9 Ziffern nach "CH120" ("1361.5253.3", wie im
+ * Schafen die 8 Ziffern der TVD-Nummer ("9000.0130" aus CH113900001305 oder
+ * CH9000.0130), bei Rindern die 9 Ziffern nach "CH120" ("9000.0020.3", wie im
  * Prüfbericht ohne den Länder-/Artcode). Andere IDs (z.B. ausländische
  * KB-Stiere) bleiben unverändert.
  */

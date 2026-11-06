@@ -4,7 +4,7 @@ import { isUniqueViolation, mergeInto, parseUniqueDetail, setAsideConflicts } fr
 
 describe('Pull: Doppelzeile mit dem Server zusammenführen', () => {
   it('liest den Schlüssel aus der Fehlermeldung', () => {
-    expect(parseUniqueDetail('Key (ear_tag)=(CH20041511) already exists.')).toEqual({ ear_tag: 'CH20041511' })
+    expect(parseUniqueDetail('Key (ear_tag)=(CH90000130) already exists.')).toEqual({ ear_tag: 'CH90000130' })
     expect(parseUniqueDetail('Key (season_year, fields_lineage_id)=(2026, abc)')).toBeNull()
     expect(parseUniqueDetail('Key (season_year, fields_lineage_id)=(2026, abc) already exists.')).toEqual({ season_year: '2026', fields_lineage_id: 'abc' })
   })
@@ -15,12 +15,12 @@ describe('Pull: Doppelzeile mit dem Server zusammenführen', () => {
       create table animals (id text primary key, ear_tag text not null unique, updated_at text);
       create table animal_journal (id text primary key, animal_id text references animals(id), updated_at text);
       create table sync_outbox (table_name text, row_id text, updated_at text, primary key (table_name, row_id));
-      insert into animals values ('lokal', 'CH20041511', '2026-11-01');
+      insert into animals values ('lokal', 'CH90000130', '2026-11-01');
       insert into animal_journal values ('j1', 'lokal', '2026-11-01');
       insert into sync_outbox values ('animals', 'lokal', '2026-11-01'), ('animal_journal', 'j1', '2026-11-01');
     `)
     const sql = `insert into animals (id, ear_tag, updated_at) values ($1, $2, $3) on conflict (id) do update set ear_tag = excluded.ear_tag`
-    const row = { id: 'server', ear_tag: 'CH20041511', updated_at: '2026-11-02' }
+    const row = { id: 'server', ear_tag: 'CH90000130', updated_at: '2026-11-02' }
     await pg.transaction(async (tx) => {
       await tx.query('savepoint p')
       let err: unknown

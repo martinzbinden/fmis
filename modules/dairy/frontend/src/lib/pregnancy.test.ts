@@ -5,24 +5,24 @@ import type { Animal } from '../types'
 const a = (id: string, ear_tag: string, lauf_nr: string | null = null): Animal => ({
   id, ear_tag, lauf_nr, name: null, breed_code: null, birth_date: null, sex: 'w', status: 'aktiv', entry_date: null, exit_date: null, notes: null, updated_at: '', deleted_at: null,
 })
-const herd = [a('1', 'CH21728023', '7'), a('2', 'CH21718023', '12'), a('3', 'CH21725501', '23'), a('4', 'CH113196787890', '40')]
+const herd = [a('1', 'CH90008023', '7'), a('2', 'CH21718023', '12'), a('3', 'CH21725501', '23'), a('4', 'CH113900000700', '40')]
 
 describe('Tier über die Ohrmarke finden', () => {
   it('findet nach den letzten Ziffern, auch bei Langform', () => {
     expect(matchAnimals(herd, '8023').map((x) => x.id)).toEqual(['1', '2'])
-    expect(matchAnimals(herd, '28023').map((x) => x.id)).toEqual(['1'])
+    expect(matchAnimals(herd, '08023').map((x) => x.id)).toEqual(['1'])
     expect(uniqueMatch(herd, '5501')?.id).toBe('3')
     expect(uniqueMatch(herd, '8023')).toBeNull()
   })
   it('zeigt bei halb eingetippter Nummer alle passenden Tiere und wählt erst bei ganzer Nummer', () => {
-    const h = [a('1', 'CH20533151', '2314'), a('2', 'CH20041511'), a('3', 'CH20041512'), a('4', 'CH21161315')]
-    expect(matchAnimals(h, '151').map((x) => x.id).sort()).toEqual(['1', '2', '3'])
-    expect(uniqueMatch(h, '151')).toBeNull()
-    expect(matchAnimals(h, '15').map((x) => x.id).sort()).toEqual(['2', '3', '4'])
-    expect(uniqueMatch(h, '1511')?.id).toBe('2')
-    expect(matchAnimals(h, '231').map((x) => x.id)).toEqual(['1'])
-    expect(uniqueMatch(h, '231')).toBeNull()
-    expect(uniqueMatch(h, '2314')?.id).toBe('1')
+    const h = [a('1', 'CH90000160', '1300'), a('2', 'CH90005130'), a('3', 'CH90001130'), a('4', 'CH90003077')]
+    expect(matchAnimals(h, '130').map((x) => x.id).sort()).toEqual(['1', '2', '3'])
+    expect(uniqueMatch(h, '130')).toBeNull()
+    expect(matchAnimals(h, '30').map((x) => x.id).sort()).toEqual(['2', '3', '4'])
+    expect(uniqueMatch(h, '5130')?.id).toBe('2')
+    expect(matchAnimals(h, '016').map((x) => x.id)).toEqual(['1'])
+    expect(uniqueMatch(h, '016')).toBeNull()
+    expect(uniqueMatch(h, '1300')?.id).toBe('1')
   })
   it('nimmt bei wenigen Ziffern auch die Laufnummer, wählt aber nicht automatisch', () => {
     expect(matchAnimals(herd, '12').map((x) => x.id)).toContain('2')

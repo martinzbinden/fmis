@@ -26,7 +26,7 @@ export interface ParentageRow {
   dam: ParentRef | null
 }
 
-/** "1777.9901 EUGEN" → Ohrmarke + Name; "1971.1090 " → nur Ohrmarke. */
+/** "9000.0050 EUGEN" → Ohrmarke + Name; "9000.0100 " → nur Ohrmarke. */
 export function parseParentCell(v: unknown): ParentRef | null {
   const text = String(v ?? '').trim()
   if (!text) return null

@@ -132,14 +132,14 @@ describe('Tiere zuteilen: ein Suchfeld', () => {
       moduleKey: 'dairy_schafe', id, ear_tag, lauf_nr, name, label: lauf_nr ?? ear_tag, sex: 'w', birth_date: null, species: 'schafe', parity: 1,
     })
     const input = {
-      animals: [t('a', '101', 'CH20041511', 'Berta'), t('b', '102', 'CH20041512'), t('c', null, 'CH21728022')],
+      animals: [t('a', '101', 'CH90000130', 'Berta'), t('b', '102', 'CH90000140'), t('c', null, 'CH90000190')],
       groups: [{ id: 'g', name: 'Schlachtung', animalIds: ['a'] }],
       lists: [{ id: 'l', name: 'Schlachtung prüfen', animalIds: ['a', 'b'] }],
     }
     expect(searchMoveSources('', input).map((s) => s.kind)).toEqual(['group', 'list'])
     expect(searchMoveSources('schlacht', input).map((s) => s.kind)).toEqual(['group', 'list'])
     expect(searchMoveSources('101', input).map((s) => (s.kind === 'animal' ? s.animal.id : s.kind))).toEqual(['a'])
-    expect(searchMoveSources('8022', input).map((s) => (s.kind === 'animal' ? s.animal.id : s.kind))).toEqual(['c'])
+    expect(searchMoveSources('0190', input).map((s) => (s.kind === 'animal' ? s.animal.id : s.kind))).toEqual(['c'])
     expect(searchMoveSources('ber', input).map((s) => (s.kind === 'animal' ? s.animal.id : s.kind))).toEqual(['a'])
   })
 })

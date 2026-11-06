@@ -23,12 +23,12 @@ function line(satzart: string, length: number, fields: [number, string][]): stri
 
 describe('animalKey', () => {
   it('fasst Lang- und Kurzform eines Schafs zusammen', () => {
-    expect(animalKey('CH113200415115')).toBe('CH20041511')
-    expect(animalKey('CH2004.1511')).toBe('CH20041511')
-    expect(animalKey('ch 2004 1511')).toBe('CH20041511')
+    expect(animalKey('CH113900001305')).toBe('CH90000130')
+    expect(animalKey('CH9000.0130')).toBe('CH90000130')
+    expect(animalKey('ch 9000 0130')).toBe('CH90000130')
   })
   it('lässt Rinder und ausländische IDs unverändert', () => {
-    expect(animalKey('CH120136152533')).toBe('CH120136152533')
+    expect(animalKey('CH120900000203')).toBe('CH120900000203')
     expect(animalKey('FR009999901520')).toBe('FR009999901520')
   })
   it('liefert null für leere IDs', () => {
@@ -42,19 +42,19 @@ describe('animalKey', () => {
 describe('K01 Abstammung', () => {
   it('liest Tier, Vater und Mutter', () => {
     const l = line('K01', 310, [
-      [23, 'CH113197110291'],
+      [23, 'CH113900000901'],
       [37, 'LAC'],
       [40, 'ALMA'],
       [52, '20200201'],
-      [60, 'CH113200065914'],
-      [77, 'CH113183586161'],
+      [60, 'CH113900001204'],
+      [77, 'CH113900000601'],
       [112, '2'],
     ])
     expect(parseK01Pedigree(l)).toEqual({
-      key: 'CH19711029',
-      ear_tag: 'CH113197110291',
-      sire_key: 'CH20006591',
-      dam_key: 'CH18358616',
+      key: 'CH90000090',
+      ear_tag: 'CH113900000901',
+      sire_key: 'CH90000120',
+      dam_key: 'CH90000060',
       breed_code: 'LAC',
       name: 'ALMA',
       birth_date: '2020-02-01',
@@ -105,43 +105,43 @@ describe('mergePedigree', () => {
 describe('K10 Belegungen', () => {
   it('erkennt KB bei Kühen', () => {
     const l = line('K10', 207, [
-      [23, 'CH120136152533'], [69, ' 7'], [80, '20251002'], [88, '3'], [89, ' 1'],
+      [23, 'CH120900000203'], [69, ' 7'], [80, '20251002'], [88, '3'], [89, ' 1'],
       [91, 'CH120165843099'], [105, 'SF '], [108, 'ARMON'],
     ])
     expect(parseK10(l)).toEqual({
-      ear_tag: 'CH120136152533', parity: 7, service_date: '2025-10-02', service_to: null,
+      ear_tag: 'CH120900000203', parity: 7, service_date: '2025-10-02', service_to: null,
       kind: 'kb', seq: 1, sire_ear_tag: 'CH120165843099', sire_breed: 'SF', sire_name: 'ARMON',
     })
   })
 
   it('liest Belegperioden der Schafe als Natursprung', () => {
     const l = line('K10', 207, [
-      [23, 'CH113197110291'], [80, '20250902'], [89, ' 1'], [91, 'CH113200454343'], [198, '20251015'],
+      [23, 'CH113900000901'], [80, '20250902'], [89, ' 1'], [91, 'CH113900001503'], [198, '20251015'],
     ])
     expect(parseK10(l)).toMatchObject({ kind: 'natursprung', service_date: '2025-09-02', service_to: '2025-10-15' })
   })
 
   it('verwirft Zeilen ohne Datum', () => {
-    expect(parseK10(line('K10', 207, [[23, 'CH120136152533']]))).toBeNull()
+    expect(parseK10(line('K10', 207, [[23, 'CH120900000203']]))).toBeNull()
   })
 })
 
 describe('K11 Geburten', () => {
   it('liest Nachkomme, Vater, Totgeburt und Gewicht', () => {
     const l = line('K11', 252, [
-      [23, 'CH120136152533'], [69, ' 3'], [71, '20240310'], [79, 'CH120200000001'],
+      [23, 'CH120900000203'], [69, ' 3'], [71, '20240310'], [79, 'CH120200000001'],
       [96, '2'], [97, '0'], [98, 'DE009874621015'], [119, '2'], [120, '0'], [121, '38'],
       [143, '20230601'], [152, '0'],
     ])
     expect(parseK11(l)).toEqual({
-      dam_ear_tag: 'CH120136152533', parity: 3, birth_date: '2024-03-10',
+      dam_ear_tag: 'CH120900000203', parity: 3, birth_date: '2024-03-10',
       offspring_ear_tag: 'CH120200000001', offspring_sex: 'w', sire_ear_tag: 'DE009874621015',
       ease: 2, died_24h: false, birth_weight_kg: 38, conception_date: '2023-06-01', stillborn: false,
     })
   })
 
   it('akzeptiert tote Lämmer ohne Ohrmarke', () => {
-    const l = line('K11', 245, [[23, 'CH113197110291'], [71, '20210425'], [96, '0'], [120, '1'], [152, '1']])
+    const l = line('K11', 245, [[23, 'CH113900000901'], [71, '20210425'], [96, '0'], [120, '1'], [152, '1']])
     expect(parseK11(l)).toMatchObject({ offspring_ear_tag: null, offspring_sex: null, died_24h: true, stillborn: true })
   })
 })
@@ -149,7 +149,7 @@ describe('K11 Geburten', () => {
 describe('K09 Zuchtwerte', () => {
   it('Kühe gemäss Spec', () => {
     const l = line('K09', 180, [
-      [23, 'CH120136152533'], [52, '20260811'], [61, '66'], [63, ' -123'], [68, '  -9'],
+      [23, 'CH120900000203'], [52, '20260811'], [61, '66'], [63, ' -123'], [68, '  -9'],
       [72, '-0.05'], [86, 'SF26  '], [92, '61'], [94, '   93'], [111, ' 964'], [132, '26'], [134, ' 95'],
     ])
     const values = Object.fromEntries(parseK09Cattle(l).map((v) => [v.trait, v.value]))
@@ -160,7 +160,7 @@ describe('K09 Zuchtwerte', () => {
 
   it('Schafe mit abweichendem Satzaufbau', () => {
     const l = line('K09', 184, [
-      [23, 'CH113197110291'], [52, '20260226'], [60, '2'], [61, '75'], [63, '  +97'],
+      [23, 'CH113900000901'], [52, '20260226'], [60, '2'], [61, '75'], [63, '  +97'],
       [68, '    +095.00'], [79, '    +105.00'], [95, 'S'], [107, ' 99'],
     ])
     expect(Object.fromEntries(parseK09Sheep(l).map((v) => [v.trait, v.value]))).toEqual({
