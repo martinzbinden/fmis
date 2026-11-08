@@ -1,0 +1,108 @@
+46/2026                                                                QM-Wochenpreise für Rindvieh                                 (ohne Frachten und Margen für Lieferungen in Schlachtbetriebe)
+                                                              zwingend anzuwenden auf überwachten öffentlichen Märkten für die Kategorien MT, OB, RG, VK, MA, JB
+Gültig ab:         09.11.2026
+Änderung:                -                                                           -                                                             -                                                               -
+                                            MT                                                           OB                                                           RG                                                                    KV
+                                 MUNI (241 - 600 Tage)                                      OCHSEN (über 240 Tage)                                        RINDER (241 - 900 Tage)                                             KÄLBER (bis 240 Tage)
+                               TAUREAUX (241 - 600 jours)                                   BŒUFS (plus de 240 jours)                                    GÉNISSES (241 - 900 jours)                                          VEAUX (jusqu'à 240 jours)
+  Fleischigkeit       CHF/kg                A%                 CHF/kg             CHF/kg                 A%                 CHF/kg              CHF/kg                A%                 CHF/kg                CHF/kg                       A%                      CHF/kg
+   Charnure          SG / PM                R%                 LG / PV           SG / PM                 R%                 LG / PV            SG / PM                R%                 LG / PV              SG / PM                       R%                      LG / PV
+       C             12.10                  58                  7.00              12.10                  57                  6.90              12.10                  56                  6.80                19.50
+       H             11.90                  57                  6.80              11.90                  56                  6.65              11.90                  55                  6.55                19.10
+       +             11.70                  55                  6.45              11.70                  54                  6.30              11.70                  54                  6.30                18.80
+       T             11.50                  53                  6.10              11.50                  52                  6.00              11.50                  52                  6.00                18.30
+       -             11.30                  52                  5.90              11.30                  51                  5.75              11.30                  51                  5.75                17.90
+       A             10.90                  51                  5.55              10.90                  50                  5.45                                                                             17.10
+       X             10.60                  49                  5.20              10.60                  49                  5.20                                RG A - X:                                    15.30
+                     10.20                  47                  4.80              10.20                  47                  4.80            werden zum Preis von VK A - X abgerechnet                        14.30
+                      9.75                  45                  4.40               9.75                  45                  4.40                  sont décomptées au prix VK A - X                           13.30
+  Fettgewebe
+  Tissu gras
+       1              -0.90                                    -0.50              -0.90                                     -0.45               -0.90                                    -0.45                 -1.50
+       2              -0.30                                    -0.15              -0.30                                     -0.15               -0.30                                    -0.15                 -0.40
+       3                -                                        -                  -                                         -                   -                                        -                     -
+       4              -0.30                                    -0.15              -0.30                                     -0.15               -0.30                                    -0.15                 -0.20
+       5              -0.90                                    -0.50              -0.90                                     -0.45               -0.90                                    -0.45                 -1.00
+Tiere ohne Begleitscheine
+                                                                -1.20                                                        -1.20                                                        -1.20
+für QM, Label oder BIO:
+
+                         Preise gelten bis: / Prix valables jusqu'à:                  Preise gelten bis: / Prix valables jusqu'à:                  Preise gelten bis: / Prix valables jusqu'à:          Gewichtsabzüge (SG) / Déductions de poids (PM)
+                  300.0 kg SG / PM                         530.0 kg LG / PV   300.0 kg SG / PM                     550.0 kg LG / PV         300.0 kg SG / PM                         550.0 kg LG / PV   CHF je zusätzliches kg / CHF par kg supplémentaire
+                                                                               OB über 840 Tage werden zum VK-Preis abgerechnet.                                                                        Fleischigkeitsklasse / Classe de charnure C / H / +T
+                                                                                 OB plus de 840 jours sont décomptés au prix VK.                                                                        ab / dès 140.1 - 150.0 kg SG / PM :                            -0.10
+                                                                                                                                                                                                        Fleischigkeitsklasse / Classe de charnure T / -T / A
+                                                              MT, OB, RG: Gewichtszuschläge und -abzüge (SG und LG) gemäss Tabelle vom 01.01.2025.                                                      ab / dès 130.1 - 140.0 kg SG / PM :                            -0.10
+                                                               MT, OB, RG: Suppléments et déductions de poids (PM et PV) selon tabelle du 01.01.2025.                                                   Fleischigkeitsklasse / Classe de charnure X
+                                                                                                                                                                                                        ab / dès 115.1 - 130.0 kg SG / PM :                            -0.10
+                                                                                                                                                                                                        Altersabzüge / Déductions pour l'âge
+                                                     Auffuhrberechtigt auf den überwachten öffentlichen Schlachtviehmärkten von Tieren der                                                              CHF je kg SG / CHF par kg PM
+                                                    Rindviehgattung sind die Kategorien MT, OB, RG, VK, MA und JB (ab Alter von 161 Tagen).                                                             161-180 Tage/jours : -0.10 | 181-190 T./j. : -0.50 | 191-200 T./j. : -0.70
+                                                                                                                                                                                                        201-210 Tage/jours : -0.90 | 211-220 T./j. : -1.10 | 221-230 T./j. : -1.30
+                                                                                                                                                                                                        231-240 Tage/jours : -1.50
+                                                    Bei extrem überfetten Tieren (Fettklasse grösser als 5) sind höhere Abzüge gerechtfertigt.                                                          Abzüge Fleischfarbe / Déductions couleur de viande
+                                                            Ausgeschlossen sind kranke Tiere und Tiere von sehr schlechter Qualität.                                                                    jeweils CHF -2.00/kg SG, wenn: / CHF -2.00/kg PM à chaque fois que:
+                                                                                                                                                                                                        ≤ 160 Tage / jours & L*-Wert / valeur L* < 39.000
+                                                                                                                                                                                                        > 160 Tage / jours & L*-Wert / valeur L* < 42.000
+                                     Zudem gelten die Weisungen über die Durchführung von überwachten öffentlichen Rindviehmärkten von Proviande.
+                                                                                                                                                                                                        L*-Wert / valeur L* ≥ 54.100
+
+
+                                                                                                                                                                                                                                           WP_CHTAX_Rindvieh.xlsx
+46/2026                                        Prix AQ hebdomadaires pour bovins                            (sans frais et marges pour des livraisons franco abattoir)
+                                    à appliquer obligatoirement sur les marchés publics surveillés pour les catégories MT, OB, RG, VK, MA, JB
+Valables dès:        09.11.2026
+Modification:            -0.20                                                         -0.20                                                                                           -
+                                                  VK                                                       MA                                                        JB
+                     KÜHE über 240 Tage und RINDER über 900 Tage                                  MUNI (über 600 Tage)                               JUNGVIEH (161 - 300 Tage)
+                  VACHES de plus de 240 jrs et GÉNISSES de plus de 900 jrs                     TAUREAUX (plus de 600 jours)                        JEUNE BÉTAIL (161 - 300 jours)
+
+  Fleischigkeit         CHF/kg                    A%                  CHF/kg          CHF/kg               A%                 CHF/kg        CHF/kg                   A%             CHF/kg
+   Charnure            SG / PM                    R%                 LG / PV          SG / PM              R%                 LG / PV       SG / PM                  R%             LG / PV    Erläuterungen zu einigen Abkürzungen:
+       C                10.65                     54                  5.75            9.65                 60                 5.80                                                  7.40       LG = Lebendgewicht
+
+       H                10.40                     52                  5.40            9.50                 58                 5.50                                                  7.15       SG = Schlachtgewicht
+
+       +                10.20                     50                  5.10            9.35                 56                 5.25                                                  6.95       A% = Schlachtausbeute in %
+
+       T                10.00                     48                  4.80            9.20                 54                 4.95                                                  6.70
+       -                9.65                      47                  4.55            8.95                 53                 4.75                                                  6.20       Explications de quelques abréviations:
+       A                9.10                      46                  4.20            8.75                 52                 4.55                                                  5.40       PV = poids vif
+
+       X                8.45                      45                  3.80            8.30                 51                 4.25                                                  4.60       PM = poids mort
+
+                        8.00                      43                  3.45            7.90                 49                 3.85                                                  4.20       R% = rendement à l'abattage en %
+
+                        7.55                      41                  3.10            7.55                 47                 3.55                                                  3.80
+  Fettgewebe
+   Tissu gras       C-T       A-X                                C-T        A-X                                                                                                 C-T A-X
+       1           -0.20      -0.40                             -0.10       -0.20     -0.30                                   -0.15                                              -   -0.30
+       2             -        -0.10                               -         -0.05       -                                       -                                                -     -
+       3             -          -                                 -           -         -                                       -                                                -     -
+       4           -0.30      -0.30                             -0.15       -0.15     -0.30                                   -0.15                                            -0.25 -0.25
+       5           -0.70      -0.70                             -0.35       -0.35     -0.70                                   -0.40                                            -0.50 -0.50
+Animaux sans bulletin d'accompagnement
+                                                                       -1.20                                                  -1.20                                                  -1.20
+pour AQ, label ou BIO:
+
+                  Abzüge für VK <450.0 kg LG: / Déductions pour VK <450.0 kg PV:          Zuschlag für MA mit max. 600.0 kg LG:                        JB: max. 320.0 kg LG netto
+                               449.9 - 440.0 kg                     -0.05               Supplément pour MA avec max. 600.0 kg PV:                       JB: PV net max. 320.0 kg
+                               439.9 - 430.0 kg                        -0.10           +0.70                                   +0.35
+                               429.9 - 420.0 kg                        -0.15                                                                Gewichtsabzüge (LG): / Déductions de poids (PV):
+                               419.9 - 410.0 kg                        -0.20                                                                        < 150.0 kg                       -0.60
+                               409.9 - 400.0 kg                        -0.25                                                                      150.0 - 169.9 kg                   -0.40
+                                  < 400.0 kg                           -0.50                                                                      170.0 - 189.9 kg                   -0.20
+                                               VK -T - X                                                                                          190.0 - 250.0 kg                    0.00
+                    Preisabzug von CHF- 0.10/kg SG für verwachsene Unterspälten                                                                   250.1 - 270.0 kg                   -0.20
+                                ist in Preisabstufungen berücksichtigt.                                                                           270.1 - 290.0 kg                   -0.40
+                     Dans la gradation des prix, il est tenu compte d'une déduction                                                               290.1 - 320.0 kg                   -0.60
+                            de CHF -0.10/kg PM pour les tranches carrées
+                                   avec adhérences musculaires.
+
+                                                   Les animaux de l'espèce bovine des catégories MT, OB, RG, VK, MA et JB (à partir de l'âge de 161 jours)
+                                                             peuvent être apportés sur les marchés de bétail de boucherie publics surveillés.
+                                                       Des déductions plus importantes sont justifiées pour des animaux extrêmement gras (plus que 5).
+                                                                        Sont exclus les animaux malades ou de très mauvaise qualité.
+                                       En outre, les instructions de Proviande relatives à l'organisation de marchés publics surveillés de bovins sont applicables.
+                                                                                                                                                                                                         WP_CHTAX_Rindvieh.xlsx
+

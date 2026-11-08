@@ -38,6 +38,7 @@ export const SYNC_TABLES = {
     'id', 'valid_from', 'la_t3', 'sm_t3', 'bio_premium', 'fee_per_animal', 'source', 'notes',
     'updated_at', 'deleted_at',
   ],
+  proviande_prices: ['id', 'valid_from', 'week', 'category', 'fleshiness', 'price_sg', 'price_lg', 'source', 'updated_at', 'deleted_at'],
   direct_marketing_settings: [
     'id', 'valid_from', 'butcher', 'fee_per_animal', 'fee_per_kg_carcass',
     'meat_yield_pct', 'disposal_per_kg', 'pack_grams', 'fee_per_pack',
@@ -75,6 +76,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   expenses: new Set(['date']),
   slaughter_results: new Set(['slaughter_date']),
   market_prices: new Set(['valid_from']),
+  proviande_prices: new Set(['valid_from']),
   direct_marketing_settings: new Set(['valid_from']),
   data_history: new Set(),
   medication_reference: new Set(['verified_at']),

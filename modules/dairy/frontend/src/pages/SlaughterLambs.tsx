@@ -9,6 +9,7 @@ import { DEFAULT_SLAUGHTER_SETTINGS, lambMaxMonths, slaughterValue, type Slaught
 import { fmtDate, todayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import { loadSettings } from './LambSelection'
+import { useProviandePrices } from '../lib/proviandePrices'
 
 const settingsKey = (moduleKey: string) => `${moduleKey}_slaughter_lambs`
 
@@ -22,7 +23,7 @@ function loadSlaughterSettings(moduleKey: string): SlaughterSettings {
   return DEFAULT_SLAUGHTER_SETTINGS
 }
 
-const FIELDS: { key: keyof SlaughterSettings; label: string; step: number }[] = [
+const FIELDS: { key: Exclude<keyof SlaughterSettings, 'ownPrices'>; label: string; step: number }[] = [
   { key: 'priceLamb', label: 'Lämmer LA T3, CHF/kg SG', step: 0.05 },
   { key: 'priceSheep', label: 'Schafe SM T3, CHF/kg SG', step: 0.05 },
   { key: 'carcassKg', label: 'Schlachtgewicht, kg', step: 0.5 },
@@ -41,7 +42,13 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
   const today = todayIso()
   const [date, setDate] = useState(today)
-  const [settings, setSettings] = useState(() => loadSlaughterSettings(moduleKey))
+  const [stored, setSettings] = useState(() => loadSlaughterSettings(moduleKey))
+  // Preise: Proviande-Woche, solange keine eigenen gewählt sind
+  const proviande = useProviandePrices('sheep')
+  const settings = useMemo<SlaughterSettings>(
+    () => (!stored.ownPrices && proviande ? { ...stored, priceLamb: proviande.young ?? stored.priceLamb, priceSheep: proviande.adult ?? stored.priceSheep } : stored),
+    [stored, proviande],
+  )
   const [showSettings, setShowSettings] = useState(false)
   const [sex, setSex] = useState<SexFilter>('alle')
   const [onlyReady, setOnlyReady] = useState(false)
@@ -110,6 +117,16 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
 
       {showSettings && (
         <div className="rounded-lg bg-white p-4 shadow-sm print:hidden">
+          {proviande ? (
+            <label className="mb-2 flex items-start gap-2 text-sm text-gray-800">
+              <input type="checkbox" checked={!stored.ownPrices} onChange={(e) => update({ ...stored, ownPrices: !e.target.checked })} className="mt-1 h-5 w-5" />
+              <span>
+                Proviande-Wochenpreise Woche {proviande.week} (ab {fmtDate(proviande.validFrom)}): LA T3 {proviande.young?.toFixed(2) ?? '–'}, SM T3 {proviande.adult?.toFixed(2) ?? '–'} CHF/kg SG
+              </span>
+            </label>
+          ) : (
+            <p className="mb-2 text-xs text-gray-600">Proviande-Wochenpreise noch nicht da (holt der Server automatisch).</p>
+          )}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {FIELDS.map((f) => (
               <label key={f.key} className="flex items-center justify-between gap-2 text-sm text-gray-700">
@@ -117,9 +134,10 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
                 <NumberInput
                   min={0}
                   step={f.step}
-                  value={settings[f.key]}
-                  onChange={(e) => update({ ...settings, [f.key]: Math.max(0, Number(e.target.value) || 0) })}
-                  className="w-24 rounded border border-gray-300 px-2 py-1 text-right"
+                  value={Number(settings[f.key])}
+                  disabled={(f.key === 'priceLamb' || f.key === 'priceSheep') && !!proviande && !stored.ownPrices}
+                  onChange={(e) => update({ ...stored, [f.key]: Math.max(0, Number(e.target.value) || 0) })}
+                  className="w-24 rounded border border-gray-300 px-2 py-1 text-right disabled:bg-gray-100"
                 />
               </label>
             ))}

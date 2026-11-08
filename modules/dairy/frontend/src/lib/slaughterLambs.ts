@@ -13,6 +13,8 @@ export interface SlaughterSettings {
   minAgeMonths: number
   /** Alter, ab dem ein Tier nicht mehr als Lamm zählt, Tage */
   lambMaxDays: number
+  /** eigene Preise statt der Proviande-Wochenpreise (lib/proviandePrices.ts) */
+  ownPrices?: boolean
 }
 
 export const DEFAULT_SLAUGHTER_SETTINGS: SlaughterSettings = {

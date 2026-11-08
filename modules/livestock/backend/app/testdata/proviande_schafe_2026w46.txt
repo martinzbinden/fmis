@@ -1,0 +1,97 @@
+46/2026                 QM-Wochenpreise für Lämmer/Schafe ab Marktplatz (ohne Frachten und Margen für Lieferungen in Schlachtbetriebe)
+                       Prix AQ hebdomadaires pour ovins départ place de marché ( sans frais et marges pour des livraisons franco abattoir)
+Gültig ab:
+                     09.11.2026
+Valables dès:
+Änderung:
+                            -                                                   -0.10                                                                                              -
+Modification:
+                                                LA                                                   SM                                                    WP
+                                                                                                                                                  WEIDELÄMMER
+                          SCHLACHTLÄMMER (bis 420 Tage)                                    SCHAFE (ab 421 Tage)
+                                                                                                                                             AGNEAUX DE PÂTURAGE
+                       AGNEAUX DE BOUCHERIE (jusqu'à 420 jours)                         MOUTONS (à partir de 421 jours)
+                                                                                                                                              (23.0 - 39.0 kg LG / PV)
+    Fleischigkeit       CHF/kg                  A%                 CHF/kg      CHF/kg                 A%              CHF/kg      CHF/kg                    A%                 CHF/kg
+     Charnure          SG / PM                  R%                 LG / PV     SG / PM               R%               LG / PV     SG / PM                  R%                  LG / PV        Erläuterungen zu einigen Abkürzungen:
+         C             14.10                   48                   6.75       7.10                  49                   3.50                                                  5.85          LG = Lebendgewicht
+
+         H             13.80                   47                   6.50       6.70                  48                   3.20                                                  5.60          SG = Schlachtgewicht
+
+         T             13.40                   46                   6.15       6.30                  46                   2.90                                                  5.30          A% = Schlachtausbeute in %
+
+         A             12.90                   45                   5.80       5.80                  44                   2.55                                                  4.50
+         X             10.80                   44                   4.75       5.10                  43                   2.20                                                  3.70
+    Fettgewebe
+    Tissu gras                                                                                                                                                                                Explications de quelques abréviations:
+         1              -1.50                                      -0.70         -                                      -                                                         -           PV = poids vif
+
+         2              -0.40                                      -0.20         -                                      -                                                         -           PM = poids mort
+
+         3                -                                          -           -                                      -                                                         -           R% = rendement à l'abattage en %
+
+         4              -0.90                                      -0.40       -1.10                                  -0.50                                                       -
+         5              -3.00                                      -1.40       -3.00                                  -1.40                                                       -
+Tiere ohne Begleitscheine                                           -0.30                                                 -0.30                                                 -0.30
+für QM, Label oder BIO:
+Animaux sans bulletin d'accompagnement
+pour AQ, label ou BIO:
+
+                            Gewichtsabzüge LG / Déductions de PV                                                                     Gewichtsabzüge LG / Déductions de PV
+                           CHF je zusätzliches kg / par kg supplémentaire                                                           CHF je zusätzliches kg / par kg supplémentaire
+                        43.1 - 48.0 kg:                               -0.10                                                       32.1 - 39.0 kg:                                 -0.10
+                        48.1 - 58.0 kg:      siehe Rückseite / voir au verso                                                         ab 39.1 kg:            = Kat. LA mit Fettklasse 1
+                      ab / dès 58.1 kg:           = Kat. SM / cat. SM                                                              dès 39.1 kg:       = cat. LA avec classe de tissu gras 1
+
+
+                          Abzug Schaffell / Déduction Peau de mouton                                                                        Widderlämmer / Agneaux mâles
+                                 CHF 1.50 pro Tier / par animal                                                                                CHF pro Tier / par animal
+                                                                                                                                   nicht kastriert / non castré :               -50.00
+
+                      Bei stark verschmutzten Tieren und Tieren ohne Teilschur können entsprechende Preisabzüge
+                                           vorgenommen werden (im Minimum CHF 0.10/kg SG).
+                    Des déductions de prix correspondantes peuvent avoir lieu pour les animaux très sales et ceux sans
+                                               tonte partielle (au minimum CHF 0.10/kg PV).
+    Ausgeschlossen sind kranke Tiere und Tiere von sehr schlechter Qualität. Bei extrem überfetten Tieren (Fettklasse grösser als 5) sind höhere Abzüge gerechtfertigt.
+      Sont exclus les animaux malades ou de très mauvaise qualité. Des déductions plus importantes sont justifiées pour des animaux extrêmement gras (plus que 5).
+                                Zudem gelten die Weisungen über die Durchführung von überwachten öffentlichen Schafmärkten von Proviande.
+                        En outre, les instructions de Proviande relatives à l'organisation de marchés publics surveillés de moutons sont applicables.
+
+
+                                                                                                                                                                                                                WP_CHTAX_Schafe.xlsx
+        Gewichtsabzüge für: / Déductions de poids pour:
+                  Schlachtlämmer LA / Agneaux de boucherie LA
+   SG / PM          CHF                                       LG / PV              CHF
+     - 20.5 kg      0.00                                     - 43.0 kg             0.00
+20.6 - 21.0 kg      0.20                                43.1 - 44.0 kg             0.10
+21.1 - 21.5 kg      0.40                                44.1 - 45.0 kg             0.20
+21.6 - 22.0 kg      0.60                                45.1 - 46.0 kg             0.30
+22.1 - 22.5 kg      0.85                                46.1 - 47.0 kg             0.40
+22.6 - 23.0 kg      1.05                                47.1 - 48.0 kg             0.50
+23.1 - 23.5 kg      1.90                                48.1 - 49.0 kg             0.90
+23.6 - 24.0 kg      2.10                                49.1 - 50.0 kg             1.00
+24.1 - 24.5 kg      2.35                                50.1 - 51.0 kg             1.10
+24.6 - 25.0 kg      2.55                                51.1 - 52.0 kg             1.20
+25.1 - 28.0 kg      4.00                                52.1 - 58.0 kg             1.90
+
+LA ab / LA dès 28.1 kg:                                 LA ab / LA dès 58.1 kg:
+werden zum SM-Preis abgerechnet                         sont décomptés au prix SM
+
+                   Weidelämmer WP / Agneaux de pâturage WP
+                                                              LG / PV              CHF
+                                                             - 32.0 kg              0.00
+                                                        32.1 - 33.0 kg              0.10
+                                                        33.1 - 34.0 kg              0.20
+                                                        34.1 - 35.0 kg              0.30
+Widderlämmer / Agneaux mâles                            35.1 - 36.0 kg              0.40
+nicht kastriert / non castré: CHF -50.00                36.1 - 37.0 kg              0.50
+                                                        37.1 - 38.0 kg              0.60
+                                                        38.1 - 39.0 kg              0.70
+                                                                 ab / dès 39.1 kg
+                                                           = LA Fettstufe / tissu gras 1
+
+
+
+
+                                 WP_CHTAX_Schafe.xlsx
+

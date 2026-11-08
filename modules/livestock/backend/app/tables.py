@@ -37,6 +37,10 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "valid_from", "la_t3", "sm_t3", "bio_premium", "fee_per_animal", "source", "notes",
         "updated_at", "deleted_at",
     ],
+    "proviande_prices": [
+        "id", "valid_from", "week", "category", "fleshiness", "price_sg", "price_lg", "source",
+        "updated_at", "deleted_at",
+    ],
     "direct_marketing_settings": [
         "id", "valid_from", "butcher", "fee_per_animal", "fee_per_kg_carcass",
         "meat_yield_pct", "disposal_per_kg", "pack_grams", "fee_per_pack",
@@ -76,6 +80,7 @@ TABLE_AREA: dict[str, str] = {
     "expenses": "livestock:expenses",
     "slaughter_results": "livestock:slaughter",
     "market_prices": "livestock:slaughter",
+    "proviande_prices": "livestock:slaughter",
     "direct_marketing_settings": "livestock:slaughter",
     "data_history": "livestock:history",
     "medication_reference": "livestock:medications",

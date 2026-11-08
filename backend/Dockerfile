@@ -7,6 +7,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# pdftotext für die Proviande-Wochenpreise (modules/livestock/backend/app/proviande.py)
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils && rm -rf /var/lib/apt/lists/*
+
 COPY backend/pyproject.toml ./
 COPY backend/app ./app
 RUN pip install --no-cache-dir .

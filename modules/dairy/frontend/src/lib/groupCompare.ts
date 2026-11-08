@@ -21,6 +21,8 @@ export interface GroupSettings {
   minAgeMonths: number
   /** zählt als Jungtier bis zu diesem Alter (Tage, exklusive) */
   youngMaxDays: number
+  /** eigene Preise statt der Proviande-Wochenpreise (lib/proviandePrices.ts) */
+  ownPrices?: boolean
 }
 
 /** Schafe: Preise und Lamm-Gewicht wie «Lämmer zum Schlachttermin»; Gewicht der Auen offen. */

@@ -20,6 +20,7 @@ from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import dev_seed as livestock_dev_seed
 from modules.tiere.backend.app import dev_seed as tiere_dev_seed
+from modules.livestock.backend.app import proviande as livestock_proviande
 from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
 from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
@@ -73,8 +74,11 @@ async def lifespan(app: FastAPI):
             logging.getLogger("uvicorn.error").info("DEV_SEED: %s Testgruppen in den Tiergruppen angelegt", groups)
     # Schultage aus dem Stundenplan, jede Nacht (modules/betrieb/backend/app/school_timetable.py)
     school = asyncio.create_task(betrieb_school.nightly())
+    # Proviande-Wochenpreise, alle paar Stunden (modules/livestock/backend/app/proviande.py)
+    proviande = asyncio.create_task(livestock_proviande.periodic())
     yield
     school.cancel()
+    proviande.cancel()
     await close_pools()
 
 
@@ -133,6 +137,11 @@ app.include_router(
     wiesenjournal_fertilization.router,
     prefix="/wiesenjournal",
     dependencies=[Depends(require_module_enabled("wiesenjournal"))],
+)
+app.include_router(
+    livestock_proviande.router,
+    prefix="/livestock",
+    dependencies=[Depends(require_module_enabled("livestock"))],
 )
 app.include_router(
     betrieb_machine_files.router,

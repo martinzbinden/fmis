@@ -10,11 +10,12 @@ import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
 import { ActionChips, ActionPanel, eligibleFor, type ListAction } from '../components/ListActions'
 import { loadLambs, nursingByDam } from '../lib/lambs'
+import { useProviandePrices } from '../lib/proviandePrices'
 import { clawStatusByAnimal, loadClawExams } from '../lib/clawHealth'
 import { animalMetrics, bestIndex, DEFAULT_GROUP_SETTINGS, metricDefs, type AnimalMetrics, type GroupSettings } from '../lib/groupCompare'
 import { rankLambs } from '../lib/lambSelection'
 import { loadLambSelection } from '../lib/lambSelectionData'
-import { fmtDate, localTodayIso } from '../lib/format'
+import { fmtAge, fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import { addToWatchlist, createWatchlist, loadWatchlists } from '../lib/watchlists'
 import { loadSettings } from './LambSelection'
@@ -84,7 +85,13 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
     ? { young: 'Lämmer', mothers: 'Auen mit Ablammung', withYoung: '🍼 Auen mit Lämmern', nursing: '🍼 Saugende Lämmer' }
     : { young: 'Kälber/Rinder', mothers: 'Kühe mit Abkalbung', withYoung: '🍼 Kühe mit Kälbern', nursing: '🍼 Saugende Kälber' }
   const { data, loading } = useQuery((pg) => loadData(pg, species, moduleKey), [species, moduleKey])
-  const [settings, setSettings] = useState<GroupSettings>(() => readJson(settingsKey(moduleKey), DEFAULT_GROUP_SETTINGS[species]))
+  const [stored, setSettings] = useState<GroupSettings>(() => readJson(settingsKey(moduleKey), DEFAULT_GROUP_SETTINGS[species]))
+  // Preise: Proviande-Woche, solange keine eigenen gewählt sind
+  const proviande = useProviandePrices(species)
+  const settings = useMemo<GroupSettings>(
+    () => (!stored.ownPrices && proviande ? { ...stored, priceYoung: proviande.young ?? stored.priceYoung, priceAdult: proviande.adult ?? stored.priceAdult } : stored),
+    [stored, proviande],
+  )
   const [showSettings, setShowSettings] = useState(false)
   const [selected, setSelected] = useState<string[]>(() => readJson<{ keys: string[] }>(selectionKey(moduleKey), { keys: ['muetter'] }).keys)
   const [tab, setTab] = useState(0)
@@ -206,15 +213,25 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
 
       {showSettings && (
         <div className="space-y-2 rounded-lg bg-white p-3 text-sm shadow-sm">
+          {proviande ? (
+            <label className="flex items-start gap-2 text-gray-800">
+              <input type="checkbox" checked={!stored.ownPrices} onChange={(e) => updateSettings({ ...stored, ownPrices: !e.target.checked })} className="mt-1 h-5 w-5" />
+              <span>
+                Proviande-Wochenpreise Woche {proviande.week} (ab {fmtDate(proviande.validFrom)}): {proviande.youngLabel} {proviande.young?.toFixed(2) ?? '–'}, {proviande.adultLabel} {proviande.adult?.toFixed(2) ?? '–'} CHF/kg SG
+              </span>
+            </label>
+          ) : (
+            <p className="text-xs text-gray-600">Proviande-Wochenpreise noch nicht da (holt der Server automatisch, im Mastplaner unter Vermarktung sichtbar).</p>
+          )}
           {(
             [
-              ['priceYoung', species === 'sheep' ? 'Lämmer (LA T3), CHF/kg SG' : 'Jungtiere, CHF/kg SG', 0.05],
+              ['priceYoung', species === 'sheep' ? 'Lämmer (LA T3), CHF/kg SG' : 'Kälber (KV T3), CHF/kg SG', 0.05],
               ['carcassYoung', species === 'sheep' ? 'Schlachtgewicht Lamm, kg' : 'Schlachtgewicht Jungtier, kg', 0.5],
-              ['priceAdult', species === 'sheep' ? 'Schafe (SM T3), CHF/kg SG' : 'Kühe, CHF/kg SG', 0.05],
+              ['priceAdult', species === 'sheep' ? 'Schafe (SM T3), CHF/kg SG' : 'Kühe (VK T3), CHF/kg SG', 0.05],
               ['carcassAdult', species === 'sheep' ? 'Schlachtgewicht Aue, kg' : 'Schlachtgewicht Kuh, kg', 0.5],
               ['minAgeMonths', 'Jungtier schlachtreif ab, Monate', 0.5],
               ['youngMaxDays', species === 'sheep' ? 'Lamm bis Alter, Tage' : 'Jungtier bis Alter, Tage', 1],
-            ] as [keyof GroupSettings, string, number][]
+            ] as [Exclude<keyof GroupSettings, 'ownPrices'>, string, number][]
           ).map(([k, l, step]) => (
             <label key={k} className="flex items-center justify-between gap-2 text-gray-700">
               {l}
@@ -223,8 +240,9 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
                 step={step}
                 value={settings[k] ?? ''}
                 placeholder="?"
-                onChange={(e) => updateSettings({ ...settings, [k]: e.target.value === '' ? (k === 'minAgeMonths' || k === 'youngMaxDays' ? DEFAULT_GROUP_SETTINGS[species][k] : null) : Math.max(0, Number(e.target.value) || 0) })}
-                className="w-24 rounded border border-gray-300 px-2 py-1 text-right"
+                disabled={(k === 'priceYoung' || k === 'priceAdult') && !!proviande && !stored.ownPrices}
+                onChange={(e) => updateSettings({ ...stored, [k]: e.target.value === '' ? (k === 'minAgeMonths' || k === 'youngMaxDays' ? DEFAULT_GROUP_SETTINGS[species][k] : null) : Math.max(0, Number(e.target.value) || 0) })}
+                className="w-24 rounded border border-gray-300 px-2 py-1 text-right disabled:bg-gray-100"
               />
             </label>
           ))}
@@ -352,7 +370,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
                     </th>
                   )}
                   {col('name', 'Tier')}
-                  {col('ageMonths', 'Alter Mt.')}
+                  {col('ageMonths', 'Alter')}
                   {col('idxPerformance', 'Idx Leist.')}
                   {col('breedingValue', species === 'sheep' ? 'GZW' : 'ISET')}
                   {col('lambIndex', 'Idx Abst.')}
@@ -392,7 +410,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
                       {m.lame && <span title="lahm"> 🐾</span>}
                       {data!.nursing.has(a.id) && <span title="saugende Junge"> 🍼{data!.nursing.get(a.id)}</span>}
                     </td>
-                    <td className="px-1.5 tabular-nums">{num(m.ageMonths)}</td>
+                    <td className="whitespace-nowrap px-1.5 tabular-nums">{fmtAge(a.birth_date, data!.today)}</td>
                     <td className="px-1.5 tabular-nums">{num(m.idxPerformance)}</td>
                     <td className="px-1.5 tabular-nums">{num(m.breedingValue)}</td>
                     <td className="px-1.5 tabular-nums">{num(m.lambIndex)}</td>
