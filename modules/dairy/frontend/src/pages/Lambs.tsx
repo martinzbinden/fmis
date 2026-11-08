@@ -14,7 +14,7 @@ import { inTransaction } from '../db/transaction'
 import HoldButton from '../components/HoldButton'
 import JournalForm from '../components/JournalForm'
 import { fmtDate, localTodayIso } from '../lib/format'
-import { loadLambs, WEAN_FROM_DAYS, type Lamb } from '../lib/lambs'
+import { loadLambs, unmarkedLabel, WEAN_FROM_DAYS, type Lamb } from '../lib/lambs'
 import { speciesOf } from '../lib/species'
 import type { JournalCategory } from '../types'
 
@@ -29,7 +29,9 @@ const ACTIONS: { key: Exclude<Action, ''>; icon: string; label: string }[] = [
 const JOURNAL: Partial<Record<Action, JournalCategory>> = { fuetterung: 'fuetterung', behandlung: 'behandlung', beobachtung: 'beobachtung' }
 type Status = 'alle' | 'saugend' | 'abgesetzt'
 
-const label = (l: Lamb) => (l.earTag ? `${l.lauf_nr ? `${l.lauf_nr} · ` : ''}${shortEarTag(l.earTag)}` : 'ohne Ohrmarke')
+/** Lamm mit Anzeige: Nummer/Ohrmarke, ohne Ohrmarke der Meldezeitpunkt der Ablammung */
+type Row = Lamb & { title: string }
+const label = (l: Row) => l.title
 
 /** Lämmer (Kälber): Übersicht mit Filtern, Mehrfachauswahl und Aktionen. Eine gewählte
  * Aktion zeigt nur die Tiere, für die sie in Frage kommt. ?aktion=…, ?mutter=<id,…> wählt
@@ -46,7 +48,14 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
     ])
     return { lambs, damLabel: new Map(dams.rows.map((d) => [d.id, d.lauf_nr ?? shortEarTag(d.ear_tag)])) }
   }, [today])
-  const lambs = useMemo(() => data?.lambs ?? [], [data])
+  const lambs = useMemo<Row[]>(
+    () =>
+      (data?.lambs ?? []).map((l) => ({
+        ...l,
+        title: l.earTag ? `${l.lauf_nr ? `${l.lauf_nr} · ` : ''}${shortEarTag(l.earTag)}` : unmarkedLabel(l, l.damId ? (data?.damLabel.get(l.damId) ?? null) : null),
+      })),
+    [data],
+  )
 
   // Tiergruppe je Tier (Modul Tiere, lädt langsamer)
   const [groupOf, setGroupOf] = useState<Map<string, string>>(new Map())
@@ -80,7 +89,7 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
     setPreselected(true)
   }, [data, lambs, params, preselected])
 
-  const eligible = (l: Lamb) => (action === 'absetzen' ? l.nursing : JOURNAL[action] ? !!l.animalId : true)
+  const eligible = (l: Lamb) => (action === 'absetzen' ? l.nursing : true)
   const visible = lambs.filter(
     (l) =>
       eligible(l) &&
@@ -97,7 +106,6 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
           .includes(search.toLowerCase().replace(/[.\s]/g, ''))),
   )
   const chosen = visible.filter((l) => selected.has(l.key))
-  const hiddenUntagged = JOURNAL[action] ? lambs.filter((l) => !l.animalId && (status === 'alle' || l.nursing === (status === 'saugend'))).length : 0
   const groupNames = [...new Set(groupOf.values())].sort()
   const allSelected = visible.length > 0 && visible.every((l) => selected.has(l.key))
 
@@ -190,7 +198,7 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
                     <input type="checkbox" checked={selected.has(l.key)} onChange={() => toggle(l.key)} className="mt-1 h-5 w-5 shrink-0" />
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-x-2">
-                        <b className={l.earTag ? 'text-gray-900' : 'italic text-gray-600'}>{label(l)}</b>
+                        <b className={l.earTag ? 'text-gray-900' : 'font-semibold text-gray-700'}>{label(l)}</b>
                         <span className="text-gray-700">{l.sex === 'w' ? '♀' : l.sex === 'm' ? '♂' : ''}</span>
                         <span className="text-sm text-gray-700">{l.ageDays} T.</span>
                         {l.nursing ? (
@@ -202,8 +210,9 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
                         )}
                       </span>
                       <span className="block text-xs text-gray-600">
-                        {l.damId ? `Mutter ${data.damLabel.get(l.damId) ?? '?'}` : 'Mutter unbekannt'}
-                        {l.litter > 1 ? ` · Wurf ${l.litter}` : ''}
+                        {/* ohne Ohrmarke stehen Mutter und Wurf schon in der Kennung */}
+                        {!l.earTag ? 'ohne Ohrmarke' : l.damId ? `Mutter ${data.damLabel.get(l.damId) ?? '?'}` : 'Mutter unbekannt'}
+                        {l.earTag && l.litter > 1 ? ` · Wurf ${l.litter}` : ''}
                         {l.birthWeight != null ? ` · Geburt ${l.birthWeight} kg` : ''}
                         {last ? ` · ${last.kg} kg am ${fmtDate(last.date)}` : ''}
                         {l.gainPerDay != null ? ` (${l.gainPerDay} g/Tag)` : ''}
@@ -220,7 +229,6 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
               )
             })}
           </ul>
-          {hiddenUntagged > 0 && <p className="border-t p-3 text-xs text-gray-600">{hiddenUntagged} ohne Ohrmarke hier nicht wählbar (Journal nur mit Ohrmarke). <Link to="../ohrmarken" relative="path" className="text-brand-700">Ohrmarken nachtragen →</Link></p>}
         </section>
       )}
 
@@ -240,6 +248,7 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
               <JournalForm
                 key={action}
                 animalIds={chosen.flatMap((l) => (l.animalId ? [l.animalId] : []))}
+                unmarked={chosen.flatMap((l) => (!l.animalId && l.offspringId ? [{ offspringId: l.offspringId, label: `Lamm ohne Ohrmarke, ${l.title}` }] : []))}
                 defaultCategory={JOURNAL[action]}
                 defaultText={action === 'fuetterung' ? 'Schoppen' : ''}
                 onSaved={() => {
@@ -255,7 +264,7 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
   )
 }
 
-function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey: string; lambs: Lamb[]; word: { one: string; many: string }; onDone: () => void }) {
+function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey: string; lambs: Row[]; word: { one: string; many: string }; onDone: () => void }) {
   const db = useDb()
   const today = localTodayIso()
   const sheep = speciesOf(moduleKey) === 'sheep'
@@ -324,7 +333,7 @@ function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey:
   )
 }
 
-function WeighPanel({ lambs: chosenLambs, onDone }: { lambs: Lamb[]; onDone: () => void }) {
+function WeighPanel({ lambs: chosenLambs, onDone }: { lambs: Row[]; onDone: () => void }) {
   const db = useDb()
   const today = localTodayIso()
   const [date, setDate] = useState(today)

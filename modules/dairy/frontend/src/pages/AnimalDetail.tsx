@@ -26,7 +26,7 @@ import PedigreeTree, { loadPedigreeData, pedigreeLink } from '../components/Pedi
 import CertificateDetailsView from '../components/CertificateDetails'
 import { hasCertificateDetails, loadCertificateDetails } from '../lib/certificateData'
 import { loadSireOptions, sireLabel } from '../lib/sires'
-import { fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
+import { fmtAge, fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { loadLambs } from '../lib/lambs'
 import type { AnimalJournalEntry, LactationSummary } from '../types'
@@ -222,7 +222,6 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const f = ctx.fertility
   const p = ctx.performance
   const reasons = a.sex !== 'm' ? cullingReasons(cullingInput(ctx, species), thresholds) : []
-  const ageYears = a.birth_date ? ((Date.now() - Date.parse(a.birth_date)) / (365.25 * 86_400_000)).toFixed(1) : null
   const offspringKey = animalKey(a.ear_tag) ?? a.ear_tag
   const sccLimit = thresholds.sccHighTest
   const today = localTodayIso()
@@ -254,7 +253,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         <p className="text-sm text-gray-500">
           {a.ear_tag}
           {a.breed_code ? ` · ${a.breed_code}` : ''} · geb. {fmtDate(a.birth_date)}
-          {ageYears ? ` (${ageYears} J.)` : ''} · {a.status}
+          {a.birth_date ? ` (${fmtAge(a.birth_date, localTodayIso())})` : ''} · {a.status}
         </p>
       </div>
 

@@ -15,10 +15,13 @@ export const NURSING_MAX_DAYS = 120
 export const LAMB_MAX_DAYS = 365
 
 export interface LambInput {
-  births: { id: string; dam_id: string; birth_date: string }[]
+  /** reported_at: wann die Ablammung gemeldet wurde (Erfassung), für Lämmer ohne Ohrmarke */
+  births: { id: string; dam_id: string; birth_date: string; reported_at?: string | null }[]
   offspring: {
     id: string
     birth_id: string
+    /** Reihenfolge im Wurf */
+    import_key?: string | null
     animal_key: string | null
     sex: 'w' | 'm' | null
     stillborn: boolean
@@ -45,6 +48,10 @@ export interface Lamb {
   damId: string | null
   /** Wurf inkl. toter */
   litter: number
+  /** Nummer im Wurf (1 …), für Lämmer ohne Ohrmarke */
+  litterIndex: number
+  /** Meldung der Ablammung (Zeitpunkt der Erfassung), ISO */
+  reportedAt: string | null
   birthWeight: number | null
   /** älteste zuerst */
   weights: { date: string; kg: number }[]
@@ -57,8 +64,8 @@ export interface Lamb {
 export function buildLambs(input: LambInput, today: string): Lamb[] {
   const animalByKey = new Map(input.animals.map((a) => [animalKey(a.ear_tag), a]))
   const birthById = new Map(input.births.map((b) => [b.id, b]))
-  const litterSize = new Map<string, number>()
-  for (const o of input.offspring) litterSize.set(o.birth_id, (litterSize.get(o.birth_id) ?? 0) + 1)
+  const litters = new Map<string, string[]>()
+  for (const o of [...input.offspring].sort((a, b) => (a.import_key ?? a.id).localeCompare(b.import_key ?? b.id))) litters.set(o.birth_id, [...(litters.get(o.birth_id) ?? []), o.id])
   const wean = (offspringId: string | null, animalId: string | null) =>
     input.weanings
       .filter((w) => (offspringId && w.offspring_id === offspringId) || (animalId && w.animal_id === animalId))
@@ -110,14 +117,16 @@ export function buildLambs(input: LambInput, today: string): Lamb[] {
       sex: o.sex ?? a?.sex ?? null,
       birthDate: b.birth_date,
       damId: b.dam_id,
-      litter: litterSize.get(o.birth_id) ?? 1,
+      litter: litters.get(o.birth_id)?.length ?? 1,
+      litterIndex: (litters.get(o.birth_id)?.indexOf(o.id) ?? 0) + 1,
+      reportedAt: b.reported_at ?? null,
       birthWeight: o.birth_weight_kg,
     })
   }
   // Jungtiere ohne erfasste Geburt (z.B. nur aus dem TVD-Bestand)
   for (const a of input.animals) {
     if (seen.has(a.id) || a.status !== 'aktiv' || !a.birth_date) continue
-    add({ key: a.id, offspringId: null, animalId: a.id, earTag: a.ear_tag, lauf_nr: a.lauf_nr, name: a.name, sex: a.sex, birthDate: a.birth_date, damId: null, litter: 1, birthWeight: null })
+    add({ key: a.id, offspringId: null, animalId: a.id, earTag: a.ear_tag, lauf_nr: a.lauf_nr, name: a.name, sex: a.sex, birthDate: a.birth_date, damId: null, litter: 1, litterIndex: 1, reportedAt: null, birthWeight: null })
   }
   return out.sort((a, b) => a.birthDate.localeCompare(b.birthDate) || (a.lauf_nr ?? a.earTag ?? '').localeCompare(b.lauf_nr ?? b.earTag ?? '', 'de', { numeric: true }))
 }
@@ -131,9 +140,14 @@ export function nursingByDam(lambs: Lamb[]): Map<string, number> {
 
 export async function loadLambs(pg: PGlite, today: string): Promise<Lamb[]> {
   const [births, offspring, animals, weanings, weights] = await Promise.all([
-    pg.query<Record<string, unknown>>('select id, dam_id, birth_date from births where deleted_at is null'),
+    // Meldung = erste Erfassung im Verlauf, sonst letzte Änderung der Geburt
     pg.query<Record<string, unknown>>(
-      'select id, birth_id, animal_key, sex, stillborn, died_24h, died_on, birth_weight_kg from birth_offspring where deleted_at is null',
+      `select b.id, b.dam_id, b.birth_date, coalesce(h.first_at, b.updated_at) as reported_at from births b
+       left join (select row_id, min(changed_at) as first_at from data_history where table_name = 'births' group by row_id) h on h.row_id = b.id
+       where b.deleted_at is null`,
+    ),
+    pg.query<Record<string, unknown>>(
+      'select id, birth_id, import_key, animal_key, sex, stillborn, died_24h, died_on, birth_weight_kg from birth_offspring where deleted_at is null',
     ),
     pg.query<Record<string, unknown>>('select id, ear_tag, lauf_nr, name, birth_date, sex, status from animals where deleted_at is null'),
     pg.query<Record<string, unknown>>('select offspring_id, animal_id, wean_date from weanings where deleted_at is null'),
@@ -142,10 +156,16 @@ export async function loadLambs(pg: PGlite, today: string): Promise<Lamb[]> {
   const s = (v: unknown) => (v == null ? null : String(v))
   return buildLambs(
     {
-      births: births.rows.map((b) => ({ id: String(b.id), dam_id: String(b.dam_id), birth_date: isoDate(b.birth_date)! })),
+      births: births.rows.map((b) => ({
+        id: String(b.id),
+        dam_id: String(b.dam_id),
+        birth_date: isoDate(b.birth_date)!,
+        reported_at: b.reported_at instanceof Date ? b.reported_at.toISOString() : s(b.reported_at),
+      })),
       offspring: offspring.rows.map((o) => ({
         id: String(o.id),
         birth_id: String(o.birth_id),
+        import_key: s(o.import_key),
         animal_key: s(o.animal_key),
         sex: (o.sex as 'w' | 'm' | null) ?? null,
         stillborn: Boolean(o.stillborn),
@@ -172,4 +192,14 @@ export async function loadLambs(pg: PGlite, today: string): Promise<Lamb[]> {
 /** Mütter mit saugenden Lämmern (für Kennzeichen 🍼 und Filter in anderen Listen). */
 export async function loadNursingDams(pg: PGlite, today: string): Promise<Map<string, number>> {
   return nursingByDam(await loadLambs(pg, today))
+}
+
+/** Kennung eines Lamms ohne Ohrmarke: Meldezeitpunkt der Ablammung (Tag, Uhrzeit), Nummer im
+ * Wurf und Mutter — z.B. «gemeldet 2.11. 14:32 · 2/3 · Mutter 101». */
+export function unmarkedLabel(l: Pick<Lamb, 'reportedAt' | 'birthDate' | 'litter' | 'litterIndex'>, damLabel: string | null): string {
+  const d = l.reportedAt ? new Date(l.reportedAt) : null
+  const when = d
+    ? `gemeldet ${d.getDate()}.${d.getMonth() + 1}. ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    : `geboren ${Number(l.birthDate.slice(8, 10))}.${Number(l.birthDate.slice(5, 7))}.`
+  return [when, l.litter > 1 ? `${l.litterIndex}/${l.litter}` : null, damLabel ? `Mutter ${damLabel}` : null].filter(Boolean).join(' · ')
 }

@@ -66,7 +66,8 @@ export function fmtAge(birth: unknown, today: string): string {
   if (!b) return 'Alter ?'
   const day = 86_400_000
   const months = Math.floor((Date.parse(today) - Date.parse(b)) / (30.4375 * day))
-  if (months < 1) return `${Math.round((Date.parse(today) - Date.parse(b)) / day)} T.`
+  // junge Tiere bis 3 Monate in Tagen
+  if (months < 3) return `${Math.round((Date.parse(today) - Date.parse(b)) / day)} T.`
   if (months < 24) return `${months} Mt.`
   return `${Math.floor(months / 12)} J. ${months % 12} Mt.`
 }

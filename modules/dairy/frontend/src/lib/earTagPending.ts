@@ -4,6 +4,7 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey, earTagProblem } from '@fmis/core/earTag'
 import { softDeleteRow, upsertRow } from '../db/write'
+import { notSupersededSql } from './journal'
 import { fmtDate, isoDate } from './format'
 import { addOffspringAnimal, compactEarTag, pedigreeEnsurer } from './recordBirth'
 import type { Preselection } from './lambRecommendation'
@@ -169,10 +170,38 @@ export async function assignEarTag(
   // Vorauswahl nach der Geburt (lib/birthFollowUp.ts) gilt jetzt für das Tier
   const { rows: chosen } = await pg.query<Record<string, unknown>>('select * from lamb_selection where offspring_id = $1 and deleted_at is null', [p.id])
   for (const s of chosen) await upsertRow(pg, 'lamb_selection', { ...s, id: String(s.id), animal_key: key })
-  if (check.existing) return { animalId: check.existing.id, created: false }
-  const ensurePedigree = await pedigreeEnsurer(pg)
-  const animalId = await addOffspringAnimal(pg, ensurePedigree, { earTag, key, sex: input.sex, birth_date: p.birth_date, dam, sireKey: p.sire_key })
-  return { animalId, created: true }
+  let result: { animalId: string; created: boolean }
+  if (check.existing) result = { animalId: check.existing.id, created: false }
+  else {
+    const ensurePedigree = await pedigreeEnsurer(pg)
+    result = { animalId: await addOffspringAnimal(pg, ensurePedigree, { earTag, key, sex: input.sex, birth_date: p.birth_date, dam, sireKey: p.sire_key }), created: true }
+  }
+  await adoptJournal(pg, p.id, result.animalId, earTag)
+  return result
+}
+
+/** Einträge, die vor der Ohrmarke für das Lamm erfasst wurden (schema/0028), gehen ans Tier —
+ * als Korrektur (neuer Eintrag mit corrects_id), der alte bleibt unverändert. So zählen
+ * Behandlungen und Absetzfristen beim Tier, und die Korrekturfrist bleibt gewahrt. */
+export async function adoptJournal(pg: PGlite, offspringId: string, animalId: string, earTag: string): Promise<number> {
+  const { rows } = await pg.query<Record<string, unknown>>(
+    `select * from animal_journal j where j.offspring_id = $1 and j.animal_id is null and j.deleted_at is null and ${notSupersededSql('j')}`,
+    [offspringId],
+  )
+  for (const r of rows) {
+    await upsertRow(pg, 'animal_journal', {
+      ...r,
+      id: crypto.randomUUID(),
+      animal_id: animalId,
+      ear_tag: earTag,
+      entry_date: isoDate(r.entry_date),
+      last_date: isoDate(r.last_date),
+      release_milk_date: isoDate(r.release_milk_date),
+      release_meat_date: isoDate(r.release_meat_date),
+      corrects_id: String(r.id),
+    } as never)
+  }
+  return rows.length
 }
 
 /** Vor dem Markieren verendet: schliesst die Pendenz. */

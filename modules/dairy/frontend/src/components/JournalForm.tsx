@@ -5,6 +5,7 @@ import { inTransaction } from '../db/transaction'
 import { JOURNAL_CATEGORIES, categoryLabel, journalSummary } from '../lib/journal'
 import { localTodayIso } from '../lib/format'
 import TreatmentForm from './TreatmentForm'
+import type { UnmarkedYoung } from '../lib/treatmentData'
 import DiagnosisSelect from './DiagnosisSelect'
 import PhotoPicker from './PhotoPicker'
 import { useLocation } from 'react-router-dom'
@@ -26,6 +27,7 @@ const labelOf = (key: string) => diagnosisByKey(key)?.label ?? ''
  * eine Korrektur als NEUEN Eintrag — der alte bleibt unverändert stehen. */
 export default function JournalForm({
   animalIds,
+  unmarked = [],
   onSaved,
   caseId,
   corrects,
@@ -33,6 +35,8 @@ export default function JournalForm({
   defaultText = '',
 }: {
   animalIds: string[]
+  /** Lämmer ohne Ohrmarke (schema/0028): Eintrag mit offspring_id */
+  unmarked?: UnmarkedYoung[]
   onSaved: () => void
   caseId?: string
   corrects?: AnimalJournalEntry
@@ -55,7 +59,7 @@ export default function JournalForm({
   const hasDiagnosis = category === 'krankheit'
 
   async function save() {
-    if (animalIds.length === 0) return setError('Zuerst ein Tier wählen.')
+    if (animalIds.length + unmarked.length === 0) return setError('Zuerst ein Tier wählen.')
     if (!hasDiagnosis && !text.trim()) return setError('Bitte eine Bemerkung erfassen.')
     if (date > localTodayIso()) return setError('Das Datum liegt in der Zukunft.')
     setSaving(true)
@@ -74,13 +78,19 @@ export default function JournalForm({
       const written: { id: string; animalId: string; caseId: string | null }[] = []
       await undoAction(photos.length ? `${categoryLabel(category)} mit ${photos.length} Foto${photos.length > 1 ? 's' : ''}` : undefined, async () => {
         await inTransaction(db, async (tx) => {
-          for (const animalId of animalIds) {
+          const targets = [
+            ...animalIds.map((animalId) => ({ animalId: animalId as string | null, offspringId: null as string | null, name: null as string | null })),
+            ...unmarked.map((u) => ({ animalId: null, offspringId: u.offspringId, name: u.label })),
+          ]
+          for (const { animalId, offspringId, name } of targets) {
             const id = crypto.randomUUID()
             const caseIdOf = corrects?.case_id ?? caseId ?? (category === 'krankheit' ? crypto.randomUUID() : null)
-            written.push({ id, animalId, caseId: caseIdOf })
+            if (animalId) written.push({ id, animalId, caseId: caseIdOf })
             await upsertRow(tx, 'animal_journal', {
               id,
               animal_id: animalId,
+              offspring_id: offspringId,
+              ...(name ? { animal_name: name } : {}),
               entry_date: date,
               source: 'manual',
               text: text.trim() || journalSummary(fields),
@@ -128,7 +138,7 @@ export default function JournalForm({
         ))}
       </div>
       {isTreatment ? (
-        <TreatmentForm animalIds={animalIds} onSaved={onSaved} caseId={caseId} corrects={corrects} />
+        <TreatmentForm animalIds={animalIds} unmarked={unmarked} onSaved={onSaved} caseId={caseId} corrects={corrects} />
       ) : (
         <>
           <label className="block text-sm text-gray-600">
@@ -152,7 +162,7 @@ export default function JournalForm({
               <input value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} placeholder="z.B. Mastitis hinten links" className={input} />
             </label>
           )}
-          <PhotoPicker photos={photos} onChange={setPhotos} disabledReason={animalIds.length > 1 ? 'Fotos nur bei einem einzelnen Tier' : null} />
+          <PhotoPicker photos={photos} onChange={setPhotos} disabledReason={animalIds.length + unmarked.length > 1 ? 'Fotos nur bei einem einzelnen Tier' : unmarked.length ? 'Fotos erst mit Ohrmarke' : null} />
           <label className="block text-sm text-gray-600">
             {hasDiagnosis ? 'Bemerkung (optional)' : 'Bemerkung'}
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} className={input} />
@@ -161,10 +171,10 @@ export default function JournalForm({
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || animalIds.length === 0}
+            disabled={saving || animalIds.length + unmarked.length === 0}
             className="w-full rounded-lg bg-brand-700 py-3 text-base font-semibold text-white disabled:opacity-50"
           >
-            {saving ? 'Speichere…' : corrects ? 'Korrektur speichern' : animalIds.length > 1 ? `Für ${animalIds.length} Tiere speichern` : 'Speichern'}
+            {saving ? 'Speichere…' : corrects ? 'Korrektur speichern' : animalIds.length + unmarked.length > 1 ? `Für ${animalIds.length + unmarked.length} Tiere speichern` : 'Speichern'}
           </button>
         </>
       )}

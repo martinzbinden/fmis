@@ -39,7 +39,7 @@ function csvEscape(v: unknown): string {
 }
 
 function ageText(days: number): string {
-  return days < 60 ? `${days} T.` : `${(days / 30.4375).toLocaleString('de-CH', { maximumFractionDigits: 1 })} Mt.`
+  return days < 91 ? `${days} T.` : `${(days / 30.4375).toLocaleString('de-CH', { maximumFractionDigits: 1 })} Mt.`
 }
 
 /** Jungtier-Selektion: Rangliste der weiblichen Jungtiere nach dem Index

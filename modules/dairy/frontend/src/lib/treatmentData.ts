@@ -10,8 +10,15 @@ import { reminderRow } from './reminders'
 import { releaseDate, stableUuid, type ImportedTreatment } from './treatments'
 import type { TemplateItem, TreatmentTemplate } from '../types'
 
+/** Jungtier ohne Ohrmarke (schema/0028): Eintrag mit offspring_id, Bezeichnung in animal_name */
+export interface UnmarkedYoung {
+  offspringId: string
+  label: string
+}
+
 export interface TreatmentInput {
   animalIds: string[]
+  unmarked?: UnmarkedYoung[]
   date: string
   time: string | null
   body_system: string | null
@@ -43,8 +50,12 @@ const lastDateOf = (date: string, days: number | null) => {
 export function treatmentRows(input: TreatmentInput, newId: () => string = () => crypto.randomUUID()) {
   // ohne Präparat: eine Zeile je Tier (Behandlung ohne Tierarzneimittel, keine Absetzfrist)
   const items = input.items.length ? input.items : [{ medication: '', dose: '', applications: null, days: 1, milk_days: null, meat_days: null }]
-  return input.animalIds.flatMap((animalId) => {
-    const caseId = input.animalIds.length === 1 && input.caseId ? input.caseId : newId()
+  const targets: { animalId: string | null; offspringId: string | null; name: string | null }[] = [
+    ...input.animalIds.map((animalId) => ({ animalId, offspringId: null, name: null })),
+    ...(input.unmarked ?? []).map((u) => ({ animalId: null, offspringId: u.offspringId, name: u.label })),
+  ]
+  return targets.flatMap(({ animalId, offspringId, name }) => {
+    const caseId = targets.length === 1 && input.caseId ? input.caseId : newId()
     return items.map((it, index) => {
       const last = lastDateOf(input.date, it.days)
       const fields = {
@@ -56,6 +67,8 @@ export function treatmentRows(input: TreatmentInput, newId: () => string = () =>
       return {
         id: newId(),
         animal_id: animalId,
+        offspring_id: offspringId,
+        ...(name ? { animal_name: name } : {}),
         entry_date: input.date,
         source: 'manual',
         text: input.notes?.trim() || journalSummary(fields),
@@ -77,14 +90,14 @@ export function treatmentRows(input: TreatmentInput, newId: () => string = () =>
         diagnosis_code: input.diagnosis_code ?? null,
         case_id: caseId,
         import_key: null,
-        corrects_id: index === 0 && input.animalIds.length === 1 ? (input.correctsId ?? null) : null,
+        corrects_id: index === 0 && targets.length === 1 ? (input.correctsId ?? null) : null,
       }
     })
   })
 }
 
 /** Gibt die geschriebenen Zeilen zurück (id, Tier, Fall — z.B. für Fotos). */
-export async function saveTreatment(db: PGlite, input: TreatmentInput): Promise<{ id: string; animal_id: string; case_id: string }[]> {
+export async function saveTreatment(db: PGlite, input: TreatmentInput): Promise<{ id: string; animal_id: string | null; case_id: string }[]> {
   const rows = treatmentRows(input)
   const caseIds = [...new Set(rows.map((r) => r.case_id))]
   await inTransaction(db, async (tx) => {
@@ -101,7 +114,8 @@ export async function saveTreatment(db: PGlite, input: TreatmentInput): Promise<
     if (input.followup)
       for (const caseId of caseIds) {
         const animalId = rows.find((r) => r.case_id === caseId)!.animal_id
-        await upsertRow(tx, 'reminders', reminderRow(animalId, caseId, input.followup.date, input.followup.title))
+        // Erinnerung nur für Tiere mit Ohrmarke
+        if (animalId) await upsertRow(tx, 'reminders', reminderRow(animalId, caseId, input.followup.date, input.followup.title))
       }
   })
   return rows.map((r) => ({ id: r.id, animal_id: r.animal_id, case_id: r.case_id }))

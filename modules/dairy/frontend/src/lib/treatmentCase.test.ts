@@ -43,4 +43,11 @@ describe('treatmentRows', () => {
     expect(rows[0].release_milk_date).toBeNull()
     expect(rows[0].text).toBe('Mastitis')
   })
+  it('Lamm ohne Ohrmarke: Zeile mit Bezug aufs Jungtier und Kennung statt Tier', () => {
+    const rows = treatmentRows({ ...input, animalIds: ['a1'], unmarked: [{ offspringId: 'o1', label: 'Lamm ohne Ohrmarke, gemeldet 2.11. 14:32' }] }, newId)
+    expect(rows.map((r) => [r.animal_id, r.offspring_id, r.animal_name ?? null])).toEqual([
+      ['a1', null, null],
+      [null, 'o1', 'Lamm ohne Ohrmarke, gemeldet 2.11. 14:32'],
+    ])
+  })
 })

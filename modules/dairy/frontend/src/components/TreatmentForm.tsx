@@ -10,7 +10,7 @@ import { savePhotos, type PreparedPhoto } from '../lib/photos'
 import { diagnosisByKey } from '../lib/diagnoses'
 import { localTodayIso } from '../lib/format'
 import { journalSummary } from '../lib/journal'
-import { loadTreatmentContext, saveTemplate, saveTreatment } from '../lib/treatmentData'
+import { loadTreatmentContext, saveTemplate, saveTreatment, type UnmarkedYoung } from '../lib/treatmentData'
 import { DEFAULT_WITHDRAWAL_FACTOR, parseItems } from '../lib/treatments'
 import { QUICK_DAYS, dueIn } from '../lib/reminders'
 import type { AnimalJournalEntry, TemplateItem, TreatmentTemplate } from '../types'
@@ -44,11 +44,14 @@ function itemOf(e: AnimalJournalEntry): TemplateItem {
  * anwendende Person, Abgabestelle. Mehrere Tiere = je Tier ein Fall. */
 export default function TreatmentForm({
   animalIds,
+  unmarked = [],
   onSaved,
   caseId,
   corrects,
 }: {
   animalIds: string[]
+  /** Lämmer ohne Ohrmarke (schema/0028) */
+  unmarked?: UnmarkedYoung[]
   onSaved: () => void
   /** Folgebehandlung: neue Zeilen kommen in diesen bestehenden Fall */
   caseId?: string
@@ -98,7 +101,7 @@ export default function TreatmentForm({
   }
 
   async function save() {
-    if (animalIds.length === 0) return setError('Zuerst ein Tier wählen.')
+    if (animalIds.length + unmarked.length === 0) return setError('Zuerst ein Tier wählen.')
     if (!diagnosis.trim()) return setError('Indikation / Befund angeben (Pflicht im Behandlungsjournal).')
     if (date > localTodayIso()) return setError('Das Datum liegt in der Zukunft.')
     const missing = items.find((i) => i.hint && !i.medication.trim())
@@ -120,6 +123,7 @@ export default function TreatmentForm({
       await undoAction(photos.length ? `Behandlung mit ${photos.length} Foto${photos.length > 1 ? 's' : ''}` : undefined, async () => {
         const written = await saveTreatment(db, {
           animalIds,
+          unmarked,
           date,
           time: time || null,
           body_system: bodySystem.trim() || null,
@@ -134,7 +138,7 @@ export default function TreatmentForm({
           correctsId: corrects?.id,
           followup: followup.on ? { date: followup.date, title: followup.title.trim() || `Folgebehandlung: ${diagnosis.trim()}` } : null,
         })
-        if (photos.length && written[0]) await savePhotos(db, moduleKey, photos, { animalId: written[0].animal_id, journalId: written[0].id, caseId: written[0].case_id })
+        if (photos.length && written[0]?.animal_id) await savePhotos(db, moduleKey, photos, { animalId: written[0].animal_id, journalId: written[0].id, caseId: written[0].case_id })
       })
       if (favorite.on && favorite.title.trim())
         await saveTemplate(db, {
@@ -240,7 +244,7 @@ export default function TreatmentForm({
           <option key={p} value={p} />
         ))}
       </datalist>
-      <PhotoPicker photos={photos} onChange={setPhotos} disabledReason={animalIds.length > 1 ? 'Fotos nur bei einem einzelnen Tier' : null} />
+      <PhotoPicker photos={photos} onChange={setPhotos} disabledReason={animalIds.length + unmarked.length > 1 ? 'Fotos nur bei einem einzelnen Tier' : unmarked.length ? 'Fotos erst mit Ohrmarke' : null} />
       <label className="block text-sm text-gray-600">
         Bemerkung (optional)
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={input} />
@@ -299,10 +303,10 @@ export default function TreatmentForm({
       <button
         type="button"
         onClick={() => void save()}
-        disabled={saving || animalIds.length === 0}
+        disabled={saving || animalIds.length + unmarked.length === 0}
         className="w-full rounded-lg bg-brand-700 py-3 text-base font-semibold text-white disabled:opacity-50"
       >
-        {saving ? 'Speichere…' : noMedOk && !items.some((i) => i.medication.trim()) ? 'Ohne Präparat speichern' : corrects ? 'Korrektur speichern' : caseId ? 'Folgebehandlung speichern' : animalIds.length > 1 ? `Behandlung für ${animalIds.length} Tiere speichern` : 'Behandlung speichern'}
+        {saving ? 'Speichere…' : noMedOk && !items.some((i) => i.medication.trim()) ? 'Ohne Präparat speichern' : corrects ? 'Korrektur speichern' : caseId ? 'Folgebehandlung speichern' : animalIds.length + unmarked.length > 1 ? `Behandlung für ${animalIds.length + unmarked.length} Tiere speichern` : 'Behandlung speichern'}
       </button>
     </div>
   )

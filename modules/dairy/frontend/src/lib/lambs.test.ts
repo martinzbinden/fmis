@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildLambs, nursingByDam, type LambInput } from './lambs'
+import { buildLambs, nursingByDam, unmarkedLabel, type LambInput } from './lambs'
 
 const TODAY = '2026-11-08'
 const base = (): LambInput => ({
@@ -56,6 +56,11 @@ describe('buildLambs', () => {
     input.animals[0].birth_date = '2019-01-01'
     const l = buildLambs(input, TODAY).find((x) => x.key === 'o1')!
     expect(l.animalId).toBeNull()
+  })
+
+  it('kennzeichnet Lämmer ohne Ohrmarke mit Meldezeitpunkt, Nummer im Wurf und Mutter', () => {
+    expect(unmarkedLabel({ reportedAt: '2026-11-02T13:32:00', birthDate: '2026-11-02', litter: 3, litterIndex: 2 }, '101')).toBe('gemeldet 2.11. 13:32 · 2/3 · Mutter 101')
+    expect(unmarkedLabel({ reportedAt: null, birthDate: '2026-11-02', litter: 1, litterIndex: 1 }, null)).toBe('geboren 2.11.')
   })
 
   it('lässt abgegangene Tiere weg', () => {
