@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { herdLocator, refreshHerdData } from '@fmis/core/animals'
 import { useDb } from '@fmis/core/DbContext'
@@ -45,7 +45,6 @@ async function loadData(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: stri
 }
 
 const settingsKey = (k: string) => `${k}_group_compare`
-const selectionKey = (k: string) => `${k}_group_compare_groups`
 function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key)
@@ -66,7 +65,13 @@ interface Group {
   key: string
   name: string
   ids: string[]
+  kind: 'fest' | 'herde' | 'liste'
 }
+const KINDS: [Group['kind'], string][] = [
+  ['fest', 'Übersicht'],
+  ['herde', 'Tiergruppen'],
+  ['liste', 'Merklisten'],
+]
 type HerdGroups = { id: string; name: string; animalIds: string[] }[]
 
 /** Leistungsseite für die Tiere einer Gruppe; «Alle aktiven» ohne Einschränkung. */
@@ -77,7 +82,9 @@ function performanceLink(g: Group): string {
 const COLORS = ['border-sky-600 bg-sky-600', 'border-amber-600 bg-amber-600', 'border-violet-600 bg-violet-600', 'border-teal-700 bg-teal-700']
 const label = (a: Animal) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTag(a.ear_tag)}`
 
-/** Gruppen: feste, Tiergruppen (Modul Tiere) und Merklisten nebeneinander vergleichen. */
+/** Gruppen: Liste der festen Gruppen, Tiergruppen (Modul Tiere) und Merklisten; ein Tipp zeigt
+ * die Tiere einer Gruppe mit Aktionen (?gruppe=…), «Vergleichen» die Mittelwerte mehrerer
+ * Gruppen nebeneinander (?vergleich=a,b). */
 export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const species = speciesOf(moduleKey)
@@ -93,8 +100,11 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
     [stored, proviande],
   )
   const [showSettings, setShowSettings] = useState(false)
-  const [selected, setSelected] = useState<string[]>(() => readJson<{ keys: string[] }>(selectionKey(moduleKey), { keys: ['muetter'] }).keys)
-  const [tab, setTab] = useState(0)
+  const [params, setParams] = useSearchParams()
+  const openKey = params.get('gruppe')
+  const compareKeys = (params.get('vergleich') ?? '').split(',').filter(Boolean)
+  const [comparing, setComparing] = useState(false)
+  const [marked, setMarked] = useState<string[]>([])
   const [building, setBuilding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newIds, setNewIds] = useState<string[]>([])
@@ -120,10 +130,10 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
     setSettings(next)
     writeJson(settingsKey(moduleKey), next)
   }
-  function select(keys: string[]) {
-    setSelected(keys)
-    writeJson(selectionKey(moduleKey), { keys })
-    setTab((t) => Math.min(t, Math.max(0, keys.length - 1)))
+  function open(key: string) {
+    setAction('')
+    setPicked(new Set())
+    setParams({ gruppe: key })
   }
 
   const active = useMemo(() => [...(data?.context.values() ?? [])].filter((c) => c.animal.status === 'aktiv'), [data])
@@ -133,24 +143,25 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
     const youngDays = settings.youngMaxDays
     const age = (b: string | null) => (b ? (Date.parse(data.today) - Date.parse(b)) / 86_400_000 : Infinity)
     const fixed: Group[] = [
-      { key: 'alle', name: 'Alle aktiven', ids: active.map((c) => c.animal.id) },
-      { key: 'muetter', name: word.mothers, ids: active.filter((c) => c.animal.sex !== 'm' && (c.births.length > 0 || c.lactationNumber)).map((c) => c.animal.id) },
-      { key: 'jung', name: word.young, ids: active.filter((c) => age(c.animal.birth_date) < youngDays).map((c) => c.animal.id) },
+      { key: 'alle', kind: 'fest', name: 'Alle aktiven', ids: active.map((c) => c.animal.id) },
+      { key: 'muetter', kind: 'fest', name: word.mothers, ids: active.filter((c) => c.animal.sex !== 'm' && (c.births.length > 0 || c.lactationNumber)).map((c) => c.animal.id) },
+      { key: 'jung', kind: 'fest', name: word.young, ids: active.filter((c) => age(c.animal.birth_date) < youngDays).map((c) => c.animal.id) },
       // saugend: bis abgesetzt, unabhängig von der Tiergruppe (lib/lambs.ts)
-      { key: 'mit_jungen', name: word.withYoung, ids: active.filter((c) => data.nursing.has(c.animal.id)).map((c) => c.animal.id) },
-      { key: 'saugend', name: word.nursing, ids: data.nursingLambs.filter((id) => active.some((c) => c.animal.id === id)) },
+      { key: 'mit_jungen', kind: 'fest', name: word.withYoung, ids: active.filter((c) => data.nursing.has(c.animal.id)).map((c) => c.animal.id) },
+      { key: 'saugend', kind: 'fest', name: word.nursing, ids: data.nursingLambs.filter((id) => active.some((c) => c.animal.id === id)) },
     ]
     const activeIds = new Set(active.map((c) => c.animal.id))
     // nur Gruppen mit Tieren dieser Herde (Kühe und Schafe teilen sich das Modul Tiere)
     const herds = herdGroups
-      .map((h) => ({ key: `herde:${h.id}`, name: h.name, ids: h.animalIds.filter((id) => activeIds.has(id)) }))
+      .map((h): Group => ({ key: `herde:${h.id}`, kind: 'herde', name: h.name, ids: h.animalIds.filter((id) => activeIds.has(id)) }))
       .filter((h) => h.ids.length > 0)
     const lists = data.lists
       .filter((l) => !l.archived_at)
-      .map((l) => ({ key: l.id, name: l.name, ids: [...new Set(data.entries.filter((e) => e.list_id === l.id && !e.done_at && activeIds.has(e.animal_id)).map((e) => e.animal_id))] }))
+      .map((l): Group => ({ key: l.id, kind: 'liste', name: l.name, ids: [...new Set(data.entries.filter((e) => e.list_id === l.id && !e.done_at && activeIds.has(e.animal_id)).map((e) => e.animal_id))] }))
     return [...fixed, ...herds, ...lists]
   }, [data, active, herdGroups, settings.youngMaxDays, word.mothers, word.young, word.withYoung, word.nursing])
-  const chosen = selected.map((k) => groups.find((g) => g.key === k)).filter((g): g is Group => !!g)
+  const chosen = compareKeys.map((k) => groups.find((g) => g.key === k)).filter((g): g is Group => !!g)
+  const tabGroup = openKey ? groups.find((g) => g.key === openKey) : undefined
 
   const metricsById = useMemo(() => {
     const m = new Map<string, AnimalMetrics>()
@@ -167,8 +178,8 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
     try {
       const id = await createWatchlist(db, newName)
       await addToWatchlist(db, id, newIds, null)
-      select([...selected.filter((k) => k !== id), id].slice(-4))
       setBuilding(false)
+      open(id)
       setNewName('')
       setNewIds([])
     } catch (e) {
@@ -179,7 +190,6 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   }
 
   const sections = [...new Set(defs.map((d) => d.section))]
-  const tabGroup = chosen[tab]
   const rows = tabGroup
     ? tabGroup.ids.map((id) => ({ a: data!.context.get(id)!.animal, m: metricsById.get(id)! })).filter((r) => r.a && r.m && eligibleFor(action, r.a, data!.nursing))
     : []
@@ -253,39 +263,94 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
-      <section className="space-y-2 rounded-lg bg-white p-3 shadow-sm">
-        <div className="text-sm font-medium text-gray-800">Gruppen wählen (bis 4)</div>
-        <div className="flex flex-wrap gap-1.5">
-          {groups.map((g) => {
-            const i = selected.indexOf(g.key)
+      {!tabGroup && chosen.length === 0 && (
+        <>
+          {KINDS.map(([kind, title]) => {
+            const list = groups.filter((g) => g.kind === kind)
+            if (list.length === 0) return null
             return (
-              <button
-                key={g.key}
-                type="button"
-                onClick={() => select(i >= 0 ? selected.filter((k) => k !== g.key) : [...selected, g.key].slice(-4))}
-                className={`min-h-11 rounded-full border-2 px-3 text-sm ${i >= 0 ? `${COLORS[i]} font-semibold text-white` : 'border-gray-300 bg-white text-gray-800'}`}
-              >
-                {g.name} <span className="opacity-80">({g.ids.length})</span>
-              </button>
+              <section key={kind} className="rounded-lg bg-white shadow-sm">
+                <h2 className="px-3 pt-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600">{title}</h2>
+                <ul className="divide-y">
+                  {list.map((g) => (
+                    <li key={g.key}>
+                      {comparing ? (
+                        <label className="flex min-h-12 cursor-pointer items-center gap-3 px-3">
+                          <input
+                            type="checkbox"
+                            checked={marked.includes(g.key)}
+                            onChange={() => setMarked((m) => (m.includes(g.key) ? m.filter((k) => k !== g.key) : [...m, g.key].slice(-4)))}
+                            className="h-5 w-5"
+                          />
+                          <span className="flex-1 text-gray-900">{g.name}</span>
+                          <span className="text-sm text-gray-600">{g.ids.length}</span>
+                        </label>
+                      ) : (
+                        <button type="button" onClick={() => open(g.key)} className="flex min-h-12 w-full items-center gap-3 px-3 text-left active:bg-gray-50">
+                          <span className="flex-1 text-gray-900">{g.name}</span>
+                          <span className="text-sm text-gray-600">{g.ids.length}</span>
+                          <span className="text-gray-400" aria-hidden>
+                            ›
+                          </span>
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )
           })}
-          <button type="button" onClick={() => setBuilding((b) => !b)} className="min-h-11 rounded-full border-2 border-dashed border-brand-700 px-3 text-sm font-semibold text-brand-800">
-            + Gruppe zusammenstellen
-          </button>
-        </div>
-        {building && (
-          <div className="space-y-2 rounded-lg bg-gray-50 p-2">
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name der Gruppe, z.B. Erstlaktierende" className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base" />
-            <AnimalPicker animals={allAnimals} selected={newIds} onChange={setNewIds} multiple readerModule={moduleKey} />
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-gray-600">Wird als Merkliste gespeichert und lässt sich dort ändern.</span>
-              <button type="button" disabled={saving || !newName.trim() || newIds.length === 0} onClick={() => void saveGroup()} className="min-h-11 shrink-0 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:opacity-40">
-                {saving ? 'speichert …' : `Speichern (${newIds.length})`}
-              </button>
+          {data && (
+            <div className="flex flex-wrap gap-2">
+              {comparing ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={marked.length < 2}
+                    onClick={() => {
+                      setComparing(false)
+                      setParams({ vergleich: marked.join(',') })
+                    }}
+                    className="min-h-11 flex-1 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:opacity-40"
+                  >
+                    {marked.length < 2 ? 'Zwei bis vier Gruppen wählen' : `${marked.length} Gruppen vergleichen`}
+                  </button>
+                  <button type="button" onClick={() => setComparing(false)} className="min-h-11 rounded-lg border border-gray-300 px-3">
+                    Abbrechen
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setComparing(true)} className="min-h-11 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800">
+                    📊 Gruppen vergleichen
+                  </button>
+                  <button type="button" onClick={() => setBuilding((b) => !b)} className="min-h-11 flex-1 rounded-lg border-2 border-dashed border-brand-700 px-3 text-sm font-semibold text-brand-800">
+                    + Gruppe zusammenstellen
+                  </button>
+                </>
+              )}
             </div>
-          </div>
-        )}
-      </section>
+          )}
+          {building && (
+            <div className="space-y-2 rounded-lg bg-gray-50 p-2">
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name der Gruppe, z.B. Erstlaktierende" className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base" />
+              <AnimalPicker animals={allAnimals} selected={newIds} onChange={setNewIds} multiple readerModule={moduleKey} />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-600">Wird als Merkliste gespeichert und lässt sich dort ändern.</span>
+                <button type="button" disabled={saving || !newName.trim() || newIds.length === 0} onClick={() => void saveGroup()} className="min-h-11 shrink-0 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:opacity-40">
+                  {saving ? 'speichert …' : `Speichern (${newIds.length})`}
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {(tabGroup || chosen.length > 0) && (
+        <button type="button" onClick={() => setParams({})} className="link-btn min-h-11 text-sm text-brand-700">
+          ← alle Gruppen
+        </button>
+      )}
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
 
@@ -297,7 +362,9 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
                 <th className="sticky left-0 bg-white px-2 py-2 text-left font-medium text-gray-600">Kennzahl (Ø)</th>
                 {chosen.map((g, i) => (
                   <th key={g.key} className="px-2 py-2 text-right">
-                    <span className={`inline-block max-w-28 truncate rounded px-1.5 py-0.5 text-xs font-semibold text-white ${COLORS[i]}`}>{g.name}</span>
+                    <button type="button" onClick={() => open(g.key)} className={`inline-block max-w-28 truncate rounded px-1.5 py-0.5 text-xs font-semibold text-white ${COLORS[i]}`}>
+                      {g.name}
+                    </button>
                     <span className="block text-xs font-normal text-gray-600">{groupMetrics[i].length} Tiere</span>
                   </th>
                 ))}
@@ -334,20 +401,18 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
               </tbody>
             ))}
           </table>
-          <p className="px-2 py-1.5 text-xs text-gray-500">Grün = bester Wert der Zeile. n = Tiere mit Wert, wenn nicht alle einen haben.</p>
+          <p className="px-2 py-1.5 text-xs text-gray-500">Grün = bester Wert der Zeile. n = Tiere mit Wert, wenn nicht alle einen haben. Gruppenname antippen: Tiere der Gruppe.</p>
         </section>
       )}
 
-      {chosen.length > 0 && tabGroup && (
+      {tabGroup && (
         <section className="space-y-2">
-          <div className="flex flex-wrap gap-1.5">
-            {chosen.map((g, i) => (
-              <button key={g.key} type="button" onClick={() => setTab(i)} className={`min-h-11 rounded-lg border-2 px-3 text-sm ${tab === i ? `${COLORS[i]} font-semibold text-white` : 'border-gray-300 bg-white'}`}>
-                {g.name}
-              </button>
-            ))}
-            <Link to={performanceLink(tabGroup)} relative="path" className="ml-auto inline-flex min-h-11 items-center text-sm font-medium text-brand-700">
-              🥛 Leistung «{tabGroup.name}» →
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {tabGroup.name} <span className="text-sm font-normal text-gray-600">{tabGroup.ids.length} Tiere</span>
+            </h2>
+            <Link to={performanceLink(tabGroup)} relative="path" className="inline-flex min-h-11 items-center text-sm font-medium text-brand-700">
+              🥛 Leistung →
             </Link>
           </div>
           <div className="space-y-1.5 rounded-lg bg-white p-2 shadow-sm">
@@ -443,7 +508,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
           )}
         </section>
       )}
-      {chosen.length === 0 && data && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Eine oder mehrere Gruppen wählen: Tiergruppen kommen aus dem Modul Tiere, eigene Gruppen sind Merklisten.</p>}
+      {openKey && data && !tabGroup && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Diese Gruppe gibt es nicht mehr oder sie ist leer.</p>}
     </div>
   )
 }
