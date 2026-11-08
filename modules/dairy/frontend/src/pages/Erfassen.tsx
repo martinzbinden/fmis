@@ -2,14 +2,19 @@ import { Link } from 'react-router-dom'
 import { speciesOf } from '../lib/species'
 import { useQuery } from '../hooks/useQuery'
 import { loadPendingOffspring } from '../lib/earTagPending'
+import { loadLambs, WEAN_FROM_DAYS } from '../lib/lambs'
+import { localTodayIso } from '../lib/format'
 
 export default function Erfassen({ moduleKey }: { moduleKey: string }) {
   const sheep = speciesOf(moduleKey) === 'sheep'
   const pending = useQuery(loadPendingOffspring).data?.length ?? 0
+  const weanDue = useQuery((pg) => loadLambs(pg, localTodayIso())).data?.filter((l) => l.nursing && l.ageDays >= WEAN_FROM_DAYS).length ?? 0
   const items = [
     { to: 'tierinfo', icon: '🔎', label: 'Tier-Info', desc: 'Nummer tippen oder lesen: Alter, Abstammung, Index, Ablammung, Belegung, Trächtigkeit, Merklisten, Verlauf aller Erfassungen' },
     { to: 'geburt', icon: sheep ? '🐑' : '🐄', label: sheep ? 'Ablammung' : 'Abkalbung', desc: 'Mutter, Vater, Nachkommen – Ohrmarke auch später' },
     { to: 'ohrmarken', icon: '🏷️', label: 'Ohrmarken nachtragen', desc: sheep ? 'Lämmer, die bei der Ablammung noch keine Ohrmarke hatten' : 'Kälber, die bei der Abkalbung noch keine Ohrmarke hatten' },
+    { to: 'laemmer?aktion=absetzen', icon: '✂️', label: 'Absetzen', desc: sheep ? `Saugende Lämmer ab ${WEAN_FROM_DAYS} Tagen wählen, in eine Lämmergruppe zügeln` : `Saugende Kälber ab ${WEAN_FROM_DAYS} Tagen wählen` },
+    { to: 'laemmer', icon: '🍼', label: sheep ? 'Lämmer' : 'Kälber', desc: 'Alter, Gewicht, saugend oder abgesetzt – wägen, Schoppen, Drenchen, Bolus, Behandlung für mehrere auf einmal' },
     { to: 'belegung', icon: '❤️', label: sheep ? 'Belegung' : 'Besamung / Belegung', desc: sheep ? 'Widder und Zeitraum, für die ganze Gruppe' : 'Stier und Datum' },
     { to: 'traechtigkeit', icon: '🤰', label: 'Trächtigkeit', desc: 'Einzeln oder mehrere Tiere (+ / Lesegerät), ja/leer/unsicher, Wochen' },
     { to: 'klauen', icon: '🐾', label: 'Klauen', desc: sheep ? 'Moderhinke-Score je Fuss, lahm, geschnitten, Behandlung – im Durchgang, mit Lesegerät' : 'Befunde nach ICAR-Atlas, Lahmheit 1–5, geschnitten, Behandlung' },
@@ -35,6 +40,11 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
           {item.to === 'ohrmarken' && pending > 0 && (
             <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${pending} offen`}>
               {pending}
+            </span>
+          )}
+          {item.to.startsWith('laemmer?aktion=absetzen') && weanDue > 0 && (
+            <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${weanDue} ab ${WEAN_FROM_DAYS} Tagen`}>
+              {weanDue}
             </span>
           )}
         </Link>

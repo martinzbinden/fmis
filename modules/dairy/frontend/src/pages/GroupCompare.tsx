@@ -8,6 +8,8 @@ import NumberInput from '@fmis/core/NumberInput'
 import { notifyError, errorText } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
+import { ActionChips, ActionPanel, eligibleFor, type ListAction } from '../components/ListActions'
+import { loadLambs, nursingByDam } from '../lib/lambs'
 import { clawStatusByAnimal, loadClawExams } from '../lib/clawHealth'
 import { animalMetrics, bestIndex, DEFAULT_GROUP_SETTINGS, metricDefs, type AnimalMetrics, type GroupSettings } from '../lib/groupCompare'
 import { rankLambs } from '../lib/lambSelection'
@@ -20,7 +22,7 @@ import type { Animal } from '../types'
 
 async function loadData(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: string) {
   const today = localTodayIso()
-  const [sel, claws, lists] = await Promise.all([loadLambSelection(pg, species, today), loadClawExams(pg), loadWatchlists(pg)])
+  const [sel, claws, lists, young] = await Promise.all([loadLambSelection(pg, species, today), loadClawExams(pg), loadWatchlists(pg), loadLambs(pg, today)])
   const lambs = rankLambs({
     candidates: sel.candidates,
     dams: sel.dams,
@@ -35,6 +37,8 @@ async function loadData(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: stri
     context: sel.context,
     lambByAnimal: new Map(lambs.filter((l) => l.animal_id).map((l) => [l.animal_id!, l])),
     claws: clawStatusByAnimal(claws, species, today),
+    nursing: nursingByDam(young),
+    nursingLambs: young.filter((l) => l.nursing && l.animalId).map((l) => l.animalId!),
     ...lists,
   }
 }
@@ -76,7 +80,9 @@ const label = (a: Animal) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTa
 export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const species = speciesOf(moduleKey)
-  const word = species === 'sheep' ? { young: 'Lämmer', mothers: 'Auen mit Ablammung' } : { young: 'Kälber/Rinder', mothers: 'Kühe mit Abkalbung' }
+  const word = species === 'sheep'
+    ? { young: 'Lämmer', mothers: 'Auen mit Ablammung', withYoung: '🍼 Auen mit Lämmern', nursing: '🍼 Saugende Lämmer' }
+    : { young: 'Kälber/Rinder', mothers: 'Kühe mit Abkalbung', withYoung: '🍼 Kühe mit Kälbern', nursing: '🍼 Saugende Kälber' }
   const { data, loading } = useQuery((pg) => loadData(pg, species, moduleKey), [species, moduleKey])
   const [settings, setSettings] = useState<GroupSettings>(() => readJson(settingsKey(moduleKey), DEFAULT_GROUP_SETTINGS[species]))
   const [showSettings, setShowSettings] = useState(false)
@@ -87,6 +93,9 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   const [newIds, setNewIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [sort, setSort] = useState<{ key: keyof AnimalMetrics | 'name'; desc: boolean }>({ key: 'name', desc: false })
+  // Aktion für Tiere der gewählten Gruppe: Liste zeigt dann nur, wofür sie in Frage kommt
+  const [action, setAction] = useState<ListAction | ''>('')
+  const [picked, setPicked] = useState<Set<string>>(new Set())
   // Tiergruppen gehören dem Modul Tiere (wie in den Merklisten: erst lesen, nach dem Abgleich nochmals)
   const [herdGroups, setHerdGroups] = useState<HerdGroups>([])
   useEffect(() => {
@@ -120,6 +129,9 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
       { key: 'alle', name: 'Alle aktiven', ids: active.map((c) => c.animal.id) },
       { key: 'muetter', name: word.mothers, ids: active.filter((c) => c.animal.sex !== 'm' && (c.births.length > 0 || c.lactationNumber)).map((c) => c.animal.id) },
       { key: 'jung', name: word.young, ids: active.filter((c) => age(c.animal.birth_date) < youngDays).map((c) => c.animal.id) },
+      // saugend: bis abgesetzt, unabhängig von der Tiergruppe (lib/lambs.ts)
+      { key: 'mit_jungen', name: word.withYoung, ids: active.filter((c) => data.nursing.has(c.animal.id)).map((c) => c.animal.id) },
+      { key: 'saugend', name: word.nursing, ids: data.nursingLambs.filter((id) => active.some((c) => c.animal.id === id)) },
     ]
     const activeIds = new Set(active.map((c) => c.animal.id))
     // nur Gruppen mit Tieren dieser Herde (Kühe und Schafe teilen sich das Modul Tiere)
@@ -130,7 +142,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
       .filter((l) => !l.archived_at)
       .map((l) => ({ key: l.id, name: l.name, ids: [...new Set(data.entries.filter((e) => e.list_id === l.id && !e.done_at && activeIds.has(e.animal_id)).map((e) => e.animal_id))] }))
     return [...fixed, ...herds, ...lists]
-  }, [data, active, herdGroups, settings.youngMaxDays, word.mothers, word.young])
+  }, [data, active, herdGroups, settings.youngMaxDays, word.mothers, word.young, word.withYoung, word.nursing])
   const chosen = selected.map((k) => groups.find((g) => g.key === k)).filter((g): g is Group => !!g)
 
   const metricsById = useMemo(() => {
@@ -161,7 +173,9 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
 
   const sections = [...new Set(defs.map((d) => d.section))]
   const tabGroup = chosen[tab]
-  const rows = tabGroup ? tabGroup.ids.map((id) => ({ a: data!.context.get(id)!.animal, m: metricsById.get(id)! })).filter((r) => r.a && r.m) : []
+  const rows = tabGroup
+    ? tabGroup.ids.map((id) => ({ a: data!.context.get(id)!.animal, m: metricsById.get(id)! })).filter((r) => r.a && r.m && eligibleFor(action, r.a, data!.nursing))
+    : []
   const sorted = [...rows].sort((x, y) => {
     const dir = sort.desc ? -1 : 1
     if (sort.key === 'name') return dir * (x.a.lauf_nr ?? x.a.ear_tag).localeCompare(y.a.lauf_nr ?? y.a.ear_tag, 'de', { numeric: true })
@@ -318,10 +332,25 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
               🥛 Leistung «{tabGroup.name}» →
             </Link>
           </div>
+          <div className="space-y-1.5 rounded-lg bg-white p-2 shadow-sm">
+            <div className="text-xs font-medium text-gray-600">Aktion für Tiere aus «{tabGroup.name}»</div>
+            <ActionChips value={action} onChange={(a) => setAction(a)} moduleKey={moduleKey} />
+          </div>
           <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
             <table className="w-full text-xs">
               <thead className="border-b text-gray-600">
                 <tr>
+                  {action && (
+                    <th className="px-1.5 py-1">
+                      <input
+                        type="checkbox"
+                        aria-label="alle wählen"
+                        checked={sorted.length > 0 && sorted.every((r) => picked.has(r.a.id))}
+                        onChange={(e) => setPicked(e.target.checked ? new Set(sorted.map((r) => r.a.id)) : new Set())}
+                        className="h-5 w-5"
+                      />
+                    </th>
+                  )}
                   {col('name', 'Tier')}
                   {col('ageMonths', 'Alter Mt.')}
                   {col('idxPerformance', 'Idx Leist.')}
@@ -336,13 +365,32 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
               </thead>
               <tbody className="divide-y">
                 {sorted.map(({ a, m }) => (
-                  <tr key={a.id}>
+                  <tr key={a.id} className={picked.has(a.id) ? 'bg-brand-50' : ''}>
+                    {action && (
+                      <td className="px-1.5">
+                        <input
+                          type="checkbox"
+                          aria-label={`${label(a)} wählen`}
+                          checked={picked.has(a.id)}
+                          onChange={() =>
+                            setPicked((s) => {
+                              const n = new Set(s)
+                              if (n.has(a.id)) n.delete(a.id)
+                              else n.add(a.id)
+                              return n
+                            })
+                          }
+                          className="h-5 w-5"
+                        />
+                      </td>
+                    )}
                     <td className="whitespace-nowrap px-1.5 py-1.5">
                       <Link to={`../tiere/${a.id}`} relative="path" className="font-medium text-brand-700">
                         {label(a)}
                       </Link>
                       {m.pregnant && <span title="trächtig gemeldet"> 🤰</span>}
                       {m.lame && <span title="lahm"> 🐾</span>}
+                      {data!.nursing.has(a.id) && <span title="saugende Junge"> 🍼{data!.nursing.get(a.id)}</span>}
                     </td>
                     <td className="px-1.5 tabular-nums">{num(m.ageMonths)}</td>
                     <td className="px-1.5 tabular-nums">{num(m.idxPerformance)}</td>
@@ -358,6 +406,11 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
               </tbody>
             </table>
           </div>
+          {action && (
+            <div className="sticky bottom-16 rounded-lg border border-brand-200 bg-white p-3 shadow-lg">
+              <ActionPanel moduleKey={moduleKey} action={action} ids={sorted.filter((r) => picked.has(r.a.id)).map((r) => r.a.id)} onDone={() => setPicked(new Set())} />
+            </div>
+          )}
           {sorted.some((r) => r.m.expectedBirth) && (
             <p className="text-xs text-gray-600">
               Erwartete Geburten in «{tabGroup.name}»:{' '}

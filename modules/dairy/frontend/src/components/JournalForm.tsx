@@ -30,17 +30,20 @@ export default function JournalForm({
   caseId,
   corrects,
   defaultCategory = 'beobachtung',
+  defaultText = '',
 }: {
   animalIds: string[]
   onSaved: () => void
   caseId?: string
   corrects?: AnimalJournalEntry
   defaultCategory?: JournalCategory
+  /** Bemerkung vorgefüllt, z.B. «Schoppen» aus der Lämmerliste */
+  defaultText?: string
 }) {
   const db = useDb()
   const [date, setDate] = useState(corrects?.entry_date ?? localTodayIso())
   const [category, setCategory] = useState<JournalCategory>(corrects?.category ?? defaultCategory)
-  const [text, setText] = useState(corrects && corrects.text !== journalSummary(corrects) ? corrects.text : '')
+  const [text, setText] = useState(corrects ? (corrects.text !== journalSummary(corrects) ? corrects.text : '') : defaultText)
   const [diagnosis, setDiagnosis] = useState(corrects?.diagnosis ?? '')
   const [diagnosisCode, setDiagnosisCode] = useState<string | null>(corrects?.diagnosis_code ?? null)
   const [saving, setSaving] = useState(false)
@@ -91,7 +94,7 @@ export default function JournalForm({
         })
         if (photos.length && written.length === 1) await savePhotos(db, moduleKey, photos, { animalId: written[0].animalId, journalId: written[0].id, caseId: written[0].caseId })
       })
-      setText('')
+      setText(defaultText)
       setDiagnosis('')
       setDiagnosisCode(null)
       setPhotos([])

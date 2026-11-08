@@ -7,6 +7,8 @@ export const JOURNAL_CATEGORIES: { key: JournalCategory; label: string; icon: st
   { key: 'behandlung', label: 'Behandlung', icon: '💉' },
   { key: 'brunst', label: 'Brunst', icon: '❤️' },
   { key: 'klauen', label: 'Klauen', icon: '🦶' },
+  // z.B. Schoppen; Drenchen und Boli sind Behandlungen (Behandlungsjournal)
+  { key: 'fuetterung', label: 'Fütterung', icon: '🍼' },
   { key: 'trocken', label: 'Trockengestellt', icon: '⏸️' },
   { key: 'notiz', label: 'Notiz', icon: '📝' },
 ]

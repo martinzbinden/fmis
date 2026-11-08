@@ -91,6 +91,12 @@ SYNC_TABLES: dict[str, list[str]] = {
     "pedigree_performance": [
         "id", "animal_key", "kind", "lactation_number", "calving_date", "age", "test_type", "count", "interval_days", "days", "milk_kg", "fat_pct", "fat_kg", "protein_pct", "protein_kg", "cell_count", "persistency", "document_date", "source", "import_key", "updated_at", "deleted_at",
     ],
+    "weanings": [
+        "id", "offspring_id", "animal_id", "wean_date", "herd_group", "notes", "created_by", "updated_at", "deleted_at",
+    ],
+    "animal_weights": [
+        "id", "animal_id", "offspring_id", "weigh_date", "weight_kg", "notes", "created_by", "updated_at", "deleted_at",
+    ],
     "lamb_selection": [
         "id", "animal_key", "offspring_id", "leaning", "purpose", "decided_on", "notes", "updated_at", "deleted_at",
     ],
@@ -135,6 +141,8 @@ def table_area(key: str) -> dict[str, str]:
         "claw_findings": f"{key}:animals",
         "breeding_values": f"{key}:animals",
         "lamb_selection": f"{key}:animals",
+        "animal_weights": f"{key}:animals",
+        "weanings": f"{key}:animals",
         "pedigree_breeding_values": f"{key}:animals",
         "pedigree_info": f"{key}:animals",
         "conformation_scores": f"{key}:animals",
@@ -147,7 +155,7 @@ def table_area(key: str) -> dict[str, str]:
 # in den ersten 10 Minuten nach dem Eintrag. Bewusst nur einmalige Einträge, nicht
 # Stammdaten und nicht Zeilen, die im Alltag laufend nachgeführt werden (Tagesmeldung,
 # Wägesitzung, Spuren).
-FRIST_TABLES: set[str] = {"matings", "births", "birth_offspring", "animal_journal", "pregnancy_checks", "claw_exams", "claw_findings"}
+FRIST_TABLES: set[str] = {"matings", "births", "birth_offspring", "animal_journal", "pregnancy_checks", "claw_exams", "claw_findings", "weanings", "animal_weights"}
 # Im Journal nur selbst erfasste Einträge: Notizen der Milchwägung (source 'milchwaegung')
 # werden dort bei jeder Änderung der Wägenotiz nachgeführt, Importe sind dem Büro vorbehalten.
 FRIST_FILTERS: dict[str, str] = {"animal_journal": "source = 'manual'"}

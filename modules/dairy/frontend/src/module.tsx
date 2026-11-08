@@ -29,6 +29,7 @@ import AnimalInfo from './pages/AnimalInfo'
 import Watchlists from './pages/Watchlists'
 import ClawEntry from './pages/ClawEntry'
 import GroupCompare from './pages/GroupCompare'
+import Lambs from './pages/Lambs'
 import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
 import { createDairyAnimalProvider } from './lib/animalProvider'
@@ -81,6 +82,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       merklisten: 'Merklisten',
       klauen: 'Klauen',
       gruppen: 'Gruppen',
+      laemmer: sheep ? 'Lämmer' : 'Kälber',
       leistung: 'Leistung',
       journal: 'Beobachtung / Behandlung',
       behandlungen: 'Behandlungsjournal',
@@ -109,6 +111,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'merklisten', element: <Watchlists moduleKey={key} /> },
       { path: 'klauen', element: <ClawEntry moduleKey={key} /> },
       { path: 'gruppen', element: <GroupCompare moduleKey={key} /> },
+      { path: 'laemmer', element: <Lambs moduleKey={key} /> },
       { path: 'journal', element: <JournalEntry moduleKey={key} /> },
       { path: 'behandlungen', element: <TreatmentJournal moduleKey={key} /> },
       { path: 'anpaarung', element: <MatingPlanner moduleKey={key} /> },

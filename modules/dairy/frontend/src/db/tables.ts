@@ -89,6 +89,8 @@ export const SYNC_TABLES = {
   pedigree_performance: [
     'id', 'animal_key', 'kind', 'lactation_number', 'calving_date', 'age', 'test_type', 'count', 'interval_days', 'days', 'milk_kg', 'fat_pct', 'fat_kg', 'protein_pct', 'protein_kg', 'cell_count', 'persistency', 'document_date', 'source', 'import_key', 'updated_at', 'deleted_at',
   ],
+  weanings: ['id', 'offspring_id', 'animal_id', 'wean_date', 'herd_group', 'notes', 'created_by', 'updated_at', 'deleted_at'],
+  animal_weights: ['id', 'animal_id', 'offspring_id', 'weigh_date', 'weight_kg', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   lamb_selection: ['id', 'animal_key', 'offspring_id', 'leaning', 'purpose', 'decided_on', 'notes', 'updated_at', 'deleted_at'],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
@@ -114,6 +116,8 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   pregnancy_checks: new Set(['check_date']),
   births: new Set(['birth_date', 'conception_date']),
   birth_offspring: new Set(['died_on']),
+  weanings: new Set(['wean_date']),
+  animal_weights: new Set(['weigh_date']),
   ear_tag_stock: new Set(['stock_date']),
   watchlists: new Set(),
   watchlist_entries: new Set(),

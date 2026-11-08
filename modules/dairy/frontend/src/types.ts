@@ -48,7 +48,7 @@ export interface MilkingSlot {
   deleted_at: string | null
 }
 
-export type JournalCategory = 'notiz' | 'beobachtung' | 'krankheit' | 'behandlung' | 'brunst' | 'klauen' | 'trocken'
+export type JournalCategory = 'notiz' | 'beobachtung' | 'krankheit' | 'behandlung' | 'brunst' | 'klauen' | 'trocken' | 'fuetterung'
 
 export interface AnimalJournalEntry {
   id: string

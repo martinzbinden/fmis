@@ -163,6 +163,7 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
         <div className="grid grid-cols-2 gap-2 text-sm">
           {[
             ['leistung', '🥛', 'Leistung'],
+            ['laemmer', '🍼', speciesOf(moduleKey) === 'sheep' ? 'Lämmer' : 'Kälber'],
             ['milchwaegung', '⚖️', 'Milchwägung'],
             ['ausmerzen', '📋', 'Ausmerzliste'],
             ['merklisten', '🔖', 'Merklisten'],

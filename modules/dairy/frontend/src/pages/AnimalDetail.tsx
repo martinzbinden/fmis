@@ -28,6 +28,7 @@ import { hasCertificateDetails, loadCertificateDetails } from '../lib/certificat
 import { loadSireOptions, sireLabel } from '../lib/sires'
 import { fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
+import { loadLambs } from '../lib/lambs'
 import type { AnimalJournalEntry, LactationSummary } from '../types'
 
 async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
@@ -210,6 +211,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const { thresholds } = useCullingThresholds(moduleKey, species)
   const { data, loading } = useQuery((pg) => loadDetail(pg, id, species), [id, species])
   const { data: clawPhotos } = useQuery((pg) => loadPhotos(pg, id), [id])
+  const { data: lambs } = useQuery((pg) => loadLambs(pg, localTodayIso()))
   useJumpTo(!!data)
 
   if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
@@ -232,6 +234,9 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       .at(-1) ?? null
   const milkUntil = openUntil('milk')
   const meatUntil = openUntil('meat')
+  // saugende Lämmer dieser Mutter bzw. dieses Tier als Lamm (lib/lambs.ts)
+  const nursingLambs = (lambs ?? []).filter((l) => l.damId === a.id && l.nursing)
+  const asLamb = (lambs ?? []).find((l) => l.animalId === a.id)
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
@@ -240,6 +245,11 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         <h1 className="mt-1 text-xl font-bold text-gray-800">
           {a.lauf_nr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-lg">{a.lauf_nr}</span>}
           {animalLabel(a)}
+          {nursingLambs.length > 0 && (
+            <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 align-middle text-sm font-medium text-sky-900" title="saugende Lämmer">
+              🍼 {nursingLambs.length}
+            </span>
+          )}
         </h1>
         <p className="text-sm text-gray-500">
           {a.ear_tag}
@@ -260,6 +270,14 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
               {text}
             </Link>
           ))}
+          {(nursingLambs.length > 0 || asLamb) && (
+            <Link
+              to={nursingLambs.length > 0 ? `/${moduleKey}/laemmer?aktion=absetzen&mutter=${a.id}` : `/${moduleKey}/laemmer?tier=${a.id}${asLamb?.nursing ? '&aktion=absetzen' : ''}`}
+              className="flex min-h-11 items-center rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 shadow-sm active:bg-gray-50"
+            >
+              {nursingLambs.length > 0 || asLamb?.nursing ? `✂️ Absetzen${nursingLambs.length > 1 ? ` (${nursingLambs.length})` : ''}` : `🍼 ${species === 'sheep' ? 'Lämmerliste' : 'Kälberliste'}`}
+            </Link>
+          )}
         </div>
       )}
 

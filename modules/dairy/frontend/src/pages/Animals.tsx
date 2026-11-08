@@ -9,6 +9,9 @@ import { animalKey, animalLabel } from '@fmis/core/earTag'
 import { loadInbreeding } from '../lib/pedigreeData'
 import { ANIMAL_SORTS, loadAnimalFacts, sortAnimals, sortDate, sortLabel, type AnimalSort } from '../lib/animalSort'
 import { speciesOf } from '../lib/species'
+import { localTodayIso } from '../lib/format'
+import { loadNursingDams } from '../lib/lambs'
+import { ActionChips, ActionPanel, eligibleFor, type ListAction } from '../components/ListActions'
 
 async function loadAnimals(pg: PGlite): Promise<AnimalRow[]> {
   const { rows } = await pg.query<AnimalRow>(`
@@ -65,12 +68,25 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
     return p && ANIMAL_SORTS.includes(p) ? p : loadSort(sortKey)
   })
   const [filter, setFilter] = useState('')
+  const { data: nursingData } = useQuery((pg) => loadNursingDams(pg, localTodayIso()))
+  const nursing = useMemo(() => nursingData ?? new Map<string, number>(), [nursingData])
+  const [nursingOnly, setNursingOnly] = useState(false)
+  // Aktion gewählt: Auswahlliste mit nur den Tieren, für die sie in Frage kommt
+  const [action, setAction] = useState<ListAction | ''>('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const allAnimals = data ?? []
   // Ein Filterfeld über alle Spalten — gilt für Karten und Liste.
   const animals = useMemo(
-    () => sortAnimals(filter ? allAnimals.filter((a) => matchesFilter(a, filter)) : allAnimals, facts, sort),
-    [allAnimals, filter, facts, sort],
+    () =>
+      sortAnimals(
+        allAnimals.filter((a) => (!filter || matchesFilter(a, filter)) && (!nursingOnly || nursing.has(a.id)) && eligibleFor(action, a, nursing)),
+        facts,
+        sort,
+      ),
+    [allAnimals, filter, facts, sort, nursingOnly, nursing, action],
   )
+  const chosen = animals.filter((a) => selected.has(a.id)).map((a) => a.id)
+  const allChosen = animals.length > 0 && chosen.length === animals.length
   const sortWord = { nr: '', geburt: species === 'sheep' ? 'abgelammt' : 'abgekalbt', jung: 'geboren', behandelt: 'behandelt' }[sort]
 
   function changeSort(v: AnimalSort) {
@@ -156,12 +172,72 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
-      {view === 'list' && allAnimals.length > 0 && <AnimalTable animals={animals} storageKey={`${moduleKey}_animals_columns`} />}
+      {allAnimals.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setNursingOnly((v) => !v)}
+              className={`min-h-11 rounded-full border px-3 text-sm ${nursingOnly ? 'border-brand-700 bg-brand-700 font-semibold text-white' : 'border-gray-300 bg-white text-gray-800'}`}
+            >
+              🍼 mit {species === 'sheep' ? 'Lämmern' : 'Kälbern'} ({nursing.size})
+            </button>
+            <Link to="../laemmer" relative="path" className="flex min-h-11 items-center rounded-full border border-gray-300 bg-white px-3 text-sm text-gray-800">
+              {species === 'sheep' ? 'Lämmerliste' : 'Kälberliste'} →
+            </Link>
+          </div>
+          <div className="text-xs font-medium text-gray-600">Aktion für mehrere Tiere</div>
+          <ActionChips value={action} onChange={(a) => setAction(a)} moduleKey={moduleKey} />
+        </div>
+      )}
+
+      {action && (
+        <section className="rounded-lg bg-white shadow-sm">
+          <label className="flex min-h-12 items-center gap-3 border-b px-3 text-sm text-gray-700">
+            <input type="checkbox" checked={allChosen} onChange={() => setSelected(allChosen ? new Set() : new Set(animals.map((a) => a.id)))} className="h-5 w-5" />
+            {animals.length} in Frage
+            {chosen.length > 0 && <b className="ml-auto text-brand-800">{chosen.length} gewählt</b>}
+          </label>
+          <ul className="divide-y">
+            {animals.map((a) => (
+              <li key={a.id} className={selected.has(a.id) ? 'bg-brand-50' : ''}>
+                <label className="flex min-h-12 cursor-pointer items-center gap-3 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(a.id)}
+                    onChange={() =>
+                      setSelected((s) => {
+                        const n = new Set(s)
+                        if (n.has(a.id)) n.delete(a.id)
+                        else n.add(a.id)
+                        return n
+                      })
+                    }
+                    className="h-5 w-5 shrink-0"
+                  />
+                  <span className="min-w-0 flex-1">
+                    {a.lauf_nr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{a.lauf_nr}</span>}
+                    {animalLabel(a)}
+                    {nursing.has(a.id) && <span className="ml-2 text-sm text-sky-900">🍼 {nursing.get(a.id)}</span>}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {action && (
+        <section className="sticky bottom-16 rounded-lg border border-brand-200 bg-white p-3 shadow-lg">
+          <ActionPanel moduleKey={moduleKey} action={action} ids={chosen} onDone={() => setSelected(new Set())} />
+        </section>
+      )}
+
+      {!action && view === 'list' && allAnimals.length > 0 && <AnimalTable animals={animals} storageKey={`${moduleKey}_animals_columns`} />}
 
       {view === 'cards' && animals.length === 0 && allAnimals.length > 0 && (
         <p className="text-center text-gray-500">Keine Treffer.</p>
       )}
-      <ul className={`space-y-2 ${view === 'list' ? 'hidden' : ''}`}>
+      <ul className={`space-y-2 ${view === 'list' || action ? 'hidden' : ''}`}>
         {animals.map((a) => (
           <li key={a.id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between gap-2">
@@ -170,6 +246,7 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
                 {animalLabel(a)}
               </Link>
               <span className="flex shrink-0 gap-1">
+                {nursing.has(a.id) && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900" title="saugende Lämmer">🍼 {nursing.get(a.id)}</span>}
                 {a.dry && a.status === 'aktiv' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">trocken</span>}
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
