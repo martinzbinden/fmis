@@ -106,6 +106,8 @@ export interface HerdLocator {
   locate(moduleKey: string, animalId: string, date: string): Promise<AnimalLocation>
   /** Gruppe je Tier an `date` (für Listen; ein Tier ist in höchstens einer Gruppe) */
   groupNames?(animalIds: string[], date: string): Promise<Map<string, string>>
+  /** aktive Gruppen mit ihren Einzeltieren an `date` (Gruppenvergleich) */
+  groups?(date: string): Promise<{ id: string; name: string; animalIds: string[] }[]>
 }
 
 let locator: HerdLocator | null = null

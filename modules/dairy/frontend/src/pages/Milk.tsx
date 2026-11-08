@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
@@ -70,11 +70,29 @@ function loadCurrentMilk(analysedOnly: boolean) {
   }
 }
 
+/** Leistung der ganzen Herde oder, verlinkt von Tier und Gruppe, nur
+ * bestimmter Tiere: ?tier=<id> oder ?tiere=<id,id,…>&gruppe=<Name>. */
 export default function Milk({ moduleKey }: { moduleKey: string }) {
   const terms = speciesTerms(moduleKey)
+  const [params] = useSearchParams()
+  const single = params.get('tier')
+  const idList = single ?? params.get('tiere') ?? ''
+  const only = useMemo(() => {
+    const ids = idList.split(',').filter(Boolean)
+    return ids.length ? new Set(ids) : null
+  }, [idList])
+  const { data: singleLabel } = useQuery(
+    async (pg) => {
+      if (!single) return null
+      const { rows } = await pg.query<{ lauf_nr: string | null; name: string | null; ear_tag: string }>('select lauf_nr, name, ear_tag from animals where id = $1', [single])
+      return rows[0] ? `${rows[0].lauf_nr ? `${rows[0].lauf_nr} · ` : ''}${animalLabel(rows[0])}` : null
+    },
+    [single],
+  )
+  const onlyName = single ? (singleLabel ?? terms.singular) : params.get('gruppe')
   const [analysedOnly, setAnalysedOnly] = useState(false)
   const { data, loading } = useQuery(loadCurrentMilk(analysedOnly), [analysedOnly])
-  const cows = data ?? []
+  const cows = useMemo(() => (data ?? []).filter((c) => !only || only.has(c.animal_id)), [data, only])
   const [sortKey, setSortKey] = useState<SortKey>('protein_pct')
   // Zwei Tabs: Laktationsleistung (Abschlüsse) und letzte Milchwägung.
   const [tab, setTab] = useState<'laktation' | 'waegung' | 'joghurt'>('laktation')
@@ -111,11 +129,22 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 pb-24">
       <div className="flex items-baseline justify-between gap-2">
-        <h1 className="text-xl font-bold text-gray-800">Leistung</h1>
+        <h1 className="text-xl font-bold text-gray-800">Leistung{onlyName ? ` · ${onlyName}` : ''}</h1>
         <Link to="../pruefbericht" relative="path" className="inline-flex min-h-11 items-center text-sm text-brand-700">
           Prüfbericht →
         </Link>
       </div>
+
+      {only && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 text-sm shadow-sm">
+          <span className="text-gray-700">
+            Nur {single ? 'dieses Tier' : `${only.size} ${only.size === 1 ? 'Tier' : 'Tiere'}${onlyName ? ` aus «${onlyName}»` : ''}`}, verglichen mit der ganzen Herde
+          </span>
+          <Link to="." className="inline-flex min-h-11 items-center font-medium text-brand-700">
+            Alle Tiere zeigen
+          </Link>
+        </div>
+      )}
 
       <div className="flex gap-1 border-b">
         {(
@@ -143,7 +172,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
       {tab === 'waegung' && loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {tab === 'waegung' && data && cows.length === 0 && !analysedOnly && (
         <p className="text-center text-gray-500">
-          Keine aktuellen Milchtests. {terms.importHint}
+          {only ? 'Keine aktuellen Milchtests für diese Auswahl.' : <>Keine aktuellen Milchtests. {terms.importHint}</>}
         </p>
       )}
 
@@ -260,7 +289,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
         </>
       )}
 
-      {tab === 'laktation' && <LactationView moduleKey={moduleKey} />}
+      {tab === 'laktation' && <LactationView moduleKey={moduleKey} only={only} />}
     </div>
   )
 }

@@ -312,6 +312,12 @@ export const herdLocator: HerdLocator = {
     }
     return names
   },
+  async groups(date) {
+    const data = await loadHerdData()
+    return data.groups
+      .filter((g) => g.active)
+      .map((g) => ({ id: g.id, name: g.name, animalIds: data.members.filter((m) => m.group_id === g.id && activeAt(m, date)).map((m) => m.animal_id) }))
+  },
 }
 
 /** Bestand klären: Einzeltiere ab `date` in der Gruppe führen (aus einer

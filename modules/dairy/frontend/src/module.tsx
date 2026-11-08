@@ -64,7 +64,8 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { to: 'erfassen', label: 'Erfassen', icon: '✏️' },
       { to: 'tierinfo', label: 'Tier-Info', icon: '🔎' },
       { to: 'tiere', label: 'Tiere', icon: sheep ? '🐑' : '🐄' },
-      { to: 'leistung', label: 'Leistung', icon: '🥛' },
+      // Leistung: über Tier und Gruppe verlinkt (?tier= / ?tiere=), dazu «Heute» → Weitere Seiten
+      { to: 'gruppen', label: 'Gruppen', icon: '📊' },
     ],
     historyPermission: `${key}:history:read`,
     pageTitles: {
@@ -79,7 +80,8 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       'traechtigkeit/vergleich': 'Trächtigkeit vergleichen',
       merklisten: 'Merklisten',
       klauen: 'Klauen',
-      gruppen: 'Gruppen vergleichen',
+      gruppen: 'Gruppen',
+      leistung: 'Leistung',
       journal: 'Beobachtung / Behandlung',
       behandlungen: 'Behandlungsjournal',
       anpaarung: 'Anpaarung planen',

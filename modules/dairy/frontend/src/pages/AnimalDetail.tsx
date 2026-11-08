@@ -520,6 +520,11 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
             </tbody>
           </table>
         )}
+        {(lactations.length > 0 || tests.length > 0) && (
+          <Link to={`/${moduleKey}/leistung?tier=${a.id}`} className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-brand-700 print:hidden">
+            🥛 Leistung mit Laktationskurven →
+          </Link>
+        )}
       </Section>
 
     </div>

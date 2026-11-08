@@ -301,13 +301,14 @@ function LactationTable({ rows, showAnimal, calvingLabel, sort }: {
 /** Laktationsleistung: pro Tier (Säulen + aufklappbare Tabelle) oder alle
  * Laktationen als sortierbare Tabelle, mit Suche und Filtern. Einstellungen
  * bleiben pro Gerät und Herde gespeichert. */
-export default function LactationView({ moduleKey }: { moduleKey: string }) {
+export default function LactationView({ moduleKey, only = null }: { moduleKey: string; /** nur diese Tiere zeigen (Herdenvergleich bleibt die ganze Herde) */ only?: Set<string> | null }) {
   const terms = speciesTerms(moduleKey)
   const calvingLabel = speciesOf(moduleKey) === 'sheep' ? 'Ablammung' : 'Abkalbung'
   const storageKey = `${moduleKey}_lactation_view`
   const { data, loading } = useQuery(loadLactations)
   const [settings, setSettingsState] = useState<Settings>(() => loadSettings(storageKey))
-  const [open, setOpen] = useState<Set<string>>(new Set())
+  // ein einzelnes Tier (Link von der Tierseite) gleich aufgeklappt
+  const [open, setOpen] = useState<Set<string>>(() => new Set(only?.size === 1 ? only : []))
   // am Handy füllten die Auswahlfelder einen ganzen Bildschirm vor der Liste
   const [showFilters, setShowFilters] = useState(false)
   const { view, metric, skipFirst, filter, animalSort, rowSort, rowDesc } = settings
@@ -345,7 +346,7 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
 
   const all = useMemo(
     () =>
-      (data?.rows ?? []).map((r) => {
+      (data?.rows ?? []).filter((r) => !only || only.has(r.animal_id)).map((r) => {
         const c = curveData.curves.get(curveKey(r.animal_id, r.lactation_number))
         return {
           ...r,
@@ -356,18 +357,19 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
           lastDim: c?.lastDim ?? null,
         }
       }),
-    [data, curveData],
+    [data, curveData, only],
   )
   const years = useMemo(() => calvingYears(all), [all])
   const rows = useMemo(
     () =>
       all.filter(
         (l) =>
-          matchesLactation(l, filter) &&
+          // gewählte Tiere: auch abgegangene, gespeicherte Suche gilt nicht
+          matchesLactation(l, only ? { ...filter, activeOnly: false, search: '' } : filter) &&
           (view === 'tier' || matchesCurve(l, filter.curve)) &&
           (filter.curve !== 'fallend' || curveData.trends.get(l.animal_id)?.direction === 'fallend'),
       ),
-    [all, filter, view, curveData],
+    [all, filter, view, curveData, only],
   )
   const animals = useMemo(
     () =>
@@ -427,24 +429,26 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
   }
 
   if (loading && !data) return <p className="text-center text-gray-500">Lädt…</p>
-  if (data && all.length === 0) return <p className="text-center text-gray-500">Keine Laktationsdaten. {terms.importHint}</p>
+  if (data && all.length === 0) return <p className="text-center text-gray-500">{only ? 'Keine Laktationen für diese Auswahl.' : <>Keine Laktationsdaten. {terms.importHint}</>}</p>
 
   const select = 'rounded border border-gray-300 bg-white px-2 py-1.5 text-sm'
-  const filtered = filter.search || filter.status !== 'alle' || filter.parity !== 'alle' || filter.year || !filter.activeOnly || filter.curve
-  const activeFilters = [filter.status !== 'alle', filter.parity !== 'alle', !!filter.year, !!filter.curve, !filter.activeOnly].filter(Boolean).length
+  const filtered = (!only && filter.search) || filter.status !== 'alle' || filter.parity !== 'alle' || filter.year || (!only && !filter.activeOnly) || filter.curve
+  const activeFilters = [filter.status !== 'alle', filter.parity !== 'alle', !!filter.year, !!filter.curve, !only && !filter.activeOnly].filter(Boolean).length
   const metricUnit = metric === 'fe' ? 'kg F+E' : 'kg Milch'
 
   return (
     <div className="space-y-3">
       <div className="space-y-2 rounded-lg bg-white p-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="search"
-            placeholder="Suche: Laufnummer, Name, Ohrmarke"
-            value={filter.search}
-            onChange={(e) => setFilter({ search: e.target.value })}
-            className="min-w-[12rem] flex-1 rounded border border-gray-300 px-3 py-1.5 text-base sm:text-sm"
-          />
+          {!only && (
+            <input
+              type="search"
+              placeholder="Suche: Laufnummer, Name, Ohrmarke"
+              value={filter.search}
+              onChange={(e) => setFilter({ search: e.target.value })}
+              className="min-w-[12rem] flex-1 rounded border border-gray-300 px-3 py-1.5 text-base sm:text-sm"
+            />
+          )}
           <div className="flex rounded border border-gray-300 text-xs">
             {(
               [
@@ -538,10 +542,12 @@ export default function LactationView({ moduleKey }: { moduleKey: string }) {
             <option value={1}>Erste Wägung weglassen</option>
             <option value={2}>Erste zwei weglassen</option>
           </select>
-          <label className="flex items-center gap-1.5 text-sm text-gray-700">
-            <input type="checkbox" checked={filter.activeOnly} onChange={(e) => setFilter({ activeOnly: e.target.checked })} />
-            nur aktive {terms.plural}
-          </label>
+          {!only && (
+            <label className="flex items-center gap-1.5 text-sm text-gray-700">
+              <input type="checkbox" checked={filter.activeOnly} onChange={(e) => setFilter({ activeOnly: e.target.checked })} />
+              nur aktive {terms.plural}
+            </label>
+          )}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
           <span>

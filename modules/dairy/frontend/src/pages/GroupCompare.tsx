@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
+import { herdLocator, refreshHerdData } from '@fmis/core/animals'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
@@ -61,10 +62,17 @@ interface Group {
   name: string
   ids: string[]
 }
+type HerdGroups = { id: string; name: string; animalIds: string[] }[]
+
+/** Leistungsseite für die Tiere einer Gruppe; «Alle aktiven» ohne Einschränkung. */
+function performanceLink(g: Group): string {
+  if (g.key === 'alle') return '../leistung'
+  return `../leistung?${new URLSearchParams({ tiere: g.ids.join(','), gruppe: g.name })}`
+}
 const COLORS = ['border-sky-600 bg-sky-600', 'border-amber-600 bg-amber-600', 'border-violet-600 bg-violet-600', 'border-teal-700 bg-teal-700']
 const label = (a: Animal) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTag(a.ear_tag)}`
 
-/** Beliebige Gruppen zusammenstellen und nebeneinander vergleichen. */
+/** Gruppen: feste, Tiergruppen (Modul Tiere) und Merklisten nebeneinander vergleichen. */
 export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const species = speciesOf(moduleKey)
@@ -79,6 +87,18 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   const [newIds, setNewIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [sort, setSort] = useState<{ key: keyof AnimalMetrics | 'name'; desc: boolean }>({ key: 'name', desc: false })
+  // Tiergruppen gehören dem Modul Tiere (wie in den Merklisten: erst lesen, nach dem Abgleich nochmals)
+  const [herdGroups, setHerdGroups] = useState<HerdGroups>([])
+  useEffect(() => {
+    let live = true
+    const load = () => herdLocator()?.groups?.(localTodayIso()).then((g) => live && setHerdGroups(g))
+    void load()
+      ?.then(() => refreshHerdData())
+      .then((fresh) => fresh && live && load())
+    return () => {
+      live = false
+    }
+  }, [])
 
   function updateSettings(next: GroupSettings) {
     setSettings(next)
@@ -102,11 +122,15 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
       { key: 'jung', name: word.young, ids: active.filter((c) => age(c.animal.birth_date) < youngDays).map((c) => c.animal.id) },
     ]
     const activeIds = new Set(active.map((c) => c.animal.id))
+    // nur Gruppen mit Tieren dieser Herde (Kühe und Schafe teilen sich das Modul Tiere)
+    const herds = herdGroups
+      .map((h) => ({ key: `herde:${h.id}`, name: h.name, ids: h.animalIds.filter((id) => activeIds.has(id)) }))
+      .filter((h) => h.ids.length > 0)
     const lists = data.lists
       .filter((l) => !l.archived_at)
       .map((l) => ({ key: l.id, name: l.name, ids: [...new Set(data.entries.filter((e) => e.list_id === l.id && !e.done_at && activeIds.has(e.animal_id)).map((e) => e.animal_id))] }))
-    return [...fixed, ...lists]
-  }, [data, active, settings.youngMaxDays, word.mothers, word.young])
+    return [...fixed, ...herds, ...lists]
+  }, [data, active, herdGroups, settings.youngMaxDays, word.mothers, word.young])
   const chosen = selected.map((k) => groups.find((g) => g.key === k)).filter((g): g is Group => !!g)
 
   const metricsById = useMemo(() => {
@@ -160,7 +184,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   return (
     <div className="mx-auto max-w-3xl space-y-3 p-3 pb-24">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold text-gray-900">Gruppen vergleichen</h1>
+        <h1 className="text-xl font-bold text-gray-900">Gruppen</h1>
         <button type="button" onClick={() => setShowSettings((v) => !v)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700">
           ⚙️ Preise
         </button>
@@ -290,6 +314,9 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
                 {g.name}
               </button>
             ))}
+            <Link to={performanceLink(tabGroup)} relative="path" className="ml-auto inline-flex min-h-11 items-center text-sm font-medium text-brand-700">
+              🥛 Leistung «{tabGroup.name}» →
+            </Link>
           </div>
           <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
             <table className="w-full text-xs">
@@ -345,7 +372,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
           )}
         </section>
       )}
-      {chosen.length === 0 && data && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Eine oder mehrere Gruppen wählen. Eigene Gruppen sind Merklisten.</p>}
+      {chosen.length === 0 && data && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Eine oder mehrere Gruppen wählen: Tiergruppen kommen aus dem Modul Tiere, eigene Gruppen sind Merklisten.</p>}
     </div>
   )
 }
