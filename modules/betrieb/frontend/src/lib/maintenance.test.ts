@@ -80,7 +80,8 @@ describe('maintenance', () => {
     expect(first.length).toBe(TEMPLATES.traktor.length)
     expect(tasksFromTemplate({ id: 'm', kind: 'traktor' }, first, () => 'x')).toHaveLength(0)
     expect(intervalText(first[0], 'h')).toBe('alle 500 h oder jährlich')
-    expect(intervalText({ interval_count: 15000, interval_months: null }, 'km')).toBe("alle 15’000 km")
+    // Tausendertrennzeichen kommt aus den Sprachdaten der Umgebung: Browser ’, ältere ICU-Daten '
+    expect(intervalText({ interval_count: 15000, interval_months: null }, 'km')).toMatch(/^alle 15['’]000 km$/)
   })
 })
 
