@@ -7,7 +7,7 @@ const T = (id: string, animal: string, name: string, start: string, weekdays = '
   id, name, start_time: start, duration_min: 90, weekdays, color: null, description: null, active, sort_order: 0, updated_at: '', deleted_at: null,
   animal, active_from: null, active_to: null, summer_from: null, summer_to: null, times: null,
 })
-const P = (id: string, name: string): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: 0, notes: null, updated_at: '', deleted_at: null, school_class: null, school_half: null })
+const P = (id: string, name: string): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: 0, notes: null, updated_at: '', deleted_at: null, school_class: null, school_half: null, companion: false })
 const types = [
   T('km', 'Kühe', 'Melken morgens', '06:00'),
   T('ka', 'Kühe', 'Melken abends', '17:00'),

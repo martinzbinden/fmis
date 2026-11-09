@@ -5,7 +5,7 @@ import { getCurrentUserEmail, getViewedUserEmail } from '@fmis/core/auth'
 import { softDeleteRow, upsertRow, upsertRows } from '../db/write'
 import { isoDate } from './format'
 import { shiftId, slotsFor, timeOn, type Slot } from './duty'
-import type { DutyAbsence, DutyChange, DutyPerson, DutyRequest, DutyRequestKind, DutyShift, DutySkill, DutyTemplate, DutyTemplateSlot, DutyType, DutyWeek, WorkAssignment } from '../types'
+import type { DutyAbsence, DutyChange, DutyCompanion, DutyPerson, DutyTask, DutyRequest, DutyRequestKind, DutyShift, DutySkill, DutyTemplate, DutyTemplateSlot, DutyType, DutyWeek, WorkAssignment } from '../types'
 import { mondaysBetween, planWeek, templateSlotId, weekRowId, type PlanResult } from './dutyPlan'
 
 export interface DutyData {
@@ -24,13 +24,16 @@ export interface DutyData {
   weeks: DutyWeek[]
   /** wer welche Arbeit aus dem Arbeitsplan macht */
   works: WorkAssignment[]
+  /** Begleitung in Diensten und Arbeiten ausserhalb der Dienste (schema/0012) */
+  companions: DutyCompanion[]
+  tasks: DutyTask[]
 }
 
 const iso = (v: unknown) => isoDate(v)
 
 /** Alles für den Zeitraum [from, to] (Dienste, Abwesenheiten, Änderungen der letzten 30 Tage). */
 export async function loadDuty(pg: PGlite, from: string, to: string): Promise<DutyData> {
-  const [people, types, skills, absences, shifts, changes, requests, templates, templateSlots, weeks, works] = await Promise.all([
+  const [people, types, skills, absences, shifts, changes, requests, templates, templateSlots, weeks, works, companions, tasks] = await Promise.all([
     pg.query<DutyPerson>('select * from duty_people where deleted_at is null order by sort_order, name'),
     pg.query<DutyType>('select * from duty_types where deleted_at is null order by sort_order, start_time, name'),
     pg.query<DutySkill>('select * from duty_skills where deleted_at is null'),
@@ -48,6 +51,8 @@ export async function loadDuty(pg: PGlite, from: string, to: string): Promise<Du
     pg.query<DutyTemplateSlot>('select * from duty_template_slots where deleted_at is null'),
     pg.query<DutyWeek>('select * from duty_weeks where deleted_at is null order by week_start'),
     pg.query<WorkAssignment>('select * from work_assignments where deleted_at is null and task_date between $1 and $2', [from, to]),
+    pg.query<DutyCompanion>('select * from duty_companions where deleted_at is null and date between $1 and $2', [from, to]),
+    pg.query<DutyTask>('select * from duty_tasks where deleted_at is null and date between $1 and $2 order by date, start_time nulls last, title', [from, to]),
   ])
   return {
     people: people.rows,
@@ -68,8 +73,22 @@ export async function loadDuty(pg: PGlite, from: string, to: string): Promise<Du
     templateSlots: templateSlots.rows.map((s) => ({ ...s, week_no: Number(s.week_no), weekday: Number(s.weekday), slot: Number(s.slot) })),
     weeks: weeks.rows.map((w) => ({ ...w, week_start: iso(w.week_start) })),
     works: works.rows.map((w) => ({ ...w, task_date: iso(w.task_date) })),
+    companions: companions.rows.map((c) => ({ ...c, date: iso(c.date) })),
+    tasks: tasks.rows.map((t) => ({ ...t, date: iso(t.date), duration_min: t.duration_min == null ? null : Number(t.duration_min) })),
   }
 }
+
+/** Begleitung in einem Dienst (Tag × Dienst) eintragen oder entfernen. */
+export async function setCompanion(d: DutyData, date: string, typeId: string, personId: string, on: boolean): Promise<void> {
+  const existing = d.companions.filter((c) => c.date === date && c.type_id === typeId && c.person_id === personId)
+  if (on && existing.length === 0)
+    await upsertRow('duty_companions', { id: crypto.randomUUID(), date, type_id: typeId, person_id: personId, notes: null, assigned_by: getCurrentUserEmail(), deleted_at: null } as never)
+  if (!on) for (const c of existing) await softDeleteRow('duty_companions', c.id)
+}
+
+export const saveTask = (t: Omit<DutyTask, 'updated_at' | 'deleted_at' | 'assigned_by'>) =>
+  upsertRow('duty_tasks', { ...t, assigned_by: getCurrentUserEmail(), deleted_at: null } as never)
+export const deleteTask = (id: string) => softDeleteRow('duty_tasks', id)
 
 export type ChangeKind = DutyChange['kind']
 

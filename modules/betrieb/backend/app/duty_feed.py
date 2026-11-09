@@ -12,6 +12,9 @@ Darauf verlässt sie sich, test_duty_feed.py hält es fest:
 - UID beginnt mit duty_shifts.id (für den Link ?dienst= im Dienstplan)
 - DTSTART/DTEND mit TZID als Ortszeit, SUMMARY als Titel
 - STATUS:TENTATIVE: Woche noch nicht vom Büro bestätigt
+- Begleitung (duty_companions): UID beginnt mit der id des begleiteten Dienstes, falls es ihn gibt
+- Arbeiten ausserhalb der Dienste (duty_tasks): mit Uhrzeit wie ein Dienst, ohne Uhrzeit ganztägig
+  (DTSTART;VALUE=DATE — die Zeit-App überspringt solche Termine)
 """
 
 import json
@@ -161,7 +164,7 @@ def _fold(line: str) -> str:
 
 def build_ics(name: str, shifts: list[dict[str, Any]], stamp: datetime, scope: str = "person") -> str:
     """Kalenderdatei aus Diensten (date, start_time 'HH:MM', duration_min,
-    type_name, description, notes, person_name, id, tentative)."""
+    type_name, description, notes, person_name, id, tentative); all_day = ganzer Tag ohne Uhrzeit."""
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -177,17 +180,20 @@ def build_ics(name: str, shifts: list[dict[str, Any]], stamp: datetime, scope: s
     ]
     dtstamp = stamp.strftime("%Y%m%dT%H%M%SZ")
     for s in shifts:
-        h, m = (int(x) for x in str(s["start_time"]).split(":")[:2])
-        start = datetime.combine(s["date"], datetime.min.time()).replace(hour=h, minute=m)
-        end = start + timedelta(minutes=max(1, int(s["duration_min"] or 60)))
+        if s.get("all_day"):
+            when = [f"DTSTART;VALUE=DATE:{s['date']:%Y%m%d}", f"DTEND;VALUE=DATE:{s['date'] + timedelta(days=1):%Y%m%d}"]
+        else:
+            h, m = (int(x) for x in str(s["start_time"]).split(":")[:2])
+            start = datetime.combine(s["date"], datetime.min.time()).replace(hour=h, minute=m)
+            end = start + timedelta(minutes=max(1, int(s["duration_min"] or 60)))
+            when = [f"DTSTART;TZID=Europe/Zurich:{start.strftime('%Y%m%dT%H%M%S')}", f"DTEND;TZID=Europe/Zurich:{end.strftime('%Y%m%dT%H%M%S')}"]
         summary = s["type_name"] + (f" – {s['person_name']}" if s.get("with_person") and s.get("person_name") else "")
         desc = "\n".join(x for x in (s.get("description"), s.get("notes")) if x)
         lines += [
             "BEGIN:VEVENT",
             f"UID:{s['id']}@fmis.riedackerhof.ch",
             f"DTSTAMP:{dtstamp}",
-            f"DTSTART;TZID=Europe/Zurich:{start.strftime('%Y%m%dT%H%M%S')}",
-            f"DTEND;TZID=Europe/Zurich:{end.strftime('%Y%m%dT%H%M%S')}",
+            *when,
             f"SUMMARY:{_esc(summary)}",
         ]
         if s.get("tentative"):
@@ -227,7 +233,55 @@ async def feed(token: str) -> Response:
                 (today - timedelta(days=30), today + timedelta(days=180), person_id, person_id),
             )
         ).fetchall()
+        # Begleitung: mit dem begleiteten Dienst (erster Platz) und wer ihn macht
+        comp = await (
+            await conn.execute(
+                """select c.id, c.date, t.start_time, t.duration_min, t.name, t.description, c.notes, p.name,
+                          t.animal, t.times, t.summer_from, t.summer_to, t.active_from, t.active_to, t.active,
+                          exists (select 1 from duty_weeks w where w.deleted_at is null and w.status = 'entwurf'
+                                  and w.week_start = date_trunc('week', c.date)::date),
+                          (select s.id from duty_shifts s where s.deleted_at is null and s.date = c.date and s.type_id = c.type_id
+                           order by s.slot limit 1),
+                          (select string_agg(pp.name, ', ' order by s.slot) from duty_shifts s join duty_people pp on pp.id = s.person_id
+                           where s.deleted_at is null and s.date = c.date and s.type_id = c.type_id)
+                   from duty_companions c
+                   join duty_types t on t.id = c.type_id
+                   left join duty_people p on p.id = c.person_id
+                   where c.deleted_at is null and c.date between %s and %s
+                     and (%s::uuid is null or c.person_id = %s::uuid)""",
+                (today - timedelta(days=30), today + timedelta(days=180), person_id, person_id),
+            )
+        ).fetchall()
+        tasks = await (
+            await conn.execute(
+                """select k.id, k.date, k.start_time, k.duration_min, k.title, k.notes, p.name
+                   from duty_tasks k left join duty_people p on p.id = k.person_id
+                   where k.deleted_at is null and k.date between %s and %s
+                     and (%s::uuid is null and k.person_id is not null or k.person_id = %s::uuid)""",
+                (today - timedelta(days=30), today + timedelta(days=180), person_id, person_id),
+            )
+        ).fetchall()
     shifts = []
+    for r in comp:
+        if not r[14] or not _in_range(r[1], r[12], r[13]):
+            continue
+        what = f"{r[8]} · {r[4]}" if r[8] and str(r[8]).strip() else r[4]
+        for i, (start, duration) in enumerate(effective_blocks(r[2], r[3], r[9], r[10], r[11], r[1])):
+            base = f"{r[16]}-begleitung-{r[0]}" if r[16] else str(r[0])
+            shifts.append(
+                {
+                    "id": base if i == 0 else f"{base}-{i}", "date": r[1], "start_time": start, "duration_min": duration,
+                    "type_name": f"Begleitung {what}" + (f" mit {r[17]}" if r[17] else ""),
+                    "description": r[5], "notes": r[6], "person_name": r[7], "with_person": person_id is None, "tentative": r[15],
+                }
+            )
+    for k in tasks:
+        shifts.append(
+            {
+                "id": str(k[0]), "date": k[1], "start_time": k[2], "duration_min": k[3] or 60, "all_day": not k[2],
+                "type_name": k[4], "description": None, "notes": k[5], "person_name": k[6], "with_person": person_id is None,
+            }
+        )
     for r in rows:
         # wie im Plan: ausserhalb des Saisonfensters (oder inaktiv) gibt es den Dienst nicht
         if not r[14] or not _in_range(r[1], r[12], r[13]):
@@ -241,6 +295,7 @@ async def feed(token: str) -> Response:
                     "description": r[5], "notes": r[6], "person_name": r[7], "with_person": person_id is None, "tentative": r[15],
                 }
             )
+    shifts.sort(key=lambda s: (s["date"], "" if s.get("all_day") else str(s["start_time"])))
     name = f"Dienste {person_name}" if person_name else "Dienste Riedackerhof"
     scope = "person" if person_id else "alle"
     return Response(content=build_ics(name, shifts, datetime.utcnow(), scope), media_type="text/calendar; charset=utf-8")

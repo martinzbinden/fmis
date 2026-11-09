@@ -14,8 +14,9 @@ import { getSyncedDb } from '../db/access'
 import { syncClient } from '../db/sync'
 import PlanCreateDialog from '../components/PlanCreateDialog'
 import { loadPlan, type PlanTask } from '../lib/workPlan'
-import { adjustWeek, assignWork, respondRequest, saveSkills, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, type DutyData } from '../lib/dutyData'
-import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyType } from '../types'
+import { adjustWeek, assignWork, respondRequest, saveSkills, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, setCompanion, saveTask, deleteTask, type DutyData } from '../lib/dutyData'
+import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyTask, DutyType } from '../types'
+import Modal from '../components/Modal'
 import { errorText } from '@fmis/core/toast'
 
 type Tab = 'woche' | 'meine' | 'antraege' | 'abwesend' | 'planung' | 'einstellungen'
@@ -158,13 +159,158 @@ function WorkCell({ task, d, canWrite }: { task: PlanTask; d: DutyData; canWrite
   )
 }
 
+/** Begleitung im Dienst (Praktikum, Schnupperlehre): zählt nicht als Besetzung. */
+function Companions({ d, date, typeId, mainIds, canWrite }: { d: DutyData; date: string; typeId: string; mainIds: (string | null | undefined)[]; canWrite: boolean }) {
+  const here = d.companions.filter((c) => c.date === date && c.type_id === typeId)
+  // Begleitende zuerst, dann alle anderen Aktiven, die nicht schon im Dienst sind
+  const options = d.people
+    .filter((p) => p.active && !mainIds.includes(p.id) && !here.some((c) => c.person_id === p.id))
+    .sort((a, b) => Number(b.companion) - Number(a.companion))
+  return (
+    <>
+      {here.map((c) => {
+        const away = absenceOn(c.person_id, date, d.absences)
+        return (
+          <div
+            key={c.id}
+            className={`flex items-center gap-0.5 rounded border border-dashed px-1 text-[11px] ${away ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-teal-500 bg-teal-50 text-teal-900'}`}
+            title={away ? `${personName(d, c.person_id)} ist ${KIND[away.kind]}` : 'begleitet, zählt nicht als Besetzung'}
+          >
+            <span className="min-w-0 flex-1 truncate">🤝 {personName(d, c.person_id)}</span>
+            {canWrite && (
+              <button type="button" onClick={() => void setCompanion(d, date, typeId, c.person_id, false)} className="px-0.5 text-gray-500" aria-label={`Begleitung ${personName(d, c.person_id)} entfernen`}>
+                ✕
+              </button>
+            )}
+          </div>
+        )
+      })}
+      {/* nur, wenn jemand als begleitend geführt ist (Einstellungen → Personen) — sonst wäre jedes Feld voll */}
+      {canWrite && options.some((p) => p.companion) && (
+        <select
+          value=""
+          onChange={(e) => e.target.value && void setCompanion(d, date, typeId, e.target.value, true)}
+          className="w-full rounded border border-dashed border-gray-300 bg-transparent text-[10px] text-gray-500"
+          aria-label={`Begleitung ${dm(date)}`}
+        >
+          <option value="">+ Begleitung</option>
+          {options.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.companion ? '🤝 ' : ''}
+              {p.name}
+            </option>
+          ))}
+        </select>
+      )}
+    </>
+  )
+}
+
+/** Arbeit ausserhalb der Dienste: Uhrzeit (falls gesetzt), Titel, Person. */
+function TaskChip({ t, d, onOpen }: { t: DutyTask; d: DutyData; onOpen: (() => void) | null }) {
+  const away = t.person_id ? absenceOn(t.person_id, t.date, d.absences) : null
+  const body = (
+    <>
+      <span className="block truncate text-[11px] font-medium text-sky-900">
+        {t.start_time ? `${t.start_time} ` : ''}
+        {t.title}
+      </span>
+      <span className={`block truncate text-[10px] ${t.person_id ? 'text-gray-600' : 'text-red-700'}`}>{t.person_id ? personName(d, t.person_id) : 'offen'}</span>
+    </>
+  )
+  const cls = `block w-full rounded border px-1 py-0.5 text-left ${away ? 'border-amber-500 bg-amber-50' : 'border-sky-200 bg-sky-50'}`
+  const title = [away && `${personName(d, t.person_id)} ist ${KIND[away.kind]}`, t.notes].filter(Boolean).join(' · ') || undefined
+  return onOpen ? (
+    <button type="button" onClick={onOpen} className={cls} title={title}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls} title={title}>
+      {body}
+    </div>
+  )
+}
+
+/** Arbeit erfassen oder ändern: Titel, Person, Uhrzeit und Dauer (beides freiwillig), Notiz. */
+function TaskDialog({ d, date, task, onClose }: { d: DutyData; date: string; task: DutyTask | null; onClose: () => void }) {
+  const [f, setF] = useState({
+    title: task?.title ?? '',
+    person_id: task?.person_id ?? '',
+    date: task?.date ?? date,
+    start_time: task?.start_time ?? '',
+    duration_min: task?.duration_min != null ? String(task.duration_min) : '',
+    notes: task?.notes ?? '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const people = d.people.filter((p) => p.active || p.id === task?.person_id)
+  async function save() {
+    if (!f.title.trim()) return setError('Was ist zu tun?')
+    setBusy(true)
+    try {
+      await saveTask({
+        id: task?.id ?? crypto.randomUUID(),
+        date: f.date,
+        title: f.title.trim(),
+        person_id: f.person_id || null,
+        start_time: f.start_time || null,
+        duration_min: f.duration_min ? Math.max(5, Math.round(Number(f.duration_min))) : null,
+        notes: f.notes.trim() || null,
+      })
+      onClose()
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Modal title={task ? 'Arbeit ändern' : 'Arbeit ausserhalb der Dienste'} onClose={onClose}>
+      <div className="space-y-2 text-sm">
+        <input className={`${field} w-full text-base`} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Was, z.B. Zaun Weide Nord flicken" autoFocus />
+        <select className={`${field} w-full`} value={f.person_id} onChange={(e) => setF({ ...f, person_id: e.target.value })} aria-label="Person">
+          <option value="">— offen —</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.companion ? '🤝 ' : ''}
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <input type="date" className={field} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="Datum" />
+          <input type="time" className={field} value={f.start_time} onChange={(e) => setF({ ...f, start_time: e.target.value })} aria-label="Beginn (freiwillig)" />
+          <label className="flex items-center gap-1 text-gray-600">
+            <input type="number" min={5} step={15} className={`${field} w-20`} value={f.duration_min} onChange={(e) => setF({ ...f, duration_min: e.target.value })} aria-label="Dauer in Minuten" /> Min.
+          </label>
+        </div>
+        <p className="text-xs text-gray-500">Ohne Uhrzeit: irgendwann am Tag (im Kalender-Abo als ganzer Tag). Ohne Dauer: 1 Stunde.</p>
+        <textarea className={`${field} w-full`} rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Notiz (freiwillig)" />
+        {error && <p className="text-red-700">{error}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={busy} onClick={() => void save()} className="min-h-11 flex-1 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:opacity-50">
+            Speichern
+          </button>
+          {task && (
+            <button type="button" disabled={busy} onClick={() => void deleteTask(task.id).then(onClose)} className="min-h-11 rounded-lg border border-red-300 px-3 text-red-700">
+              Löschen
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 /** Wochenkalender: Dienste (nach Tierart) × Wochentage. */
 function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork }: { d: DutyData; dates: string[]; slots: Slot[]; canWrite: boolean; tasks: PlanTask[]; onAddWork: ((date: string) => void) | null }) {
   const rows = groupTypes(d.types)
     .flatMap((g) => g.types)
     .filter((t) => slots.some((s) => s.type.id === t.id))
+  const [taskEdit, setTaskEdit] = useState<{ date: string; task: DutyTask | null } | null>(null)
   return (
     <div className="overflow-x-auto rounded-xl border bg-white">
+      {taskEdit && <TaskDialog d={d} date={taskEdit.date} task={taskEdit.task} onClose={() => setTaskEdit(null)} />}
       <table className="w-full min-w-[42rem] table-fixed text-sm">
         <thead>
           <tr className="bg-gray-50">
@@ -193,6 +339,7 @@ function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork }: { d: DutyData
                         {here.map((s) => (
                           <SlotCell key={s.id} s={s} d={d} all={slots} canWrite={canWrite} />
                         ))}
+                        <Companions d={d} date={date} typeId={t.id} mainIds={here.map((s) => s.shift?.person_id)} canWrite={canWrite} />
                       </div>
                     ) : (
                       <span className="block text-center text-xs text-gray-300">–</span>
@@ -224,6 +371,26 @@ function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork }: { d: DutyData
               ))}
             </tr>
           )}
+          <tr className="border-t-2 border-sky-200 align-top">
+            <td className="sticky left-0 z-10 bg-white px-2 py-1 text-xs leading-tight">
+              <b className="text-sky-800">Weitere Arbeiten</b>
+              <span className="block text-[10px] text-gray-500">ausserhalb der Dienste</span>
+            </td>
+            {dates.map((date) => (
+              <td key={date} className="space-y-0.5 px-0.5 py-0.5">
+                {d.tasks
+                  .filter((t) => t.date === date)
+                  .map((t) => (
+                    <TaskChip key={t.id} t={t} d={d} onOpen={canWrite ? () => setTaskEdit({ date, task: t }) : null} />
+                  ))}
+                {canWrite && (
+                  <button type="button" onClick={() => setTaskEdit({ date, task: null })} className="w-full rounded border border-dashed border-sky-300 py-0.5 text-[11px] text-sky-700" aria-label={`Arbeit am ${dm(date)} erfassen`}>
+                    + Arbeit
+                  </button>
+                )}
+              </td>
+            ))}
+          </tr>
           <tr className="border-t bg-gray-50 align-top">
             <td className="sticky left-0 z-10 bg-gray-50 px-2 py-1 text-xs font-semibold text-gray-500">Abwesend</td>
             {dates.map((date) => (
@@ -454,6 +621,32 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
         Dienste von <b>{self.name}</b>, nächste 3 Wochen.
       </p>
       {mine.length === 0 && <p className="text-sm text-gray-500">Keine Dienste eingeteilt.</p>}
+      {(() => {
+        // Begleitung in Diensten und Arbeiten ausserhalb der Dienste (schema/0012)
+        const extra = [
+          ...d.companions
+            .filter((c) => c.person_id === self.id && c.date >= today && c.date <= dates[dates.length - 1])
+            .map((c) => {
+              const t = d.types.find((x) => x.id === c.type_id)
+              const with_ = d.shifts.filter((s) => s.date === c.date && s.type_id === c.type_id && s.person_id).map((s) => personName(d, s.person_id))
+              return { key: c.id, date: c.date, time: t?.start_time ?? '', text: `🤝 ${t ? typeLabel(t) : 'Dienst'}${with_.length ? ` mit ${with_.join(', ')}` : ''}` }
+            }),
+          ...d.tasks
+            .filter((t) => t.person_id === self.id && t.date >= today && t.date <= dates[dates.length - 1])
+            .map((t) => ({ key: t.id, date: t.date, time: t.start_time ?? '', text: `${t.title}${t.notes ? ` – ${t.notes}` : ''}` })),
+        ].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+        return extra.length ? (
+          <ul className="divide-y rounded-xl border border-sky-200 bg-white">
+            {extra.map((x) => (
+              <li key={x.key} className="flex items-center gap-2 p-2 text-sm">
+                <span className="w-28 font-medium">{dm(x.date)}</span>
+                <span className="w-12 tabular-nums text-gray-600">{x.time}</span>
+                <span className="flex-1">{x.text}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null
+      })()}
       <ul className="divide-y rounded-xl border bg-white">
         {mine.map((s) => {
           const candidates = d.people.filter((p) => p.active && p.id !== self.id && d.skills.some((k) => k.person_id === p.id && k.type_id === s.type.id))
@@ -1155,6 +1348,9 @@ function Settings({ d }: { d: DutyData }) {
                   <label className="flex items-center gap-1">
                     <input type="checkbox" checked={editPerson.active} onChange={(e) => setEditPerson({ ...editPerson, active: e.target.checked })} /> aktiv
                   </label>
+                  <label className="flex items-center gap-1" title="Praktikum, Schnupperlehre: im Dienst dabei, zählt nicht als Besetzung">
+                    <input type="checkbox" checked={editPerson.companion} onChange={(e) => setEditPerson({ ...editPerson, companion: e.target.checked })} /> 🤝 begleitet
+                  </label>
                   <span className="flex w-full flex-wrap items-center gap-2 text-xs text-gray-600">
                     Schule (Lehrling):
                     <input className={field} value={editPerson.school_class ?? ''} onChange={(e) => setEditPerson({ ...editPerson, school_class: e.target.value })} placeholder="Klasse, z.B. NHB2026/29-Ru" aria-label="Klasse im Stundenplan" />
@@ -1180,6 +1376,7 @@ function Settings({ d }: { d: DutyData }) {
               ) : (
                 <button type="button" className="flex-1 text-left" onClick={() => setEditPerson(p)}>
                   <b className={p.active ? '' : 'text-gray-500 line-through'}>{p.name}</b> <span className="text-xs text-gray-500">{p.email ?? 'ohne FMIS-Konto'}</span>
+                  {p.companion && <span className="ml-1 text-xs text-teal-800">🤝 begleitet</span>}
                   {p.school_class && (
                     <span className="ml-1 text-xs text-amber-800">
                       🎓 {p.school_class}
@@ -1199,7 +1396,7 @@ function Settings({ d }: { d: DutyData }) {
             className={btn}
             disabled={!newPerson.name.trim()}
             onClick={() =>
-              void savePerson({ id: crypto.randomUUID(), name: newPerson.name.trim(), email: newPerson.email.trim() || null, color: null, active: true, sort_order: people.length * 10, notes: null, school_class: null, school_half: null }).then(() =>
+              void savePerson({ id: crypto.randomUUID(), name: newPerson.name.trim(), email: newPerson.email.trim() || null, color: null, active: true, sort_order: people.length * 10, notes: null, school_class: null, school_half: null, companion: false }).then(() =>
                 setNewPerson({ name: '', email: '' }),
               )
             }

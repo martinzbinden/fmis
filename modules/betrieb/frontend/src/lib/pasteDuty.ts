@@ -180,7 +180,7 @@ export const dutyPasteImporter: PasteImporter = {
         if (!personId) {
           personId = crypto.randomUUID()
           created.set(norm(v.personName), personId)
-          await w.upsert('duty_people', { id: personId, name: v.personName, email: null, color: null, active: true, sort_order: ++maxSort, notes: 'aus Arbeitsplan (Einfügen)', school_class: null, school_half: null, deleted_at: null })
+          await w.upsert('duty_people', { id: personId, name: v.personName, email: null, color: null, active: true, sort_order: ++maxSort, notes: 'aus Arbeitsplan (Einfügen)', school_class: null, school_half: null, companion: false, deleted_at: null })
         }
         for (const s of v.slots) {
           if (taken.has(s.id)) continue

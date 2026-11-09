@@ -39,7 +39,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "duty_people": [
         "id", "name", "email", "color", "active", "sort_order", "notes", "updated_at",
-        "deleted_at", "school_class", "school_half",
+        "deleted_at", "school_class", "school_half", "companion",
     ],
     "duty_types": [
         "id", "name", "start_time", "duration_min", "weekdays", "color", "description", "active",
@@ -74,6 +74,10 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "work_assignments": [
         "id", "task_key", "task_date", "person_id", "notes", "updated_at", "deleted_at",
+    ],
+    "duty_companions": ["id", "date", "type_id", "person_id", "notes", "assigned_by", "updated_at", "deleted_at"],
+    "duty_tasks": [
+        "id", "date", "start_time", "duration_min", "title", "person_id", "notes", "assigned_by", "updated_at", "deleted_at",
     ],
     "duty_requests": [
         "id", "kind", "person_id", "shift_id", "date", "type_id", "to_person", "other_shift_id",
@@ -114,6 +118,8 @@ TABLE_AREA: dict[str, str] = {
     "duty_template_slots": "betrieb:dienste",
     "duty_weeks": "betrieb:dienste",
     "work_assignments": "betrieb:dienste",
+    "duty_companions": "betrieb:dienste",
+    "duty_tasks": "betrieb:dienste",
     # Betriebsdaten führt das Büro (wie der Dienstplan); Mitarbeit liest
     "farm_numbers": "betrieb:dienste",
     "data_history": "betrieb:history",

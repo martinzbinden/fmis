@@ -198,6 +198,8 @@ export interface DutyPerson {
   school_class: string | null
   /** Halbklasse für Kurse in Halbklassen; null = unbekannt */
   school_half: 'A' | 'B' | null
+  /** begleitet nur (Praktikum, Schnupperlehre): zählt nicht als Besetzung (schema/0012) */
+  companion: boolean
 }
 export interface DutyType {
   id: string
@@ -363,4 +365,31 @@ export interface DataHistory {
   changed_at: string
   snapshot: string
   updated_at: string
+}
+
+/** Begleitung eines Dienstes (schema/0012): je Tag und Dienst, zählt nicht als Besetzung */
+export interface DutyCompanion {
+  id: string
+  date: string
+  type_id: string
+  person_id: string
+  notes: string | null
+  assigned_by: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+/** Arbeit ausserhalb der Dienste (schema/0012), für alle Mitarbeitenden */
+export interface DutyTask {
+  id: string
+  date: string
+  /** 'HH:MM', leer = irgendwann am Tag */
+  start_time: string | null
+  duration_min: number | null
+  title: string
+  person_id: string | null
+  notes: string | null
+  assigned_by: string | null
+  updated_at: string
+  deleted_at: string | null
 }

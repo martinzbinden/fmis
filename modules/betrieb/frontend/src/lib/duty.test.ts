@@ -6,7 +6,7 @@ const T = (id: string, name: string, start: string, dur: number, weekdays = '111
   id, name, start_time: start, duration_min: dur, weekdays, color: null, description: null, active: true, sort_order: 0, updated_at: '', deleted_at: null,
   animal: null, active_from: null, active_to: null, summer_from: null, summer_to: null, times: null,
 })
-const P = (id: string, name: string): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: 0, notes: null, updated_at: '', deleted_at: null, school_class: null, school_half: null })
+const P = (id: string, name: string): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: 0, notes: null, updated_at: '', deleted_at: null, school_class: null, school_half: null, companion: false })
 const S = (person: string, type: string): DutySkill => ({ id: `${person}${type}`, person_id: person, type_id: type, updated_at: '', deleted_at: null })
 const kuehe = T('k', 'Melken Kühe morgens', '06:00', 90)
 const schafe = T('s', 'Melken Schafe morgens', '06:00', 75)

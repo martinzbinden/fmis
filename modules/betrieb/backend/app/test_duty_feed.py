@@ -34,6 +34,16 @@ class FeedContract(unittest.TestCase):
         self.assertNotIn("STATUS:", ics(shift()))
         self.assertIn("\r\nSTATUS:TENTATIVE\r\nEND:VEVENT\r\n", ics(shift(tentative=True)))
 
+    def test_begleitung_verweist_auf_den_dienst(self):
+        text = ics(shift(id=f"{SHIFT_ID}-begleitung-99", type_name="Begleitung Stall, Abend mit Anna"))
+        self.assertIn(f"\r\nUID:{SHIFT_ID}-begleitung-99@fmis.riedackerhof.ch\r\n", text)
+        self.assertIn("\r\nDTSTART;TZID=Europe/Zurich:20261107T163000\r\n", text)
+
+    def test_arbeit_ohne_uhrzeit_ist_ganztaegig(self):
+        text = ics(shift(start_time=None, all_day=True, type_name="Zaun flicken"))
+        self.assertIn("\r\nDTSTART;VALUE=DATE:20261107\r\nDTEND;VALUE=DATE:20261108\r\n", text)
+        self.assertNotIn("TZID=Europe/Zurich:2026", text)
+
     def test_lange_zeilen_sind_umbrochen(self):
         self.assertIn("\r\n ", ics(shift(type_name="Stall " * 30)))
 

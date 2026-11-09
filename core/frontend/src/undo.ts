@@ -178,7 +178,7 @@ export const TABLE_LABELS: Record<string, string> = {
   animal_journal: 'Journal', treatment_templates: 'Behandlungsvorlage', pedigree: 'Abstammung', matings: 'Belegung',
   pregnancy_checks: 'Trächtigkeit', births: 'Geburt', birth_offspring: 'Nachkomme', watchlists: 'Merkliste',
   watchlist_entries: 'Merklisten-Eintrag', reminders: 'Erinnerung', journal_photos: 'Foto', claw_exams: 'Klauen', claw_findings: 'Klauenbefund', lamb_selection: 'Lämmer-Selektion',
-  breeding_values: 'Zuchtwert', conformation_scores: 'Exterieur',
+  breeding_values: 'Zuchtwert', conformation_scores: 'Exterieur', weanings: 'Absetzen', animal_weights: 'Gewicht',
   // Tiere
   locations: 'Ort', herd_groups: 'Gruppe', herd_stays: 'Aufenthalt', herd_members: 'Gruppenzuteilung', herd_counts: 'Tierzahl', herd_laufhof: 'Laufhof',
   // Bau
@@ -187,12 +187,13 @@ export const TABLE_LABELS: Record<string, string> = {
   machines: 'Maschine', machine_files: 'Maschinendatei', maintenance_tasks: 'Wartung', maintenance_log: 'Wartungsjournal', machine_todos: 'Maschinen-Pendenz',
   tracks: 'Spur', tank_events: 'Tanken', duty_people: 'Person', duty_types: 'Dienst', duty_absences: 'Abwesenheit', duty_shifts: 'Dienstplan',
   duty_templates: 'Dienstvorlage', duty_weeks: 'Dienstwoche', work_assignments: 'Arbeitsauftrag', duty_requests: 'Wunsch', duty_changes: 'Diensttausch', farm_numbers: 'Betriebsnummer',
+  duty_companions: 'Begleitung', duty_tasks: 'Arbeit',
   // Wiesenjournal
   parcels: 'Parzelle', paddocks: 'Weide', usage_entries: 'Nutzung', fertilizer_types: 'Dünger', fertilization_entries: 'Düngung',
   daily_farm_log: 'Tagesmeldung', weed_observations: 'Unkraut', sowing_details: 'Saat',
   // Mast
   animal_groups: 'Gruppe', group_memberships: 'Gruppenzuteilung', weighings: 'Wägung', medications: 'Behandlung', feed_records: 'Futter',
-  expenses: 'Ausgabe', slaughter_results: 'Schlachtung', market_prices: 'Marktpreis',
+  expenses: 'Ausgabe', slaughter_results: 'Schlachtung', market_prices: 'Marktpreis', proviande_prices: 'Proviande-Preis',
   // Felder
   farms: 'Betrieb', management_units: 'Bewirtschaftungseinheit', field_declarations: 'Flächenangabe', plan_layers: 'Planebene', plan_parcels: 'Planparzelle',
 }

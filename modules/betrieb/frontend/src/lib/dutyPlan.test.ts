@@ -12,7 +12,7 @@ const type = (extra: Partial<DutyType> = {}): DutyType => ({
   id: T1, name: 'Melken morgens', animal: 'Kühe', start_time: '06:00', duration_min: 90, weekdays: '1111111', color: null, description: null, active: true,
   sort_order: 1, updated_at: '', deleted_at: null, active_from: null, active_to: null, summer_from: null, summer_to: null, times: null, ...extra,
 })
-const person = (id: string, name: string, sort = 0): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: sort, notes: null, updated_at: '', deleted_at: null, school_class: null, school_half: null })
+const person = (id: string, name: string, sort = 0): DutyPerson => ({ id, name, email: null, color: null, active: true, sort_order: sort, notes: null, updated_at: '', deleted_at: null, school_class: null, school_half: null, companion: false })
 const skill = (p: string): DutySkill => ({ id: `s${p}`, person_id: p, type_id: T1, updated_at: '', deleted_at: null })
 const tpl = (id: string, valid_from: string, cycle = 1): DutyTemplate => ({ id, name: id, valid_from, cycle_weeks: cycle, notes: null, updated_at: '', deleted_at: null })
 const tslot = (template_id: string, weekday: number, person_id: string | null, week_no = 0): DutyTemplateSlot => ({
