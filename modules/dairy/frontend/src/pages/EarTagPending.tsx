@@ -103,6 +103,7 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
           young={word.young}
           youngPl={word.youngPl}
           suggestion={data?.stock.free[i] ?? null}
+          free={data?.stock.free ?? []}
           active={reader.on && active?.id === p.id}
           onActivate={() => setActiveId(p.id)}
           scanned={scanned?.id === p.id ? scanned : null}
@@ -123,6 +124,7 @@ function PendingCard({
   young,
   youngPl,
   suggestion,
+  free,
   active,
   onActivate,
   scanned,
@@ -138,6 +140,8 @@ function PendingCard({
   youngPl: string
   /** nächste freie Marke aus dem Vorrat */
   suggestion: string | null
+  /** alle freien Marken aus dem Vorrat (Auswahl einer anderen) */
+  free: string[]
   active: boolean
   onActivate: () => void
   scanned: { earTag: string; n: number } | null
@@ -232,9 +236,21 @@ function PendingCard({
         </button>
       </div>
       {suggestion && !earTag.trim() && (
-        <button type="button" onClick={() => setEarTag(suggestion)} className="link-btn w-full rounded-lg border border-brand-700 px-3 text-sm text-brand-700">
-          Nächste Marke: <b className="ml-1">{shortEarTag(suggestion)}</b>&nbsp;übernehmen
-        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setEarTag(suggestion)} className="link-btn min-w-0 flex-1 rounded-lg border border-brand-700 px-3 text-sm text-brand-700">
+            Nächste Marke: <b className="ml-1">{shortEarTag(suggestion)}</b>&nbsp;übernehmen
+          </button>
+          {free.length > 1 && (
+            <select value="" onChange={(e) => e.target.value && setEarTag(e.target.value)} className="min-h-11 w-28 shrink-0 rounded-lg border border-gray-300 bg-white px-1 text-sm text-gray-700" aria-label="andere Marke aus dem Vorrat">
+              <option value="">andere …</option>
+              {free.map((t) => (
+                <option key={t} value={t}>
+                  {shortEarTag(t)}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       )}
       {check && 'error' in check && <p className="text-sm text-red-600">{check.error}</p>}
       {check && 'existing' in check && check.existing && (
