@@ -118,9 +118,9 @@ main() {
     dc_dev build -q
 
     log "Prod-Daten holen …"
-    local dump
-    dump="$(mktemp --suffix=.sql.gz)"
-    trap 'rm -f "$dump"' RETURN
+    DUMP="$(mktemp --suffix=.sql.gz)"
+    trap 'rm -f "$DUMP"' EXIT
+    local dump="$DUMP"
     docker exec "$prod_db" pg_dump -U "$DB_USER" "$DB_NAME" | gzip >"$dump"
     gzip -t "$dump"
     dc_dev stop backend
