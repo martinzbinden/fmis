@@ -51,6 +51,10 @@ services:
       # NUR für Test-/Entwicklungsumgebungen setzen — leer lassen in Produktion!
       # Aktiviert POST /auth/password-login (Admin-Login ohne Magic-Link).
       TEST_LOGIN_PASSWORD: ${TEST_LOGIN_PASSWORD:-}
+      # Testumgebung dev-fmis (docker-compose.dev.yml, tools/deploy/README.md): Kennung der
+      # Instanz und Mail nur an diese Adressen. In Prod beide leer.
+      FMIS_INSTANZ: ${FMIS_INSTANZ:-}
+      MAIL_ALLOWLIST: ${MAIL_ALLOWLIST:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,7 +75,7 @@ services:
       # PathPrefix, kein Regex: der Server läuft Traefik v2, lokal v3, und
       # die Regex-Syntax ist zwischen beiden inkompatibel.
       - >-
-        traefik.http.routers.fmis-api.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
+        traefik.http.routers.${ROUTER:-fmis}-api.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
         (PathPrefix(`/auth`) || PathPrefix(`/core`) || PathPrefix(`/admin`) ||
         PathPrefix(`/livestock/sync`) || PathPrefix(`/livestock/reader`) ||
         PathPrefix(`/dairy/sync`) || PathPrefix(`/dairy/reader`) || PathPrefix(`/dairy/photos`) ||
@@ -82,9 +86,9 @@ services:
         PathPrefix(`/betrieb/sync`) || PathPrefix(`/betrieb/files`) || PathPrefix(`/betrieb/duty`) ||
         PathPrefix(`/tiere/sync`) || PathPrefix(`/bau/sync`) ||
         PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
-      - traefik.http.routers.fmis-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
-      - traefik.http.routers.fmis-api.tls=${TRAEFIK_TLS:-false}
-      - traefik.http.routers.fmis-api.priority=10
+      - traefik.http.routers.${ROUTER:-fmis}-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
+      - traefik.http.routers.${ROUTER:-fmis}-api.tls=${TRAEFIK_TLS:-false}
+      - traefik.http.routers.${ROUTER:-fmis}-api.priority=10
       # Die einzigen Backend-Pfade MIT ForwardAuth: /auth/sso lebt davon, dass
       # der Kopf Remote-Email vom Portal stammt und nicht vom Anrufer,
       # /auth/portal davon, dass die Anmeldeseite des Portals davor kommt.
@@ -92,14 +96,14 @@ services:
       # — und mit höherer Priorität als dessen 10, sonst gewinnt der und der
       # Schutz fiele lautlos weg. Path (exakt), nicht PathPrefix.
       - >-
-        traefik.http.routers.fmis-sso.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
+        traefik.http.routers.${ROUTER:-fmis}-sso.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`) &&
         (Path(`/auth/sso`) || Path(`/auth/portal`))
-      - traefik.http.routers.fmis-sso.middlewares=${TRAEFIK_MIDDLEWARES:-authelia-chain@file}
-      - traefik.http.routers.fmis-sso.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
-      - traefik.http.routers.fmis-sso.tls=${TRAEFIK_TLS:-false}
-      - traefik.http.routers.fmis-sso.priority=20
-      - traefik.http.routers.fmis-sso.service=fmis-api
-      - traefik.http.services.fmis-api.loadbalancer.server.port=8000
+      - traefik.http.routers.${ROUTER:-fmis}-sso.middlewares=${TRAEFIK_MIDDLEWARES:-authelia-chain@file}
+      - traefik.http.routers.${ROUTER:-fmis}-sso.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
+      - traefik.http.routers.${ROUTER:-fmis}-sso.tls=${TRAEFIK_TLS:-false}
+      - traefik.http.routers.${ROUTER:-fmis}-sso.priority=20
+      - traefik.http.routers.${ROUTER:-fmis}-sso.service=${ROUTER:-fmis}-api
+      - traefik.http.services.${ROUTER:-fmis}-api.loadbalancer.server.port=8000
 
   frontend:
     restart: unless-stopped
@@ -116,7 +120,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=${TRAEFIK_NETWORK:-web-netzwerk}
-      - traefik.http.routers.fmis-app.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`)
+      - traefik.http.routers.${ROUTER:-fmis}-app.rule=Host(`${DOMAIN:-fmis.riedackerhof.ch}`)
       # Die Oberflaeche (HTML, JS, pglite-Dateien, sw.js) laeuft seit
       # 2026-10-08 OHNE ForwardAuth: sie enthaelt keine Daten, und hinter
       # Authelia scheiterte die installierte PWA nach Ablauf der
@@ -131,12 +135,12 @@ services:
       # ("middleware does not exist").
       # Der API-Router bleibt bewusst ohne ForwardAuth — Sync, Lesegeraet und
       # der Offline-Betrieb haengen am Bearer-Token, nicht an einem Cookie.
-      - traefik.http.routers.fmis-app.middlewares=fmis-noop@docker
-      - traefik.http.middlewares.fmis-noop.headers.customResponseHeaders.X-Fmis-Auth=none
-      - traefik.http.routers.fmis-app.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
-      - traefik.http.routers.fmis-app.tls=${TRAEFIK_TLS:-false}
-      - traefik.http.routers.fmis-app.priority=1
-      - traefik.http.services.fmis-app.loadbalancer.server.port=80
+      - traefik.http.routers.${ROUTER:-fmis}-app.middlewares=${TRAEFIK_APP_MIDDLEWARES:-fmis-noop@docker}
+      - traefik.http.middlewares.${ROUTER:-fmis}-noop.headers.customResponseHeaders.X-Fmis-Auth=none
+      - traefik.http.routers.${ROUTER:-fmis}-app.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
+      - traefik.http.routers.${ROUTER:-fmis}-app.tls=${TRAEFIK_TLS:-false}
+      - traefik.http.routers.${ROUTER:-fmis}-app.priority=1
+      - traefik.http.services.${ROUTER:-fmis}-app.loadbalancer.server.port=80
 
 networks:
   # Externes Traefik-Netz. Auf dem Server heisst es `web-netzwerk` (Traefik

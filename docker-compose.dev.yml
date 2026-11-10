@@ -1,0 +1,13 @@
+# Testumgebung dev-fmis.riedackerhof.ch — zusätzlich zu docker-compose.yml, siehe
+# tools/deploy/README.md. In der .env der Testumgebung:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml:docker-compose.dev.yml
+# Eigener Projektname, eigene Datenbank (Volume), eigene Traefik-Router (ROUTER).
+services:
+  backend:
+    environment:
+      FMIS_INSTANZ: dev
+      FREIGABE_DIR: /freigabe
+    volumes:
+      # Briefkasten zum Host: Datenstand, Stand der Commits, Freigabe-Anfragen
+      # (core/backend/fmis_core/release.py, tools/deploy/fmis-deploy.sh)
+      - ./freigabe:/freigabe

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { instanceInfo } from './instance'
+import Release from './Release'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import {
   ALL_PERMISSIONS,
@@ -37,6 +39,8 @@ const STATUS_COLOR: Record<AdminUser['status'], string> = {
 export default function Admin() {
   const canManageUsers = useHasPermission('core:users:manage')
   const canManageModules = useHasPermission('core:modules:manage')
+  // Freigabe für Prod: nur in der Testumgebung (core/instance.ts)
+  const isDev = instanceInfo().instanz === 'dev'
   const [dirty, setDirty] = useState<Record<string, boolean>>({})
   const anyDirty = Object.values(dirty).some(Boolean)
   const setSectionDirty = useCallback((key: string, v: boolean) => setDirty((d) => (d[key] === v ? d : { ...d, [key]: v })), [])
@@ -72,10 +76,16 @@ export default function Admin() {
             👥 Benutzer
           </NavLink>
         )}
+        {canManageUsers && isDev && (
+          <NavLink to="/verwaltung/freigabe" onClick={guard} className={tab}>
+            🚀 Freigabe
+          </NavLink>
+        )}
       </nav>
       <Routes>
         {canManageModules && <Route path="module" element={<ModulesSection onDirty={(v) => setSectionDirty('module', v)} />} />}
         {canManageUsers && <Route path="benutzer" element={<UsersSection onDirty={(v) => setSectionDirty('benutzer', v)} />} />}
+        {canManageUsers && isDev && <Route path="freigabe" element={<Release />} />}
         <Route path="*" element={<Navigate to={canManageModules ? 'module' : 'benutzer'} replace />} />
       </Routes>
     </div>

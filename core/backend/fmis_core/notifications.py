@@ -85,6 +85,8 @@ async def _email_later(ids: list[str]) -> None:
 
 
 async def _send(to: str, title: str, body: str | None, link: str | None) -> None:
+    if not mail.mail_allowed(to):
+        return
     message = EmailMessage()
     message["From"] = mail.SMTP_FROM
     message["To"] = to

@@ -36,3 +36,8 @@ input/*
 # Ausgabe von tools/apr600_diagnostic.py (enthält reale Ohrmarken-Lesungen) —
 # nie ins Repo, nur lokal zur Auswertung.
 tools/apr600_diagnostic_*.log
+
+# Testumgebung: Briefkasten und Logs (tools/deploy)
+/freigabe/
+/deploy.log
+/freigabe.log

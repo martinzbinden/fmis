@@ -1,3 +1,4 @@
+import logging
 import os
 from email.message import EmailMessage
 
@@ -9,9 +10,23 @@ SMTP_USER = os.environ.get("SMTP_USER") or None
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD") or None
 SMTP_FROM = os.environ.get("SMTP_FROM", "fmis@localhost")
 SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() != "false"
+# Testumgebung (dev-fmis) mit echten Personendaten aus Prod: nur an diese Adressen
+# (kommagetrennt) geht eine Mail, alles andere wird verworfen. Leer = keine Einschränkung.
+MAIL_ALLOWLIST = {a.strip().lower() for a in os.environ.get("MAIL_ALLOWLIST", "").split(",") if a.strip()}
+
+log = logging.getLogger(__name__)
+
+
+def mail_allowed(to: str) -> bool:
+    if not MAIL_ALLOWLIST or to.strip().lower() in MAIL_ALLOWLIST:
+        return True
+    log.info("Mail nicht gesendet (MAIL_ALLOWLIST)")
+    return False
 
 
 async def send_magic_link(to_email: str, link: str) -> None:
+    if not mail_allowed(to_email):
+        return
     message = EmailMessage()
     message["From"] = SMTP_FROM
     message["To"] = to_email
