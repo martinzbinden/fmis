@@ -6,6 +6,7 @@ import { useQuery } from '../hooks/useQuery'
 import { DP_RATES, dpCropName } from '../lib/directPayments'
 import { farmEstimate, loadDpData } from '../lib/dpData'
 import { fmtArea } from '../lib/format'
+import { geoAdminUrl } from '../lib/geoAdmin'
 import { cropLabel } from '../lib/rotationRules'
 import type { FieldDeclaration } from '../types'
 import DpBreakdown from './DpBreakdown'
@@ -15,6 +16,7 @@ const fmtDate = (d: string | null) => (d ? new Date(`${d.slice(0, 10)}T00:00:00`
 /** Angaben zu einer Parzelle der Karte; Direktzahlungen ausklappbar (nur Betriebsleitung und Büro). */
 export default function FieldDetails({ decl, farmName }: { decl: FieldDeclaration; farmName: string | undefined }) {
   const canDz = useHasPermission('fields:dz:read')
+  const geoUrl = geoAdminUrl(decl.geometry)
   const crop = cropLabel(dpCropName(decl.kultur_code, decl.kultur_name_de), decl.kultur_code)
   const rows: [string, string | null][] = [
     ['Kultur', `${crop} (${decl.kultur_code})`],
@@ -39,6 +41,11 @@ export default function FieldDetails({ decl, farmName }: { decl: FieldDeclaratio
             </div>
           ))}
       </dl>
+      {geoUrl && (
+        <a href={geoUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-3 font-medium text-gray-800 active:bg-gray-50">
+          🗺️ In map.geo.admin.ch zeigen ↗
+        </a>
+      )}
       {canDz && <DpSection decl={decl} />}
     </div>
   )

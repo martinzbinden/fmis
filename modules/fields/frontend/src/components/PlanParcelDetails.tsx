@@ -4,6 +4,7 @@ import { deletePlanParcel, loadVersionHistory, revertToVersion, saveNewVersion }
 import { fmtArea, fmtDateTime, num } from '../lib/format'
 import type { Farm, PlanParcel } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
+import { geoAdminUrl } from '../lib/geoAdmin'
 import { errorText } from '@fmis/core/toast'
 
 interface CropOption {
@@ -124,8 +125,15 @@ export default function PlanParcelDetails({
 
   if (!current) return <p className="text-sm text-gray-500">Lädt…</p>
 
+  const geoUrl = geoAdminUrl(current.geometry)
+
   return (
     <div className="space-y-4">
+      {geoUrl && (
+        <a href={geoUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 active:bg-gray-50">
+          🗺️ In map.geo.admin.ch zeigen ↗
+        </a>
+      )}
       <form onSubmit={handleSave} className="space-y-2">
         <label className="block text-sm">
           Betrieb
