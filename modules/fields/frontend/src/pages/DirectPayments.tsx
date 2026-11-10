@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
-import type { PGlite } from '@electric-sql/pglite'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import NumberInput from '@fmis/core/NumberInput'
 import { useOnUndo } from '@fmis/core/undo'
@@ -7,18 +7,17 @@ import { errorText, notifyError } from '@fmis/core/toast'
 import { fmtNum } from '@fmis/core/yearSummary'
 import { upsertRow } from '../db/write'
 import { useQuery } from '../hooks/useQuery'
+import DpBreakdown from '../components/DpBreakdown'
+import { loadDpData, storedOf } from '../lib/dpData'
 import {
   compareWithStatement,
   dpCropName,
-  DP_LINE_LABEL,
   DP_RATES,
   DP_STORED_EMPTY,
   estimateFarm,
   referenceFor,
   resolveSettings,
-  type DpParcel,
   type DpParcelEstimate,
-  type DpStatementLine,
   type DpStored,
 } from '../lib/directPayments'
 import { cropLabel } from '../lib/rotationRules'
@@ -26,67 +25,28 @@ import { cropLabel } from '../lib/rotationRules'
 const YEARS = Object.keys(DP_RATES).map(Number).sort((a, b) => b - a)
 const HANG_LABEL = ['18–35 %', 'über 35–50 %', 'über 50 %']
 
-type Row = DpParcel & { farm_id: string }
-interface SettingsRow {
-  id: string
-  farm_id: string
-  jahr: number
-  bio: boolean | null
-  gmf: boolean | null
-  rgve: number | null
-  hang_18: number | null
-  hang_35: number | null
-  hang_50: number | null
-  q2: string | null
-}
-
-async function loadData(pg: PGlite, year: number) {
-  const { rows } = await pg.query<Row>(
-    `select d.id, d.lineage_id, d.farm_id, d.flurname, d.kultur_code, d.kultur_name_de,
-            d.area_a::float8 as area_a, d.baeume::float8 as baeume, mu.zone
-     from field_declarations d
-     left join management_units mu on mu.farm_id = d.farm_id and mu.external_id = d.management_unit_external_id
-       and mu.jahr = d.jahr and mu.deleted_at is null
-     where d.deleted_at is null and d.jahr = $1 and d.sequence_in_year = 1 and d.source = 'import'`,
-    [year],
-  )
-  const { rows: farms } = await pg.query<{ id: string; name: string }>('select id, name from farms where deleted_at is null order by name')
-  const { rows: settings } = await pg.query<SettingsRow>(
-    `select id, farm_id, jahr, bio, gmf, rgve::float8 as rgve, hang_18::float8 as hang_18, hang_35::float8 as hang_35, hang_50::float8 as hang_50, q2
-     from dp_settings where deleted_at is null and jahr <= $1 order by jahr desc, updated_at desc`,
-    [year],
-  )
-  const { rows: statement } = await pg.query<DpStatementLine & { farm_id: string; jahr: number }>(
-    `select farm_id, jahr, section, label, zone, quantity::float8 as quantity, rate::float8 as rate, factor::float8 as factor, amount::float8 as amount
-     from dp_statement_lines where deleted_at is null and jahr <= $1`,
-    [year],
-  )
-  return { rows, farms, settings, statement }
-}
-
-function storedOf(row: SettingsRow | undefined): DpStored {
-  if (!row) return DP_STORED_EMPTY
-  let q2: Record<string, number> = {}
-  try {
-    q2 = JSON.parse(row.q2 ?? '{}') as Record<string, number>
-  } catch {
-    /* unlesbar: dann aus der Abrechnung */
-  }
-  return { bio: row.bio, gmf: row.gmf, rgve: row.rgve, hang: [row.hang_18, row.hang_35, row.hang_50], q2 }
-}
-
 const fr = (v: number) => `${fmtNum(v, 0)} Fr.`
-const rp = (v: number) => v.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function DirectPayments() {
   // Betriebszahlen: nicht für die Rolle Mitarbeit
   const allowed = useHasPermission('fields:dz:read')
   const canWrite = useHasPermission('fields:dz:write')
-  const [year, setYear] = useState(YEARS[0])
-  const { data } = useQuery((pg) => loadData(pg, year), [year])
-  const [farmId, setFarmId] = useState<string | null>(null)
+  // Aus den Parzellen-Details auf der Karte: ?jahr=…&betrieb=…&parzelle=…
+  const [params] = useSearchParams()
+  const [year, setYear] = useState(() => (YEARS.includes(Number(params.get('jahr'))) ? Number(params.get('jahr')) : YEARS[0]))
+  const { data } = useQuery((pg) => loadDpData(pg, year), [year])
+  const [farmId, setFarmId] = useState<string | null>(params.get('betrieb'))
   const [search, setSearch] = useState('')
-  const [open, setOpen] = useState<string | null>(null)
+  const [open, setOpen] = useState<string | null>(params.get('parzelle'))
+  // die angesprungene Parzelle einmal in den Blick holen, sobald sie da ist
+  const scrolled = useRef(false)
+  useEffect(() => {
+    if (scrolled.current || !open || !data) return
+    const el = document.getElementById(`dp-${open}`)
+    if (!el) return
+    scrolled.current = true
+    el.scrollIntoView({ block: 'center' })
+  }, [open, data])
   // Eingaben sofort anzeigen, gespeichert wird beim Verlassen des Felds
   const [draft, setDraft] = useState<{ key: string; stored: DpStored } | null>(null)
   const newIds = useRef(new Map<string, string>())
@@ -398,7 +358,7 @@ function ParcelRow({
   const trees = p.parcel.baeume ?? 0
   const size = trees > 0 ? `${fmtNum(trees, 0)} ${trees === 1 ? 'Baum' : 'Bäume'}` : `${fmtNum(p.ha * 100, 2)} a`
   return (
-    <li>
+    <li id={`dp-${p.parcel.id}`}>
       <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex min-h-11 w-full items-center gap-2 px-3 py-1.5 text-left active:bg-gray-50">
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-gray-900">
@@ -417,24 +377,7 @@ function ParcelRow({
       </button>
       {expanded && (
         <div className="space-y-1 bg-gray-50 px-3 py-2 text-xs text-gray-700">
-          {(p.offen || p.ohne) && <p>{p.offen ?? p.ohne}</p>}
-          {p.lines.map((l) => (
-            <div key={l.key} className="flex justify-between gap-2">
-              <span>
-                {DP_LINE_LABEL[l.key]} <span className="text-gray-500">({rp(l.rate)} Fr./{p.isTree ? 'Baum' : 'ha'})</span>
-              </span>
-              <span className="tabular-nums">{rp(l.amount)}</span>
-            </div>
-          ))}
-          {p.lines.length > 0 && (
-            <div className="flex justify-between gap-2 border-t border-gray-200 pt-1 font-semibold">
-              <span>Total pro Jahr</span>
-              <span className="tabular-nums">{rp(p.total)}</span>
-            </div>
-          )}
-          {!p.isTree && !p.offen && !p.ohne && (
-            <p className="text-gray-500">{p.hangPossible ? 'Hangbeitrag je nach Neigung: nur im Betriebstotal.' : 'Kein Hangbeitrag für diese Nutzung.'}</p>
-          )}
+          <DpBreakdown p={p} />
           {p.q2Possible && (
             <label className="flex min-h-11 items-center gap-2 font-medium">
               Davon Qualitätsstufe II

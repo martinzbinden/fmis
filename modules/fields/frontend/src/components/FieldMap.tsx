@@ -91,6 +91,7 @@ export default function FieldMap({
   selectionMode = false,
   selectedIds,
   onToggleSelect,
+  onOpenDetails,
 }: {
   declarations: FieldDeclaration[]
   farmNameById: Map<string, string>
@@ -99,6 +100,8 @@ export default function FieldMap({
   selectionMode?: boolean
   selectedIds?: Set<string>
   onToggleSelect?: (declarationId: string) => void
+  /** Knopf «Details» im Popup */
+  onOpenDetails?: (declarationId: string) => void
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -125,6 +128,10 @@ export default function FieldMap({
   useEffect(() => {
     onToggleSelectRef.current = onToggleSelect
   }, [onToggleSelect])
+  const onOpenDetailsRef = useRef(onOpenDetails)
+  useEffect(() => {
+    onOpenDetailsRef.current = onOpenDetails
+  }, [onOpenDetails])
 
   const features = useMemo<Feature[]>(
     () =>
@@ -291,14 +298,25 @@ export default function FieldMap({
                 `<strong>${decl.flurname ?? decl.kultur_name_de ?? decl.kultur_code}</strong><br/>` +
                 `${decl.kultur_name_de ?? decl.kultur_code} (${decl.kultur_code})<br/>` +
                 `${fmtArea(decl.area_a)}<br/>` +
-                `${farmNameById.get(decl.farm_id) ?? ''}`
+                `${farmNameById.get(decl.farm_id) ?? ''}` +
+                (onOpenDetailsRef.current
+                  ? '<br/><button type="button" data-details style="margin-top:6px;min-height:36px;padding:0 12px;border-radius:8px;background:var(--brand-700);color:#fff;font-weight:600">Details</button>'
+                  : '')
               layersRef.current.set(decl.id, { layer, popupHtml })
               if (!selectionModeRef.current) layer.bindPopup(popupHtml)
               layer.on('click', () => {
                 if (selectionModeRef.current) onToggleSelectRef.current?.(decl.id)
               })
-              layer.on('popupopen', () => {
+              layer.on('popupopen', (e: L.PopupEvent) => {
                 openPopupIdRef.current = decl.id
+                const btn = e.popup.getElement()?.querySelector<HTMLButtonElement>('[data-details]')
+                if (btn)
+                  btn.onclick = () => {
+                    // Der Dialog liegt ausserhalb der Karte: im Vollbild nicht zu sehen
+                    if (document.fullscreenElement) void document.exitFullscreen()
+                    mapRef.current?.closePopup()
+                    onOpenDetailsRef.current?.(decl.id)
+                  }
               })
               layer.on('popupclose', () => {
                 // Beim Neuaufbau ist die Ebene schon von der Karte entfernt,

@@ -17,6 +17,7 @@ import PlanningMap from '../components/PlanningMap'
 import PlanAttributeTable from '../components/PlanAttributeTable'
 import Modal from '../components/Modal'
 import PlanParcelDetails from '../components/PlanParcelDetails'
+import FieldDetails from '../components/FieldDetails'
 import { fmtArea, num } from '../lib/format'
 import { colorForKultur } from '../lib/kulturColor'
 import type { Farm, FieldDeclaration, PlanLayer, PlanParcel } from '../types'
@@ -65,6 +66,7 @@ export default function Fields() {
   // Planung und «In Planungs-Layer kopieren» schreiben — ohne Recht nur ansehen
   const canWrite = useHasPermission('fields:fields:write')
   const [detailsPlanId, setDetailsPlanId] = useState<string | null>(null)
+  const [detailsDeclId, setDetailsDeclId] = useState<string | null>(null)
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
   const [showNewLayerForm, setShowNewLayerForm] = useState(false)
   const [focusPlanId, setFocusPlanId] = useState<string | null>(null)
@@ -124,6 +126,8 @@ export default function Fields() {
     () => (declarations ?? []).filter((d) => year == null || d.jahr === year),
     [declarations, year],
   )
+
+  const detailsDecl = detailsDeclId ? (declarations ?? []).find((d) => d.id === detailsDeclId) : undefined
 
   const legend = useMemo(() => {
     const seen = new Map<string, string>()
@@ -303,6 +307,7 @@ export default function Fields() {
             selectionMode={selectionMode}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
+            onOpenDetails={setDetailsDeclId}
           />
           <div className="flex flex-wrap gap-x-3 gap-y-1 rounded-lg bg-white p-3 text-xs shadow-sm">
             {legend.map(([code, name]) => (
@@ -435,6 +440,12 @@ export default function Fields() {
             <p className="text-center text-gray-500">Noch kein Planungslayer — "+ Neuer Layer" anlegen.</p>
           )}
         </>
+      )}
+
+      {detailsDecl && (
+        <Modal title={detailsDecl.flurname || detailsDecl.kultur_name_de || 'Parzelle'} onClose={() => setDetailsDeclId(null)}>
+          <FieldDetails decl={detailsDecl} farmName={farmNameById.get(detailsDecl.farm_id)} />
+        </Modal>
       )}
 
       {detailsPlanId && (
