@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { herdLocator, refreshHerdData, type AnimalLocation } from './animals'
 import { localTodayIso } from './dates'
+import { lastGroups } from './groupPeriods'
 
 const fmt = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString('de-CH') : 'heute')
 const today = () => localTodayIso()
@@ -32,6 +33,8 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
   if (!loc) return <div className="rounded-lg bg-white p-4 text-sm text-gray-500 shadow-sm">Standort lädt…</div>
 
   const cur = loc.current
+  // letzte zwei Gruppen = aktuelle + die davor; ohne aktuelle die zwei letzten vergangenen
+  const previous = cur ? lastGroups(loc.history).slice(1) : lastGroups(loc.history)
   // Abgegangene Tiere ohne Herden-Verlauf: nichts zu zeigen
   if (!active && loc.history.length === 0) return null
   return (
@@ -79,6 +82,20 @@ export default function AnimalLocationCard({ moduleKey, animalId, active = true 
         <p className="text-sm text-gray-500">
           {active ? 'Keiner Tiergruppe zugeteilt — unter Tiergruppen → «Ohne Gruppe» zuteilen.' : 'Nicht mehr in einer Tiergruppe.'}
         </p>
+      )}
+      {/* die letzte(n) Gruppe(n) direkt, mit «bis»: die aktuelle steht oben, hier die davor
+          (ohne aktuelle: die zwei letzten) */}
+      {previous.length > 0 && (
+        <ul className="space-y-0.5 text-xs text-gray-600">
+          {previous.map((h, i) => (
+            <li key={`${h.groupId}-${h.from}-${i}`}>
+              {cur ? 'Davor' : 'Zuletzt'}: <span className="font-medium text-gray-700">«{h.groupName}»</span>{' '}
+              <span className="text-gray-500">
+                {fmt(h.from)} bis {fmt(h.to)} · {h.categoryLabel}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
       {loc.history.length > (cur ? 1 : 0) && (
         <details className="text-xs text-gray-600">
