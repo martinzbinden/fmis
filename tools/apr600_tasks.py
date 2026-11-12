@@ -29,7 +29,7 @@ Bedingung 13 = immer, 14 = nie.
 
 Nutzung:
     python3 tools/apr600_tasks.py ablammung -o Ablammung.apr
-    python3 tools/apr600_tasks.py alle -o Aufgaben.apr      # Ablammung und Traechtigkeit in einer Datei
+    python3 tools/apr600_tasks.py alle -o Aufgaben.apr -g Weide -g Stall   # alle Aufgaben; Gruppen für den Gruppenwechsel
 """
 
 from __future__ import annotations
@@ -224,15 +224,55 @@ def traechtigkeit() -> Task:
     )
 
 
+NEW_GROUP = "NEUE GRUPPE"
+NO_GROUP = "ohne Gruppe"
+
+_TRANSLIT = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss", "é": "e", "è": "e", "à": "a", "ç": "c", ",": " ", ";": " "})
+
+
+def device_text(text: str) -> str:
+    """Text für das Gerät: nur ASCII (Umlaute ausgeschrieben), keine Kommas, Leerraum zusammengefasst. FMIS ordnet
+    heruntergeladene Gruppennamen über dieselbe Umschreibung wieder zu."""
+    out = text.translate(_TRANSLIT)
+    out = "".join(c if 32 <= ord(c) < 127 else "?" for c in out)
+    return " ".join(out.split())
+
+
+def gruppenwechsel(groups: list[str]) -> Task:
+    """Gruppenwechsel: Tier lesen, dann Zielgruppe wählen.
+
+    Auswahl: die bestehenden Gruppen, «NEUE GRUPPE» (FMIS legt sie mit einem Standardnamen an, umbenennen in der App)
+    und «ohne Gruppe». Das Gerät zeigt höchstens 16 Optionen; die Gruppenliste ändert sich, die Aufgabe muss darum
+    nach neuen Gruppen neu erzeugt und hochgeladen werden."""
+    names = list(dict.fromkeys(device_text(g) for g in groups if device_text(g)))
+    options = [Option(n, n) for n in names] + [Option(NEW_GROUP, NEW_GROUP), Option(NO_GROUP, NO_GROUP)]
+    return Task(
+        "Gruppenwechsel",
+        "Tier lesen, dann Zielgruppe",
+        [
+            Field("Tier", T_EIC, "Ohrmarke des Tiers lesen", length=15),
+            Field("Zielgruppe", T_SELECTION, "In welche Gruppe kommt das Tier", options=options),
+        ],
+    )
+
+
 TASKS = {"ablammung": ablammung, "traechtigkeit": traechtigkeit}
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("aufgabe", choices=[*TASKS, "alle"], help="welche Aufgabe («alle» = eine Datei mit allen)")
+    ap.add_argument("aufgabe", choices=[*TASKS, "gruppenwechsel", "alle"], help="welche Aufgabe («alle» = eine Datei mit allen)")
     ap.add_argument("-o", "--out", required=True, help="Zieldatei (.apr)")
+    ap.add_argument("-g", "--gruppe", action="append", default=[], help="Gruppe für «gruppenwechsel» (mehrfach angeben)")
     args = ap.parse_args(argv)
-    tasks = [make() for make in TASKS.values()] if args.aufgabe == "alle" else [TASKS[args.aufgabe]()]
+    if args.aufgabe in ("gruppenwechsel", "alle") and not args.gruppe:
+        ap.error("«gruppenwechsel» braucht die bestehenden Gruppen: --gruppe NAME (mehrfach)")
+    if args.aufgabe == "alle":
+        tasks = [*(make() for make in TASKS.values()), gruppenwechsel(args.gruppe)]
+    elif args.aufgabe == "gruppenwechsel":
+        tasks = [gruppenwechsel(args.gruppe)]
+    else:
+        tasks = [TASKS[args.aufgabe]()]
     write_project(tasks, args.out)
     print(f"geschrieben: {args.out} ({', '.join(task.name for task in tasks)})")
     return 0

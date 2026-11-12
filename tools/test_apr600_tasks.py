@@ -39,6 +39,30 @@ class TraechtigkeitTest(unittest.TestCase):
         self.assertEqual([x.name for x in t.parse_project(text)], ["Ablammung", "Traechtigkeit"])
 
 
+class GruppenwechselTest(unittest.TestCase):
+    def test_options_are_groups_plus_new_and_none(self) -> None:
+        task = t.gruppenwechsel(["Weide Nord", "Stall"])
+        self.assertEqual(t.check_task(task), [])
+        self.assertEqual([o.text for o in task.fields[1].options], ["Weide Nord", "Stall", "NEUE GRUPPE", "ohne Gruppe"])
+        self.assertEqual(task.fields[0].typ, t.T_EIC)
+
+    def test_device_text_is_ascii_without_commas(self) -> None:
+        self.assertEqual(t.device_text("Mutterschafe, Müesli  Äste"), "Mutterschafe Mueesli Aeste")
+        self.assertEqual(t.device_text("Gruppe ñ"), "Gruppe ?")
+
+    def test_umlauts_and_duplicates_are_cleaned(self) -> None:
+        task = t.gruppenwechsel(["Lämmer", "Laemmer", "Böcke"])
+        self.assertEqual([o.text for o in task.fields[1].options][:2], ["Laemmer", "Boecke"])
+
+    def test_at_most_16_options(self) -> None:
+        task = t.gruppenwechsel([f"G{i}" for i in range(15)])  # 15 + 2 feste = 17
+        self.assertTrue(any("Optionen" in p for p in t.check_task(task)))
+
+    def test_cli_needs_groups(self) -> None:
+        with self.assertRaises(SystemExit):
+            t.main(["gruppenwechsel", "-o", os.devnull])
+
+
 class RenderTest(unittest.TestCase):
     def test_exact_keys(self) -> None:
         text = t.render_project([t.ablammung()])
