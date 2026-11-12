@@ -27,11 +27,21 @@ export interface AnimalRef {
   fattening?: boolean
 }
 
+/** Stand eines Tiers für das Lesegerät (Listen zum Anzeigen nach dem Lesen). */
+export interface ReaderFacts {
+  /** letzte Geburt (Ablammung/Abkalbung), ISO-Datum */
+  lastBirth: string | null
+  /** Ergebnis der letzten Untersuchung seit dieser Geburt */
+  pregnancy: { date: string; result: 'ja' | 'nein' | 'unsicher' } | null
+}
+
 export interface AnimalProvider {
   title: string
   species: HerdSpecies
   /** Aktive Tiere des Moduls (lokale Datenbank). */
   listAnimals(): Promise<AnimalRef[]>
+  /** Letzte Geburt und Untersuchung je Tier-ID (Milchmodule), für die Listen fürs Lesegerät. */
+  readerFacts?(): Promise<Map<string, ReaderFacts>>
   /** Trockenstellen ab Datum (Milchmodule). */
   dryOff?(animalIds: string[], date: string, note: string): Promise<void>
   /** Offene Merklisten mit ihren Tieren (z.B. um sie einer Tiergruppe zuzuteilen). */

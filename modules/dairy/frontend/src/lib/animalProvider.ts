@@ -2,14 +2,15 @@
 // animals.ts, Wiesenjournal → Herden): aktive Tiere mit Laktationszahl und
 // Trocken-Status; Trockenstellen beim Zügeln aus einer gemolkenen Gruppe.
 
-import type { AnimalProvider, AnimalRef } from '@fmis/core/animals'
+import type { AnimalProvider, AnimalRef, ReaderFacts } from '@fmis/core/animals'
 import { shortEarTag } from '@fmis/core/earTag'
 import { getDb } from '../db/pglite'
 import { getDairySyncClient } from '../db/sync'
 import { upsertRow } from '../db/write'
 import { inTransaction } from '../db/transaction'
 import { isDrySql } from './dryOff'
-import { isoDate, num } from './format'
+import { isoDate, localTodayIso, num } from './format'
+import { loadHerdContext } from './herdContext'
 import { speciesOf } from './species'
 
 export function createDairyAnimalProvider(moduleKey: string, title: string): AnimalProvider {
@@ -58,6 +59,19 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
          group by l.id, l.name order by l.name`,
       )
       return rows.map((r) => ({ id: String(r.id), name: r.name, animalIds: r.animal_ids ?? [] }))
+    },
+    async readerFacts() {
+      // gleiche Auswertung wie Tierdetail und Ausmerzliste: letzte Geburt, Untersuchung seit dieser Geburt
+      const pg = await getDb(moduleKey)
+      const context = await loadHerdContext(pg, speciesOf(moduleKey), localTodayIso())
+      const out = new Map<string, ReaderFacts>()
+      for (const [id, c] of context) {
+        out.set(id, {
+          lastBirth: c.fertility.last_birth,
+          pregnancy: c.pregnancy ? { date: c.pregnancy.date, result: c.pregnancy.result } : null,
+        })
+      }
+      return out
     },
     async dryOff(animalIds, date, note) {
       const pg = await getDb(moduleKey)

@@ -92,6 +92,17 @@ export function readerTagToEarTag(long: string): string {
   return long
 }
 
+/** Ohrmarke wie in der App → 15-stellige ISO-Nummer fürs Lesegerät (Ländercode 756 + 12 Ziffern), wie AgriLink sie in
+ * Link-Listen liest. Schafe: «CH» + 8 Ziffern → vier Nullen davor; Rinder: «CH» + 12 Ziffern. Sonst null. */
+export function earTagToReaderIso(earTag: string): string | null {
+  const key = animalKey(earTag)
+  if (!key) return null
+  const sheep = /^CH(\d{8})$/.exec(key)
+  if (sheep) return `7560000${sheep[1]}`
+  const long = /^CH(\d{12})$/.exec(key)
+  return long ? `756${long[1]}` : null
+}
+
 /** Lesung → Tier aus einer Liste (Vergleich über animalKey, Kurz- und Langform). */
 export function matchRead<T extends { ear_tag: string }>(read: Pick<TagRead, 'key'>, animals: readonly T[]): T | undefined {
   if (!read.key) return undefined

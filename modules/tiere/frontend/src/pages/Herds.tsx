@@ -15,6 +15,7 @@ import { accessIndex, ACCESS_LABEL, monthCounter, type AccessIndex } from '../li
 import CounterBadge from '../components/CounterBadge'
 import GroupHistoryDialog from '../components/GroupHistoryDialog'
 import GroupScanDialog from '../components/GroupScanDialog'
+import ReaderListsDialog from '../components/ReaderListsDialog'
 import ReaderProposals from '../components/ReaderProposals'
 import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LaufhofMode, LocationKind, StaySlot } from '../types'
 import { errorText, notifySuccess } from '@fmis/core/toast'
@@ -902,6 +903,7 @@ type DialogState = { seq: number } & (
   | { kind: 'identify'; group: HerdGroup | null; preselected?: AnimalRef[] }
   | { kind: 'locations' }
   | { kind: 'scan' }
+  | { kind: 'readerlists' }
   | { kind: 'history'; group: HerdGroup }
 )
 type DialogInput = DialogState extends infer D ? (D extends { seq: number } ? Omit<D, 'seq'> : never) : never
@@ -969,6 +971,9 @@ export default function Herds() {
           </button>
           <button type="button" onClick={() => setDialog({ kind: 'locations' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             Orte
+          </button>
+          <button type="button" onClick={() => setDialog({ kind: 'readerlists' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
+            📋 Listen fürs Lesegerät
           </button>
         </div>
       )}
@@ -1276,6 +1281,7 @@ export default function Herds() {
           }}
         />
       )}
+      {dialog?.kind === 'readerlists' && <ReaderListsDialog key={dialog.seq} data={data} onClose={close} />}
       {dialog?.kind === 'history' && <GroupHistoryDialog key={dialog.seq} data={data} group={dialog.group} onChanged={refresh} onClose={close} />}
       {dialog?.kind === 'identify' && (
         <IdentifyDialog key={dialog.seq} data={data} group={dialog.group} preselected={dialog.preselected} date={date} onClose={close} />

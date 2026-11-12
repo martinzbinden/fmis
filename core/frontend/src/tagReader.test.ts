@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchRead, readDigits, readerTagToEarTag } from './tagReader'
+import { earTagToReaderIso, matchRead, readDigits, readerTagToEarTag } from './tagReader'
 import { animalKey } from './earTag'
 
 const read = (earTag: string) => ({ earTag, key: animalKey(earTag) })
@@ -39,5 +39,24 @@ describe('readerTagToEarTag', () => {
     const animals = [{ id: 'a', ear_tag: 'CH113900001035' }]
     const fromPool = readerTagToEarTag('CH000090000103')
     expect(matchRead({ key: animalKey(fromPool) }, animals)?.id).toBe('a')
+  })
+})
+
+describe('earTagToReaderIso', () => {
+  it('Schaf: Langform und Kurzform ergeben dieselbe 15-stellige Nummer (wie am Gerät: 756 + 0000 + 8 Ziffern)', () => {
+    expect(earTagToReaderIso('CH113900000103')).toBe('756000090000010')
+    expect(earTagToReaderIso('CH90000010')).toBe('756000090000010')
+    expect(earTagToReaderIso('9000.0010')).toBe('756000090000010')
+  })
+  it('Rind: 12 Ziffern nach CH', () => {
+    expect(earTagToReaderIso('CH120900000203')).toBe('756120900000203')
+  })
+  it('Unbrauchbares gibt null', () => {
+    expect(earTagToReaderIso('FR0099')).toBeNull()
+    expect(earTagToReaderIso('')).toBeNull()
+  })
+  it('ist das Gegenstück zu readerTagToEarTag', () => {
+    const iso = earTagToReaderIso('CH90000010')!
+    expect(readerTagToEarTag(`CH${iso.slice(3)}`)).toBe('CH90000010')
   })
 })
