@@ -25,14 +25,6 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "bank_id", "position", "original_position", "transponder", "ear_tag",
         "animal_id", "weighed", "notes", "read_at", "updated_at", "deleted_at",
     ],
-    "animal_journal": [
-        "id", "animal_id", "entry_date", "source", "text", "ref_id", "updated_at", "deleted_at",
-        "category", "diagnosis", "medication", "dose", "withdrawal_milk_days",
-        "withdrawal_meat_days", "administered_by",
-        "ear_tag", "animal_name", "treatment_time", "last_date", "applications", "supplier",
-        "body_system", "withdrawal_factor", "release_milk_date", "release_meat_date",
-        "critical_antibiotic", "antibiogram", "case_id", "import_key", "corrects_id", "diagnosis_code", "offspring_id",
-    ],
     "treatment_templates": [
         "id", "title", "body_system", "diagnosis", "diagnosis_code", "items", "supplier", "notes", "sort_order",
         "updated_at", "deleted_at",
@@ -57,6 +49,14 @@ SYNC_TABLES: dict[str, list[str]] = {
     "birth_offspring": [
         "id", "birth_id", "ear_tag", "animal_key", "sex", "stillborn", "died_24h",
         "birth_weight_kg", "import_key", "updated_at", "deleted_at", "died_on", "loss_cause", "defects", "loss_note",
+    ],
+    "animal_journal": [
+        "id", "animal_id", "entry_date", "source", "text", "ref_id", "updated_at", "deleted_at",
+        "category", "diagnosis", "medication", "dose", "withdrawal_milk_days",
+        "withdrawal_meat_days", "administered_by",
+        "ear_tag", "animal_name", "treatment_time", "last_date", "applications", "supplier",
+        "body_system", "withdrawal_factor", "release_milk_date", "release_meat_date",
+        "critical_antibiotic", "antibiogram", "case_id", "import_key", "corrects_id", "diagnosis_code", "offspring_id",
     ],
     "ear_tag_stock": ["id", "ear_tag", "animal_key", "tag_type", "stock_date", "updated_at", "deleted_at"],
     "watchlists": ["id", "name", "color", "notes", "created_by", "created_at", "archived_at", "updated_at", "deleted_at"],
