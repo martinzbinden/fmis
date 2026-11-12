@@ -24,6 +24,21 @@ class AblammungTest(unittest.TestCase):
         self.assertIn("-", [o.value for o in task.fields[2].options])
 
 
+class TraechtigkeitTest(unittest.TestCase):
+    def test_passes_the_checks_and_matches_fmis_values(self) -> None:
+        task = t.traechtigkeit()
+        self.assertEqual(t.check_task(task), [])
+        self.assertEqual([f.name for f in task.fields], ["Tier", "Ergebnis"])
+        # pregnancy_checks.result in FMIS: ja | nein | unsicher
+        self.assertEqual([o.value for o in task.fields[1].options], ["ja", "nein", "unsicher"])
+
+    def test_both_tasks_in_one_project(self) -> None:
+        text = t.render_project([t.ablammung(), t.traechtigkeit()])
+        self.assertIn("[Task.1.Definition]", text)
+        self.assertIn("[Task.2.Definition]", text)
+        self.assertEqual([x.name for x in t.parse_project(text)], ["Ablammung", "Traechtigkeit"])
+
+
 class RenderTest(unittest.TestCase):
     def test_exact_keys(self) -> None:
         text = t.render_project([t.ablammung()])

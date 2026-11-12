@@ -20,7 +20,7 @@ Eigenständige Hilfsskripte, kein Teil der laufenden App.
   (für die Melkliste) — dafür ist dieses Diagnose-Tool gedacht.
 
 - **`apr600_tasks.py`** — erzeugt Aufgaben für den Task-Modus des APR600 (Menü «Tasks» am Gerät) als
-  Projektdatei für AgriLink, z.B. `python3 tools/apr600_tasks.py ablammung -o Ablammung.apr`. In AgriLink
+  Projektdatei für AgriLink, z.B. `python3 tools/apr600_tasks.py alle -o Aufgaben.apr` (Aufgaben «Ablammung» und «Traechtigkeit»). In AgriLink
   «Load Tasks from File…» öffnen (AgriLink prüft die Datei), dann «Upload Task Definitions». Das Format ist
   aus `AgriLink.exe` abgelesen (INI: `[Project]`, `[Task.N.Definition]`, `Field<n>`, `Option<n>.<m>`) und noch
   nicht mit einer echten Aufgabe verglichen; `test_apr600_tasks.py` prüft Aufbau, Rundlauf und die

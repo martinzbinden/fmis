@@ -29,6 +29,7 @@ Bedingung 13 = immer, 14 = nie.
 
 Nutzung:
     python3 tools/apr600_tasks.py ablammung -o Ablammung.apr
+    python3 tools/apr600_tasks.py alle -o Aufgaben.apr      # Ablammung und Traechtigkeit in einer Datei
 """
 
 from __future__ import annotations
@@ -203,13 +204,37 @@ def ablammung() -> Task:
     )
 
 
+def traechtigkeit() -> Task:
+    """Trächtigkeitsuntersuchung: Tier lesen, Ergebnis wählen.
+
+    Die Werte entsprechen pregnancy_checks.result in FMIS (ja, nein, unsicher). Methode und Untersucher
+    gelten in FMIS je Durchgang und werden dort gesetzt, nicht je Tier am Gerät."""
+    return Task(
+        "Traechtigkeit",
+        "Tier lesen, dann Ergebnis",
+        [
+            Field("Tier", T_EIC, "Ohrmarke des Tiers lesen", length=15),
+            Field(
+                "Ergebnis",
+                T_SELECTION,
+                "Ergebnis der Untersuchung",
+                options=[Option("traechtig", "ja"), Option("leer", "nein"), Option("unsicher", "unsicher")],
+            ),
+        ],
+    )
+
+
+TASKS = {"ablammung": ablammung, "traechtigkeit": traechtigkeit}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("aufgabe", choices=["ablammung"], help="welche Aufgabe")
+    ap.add_argument("aufgabe", choices=[*TASKS, "alle"], help="welche Aufgabe («alle» = eine Datei mit allen)")
     ap.add_argument("-o", "--out", required=True, help="Zieldatei (.apr)")
     args = ap.parse_args(argv)
-    write_project([ablammung()], args.out)
-    print(f"geschrieben: {args.out}")
+    tasks = [make() for make in TASKS.values()] if args.aufgabe == "alle" else [TASKS[args.aufgabe]()]
+    write_project(tasks, args.out)
+    print(f"geschrieben: {args.out} ({', '.join(task.name for task in tasks)})")
     return 0
 
 
