@@ -13,6 +13,10 @@ export const SYNC_TABLES = {
   ],
   herd_counts: ['id', 'group_id', 'category', 'count', 'from_date', 'to_date', 'notes', 'updated_at', 'deleted_at'],
   herd_laufhof: ['id', 'group_id', 'entry_date', 'notes', 'updated_at', 'deleted_at'],
+  reader_pools: [
+    'id', 'device_group_id', 'name', 'device_count', 'tag_count', 'tags', 'unmatched', 'raw', 'signature', 'fetched_at', 'status',
+    'handled_by', 'handled_at', 'imported_group_id', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -29,5 +33,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   herd_members: new Set(['from_date', 'to_date']),
   herd_counts: new Set(['from_date', 'to_date']),
   herd_laufhof: new Set(['entry_date']),
+  reader_pools: new Set(),
   data_history: new Set(),
 }

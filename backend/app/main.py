@@ -28,6 +28,7 @@ from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
 from modules.betrieb.backend.app import machine_files as betrieb_machine_files
 from modules.betrieb.backend.app import school_timetable as betrieb_school
 from modules.betrieb.backend.app import sync as betrieb_sync
+from modules.tiere.backend.app import reader_pools as tiere_reader_pools
 from modules.tiere.backend.app import sync as tiere_sync
 from modules.bau.backend.app import sync as bau_sync
 from modules.wiesenjournal.backend.app import fertilization as wiesenjournal_fertilization
@@ -77,9 +78,12 @@ async def lifespan(app: FastAPI):
     school = asyncio.create_task(betrieb_school.nightly())
     # Proviande-Wochenpreise, alle paar Stunden (modules/livestock/backend/app/proviande.py)
     proviande = asyncio.create_task(livestock_proviande.periodic())
+    # Neue Gruppen im Speicher des Lesegeräts zum Import vorschlagen (modules/tiere/backend/app/reader_pools.py)
+    reader_pools = asyncio.create_task(tiere_reader_pools.periodic())
     yield
     school.cancel()
     proviande.cancel()
+    reader_pools.cancel()
     await close_pools()
 
 
@@ -125,6 +129,11 @@ for _spec in MODULE_SPECS:
 # oben (die von "ein Router pro Modul" ausgeht): wiesenjournal's
 # Jahresauswertung (verschneidet gegen fields.field_declarations) und
 # livestock's APR600-Datenpool-Import (Gruppen-Ohrmarken vom Leser).
+app.include_router(
+    tiere_reader_pools.router,
+    prefix="/tiere",
+    dependencies=[Depends(require_module_enabled("tiere"))],
+)
 app.include_router(
     wiesenjournal_reports.router,
     prefix="/wiesenjournal",

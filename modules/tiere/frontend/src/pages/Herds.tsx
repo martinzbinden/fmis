@@ -13,8 +13,11 @@ import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategor
 import { changeStay, countAt, dissolveGroup, type HerdData, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, resolveDoubleMemberships, saveGroup, saveLocation, setCount, setLaufhof } from '../lib/herds'
 import { accessIndex, ACCESS_LABEL, monthCounter, type AccessIndex } from '../lib/outdoorAccess'
 import CounterBadge from '../components/CounterBadge'
+import GroupHistoryDialog from '../components/GroupHistoryDialog'
+import GroupScanDialog from '../components/GroupScanDialog'
+import ReaderProposals from '../components/ReaderProposals'
 import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LaufhofMode, LocationKind, StaySlot } from '../types'
-import { errorText } from '@fmis/core/toast'
+import { errorText, notifySuccess } from '@fmis/core/toast'
 
 const SPECIES_ICON: Record<HerdSpecies, string> = { schafe: '🐑', rinder: '🐄' }
 const SPECIES_LABEL: Record<HerdSpecies, string> = { schafe: 'Schafe', rinder: 'Rinder' }
@@ -898,6 +901,8 @@ type DialogState = { seq: number } & (
   | { kind: 'move'; from: HerdGroup | null; unassigned?: boolean }
   | { kind: 'identify'; group: HerdGroup | null; preselected?: AnimalRef[] }
   | { kind: 'locations' }
+  | { kind: 'scan' }
+  | { kind: 'history'; group: HerdGroup }
 )
 type DialogInput = DialogState extends infer D ? (D extends { seq: number } ? Omit<D, 'seq'> : never) : never
 
@@ -959,6 +964,9 @@ export default function Herds() {
           <button type="button" onClick={() => setDialog({ kind: 'move', from: null })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             Tiere zuteilen
           </button>
+          <button type="button" onClick={() => setDialog({ kind: 'scan' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
+            📡 Gruppe scannen
+          </button>
           <button type="button" onClick={() => setDialog({ kind: 'locations' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             Orte
           </button>
@@ -989,6 +997,8 @@ export default function Herds() {
           )}
         </div>
       )}
+
+      <ReaderProposals data={data} canWrite={canWrite} onImported={(g) => { notifySuccess(`«${g.name}» importiert`); refresh() }} />
 
       {idx && <LaufhofToday data={data} idx={idx} groups={groups} date={date} canWrite={canWrite} onChanged={refresh} />}
 
@@ -1137,6 +1147,9 @@ export default function Herds() {
                     <button type="button" onClick={() => setDialog({ kind: 'move', from: g })} className={btn}>
                       Tiere zügeln…
                     </button>
+                    <button type="button" onClick={() => setDialog({ kind: 'history', group: g })} className={btn} title="Änderungen an dieser Gruppe ansehen und zurücknehmen">
+                      ↶ Rückgängig / Verlauf
+                    </button>
                     {/* Tiere ohne Nummer gibt es auf dem Betrieb nicht — nur für frühere Anzahlen */}
                     {comp.counts.length > 0 && (
                       <button type="button" onClick={() => setDialog({ kind: 'count', group: g })} className={btn}>
@@ -1251,6 +1264,19 @@ export default function Herds() {
       {dialog?.kind === 'count' && <CountDialog key={dialog.seq} data={data} group={dialog.group} date={date} onClose={close} />}
       {dialog?.kind === 'move' && <MoveDialog key={dialog.seq} data={data} from={dialog.from} startUnassigned={dialog.unassigned} date={date} onClose={close} />}
       {dialog?.kind === 'locations' && <LocationsDialog key={dialog.seq} data={data} onClose={close} />}
+      {dialog?.kind === 'scan' && (
+        <GroupScanDialog
+          key={dialog.seq}
+          data={data}
+          date={date}
+          onClose={close}
+          onSaved={(g) => {
+            notifySuccess(`«${g.name}» gespeichert`)
+            close()
+          }}
+        />
+      )}
+      {dialog?.kind === 'history' && <GroupHistoryDialog key={dialog.seq} data={data} group={dialog.group} onChanged={refresh} onClose={close} />}
       {dialog?.kind === 'identify' && (
         <IdentifyDialog key={dialog.seq} data={data} group={dialog.group} preselected={dialog.preselected} date={date} onClose={close} />
       )}

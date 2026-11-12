@@ -24,6 +24,11 @@ SYNC_TABLES: dict[str, list[str]] = {
     "herd_laufhof": [
         "id", "group_id", "entry_date", "notes", "updated_at", "deleted_at",
     ],
+    "reader_pools": [
+        "id", "device_group_id", "name", "device_count", "tag_count", "tags", "unmatched", "raw", "signature",
+        "fetched_at", "status", "handled_by", "handled_at", "imported_group_id", "updated_at",
+        "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at", "snapshot",
         "updated_at",
@@ -38,6 +43,7 @@ TABLE_AREA: dict[str, str] = {
     "herd_members": "tiere:herden",
     "herd_counts": "tiere:herden",
     "herd_laufhof": "tiere:herden",
+    "reader_pools": "tiere:herden",
     "data_history": "tiere:history",
 }
 

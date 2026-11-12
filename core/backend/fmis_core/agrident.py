@@ -68,6 +68,68 @@ def reader_tag_candidates(long_tag: str) -> tuple[str, str | None]:
     return long_tag, None
 
 
+# --- Datenpools (Gruppen im Speicher des Geräts) -----------------------------------------
+# ACHTUNG: Das Antwortformat von XGGROUPS/XGMEM ist NICHT am Gerät bestätigt (siehe
+# modules/livestock/backend/app/reader.py). Die Auswertung ist darum bewusst tolerant,
+# liefert nie Raten als Ergebnis (was sie nicht versteht, kommt als «unbekannt» zurück)
+# und die Rohantwort wird immer mitgespeichert.
+
+_ISO15_RE = re.compile(r"^756(\d{12})$")
+_CH12_RE = re.compile(r"^CH\d{12}$")
+_DIGITS12_RE = re.compile(r"^\d{12}$")
+
+
+def normalize_pool_tag(token: str) -> str | None:
+    """Ohrmarke aus einer Zeile des Datenpools in die lange Form «CH» + 12 Ziffern bringen
+    (wie bei Live-Lesungen). Verstanden werden «CH» + 12 Ziffern, die 15-stellige ISO-Nummer mit
+    Ländercode 756 und die blosse 12-stellige nationale Nummer. Alles andere: None."""
+    t = re.sub(r"[\s.\-]", "", token).upper()
+    if _CH12_RE.match(t):
+        return t
+    m = _ISO15_RE.match(t)
+    if m:
+        return "CH" + m.group(1)
+    if _DIGITS12_RE.match(t):
+        return "CH" + t
+    return None
+
+
+def _lines(raw: str) -> list[str]:
+    return [line.strip() for line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n") if line.strip()]
+
+
+def parse_pool_list(raw: str) -> list[dict]:
+    """Antwort von XGGROUPS → [{group_id, name, count, raw}]. Zeilen ohne Kennung werden übergangen."""
+    out = []
+    for line in _lines(raw):
+        fields = line.split("|")
+        if not fields[0].strip():
+            continue
+        count = fields[2].strip() if len(fields) > 2 else ""
+        out.append(
+            {
+                "group_id": fields[0].strip(),
+                "name": fields[1].strip() if len(fields) > 1 and fields[1].strip() else None,
+                "count": int(count) if count.isdigit() else None,
+                "raw": line,
+            }
+        )
+    return out
+
+
+def parse_pool_tags(raw: str) -> tuple[list[str], list[str]]:
+    """Antwort von XGMEM → (Ohrmarken in langer Form ohne Doppel, nicht verstandene Zeilen)."""
+    tags: list[str] = []
+    unknown: list[str] = []
+    for line in _lines(raw):
+        tag = normalize_pool_tag(line.split("|")[0])
+        if tag is None:
+            unknown.append(line)
+        elif tag not in tags:
+            tags.append(tag)
+    return tags, unknown
+
+
 def sheep_short_tag(long_tag: str) -> str | None:
     """Wandelt die lange Ohrmarke (RFID-Chip-Format, z.B. "CH113900001305")
     in die kurze, offizielle TVD-Ohrmarke ("CH90000130") um.

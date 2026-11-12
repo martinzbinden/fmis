@@ -54,6 +54,9 @@ services:
       # Testumgebung dev-fmis (docker-compose.dev.yml, tools/deploy/README.md): Kennung der
       # Instanz und Mail nur an diese Adressen. In Prod beide leer.
       FMIS_INSTANZ: ${FMIS_INSTANZ:-}
+      # Lesegerät im Hintergrund abfragen (neue Gruppen im Gerät → Vorschläge in Tiergruppen), Takt in
+      # Sekunden, 0 = aus (modules/tiere/backend/app/reader_pools.py)
+      READER_POOL_POLL_S: ${READER_POOL_POLL_S:-90}
       MAIL_ALLOWLIST: ${MAIL_ALLOWLIST:-}
     depends_on:
       postgres:
@@ -84,7 +87,7 @@ services:
         PathPrefix(`/wiesenjournal/sync`) || PathPrefix(`/wiesenjournal/reports`) ||
         PathPrefix(`/wiesenjournal/parcels`) || PathPrefix(`/wiesenjournal/fertilization`) ||
         PathPrefix(`/betrieb/sync`) || PathPrefix(`/betrieb/files`) || PathPrefix(`/betrieb/duty`) ||
-        PathPrefix(`/tiere/sync`) || PathPrefix(`/bau/sync`) ||
+        PathPrefix(`/tiere/sync`) || PathPrefix(`/tiere/reader`) || PathPrefix(`/bau/sync`) ||
         PathPrefix(`/health`) || PathPrefix(`/docs`) || PathPrefix(`/openapi.json`))
       - traefik.http.routers.${ROUTER:-fmis}-api.entrypoints=${TRAEFIK_ENTRYPOINT:-web}
       - traefik.http.routers.${ROUTER:-fmis}-api.tls=${TRAEFIK_TLS:-false}

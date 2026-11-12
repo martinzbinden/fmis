@@ -81,6 +81,17 @@ function readerAvailable(moduleKey: string): Promise<boolean> {
   return p
 }
 
+/** Lange Ohrmarke vom Gerät («CH» + 12 Ziffern, auch aus gespeicherten Datenpools) → Ohrmarke wie in der
+ * App: bei Schafen «CH» + 8 Ziffern (Gerät liefert 4 Nullen davor bzw. die Langform «CH113…» mit Prüfziffer),
+ * alles andere unverändert. Gegenstück zu agrident.py:reader_tag_candidates (Live-Lesungen). */
+export function readerTagToEarTag(long: string): string {
+  const padded = /^CH0000(\d{8})$/.exec(long)
+  if (padded) return `CH${padded[1]}`
+  const sheep = /^CH113(\d{8})\d$/.exec(long)
+  if (sheep) return `CH${sheep[1]}`
+  return long
+}
+
 /** Lesung → Tier aus einer Liste (Vergleich über animalKey, Kurz- und Langform). */
 export function matchRead<T extends { ear_tag: string }>(read: Pick<TagRead, 'key'>, animals: readonly T[]): T | undefined {
   if (!read.key) return undefined

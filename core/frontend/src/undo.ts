@@ -193,7 +193,7 @@ export const TABLE_LABELS: Record<string, string> = {
   daily_farm_log: 'Tagesmeldung', weed_observations: 'Unkraut', sowing_details: 'Saat',
   // Mast
   animal_groups: 'Gruppe', group_memberships: 'Gruppenzuteilung', weighings: 'Wägung', medications: 'Behandlung', feed_records: 'Futter',
-  expenses: 'Ausgabe', slaughter_results: 'Schlachtung', market_prices: 'Marktpreis', proviande_prices: 'Proviande-Preis',
+  expenses: 'Ausgabe', slaughter_results: 'Schlachtung', market_prices: 'Marktpreis', proviande_prices: 'Proviande-Preis', reader_pools: 'Gruppe vom Lesegerät',
   // Felder
   farms: 'Betrieb', management_units: 'Bewirtschaftungseinheit', field_declarations: 'Flächenangabe', plan_layers: 'Planebene', plan_parcels: 'Planparzelle',
 }
