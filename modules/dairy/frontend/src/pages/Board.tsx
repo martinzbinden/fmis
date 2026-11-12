@@ -1,0 +1,626 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { PGlite } from '@electric-sql/pglite'
+import { animalProvider, refreshHerdData, type AnimalRef } from '@fmis/core/animals'
+import { useHasPermission } from '@fmis/core/AuthContext'
+import { useDb } from '@fmis/core/DbContext'
+import FilterBar from '@fmis/core/filters/FilterBar'
+import FilterModal from '@fmis/core/filters/FilterModal'
+import { applyFilters, countMatches, type FilterDef, type FilterResult } from '@fmis/core/filters/filterModel'
+import { useSavedFilters } from '@fmis/core/filters/useSavedFilters'
+import FooterBar from '@fmis/core/FooterBar'
+import Modal from '@fmis/core/Modal'
+import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
+import { undoAction, useOnUndo } from '@fmis/core/undo'
+import { loadHerdData, memberAt, moveAnimals, removeMembers, type HerdData } from '@fmis/tiere/lib/herds'
+import { useQuery } from '../hooks/useQuery'
+import BoardCardView from '../components/BoardCardView'
+import { DragGhost, useBoardDrag } from '../components/boardDrag'
+import { boardFields, boardPresets, buildCards, buildColumns, cardsInColumn, SORTS, sortCards, type BoardCard, type BoardColumn, type SortKey } from '../lib/board'
+import { clearTargets, draftSize, effectiveGroup, groupByTarget, pruneDraft, setTargets, summarizeDraft, type DraftMoves } from '../lib/boardDraft'
+import { SIRE_TRAIT } from '../lib/breedingTraits'
+import { useCullingThresholds } from '../lib/cullingSettings'
+import { fmtDate, localTodayIso } from '../lib/format'
+import { loadHerdContext } from '../lib/herdContext'
+import { loadNursingDams } from '../lib/lambs'
+import { speciesOf, speciesTerms } from '../lib/species'
+import { addToWatchlist, loadWatchlists, removeEntry } from '../lib/watchlists'
+
+async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string) {
+  const [context, lists, nursing] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadNursingDams(pg, today)])
+  return { context, nursing, ...lists }
+}
+
+const hiddenKey = (moduleKey: string) => `${moduleKey}_board_hidden_columns`
+function readHidden(moduleKey: string): Set<string> {
+  try {
+    const v = JSON.parse(localStorage.getItem(hiddenKey(moduleKey)) ?? '[]') as unknown
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+const sortStorage = (moduleKey: string) => `${moduleKey}_board_sort`
+
+/** Dashboard am PC und Tablet: jede Tiergruppe und Merkliste eine Spalte, jedes Tier eine Karte.
+ * Filter färben oder blenden aus; Karten lassen sich in eine andere Gruppe ziehen (als Entwurf, der
+ * gesamthaft bestätigt wird) oder auf eine Merkliste (kommt sofort drauf, bleibt in der Gruppe). */
+export default function Board({ moduleKey }: { moduleKey: string }) {
+  const db = useDb()
+  const species = speciesOf(moduleKey)
+  const herdSpecies = species === 'sheep' ? 'schafe' : 'rinder'
+  const terms = speciesTerms(moduleKey)
+  const today = localTodayIso()
+  const canMove = useHasPermission('tiere:herden:write') && !!animalProvider(moduleKey)
+  const { thresholds } = useCullingThresholds(moduleKey, species)
+
+  const { data } = useQuery((pg) => loadBoard(pg, species, today), [species, today])
+  const [herd, setHerd] = useState<HerdData | null>(null)
+  const [refs, setRefs] = useState<AnimalRef[] | null>(null)
+  useEffect(() => {
+    let live = true
+    const load = () => loadHerdData().then((d) => live && setHerd(d))
+    void load()
+      .then(() => refreshHerdData())
+      .then((fresh) => fresh && live && load())
+    void (animalProvider(moduleKey)?.listAnimals() ?? Promise.resolve([])).then((r) => live && setRefs(r))
+    return () => {
+      live = false
+    }
+  }, [moduleKey, data])
+
+  // «Rückgängig» schreibt in die Ablage des Moduls Tiere: Gruppen neu lesen
+  useOnUndo(() => void loadHerdData().then(setHerd))
+
+  const groups = useMemo(
+    () => (herd?.groups ?? []).filter((g) => g.active && g.species === herdSpecies).sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de')),
+    [herd, herdSpecies],
+  )
+  const groupName = useCallback((id: string | null) => (id == null ? 'Ohne Gruppe' : (groups.find((g) => g.id === id)?.name ?? '?')), [groups])
+
+  // heutige Gruppe je Tier (nur Gruppen dieser Tierart, die es noch gibt)
+  const current = useMemo(() => {
+    const m = new Map<string, string | null>()
+    if (!herd || !refs) return m
+    const ok = new Set(groups.map((g) => g.id))
+    for (const a of refs) {
+      const mem = memberAt(herd, a.id, today)
+      m.set(a.id, mem && ok.has(mem.group_id) ? mem.group_id : null)
+    }
+    return m
+  }, [herd, refs, groups, today])
+
+  const lists = useMemo(() => (data?.lists ?? []).filter((l) => !l.archived_at), [data])
+
+  const cards = useMemo(
+    () =>
+      data && refs
+        ? buildCards({
+            species,
+            today,
+            thresholds,
+            context: data.context,
+            refs,
+            groupOf: new Map([...current].filter((e): e is [string, string] => e[1] != null)),
+            entries: data.entries,
+            nursing: data.nursing,
+            breedingTrait: SIRE_TRAIT[species].trait,
+          })
+        : [],
+    [data, refs, species, today, thresholds, current],
+  )
+  const cardById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards])
+
+  // Filter
+  const fields = useMemo(() => boardFields(moduleKey, species, { groups, lists }), [moduleKey, species, groups, lists])
+  const presets = useMemo(() => boardPresets(species), [species])
+  const saved = useSavedFilters(`${moduleKey}_board_filters`, presets)
+  const evalCtx = useMemo(() => ({ today }), [today])
+  const [editing, setEditing] = useState<{ filter?: FilterDef } | null>(null)
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<SortKey>(() => {
+    try {
+      const v = localStorage.getItem(sortStorage(moduleKey)) as SortKey | null
+      return v && SORTS.some((s) => s.key === v) ? v : 'nr'
+    } catch {
+      return 'nr'
+    }
+  })
+  const counts = useMemo(() => Object.fromEntries(saved.filters.map((f) => [f.id, countMatches(cards, f, fields, evalCtx)])), [saved.filters, cards, fields, evalCtx])
+  const results = useMemo(() => {
+    const m = new Map<string, FilterResult>()
+    for (const c of cards) m.set(c.id, applyFilters(c, saved.filters, saved.modes, fields, evalCtx))
+    return m
+  }, [cards, saved.filters, saved.modes, fields, evalCtx])
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return cards.filter((c) => {
+      if (!results.get(c.id)?.visible) return false
+      return !q || [c.laufNr, c.shortTag, c.earTag, c.name].some((x) => x?.toLowerCase().includes(q))
+    })
+  }, [cards, results, search])
+
+  // Entwurf Gruppenwechsel
+  const [draft, setDraft] = useState<DraftMoves>({})
+  useEffect(() => {
+    if (current.size === 0) return
+    setDraft((d) => {
+      const p = pruneDraft(d, current, (id) => groups.some((g) => g.id === id))
+      return draftSize(p) === draftSize(d) ? d : p
+    })
+  }, [current, groups])
+  const groupOf = useCallback((id: string) => effectiveGroup(draft, id, current), [draft, current])
+  const [confirming, setConfirming] = useState(false)
+
+  // Spalten, Auswahl, Aufklappen
+  const columns = useMemo(() => buildColumns(groups, lists), [groups, lists])
+  const [hidden, setHidden] = useState<Set<string>>(() => readHidden(moduleKey))
+  const [showColumns, setShowColumns] = useState(false)
+  const visibleColumns = columns.filter((c) => !hidden.has(c.key))
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const toggle = (set: Set<string>, id: string) => {
+    const next = new Set(set)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  }
+
+  function setHiddenCols(next: Set<string>) {
+    setHidden(next)
+    try {
+      localStorage.setItem(hiddenKey(moduleKey), JSON.stringify([...next]))
+    } catch {
+      // nur bis zum Neuladen
+    }
+  }
+  function changeSort(v: SortKey) {
+    setSort(v)
+    try {
+      localStorage.setItem(sortStorage(moduleKey), v)
+    } catch {
+      // nur bis zum Neuladen
+    }
+  }
+
+  // Aktionen
+  function moveToDraft(ids: string[], target: string | null) {
+    if (!canMove) {
+      notifyError('Für Gruppenwechsel fehlt die Berechtigung (Tiergruppen).')
+      return
+    }
+    setDraft((d) => setTargets(d, ids, target, current))
+  }
+
+  async function addToList(listId: string, ids: string[]) {
+    const list = lists.find((l) => l.id === listId)
+    if (!list) return
+    try {
+      const added = await undoAction(`Merkliste «${list.name}»`, () => addToWatchlist(db, listId, ids, null))
+      notifySuccess(added === 0 ? `Schon auf «${list.name}»` : `${added} ${added === 1 ? 'Tier' : 'Tiere'} auf «${list.name}»`)
+    } catch (e) {
+      notifyError(errorText(e))
+    }
+  }
+
+  async function removeFromList(listId: string, animalId: string) {
+    const list = lists.find((l) => l.id === listId)
+    const entry = data?.entries.find((e) => e.list_id === listId && e.animal_id === animalId && !e.done_at)
+    if (!list || !entry) return
+    try {
+      await undoAction(`Von Merkliste «${list.name}» genommen`, () => removeEntry(db, entry.id))
+    } catch (e) {
+      notifyError(errorText(e))
+    }
+  }
+
+  const scroller = useRef<HTMLDivElement | null>(null)
+  const { drag, hover, pointerDown, ghost } = useBoardDrag({
+    enabled: true,
+    scroller,
+    idsFor: (id) => (selected.has(id) ? [...selected] : [id]),
+    labelFor: (ids) => (ids.length === 1 ? `${cardById.get(ids[0])?.laufNr ?? cardById.get(ids[0])?.shortTag ?? 'Tier'}` : `${ids.length} Tiere`),
+    onDrop: (ids, key) => {
+      const col = columns.find((c) => c.key === key)
+      if (!col) return
+      if (col.kind === 'group') moveToDraft(ids, col.id)
+      else void addToList(col.id!, ids)
+      if (ids.length > 1) setSelected(new Set())
+    },
+  })
+
+  const columnCards = useCallback((col: BoardColumn) => sortCards(cardsInColumn(col, shown, groupOf), sort), [shown, groupOf, sort])
+
+  const loading = !data || !herd || !refs
+  const pending = draftSize(draft)
+  const chosen = [...selected].filter((id) => cardById.has(id))
+
+  if (loading) return <p className="p-6 text-center text-gray-500">Lädt…</p>
+  if (cards.length === 0) return <p className="p-6 text-center text-gray-600">Keine aktiven {terms.plural}. {terms.importHint}</p>
+
+  return (
+    <div className="space-y-3 p-3 pb-40">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="mr-auto text-xl font-bold text-gray-800">Dashboard</h1>
+        <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nummer oder Name" aria-label="Suchen" className="min-h-11 w-44 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm" />
+        <select value={sort} onChange={(e) => changeSort(e.target.value as SortKey)} aria-label="Sortierung" className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-2 text-sm">
+          {SORTS.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={() => setShowColumns(true)} className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm">
+          Spalten ({visibleColumns.length}/{columns.length})
+        </button>
+      </div>
+
+      <FilterBar
+        filters={saved.filters}
+        modes={saved.modes}
+        counts={counts}
+        fields={fields}
+        onCycle={saved.cycle}
+        onEdit={(f) => setEditing({ filter: f })}
+        onNew={() => setEditing({})}
+        onClear={saved.clearModes}
+      />
+
+      <p className="text-xs text-gray-600">
+        {shown.length} von {cards.length} {terms.plural} sichtbar. Antippen klappt eine Karte auf, am Griff ⠿ ziehen verschiebt.
+      </p>
+
+      {chosen.length > 0 && (
+        <SelectionBar
+          count={chosen.length}
+          groups={groups}
+          lists={lists}
+          canMove={canMove}
+          onDraft={(target) => {
+            moveToDraft(chosen, target)
+            setSelected(new Set())
+          }}
+          onList={(listId) => {
+            void addToList(listId, chosen)
+            setSelected(new Set())
+          }}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
+
+      <div ref={scroller} className="flex snap-x items-start gap-3 overflow-x-auto pb-4">
+        {visibleColumns.map((col) => {
+          const list = columnCards(col)
+          return (
+            <section
+              key={col.key}
+              data-drop-col={col.key}
+              aria-label={col.title}
+              className={`w-72 shrink-0 snap-start rounded-xl p-2 ${hover === col.key ? 'bg-brand-50 ring-2 ring-brand-700' : 'bg-gray-100'}`}
+            >
+              <header className="mb-2 flex items-center gap-1">
+                <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-800">
+                  {col.kind === 'list' ? '🔖' : species === 'sheep' ? '🐑' : '🐄'} {col.title}
+                </h2>
+                <span className="text-xs text-gray-600">{list.length}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelected((s) => (list.every((c) => s.has(c.id)) ? new Set([...s].filter((id) => !list.some((c) => c.id === id))) : new Set([...s, ...list.map((c) => c.id)])))}
+                  disabled={list.length === 0}
+                  aria-label={`Alle in «${col.title}» auswählen`}
+                  title="Alle auswählen"
+                  className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200 disabled:opacity-30"
+                >
+                  ☑
+                </button>
+              </header>
+              <div className="max-h-[calc(100vh-20rem)] min-h-20 space-y-2 overflow-y-auto pr-0.5">
+                {list.map((c) => (
+                  <ColumnCard
+                    key={c.id}
+                    card={c}
+                    col={col}
+                    moduleKey={moduleKey}
+                    today={today}
+                    result={results.get(c.id)}
+                    selected={selected.has(c.id)}
+                    expanded={open.has(`${col.key}:${c.id}`)}
+                    pendingTo={col.kind === 'group' && c.id in draft ? groupName(draft[c.id]) : null}
+                    canDrag={true}
+                    onSelect={() => setSelected((s) => toggle(s, c.id))}
+                    onToggle={() => setOpen((o) => toggle(o, `${col.key}:${c.id}`))}
+                    onUndoDraft={() => setDraft((d) => clearTargets(d, [c.id]))}
+                    onRemoveFromList={col.kind === 'list' ? () => void removeFromList(col.id!, c.id) : undefined}
+                    pointerDown={pointerDown}
+                  />
+                ))}
+                {list.length === 0 && <p className="rounded-lg border-2 border-dashed border-gray-300 p-3 text-center text-xs text-gray-500">{hover === col.key ? 'Hier ablegen' : 'keine Tiere'}</p>}
+              </div>
+            </section>
+          )
+        })}
+      </div>
+
+      <DragGhost drag={drag} ghost={ghost} />
+
+      {pending > 0 && (
+        <FooterBar>
+          <span className="font-semibold text-amber-900">Entwurf: {pending} {pending === 1 ? 'Tier' : 'Tiere'} verschoben, noch nicht gespeichert</span>
+          <button type="button" onClick={() => setConfirming(true)} className="min-h-11 rounded-lg bg-brand-700 px-4 font-semibold text-white">
+            Prüfen und bestätigen
+          </button>
+          <button type="button" onClick={() => setDraft({})} className="min-h-11 rounded-lg border border-gray-300 px-3">
+            Verwerfen
+          </button>
+        </FooterBar>
+      )}
+
+      {editing && (
+        <FilterModal
+          fields={fields}
+          rows={cards}
+          ctx={evalCtx}
+          initial={editing.filter}
+          onSave={(f) => {
+            saved.save(f)
+            setEditing(null)
+          }}
+          onDelete={editing.filter && !editing.filter.preset ? () => {
+            saved.remove(editing.filter!.id)
+            setEditing(null)
+          } : undefined}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      {showColumns && (
+        <Modal title="Spalten" onClose={() => setShowColumns(false)}>
+          <ul className="space-y-1">
+            {columns.map((c) => (
+              <li key={c.key}>
+                <label className="flex min-h-11 items-center gap-3">
+                  <input type="checkbox" className="h-5 w-5" checked={!hidden.has(c.key)} onChange={() => setHiddenCols(toggle(hidden, c.key))} />
+                  <span>
+                    {c.kind === 'list' ? '🔖 ' : ''}
+                    {c.title}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </Modal>
+      )}
+
+      {confirming && herd && refs && (
+        <ConfirmDraft
+          draft={draft}
+          current={current}
+          herd={herd}
+          refs={refs}
+          groupName={groupName}
+          cardById={cardById}
+          onClose={() => setConfirming(false)}
+          onDone={(n) => {
+            setConfirming(false)
+            setDraft({})
+            setSelected(new Set())
+            notifySuccess(`${n} ${n === 1 ? 'Tier' : 'Tiere'} gezügelt`)
+            void loadHerdData().then(setHerd)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function ColumnCard({
+  card,
+  col,
+  moduleKey,
+  today,
+  result,
+  selected,
+  expanded,
+  pendingTo,
+  canDrag,
+  onSelect,
+  onToggle,
+  onUndoDraft,
+  onRemoveFromList,
+  pointerDown,
+}: {
+  card: BoardCard
+  col: BoardColumn
+  moduleKey: string
+  today: string
+  result: FilterResult | undefined
+  selected: boolean
+  expanded: boolean
+  pendingTo: string | null
+  canDrag: boolean
+  onSelect: () => void
+  onToggle: () => void
+  onUndoDraft: () => void
+  onRemoveFromList?: () => void
+  pointerDown: (cardId: string, handle: boolean) => (e: React.PointerEvent) => void
+}) {
+  void col
+  return (
+    <BoardCardView
+      card={card}
+      moduleKey={moduleKey}
+      today={today}
+      colors={result?.colors ?? []}
+      filterNames={result?.names ?? []}
+      selected={selected}
+      expanded={expanded}
+      pendingTo={pendingTo}
+      canDrag={canDrag}
+      onSelect={onSelect}
+      onToggle={onToggle}
+      onUndoDraft={pendingTo ? onUndoDraft : undefined}
+      onRemoveFromList={onRemoveFromList}
+      onDragCard={pointerDown(card.id, false)}
+      onDragHandle={pointerDown(card.id, true)}
+    />
+  )
+}
+
+/** Auswahl mehrerer Karten: ohne Ziehen in eine Gruppe (Entwurf) oder auf eine Merkliste. */
+function SelectionBar({
+  count,
+  groups,
+  lists,
+  canMove,
+  onDraft,
+  onList,
+  onClear,
+}: {
+  count: number
+  groups: { id: string; name: string }[]
+  lists: { id: string; name: string }[]
+  canMove: boolean
+  onDraft: (target: string | null) => void
+  onList: (listId: string) => void
+  onClear: () => void
+}) {
+  const [group, setGroup] = useState('')
+  const [list, setList] = useState('')
+  const field = 'min-h-11 rounded-lg border border-gray-300 bg-white px-2 text-sm'
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 p-2 text-sm" role="region" aria-label="Auswahl">
+      <span className="font-semibold text-sky-900">{count} gewählt</span>
+      {canMove && (
+        <span className="flex items-center gap-1">
+          <select value={group} onChange={(e) => setGroup(e.target.value)} className={field} aria-label="In Gruppe verschieben">
+            <option value="">Gruppe wählen…</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+            <option value="none">Ohne Gruppe</option>
+          </select>
+          <button type="button" disabled={!group} onClick={() => onDraft(group === 'none' ? null : group)} className="min-h-11 rounded-lg bg-brand-700 px-3 font-medium text-white disabled:opacity-50">
+            In Entwurf
+          </button>
+        </span>
+      )}
+      {lists.length > 0 && (
+        <span className="flex items-center gap-1">
+          <select value={list} onChange={(e) => setList(e.target.value)} className={field} aria-label="Auf Merkliste setzen">
+            <option value="">Merkliste wählen…</option>
+            {lists.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" disabled={!list} onClick={() => onList(list)} className="min-h-11 rounded-lg border border-brand-700 px-3 font-medium text-brand-700 disabled:opacity-50">
+            Auf Liste
+          </button>
+        </span>
+      )}
+      <button type="button" onClick={onClear} className="ml-auto min-h-11 rounded-lg px-3 text-gray-700 underline">
+        Auswahl aufheben
+      </button>
+    </div>
+  )
+}
+
+/** Entwurf prüfen, Datum wählen, dann schreiben. Erst hier finden die Gruppenwechsel statt. */
+function ConfirmDraft({
+  draft,
+  current,
+  herd,
+  refs,
+  groupName,
+  cardById,
+  onClose,
+  onDone,
+}: {
+  draft: DraftMoves
+  current: ReadonlyMap<string, string | null>
+  herd: HerdData
+  refs: AnimalRef[]
+  groupName: (id: string | null) => string
+  cardById: Map<string, BoardCard>
+  onClose: () => void
+  onDone: (n: number) => void
+}) {
+  const [date, setDate] = useState(localTodayIso())
+  const [dryOff, setDryOff] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const lines = useMemo(() => summarizeDraft(draft, current, groupName), [draft, current, groupName])
+  const total = draftSize(draft)
+  const milking = (id: string | null) => !!herd.groups.find((g) => g.id === id)?.milking
+  // aus einer Melkgruppe in eine andere Gruppe: Trockenstellen anbieten
+  const dryable = lines.filter((l) => milking(l.from) && !milking(l.to)).reduce((n, l) => n + l.ids.length, 0)
+  const label = (id: string) => cardById.get(id)?.laufNr ?? cardById.get(id)?.shortTag ?? id.slice(0, 6)
+
+  async function run() {
+    setBusy(true)
+    try {
+      const refById = new Map(refs.map((r) => [r.id, r]))
+      await undoAction(`Gruppenwechsel (${total} ${total === 1 ? 'Tier' : 'Tiere'})`, async () => {
+        for (const [to, ids] of groupByTarget(draft)) {
+          if (to == null) {
+            const memberIds = herd.members.filter((m) => ids.includes(m.animal_id) && (m.to_date == null || m.to_date >= date)).map((m) => m.id)
+            await removeMembers(herd, memberIds, date)
+            continue
+          }
+          const toGroup = herd.groups.find((g) => g.id === to)
+          if (!toGroup) throw new Error('Zielgruppe nicht mehr vorhanden')
+          const animals = ids.map((id) => refById.get(id)).filter((a): a is AnimalRef => !!a)
+          // Trockenstellen nur für Tiere, die aus einer Melkgruppe kommen
+          const dry = dryOff && !toGroup.milking ? animals.filter((a) => milking(current.get(a.id) ?? null)) : []
+          const dryIds = new Set(dry.map((a) => a.id))
+          const rest = animals.filter((a) => !dryIds.has(a.id))
+          if (dry.length) await moveAnimals(herd, { toGroup, fromGroup: null, date, animals: dry, counts: {}, dryOff: true })
+          if (rest.length) await moveAnimals(herd, { toGroup, fromGroup: null, date, animals: rest, counts: {}, dryOff: false })
+        }
+      })
+      onDone(total)
+    } catch (e) {
+      notifyError(errorText(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Gruppenwechsel bestätigen" onClose={onClose} onSubmit={() => void run()}>
+      <div className="space-y-3 text-sm">
+        <ul className="space-y-2">
+          {lines.map((l) => (
+            <li key={`${l.from}>${l.to}`} className="rounded-lg bg-gray-50 p-2">
+              <div className="font-semibold text-gray-900">
+                {l.ids.length} {l.ids.length === 1 ? 'Tier' : 'Tiere'}: {groupName(l.from)} → {groupName(l.to)}
+              </div>
+              <div className="text-xs text-gray-600">{l.ids.map(label).join(', ')}</div>
+            </li>
+          ))}
+        </ul>
+        <label className="flex items-center gap-2">
+          <span className="font-medium text-gray-700">Gültig ab</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="min-h-11 rounded-lg border border-gray-300 px-2" />
+        </label>
+        <p className="text-xs text-gray-600">Die bisherige Gruppe endet am Vortag, der Verlauf bleibt erhalten. «Rückgängig» nimmt den ganzen Wechsel zurück.</p>
+        {dryable > 0 && (
+          <label className="flex items-start gap-2">
+            <input type="checkbox" className="mt-1 h-5 w-5" checked={dryOff} onChange={(e) => setDryOff(e.target.checked)} />
+            <span>
+              {dryable} {dryable === 1 ? 'Tier' : 'Tiere'} aus einer Melkgruppe: ab diesem Datum trockenstellen
+            </span>
+          </label>
+        )}
+        <div className="flex gap-2">
+          <button type="button" disabled={busy || !date} onClick={() => void run()} className="min-h-12 flex-1 rounded-lg bg-brand-700 px-4 font-semibold text-white disabled:opacity-50">
+            {busy ? 'speichert …' : `Ab ${fmtDate(date)} bestätigen`}
+          </button>
+          <button type="button" onClick={onClose} className="min-h-12 rounded-lg border border-gray-300 px-4">
+            Zurück
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}

@@ -29,6 +29,7 @@ import AnimalInfo from './pages/AnimalInfo'
 import Watchlists from './pages/Watchlists'
 import ClawEntry from './pages/ClawEntry'
 import GroupCompare from './pages/GroupCompare'
+import Board from './pages/Board'
 import Lambs from './pages/Lambs'
 import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
@@ -67,6 +68,8 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { to: 'tiere', label: 'Tiere', icon: sheep ? '🐑' : '🐄' },
       // Leistung: über Tier und Gruppe verlinkt (?tier= / ?tiere=), dazu «Heute» → Weitere Seiten
       { to: 'gruppen', label: 'Gruppen', icon: '📊' },
+      // Karten je Tier in Spalten (Tiergruppen, Merklisten), am PC und Tablet
+      { to: 'dashboard', label: 'Dashboard', icon: '🗂️' },
     ],
     historyPermission: `${key}:history:read`,
     pageTitles: {
@@ -82,6 +85,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       merklisten: 'Merklisten',
       klauen: 'Klauen',
       gruppen: 'Gruppen',
+      dashboard: 'Dashboard',
       laemmer: sheep ? 'Lämmer' : 'Kälber',
       leistung: 'Leistung',
       journal: 'Beobachtung / Behandlung',
@@ -111,6 +115,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'merklisten', element: <Watchlists moduleKey={key} /> },
       { path: 'klauen', element: <ClawEntry moduleKey={key} /> },
       { path: 'gruppen', element: <GroupCompare moduleKey={key} /> },
+      { path: 'dashboard', element: <Board moduleKey={key} /> },
       { path: 'laemmer', element: <Lambs moduleKey={key} /> },
       { path: 'journal', element: <JournalEntry moduleKey={key} /> },
       { path: 'behandlungen', element: <TreatmentJournal moduleKey={key} /> },
