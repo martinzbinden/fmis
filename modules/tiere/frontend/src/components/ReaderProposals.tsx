@@ -15,7 +15,7 @@ import ScanSaveDialog from './ScanSaveDialog'
 
 async function loadProposals(pg: PGlite): Promise<PoolProposal[]> {
   const { rows } = await pg.query<Record<string, unknown>>(
-    `select * from reader_pools where deleted_at is null and status in ('neu', 'bekannt') order by fetched_at desc`,
+    `select * from reader_pools where deleted_at is null and status in ('neu', 'bekannt') order by coalesce(scanned_at, fetched_at) desc`,
   )
   return rows.map(toProposal)
 }
@@ -166,7 +166,7 @@ function ProposalRow({ p, animals, onImport, onDiscard }: { p: PoolProposal; ani
     <li className="space-y-1 rounded-lg bg-white p-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-semibold text-gray-900">{p.name ?? `Gruppe ${p.device_group_id}`}</span>
-        <span className="text-xs text-gray-600">{fmtDateTime(p.fetched_at)}</span>
+        <span className="text-xs text-gray-600">{p.scanned_at ? `gescannt ${fmtDateTime(p.scanned_at)}` : `geholt ${fmtDateTime(p.fetched_at)}`}</span>
       </div>
       <p className="text-gray-800">
         {r ? (

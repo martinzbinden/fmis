@@ -26,7 +26,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "reader_pools": [
         "id", "device_group_id", "name", "device_count", "tag_count", "tags", "unmatched", "raw", "signature",
-        "fetched_at", "status", "handled_by", "handled_at", "imported_group_id", "updated_at",
+        "fetched_at", "scanned_at", "status", "handled_by", "handled_at", "imported_group_id", "updated_at",
         "deleted_at",
     ],
     "data_history": [

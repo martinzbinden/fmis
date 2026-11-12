@@ -88,9 +88,10 @@ describe('planSave', () => {
 
 describe('toProposal', () => {
   it('liest Listen aus dem Text und überlebt kaputten Text', () => {
-    const p = toProposal({ id: 'x', device_group_id: '1', name: 'Weide', device_count: 2, tag_count: 2, tags: '["CH000090000010"]', unmatched: 'kaputt', fetched_at: '2026-11-12T08:00:00Z', status: 'neu' })
+    const p = toProposal({ id: 'x', device_group_id: '1', name: 'Weide', device_count: 2, tag_count: 2, tags: '["CH000090000010"]', unmatched: 'kaputt', fetched_at: '2026-11-12T08:00:00Z', scanned_at: '2026-04-18T00:42:16Z', status: 'neu' })
     expect(p.tags).toEqual(['CH000090000010'])
     expect(p.unmatched).toEqual([])
     expect(p.status).toBe('neu')
+    expect(p.scanned_at).toBe('2026-04-18T00:42:16Z')
   })
 })

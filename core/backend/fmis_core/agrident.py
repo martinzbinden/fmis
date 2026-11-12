@@ -69,24 +69,28 @@ def reader_tag_candidates(long_tag: str) -> tuple[str, str | None]:
 
 
 # --- Datenpools (Gruppen im Speicher des Geräts) -----------------------------------------
-# ACHTUNG: Das Antwortformat von XGGROUPS/XGMEM ist NICHT am Gerät bestätigt (siehe
-# modules/livestock/backend/app/reader.py). Die Auswertung ist darum bewusst tolerant,
-# liefert nie Raten als Ergebnis (was sie nicht versteht, kommt als «unbekannt» zurück)
-# und die Rohantwort wird immer mitgespeichert.
+# Am echten APR600 bestätigt (12.11.2026):
+#   XGGROUPS      → je Gruppe eine Zeile `[Index|Kennung|Name|Anzahl]`
+#   XGGROUP|<Kennung> → erst ein Echo `[XGGROUP|<Kennung>]`, dann je Tier eine Zeile
+#                   `[Nr|ddmmyyyy|hhmmss|0|0|FDX|0756000021727967|Zusatz|]`
+#                   (Ohrmarke = «0» + ISO-Nummer 756 + 12 Ziffern)
+#   XGMEM|<n>     → der n-te Speicher-Datensatz des Geräts (nicht gruppenweise); Gruppen stehen im
+#                   Speicher als «Gruppen-Separator»-Datensätze.
+# Die Auswertung ist tolerant und rät nie: was sie nicht versteht, kommt als «unbekannt» zurück.
 
-_ISO15_RE = re.compile(r"^756(\d{12})$")
+_ISO_RE = re.compile(r"^0?756(\d{12})$")
 _CH12_RE = re.compile(r"^CH\d{12}$")
 _DIGITS12_RE = re.compile(r"^\d{12}$")
 
 
 def normalize_pool_tag(token: str) -> str | None:
     """Ohrmarke aus einer Zeile des Datenpools in die lange Form «CH» + 12 Ziffern bringen
-    (wie bei Live-Lesungen). Verstanden werden «CH» + 12 Ziffern, die 15-stellige ISO-Nummer mit
-    Ländercode 756 und die blosse 12-stellige nationale Nummer. Alles andere: None."""
+    (wie bei Live-Lesungen). Verstanden werden «CH» + 12 Ziffern, die ISO-Nummer mit Ländercode 756
+    (15 Ziffern, am Gerät mit einer 0 davor) und die blosse 12-stellige nationale Nummer."""
     t = re.sub(r"[\s.\-]", "", token).upper()
     if _CH12_RE.match(t):
         return t
-    m = _ISO15_RE.match(t)
+    m = _ISO_RE.match(t)
     if m:
         return "CH" + m.group(1)
     if _DIGITS12_RE.match(t):
@@ -98,18 +102,31 @@ def _lines(raw: str) -> list[str]:
     return [line.strip() for line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n") if line.strip()]
 
 
+def _fields(line: str) -> list[str]:
+    """`[a|b|c]` → ['a', 'b', 'c'] (ohne die äussere Klammer)."""
+    line = line.strip()
+    if line.startswith("["):
+        line = line[1:]
+    if line.endswith("]"):
+        line = line[:-1]
+    return [f.strip() for f in line.split("|")]
+
+
 def parse_pool_list(raw: str) -> list[dict]:
-    """Antwort von XGGROUPS → [{group_id, name, count, raw}]. Zeilen ohne Kennung werden übergangen."""
+    """Antwort von XGGROUPS → [{group_id, name, count, raw}]. Verstanden wird `[Index|Kennung|Name|Anzahl]`
+    (Gerät) und, ohne Klammern, `Kennung|Name|Anzahl`. Zeilen ohne Kennung werden übergangen."""
     out = []
     for line in _lines(raw):
-        fields = line.split("|")
-        if not fields[0].strip():
+        f = _fields(line)
+        if line.lstrip().startswith("["):
+            f = f[1:]  # Index vorn weg
+        if not f or not f[0] or not f[0].isdigit():
             continue
-        count = fields[2].strip() if len(fields) > 2 else ""
+        count = f[2] if len(f) > 2 else ""
         out.append(
             {
-                "group_id": fields[0].strip(),
-                "name": fields[1].strip() if len(fields) > 1 and fields[1].strip() else None,
+                "group_id": f[0],
+                "name": f[1] if len(f) > 1 and f[1] else None,
                 "count": int(count) if count.isdigit() else None,
                 "raw": line,
             }
@@ -117,17 +134,35 @@ def parse_pool_list(raw: str) -> list[dict]:
     return out
 
 
-def parse_pool_tags(raw: str) -> tuple[list[str], list[str]]:
-    """Antwort von XGMEM → (Ohrmarken in langer Form ohne Doppel, nicht verstandene Zeilen)."""
+def parse_device_time(date: str, time_: str) -> str | None:
+    """`18042026` + `003014` → «2026-04-18T00:30:14» (Ortszeit des Geräts), sonst None."""
+    m = re.fullmatch(r"(\d{2})(\d{2})(\d{4})", date)
+    t = re.fullmatch(r"(\d{2})(\d{2})(\d{2})", time_)
+    if not m or not t:
+        return None
+    return f"{m.group(3)}-{m.group(2)}-{m.group(1)}T{t.group(1)}:{t.group(2)}:{t.group(3)}"
+
+
+def parse_pool_tags(raw: str) -> tuple[list[str], list[str], str | None]:
+    """Antwort von XGGROUP → (Ohrmarken in langer Form ohne Doppel, nicht verstandene Zeilen, Zeit des
+    letzten Datensatzes als «JJJJ-MM-TTThh:mm:ss»). Das Echo der Anfrage `[XGGROUP|n]` zählt nicht."""
     tags: list[str] = []
     unknown: list[str] = []
+    latest: str | None = None
     for line in _lines(raw):
-        tag = normalize_pool_tag(line.split("|")[0])
+        f = _fields(line)
+        if not f or not f[0].isdigit():
+            continue  # Echo oder Rauschen, kein Datensatz
+        tag = next((normalize_pool_tag(x) for x in f[1:] if x and normalize_pool_tag(x)), None) if len(f) > 5 else None
         if tag is None:
             unknown.append(line)
-        elif tag not in tags:
+            continue
+        if tag not in tags:
             tags.append(tag)
-    return tags, unknown
+        when = parse_device_time(f[1], f[2]) if len(f) > 2 else None
+        if when and (latest is None or when > latest):
+            latest = when
+    return tags, unknown, latest
 
 
 def sheep_short_tag(long_tag: str) -> str | None:

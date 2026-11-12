@@ -11,8 +11,8 @@ Beim allerersten erfolgreichen Abgleich gilt alles, was schon im Gerät liegt, a
 (Altbestand): sonst würden alle früheren Gruppen als neu vorgeschlagen. Sie bleiben in der App
 über «Ältere Gruppen auf dem Gerät» erreichbar.
 
-ACHTUNG: Das Antwortformat von XGGROUPS/XGMEM ist nicht am Gerät bestätigt (siehe
-core/backend/fmis_core/agrident.py). Die Rohantwort wird je Gruppe mitgespeichert."""
+Die Antwortformate von XGGROUPS und XGGROUP sind am echten Gerät bestätigt (siehe
+core/backend/fmis_core/agrident.py); die Rohantwort wird je Gruppe trotzdem mitgespeichert."""
 
 import asyncio
 import hashlib
@@ -21,9 +21,12 @@ import logging
 import os
 import time
 import uuid as uuidlib
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+
+from zoneinfo import ZoneInfo
 
 from core.backend.fmis_core.agrident import ReaderBusyError, ReaderError, acquire_reader, parse_pool_list, parse_pool_tags
 from core.backend.fmis_core.auth import CurrentUser, require_auth
@@ -34,13 +37,22 @@ log = logging.getLogger(__name__)
 pool = get_pool("tiere")
 router = APIRouter()
 
-INTERVAL_S = int(os.environ.get("READER_POOL_POLL_S", "90"))
+# Die Testumgebung bekommt die Leser-Einstellung von Prod mit: sie darf das echte Gerät nicht im Hintergrund
+# abfragen (zwei Verbindungen gleichzeitig können eine laufende Milchwägung auf Prod stören).
+INTERVAL_S = 0 if os.environ.get("FMIS_INSTANZ") == "dev" else int(os.environ.get("READER_POOL_POLL_S", "90"))
 WRITE = "tiere:herden:write"
 RAW_MAX = 2000
 _lock = asyncio.Lock()
 
 # Zustand für die Statusanzeige (nur im Speicher; nach einem Neustart leer)
 state: dict[str, Any] = {"last_try_at": None, "last_ok_at": None, "last_error": None, "last_new": 0}
+
+
+def _device_time(local: str | None) -> datetime | None:
+    """Zeit des Geräts (Ortszeit, ohne Zeitzone) als Zeitpunkt; None, wenn unbekannt."""
+    if not local:
+        return None
+    return datetime.fromisoformat(local).replace(tzinfo=ZoneInfo("Europe/Zurich"))
 
 
 def signature(name: str | None, count: int | None, tags: list[str]) -> str:
@@ -50,7 +62,7 @@ def signature(name: str | None, count: int | None, tags: list[str]) -> str:
 
 
 async def read_device(host: str, port: int, known: set[tuple[str, str]]) -> list[dict[str, Any]]:
-    """Gruppen des Geräts. Inhalte (XGMEM) holt es nur für Gruppen, deren Name+Anzahl wir noch
+    """Gruppen des Geräts. Inhalte (XGGROUP) holt es nur für Gruppen, deren Name+Anzahl wir noch
     nicht in `known` (device_group_id, Kopf) haben — sonst würde jeder Abgleich alles neu laden."""
     out: list[dict[str, Any]] = []
     async with acquire_reader(host, port) as conn:
@@ -59,9 +71,9 @@ async def read_device(host: str, port: int, known: set[tuple[str, str]]) -> list
             head = f"{g['name'] or ''}|{g['count'] if g['count'] is not None else ''}"
             if (g["group_id"], head) in known:
                 continue
-            raw_tags = await conn.send_command("XGMEM", g["group_id"])
-            tags, unmatched = parse_pool_tags(raw_tags)
-            out.append({**g, "head": head, "tags": tags, "unmatched": unmatched, "raw_tags": raw_tags[:RAW_MAX]})
+            raw_tags = await conn.send_command("XGGROUP", g["group_id"])
+            tags, unmatched, scanned = parse_pool_tags(raw_tags)
+            out.append({**g, "head": head, "tags": tags, "unmatched": unmatched, "scanned": scanned, "raw_tags": raw_tags[:RAW_MAX]})
     return out
 
 
@@ -74,10 +86,10 @@ async def store(found: list[dict[str, Any]], first_run: bool) -> int:
             status = "bekannt" if first_run else "neu"
             row = await (
                 await conn.execute(
-                    "insert into reader_pools (id, device_group_id, name, device_count, tag_count, tags, unmatched, raw, signature, status, updated_at) "
-                    "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, clock_timestamp()) "
+                    "insert into reader_pools (id, device_group_id, name, device_count, tag_count, tags, unmatched, raw, signature, status, scanned_at, updated_at) "
+                    "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, clock_timestamp()) "
                     "on conflict (device_group_id, signature) do nothing returning id",
-                    (str(uuidlib.uuid4()), g["group_id"], g["name"], g["count"], len(g["tags"]), json.dumps(g["tags"]), json.dumps(g["unmatched"]), g["raw_tags"], sig, status),
+                    (str(uuidlib.uuid4()), g["group_id"], g["name"], g["count"], len(g["tags"]), json.dumps(g["tags"]), json.dumps(g["unmatched"]), g["raw_tags"], sig, status, _device_time(g["scanned"])),
                 )
             ).fetchone()
             if not row:

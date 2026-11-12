@@ -103,6 +103,8 @@ export interface PoolProposal {
   tags: string[]
   unmatched: string[]
   fetched_at: string
+  /** wann die Gruppe im Gerät gescannt wurde (letzter Datensatz), sonst null */
+  scanned_at: string | null
   status: 'neu' | 'bekannt' | 'importiert' | 'verworfen' | 'ersetzt'
 }
 
@@ -126,6 +128,7 @@ export function toProposal(r: Record<string, unknown>): PoolProposal {
     tags: parseList(r.tags),
     unmatched: parseList(r.unmatched),
     fetched_at: r.fetched_at instanceof Date ? r.fetched_at.toISOString() : String(r.fetched_at),
+    scanned_at: r.scanned_at == null ? null : r.scanned_at instanceof Date ? r.scanned_at.toISOString() : String(r.scanned_at),
     status: String(r.status) as PoolProposal['status'],
   }
 }

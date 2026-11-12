@@ -10,15 +10,21 @@ from modules.tiere.backend.app import reader_pools as rp
 
 class SignatureTest(unittest.TestCase):
     def test_same_content_same_signature_regardless_of_order(self) -> None:
-        a = rp.signature("Weide", 3, ["CH000900000101", "CH000900000102", "CH000900000103"])
-        b = rp.signature("Weide", 3, ["CH000900000103", "CH000900000101", "CH000900000102"])
+        a = rp.signature("Weide", 3, ["CH000021727967", "CH000021727968", "CH000021727969"])
+        b = rp.signature("Weide", 3, ["CH000021727969", "CH000021727967", "CH000021727968"])
         self.assertEqual(a, b)
 
     def test_content_or_name_changes_signature(self) -> None:
-        base = rp.signature("Weide", 2, ["CH000900000101", "CH000900000102"])
-        self.assertNotEqual(base, rp.signature("Weide", 2, ["CH000900000101", "CH000900000199"]))
-        self.assertNotEqual(base, rp.signature("Stall", 2, ["CH000900000101", "CH000900000102"]))
-        self.assertNotEqual(base, rp.signature("Weide", 3, ["CH000900000101", "CH000900000102"]))
+        base = rp.signature("Weide", 2, ["CH000021727967", "CH000021727968"])
+        self.assertNotEqual(base, rp.signature("Weide", 2, ["CH000021727967", "CH000021727999"]))
+        self.assertNotEqual(base, rp.signature("Stall", 2, ["CH000021727967", "CH000021727968"]))
+        self.assertNotEqual(base, rp.signature("Weide", 3, ["CH000021727967", "CH000021727968"]))
+
+
+def rec(group: str, i: int, tag: str) -> str:
+    """Antwort des Geräts auf XGGROUP: Echo, dann je Tier ein Datensatz (hier immer mit Echo vorn)."""
+    echo = f"[XGGROUP|{group}]\r\n" if i == 0 else ""
+    return f"{echo}[{i}|18042026|00{30 + i}14|0|0|FDX|{tag}||]\r\n"
 
 
 class FakeConn:
@@ -42,19 +48,20 @@ def fake_reader(conn: FakeConn):
 
 class ReadDeviceTest(unittest.IsolatedAsyncioTestCase):
     async def test_fetches_only_unknown_groups(self) -> None:
-        conn = FakeConn("1|Weide|2\r\n2|Stall|1\r\n", {"1": "CH000900000101|1\r\nCH000900000102|1\r\n", "2": "CH000900000103|1\r\n"})
+        conn = FakeConn("[0|1|Weide|2]\r\n[1|2|Stall|1]\r\n", {"1": rec("1", 0, "0756000021727967") + rec("1", 1, "0756000021727968"), "2": rec("2", 0, "0756000021727969")})
         with mock.patch.object(rp, "acquire_reader", fake_reader(conn)):
             found = await rp.read_device("h", 1, known={("2", "Stall|1")})
         self.assertEqual([g["group_id"] for g in found], ["1"])
-        self.assertEqual(found[0]["tags"], ["CH000900000101", "CH000900000102"])
-        self.assertEqual(conn.calls, [("XGGROUPS",), ("XGMEM", "1")])
+        self.assertEqual(found[0]["tags"], ["CH000021727967", "CH000021727968"])
+        self.assertEqual(found[0]["scanned"], "2026-04-18T00:31:14")  # Zeit des letzten Datensatzes
+        self.assertEqual(conn.calls, [("XGGROUPS",), ("XGGROUP", "1")])
 
     async def test_unparsable_lines_kept_apart(self) -> None:
-        conn = FakeConn("1|X|2\r\n", {"1": "CH000900000101|1\r\nkaputt\r\n"})
+        conn = FakeConn("[0|1|X|2]\r\n", {"1": rec("1", 0, "0756000021727967") + rec("1", 1, "unlesbar")})
         with mock.patch.object(rp, "acquire_reader", fake_reader(conn)):
             found = await rp.read_device("h", 1, known=set())
-        self.assertEqual(found[0]["tags"], ["CH000900000101"])
-        self.assertEqual(found[0]["unmatched"], ["kaputt"])
+        self.assertEqual(found[0]["tags"], ["CH000021727967"])
+        self.assertEqual(len(found[0]["unmatched"]), 1)
 
     async def test_busy_reader_is_reported_not_raised(self) -> None:
         @asynccontextmanager
