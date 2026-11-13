@@ -119,7 +119,17 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   // früheren Durchgang nur ansehen (?durchgang=…), ohne ihn fortzusetzen — bleibt beim Zurück aus der Tierseite
   const [params, setParams] = useSearchParams()
   const viewing = params.get('durchgang')
-  const setViewing = (id: string | null) => setParams(id ? { durchgang: id } : {}, { replace: !id })
+  // andere Angaben der Adresse bleiben (z.B. ?fokus= im Stallkalender, wo diese Seite eingebettet ist)
+  const setViewing = (id: string | null) =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p)
+        if (id) next.set('durchgang', id)
+        else next.delete('durchgang')
+        return next
+      },
+      { replace: !id },
+    )
 
   // Einzeln: Tier → Ergebnis. Liste: mehrere Tiere sammeln (+ oder Lesegerät), dann ein Ergebnis für alle.
   const [mode, setModeState] = useState<'einzeln' | 'liste'>(() => (readJson<string>(modeKey(moduleKey)) === 'liste' ? 'liste' : 'einzeln'))

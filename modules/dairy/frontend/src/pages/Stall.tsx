@@ -13,6 +13,11 @@ import { lambTitle, loadStall, saveDecisions, type StallData } from '../lib/stal
 import { buildFeedingPlan, buildStallHints, dueState, type DecisionStep, type DecisionValue, type HintItem, type HintKind, type PhaseKey, type StallHint } from '../lib/stallCalendar'
 import { RULE_FIELDS, useStallRules, type StallRules } from '../lib/stallRules'
 import AnimalInfo from './AnimalInfo'
+import JournalEntry from './JournalEntry'
+import Milchwaegung from './Milchwaegung'
+import PregnancyEntry from './PregnancyEntry'
+import TreatmentJournal from './TreatmentJournal'
+import { loadVet, type VetData } from '../lib/vetVisit'
 
 // Stallkalender mit Arbeitsfokus: Jungtiere (Hinweise + Tränkeplan), Melken, Tierarzt, Milchwägung.
 // Jeder Fokus hat unten seine Werkzeugleiste; die Tier-Info lässt sich über jeden Fokus ein- und
@@ -59,7 +64,9 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
   const { rules, update, reset } = useStallRules(moduleKey, species)
   const [params, setParams] = useSearchParams()
   const focus: Focus = FOCI.some((f) => f.key === params.get('fokus')) ? (params.get('fokus') as Focus) : 'jungtiere'
-  const view = params.get('ansicht') === 'plan' ? 'plan' : 'hinweise'
+  const ansicht = params.get('ansicht')
+  const view = ansicht === 'plan' ? 'plan' : 'hinweise'
+  const vetView: VetView = VET_VIEWS.some((v) => v.key === ansicht) ? (ansicht as VetView) : 'besuch'
   const tier = params.get('tier')
   const setParam = (k: string, v: string | null) =>
     setParams(
@@ -83,6 +90,7 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
   const bottom = useBottomOffset()
 
   const { data } = useQuery((pg) => loadStall(pg, species, today, rules), [species, today, rules])
+  const vet = useQuery((pg) => loadVet(pg, today, rules), [today, rules]).data
   const hints = useMemo(
     () => (data ? buildStallHints({ lambs: data.lambs, decisions: data.decisions, expected: data.expected, dryIds: data.dryIds, species, rules, today }) : []),
     [data, species, rules, today],
@@ -113,22 +121,30 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
     ),
     tierarzt: (
       <>
-        <ToolLink {...mod('traechtigkeit')} icon="🤰" label="Trächtigkeit" />
-        <ToolLink {...mod('journal')} icon="💉" label="Behandlung" />
-        <ToolLink {...mod('behandlungen')} icon="📒" label="Journal" />
+        {VET_VIEWS.filter((v) => v.key !== 'besuch').map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            onClick={() => setParam('ansicht', vetView === v.key ? null : v.key)}
+            aria-pressed={vetView === v.key}
+            className={`flex min-h-11 items-center gap-1 rounded-lg border-2 px-3 font-semibold ${vetView === v.key ? 'border-brand-700 bg-brand-50 text-brand-800' : 'border-gray-300 bg-white text-gray-800'}`}
+          >
+            <span aria-hidden>{v.icon}</span> {v.short}
+          </button>
+        ))}
         <ToolLink {...mod('klauen')} icon="🐾" label="Klauen" />
       </>
     ),
     milchwaegung: (
       <>
-        <ToolLink {...mod('milchwaegung')} icon="⚖️" label="Wägung öffnen" />
         <ToolLink {...mod('leistung')} icon="🥛" label="Leistung" />
+        <ToolLink {...mod('journal')} icon="🚫" label="Absetzfrist" />
       </>
     ),
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-3 p-3" style={{ paddingBottom: infoOpen ? '58vh' : '9rem' }}>
+    <div className={`mx-auto space-y-3 p-3 ${focus === 'tierarzt' && vetView === 'journal' ? 'max-w-3xl' : 'max-w-lg'}`} style={{ paddingBottom: infoOpen ? '58vh' : '9rem' }}>
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Stall</h1>
         <span className="text-sm text-gray-600">{fmtDate(today)}</span>
@@ -141,7 +157,18 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
             type="button"
             role="tab"
             aria-selected={focus === f.key}
-            onClick={() => setParam('fokus', f.key === 'jungtiere' ? null : f.key)}
+            onClick={() =>
+              setParams(
+                (p) => {
+                  const n = new URLSearchParams(p)
+                  if (f.key === 'jungtiere') n.delete('fokus')
+                  else n.set('fokus', f.key)
+                  n.delete('ansicht')
+                  return n
+                },
+                { replace: true },
+              )
+            }
             className={`flex min-h-12 shrink-0 items-center gap-1.5 rounded-full border-2 px-4 font-semibold ${focus === f.key ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}
           >
             <span aria-hidden>{f.icon}</span>
@@ -177,8 +204,14 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
       )}
 
       {data && focus === 'melken' && <Melken data={data} today={today} />}
-      {data && focus === 'tierarzt' && <Tierarzt data={data} today={today} />}
-      {data && focus === 'milchwaegung' && <Waegung data={data} />}
+      {data && focus === 'tierarzt' && (
+        <Tierarzt data={data} vet={vet} today={today} moduleKey={moduleKey} view={vetView} onView={(v) => setParam('ansicht', v === 'besuch' ? null : v)} onFocus={focusAnimal} tier={tier} />
+      )}
+      {focus === 'milchwaegung' && (
+        <div className="-mx-3">
+          <Milchwaegung moduleKey={moduleKey} />
+        </div>
+      )}
 
       <details className="rounded-xl bg-white p-3 shadow-sm">
         <summary className="cursor-pointer font-semibold text-gray-800">⚙️ Regeln für die Hinweise</summary>
@@ -441,60 +474,149 @@ function Melken({ data, today }: { data: StallData; today: string }) {
   )
 }
 
-function Tierarzt({ data, today }: { data: StallData; today: string }) {
+type VetView = 'besuch' | 'traechtigkeit' | 'behandlung' | 'journal'
+const VET_VIEWS: { key: VetView; icon: string; label: string; short: string }[] = [
+  { key: 'besuch', icon: '🩺', label: 'Besuch', short: 'Besuch' },
+  { key: 'traechtigkeit', icon: '🤰', label: 'Trächtigkeit', short: 'Trächtigkeit' },
+  { key: 'behandlung', icon: '💉', label: 'Behandlung', short: 'Behandlung' },
+  { key: 'journal', icon: '📒', label: 'Journal', short: 'Journal' },
+]
+
+/** Tierarzt: Besuch (was ansteht), Trächtigkeitskontrolle, Medikamentenabgabe (Behandlung) und Behandlungsjournal —
+ * die bestehenden Erfassungsseiten, hier eingebettet. */
+function Tierarzt({ data, vet, today, moduleKey, view, onView, onFocus, tier }: { data: StallData; vet: VetData | undefined; today: string; moduleKey: string; view: VetView; onView: (v: VetView) => void; onFocus: (id: string | null) => void; tier: string | null }) {
   const db = useDb()
   const r = data.today.reminders
   return (
-    <section className="space-y-2">
-      <h2 className="text-sm font-semibold text-gray-700">Pendenzen (Folgebehandlung, Kontrolle) · {r.length}</h2>
-      {r.length === 0 ? (
-        <p className="rounded-xl bg-white p-4 text-sm text-gray-700 shadow-sm">Keine offenen Pendenzen. 👍</p>
-      ) : (
-        <ul className="divide-y rounded-xl bg-white shadow-sm">
-          {r.map((x) => (
-            <li key={x.id} className="flex items-center">
-              <Link {...mod(`tiere/${x.animal_id}#journal`)} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pl-4 active:bg-gray-50">
-                <span className="min-w-0 flex-1">
-                  <span className={`block font-medium ${x.due_date < today ? 'text-red-800' : 'text-gray-900'}`}>
-                    {x.lauf_nr ? `${x.lauf_nr} · ` : ''}
-                    {x.ear_tag}: {x.title}
-                  </span>
-                  <span className="block text-sm text-gray-600">{fmtDate(x.due_date)} · {dueText(x.due_date, today)}</span>
-                </span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => void undoAction(`Pendenz erledigt: ${x.title}`, () => completeReminder(db, x.id)).catch((e) => notifyError(errorText(e)))}
-                className="mx-2 grid h-11 w-11 shrink-0 place-items-center rounded-lg border-2 border-green-700 text-lg font-bold text-green-800 active:bg-green-50"
-                aria-label={`${x.title} erledigt`}
-              >
-                ✓
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  )
-}
+    <>
+      <div className="grid grid-cols-4 gap-1 rounded-xl bg-gray-200 p-1" role="tablist" aria-label="Tierarzt">
+        {VET_VIEWS.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            role="tab"
+            aria-selected={view === v.key}
+            onClick={() => onView(v.key)}
+            className={`min-h-11 truncate rounded-lg px-1 text-sm font-semibold ${view === v.key ? 'bg-white text-brand-800 shadow-sm' : 'text-gray-700'}`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
 
-function Waegung({ data }: { data: StallData }) {
-  const bank = data.today.openBank
-  return (
-    <section className="space-y-2">
-      <Link {...mod('milchwaegung')} className="flex min-h-16 items-center gap-3 rounded-xl bg-white p-4 shadow-sm active:bg-gray-50">
-        <span className="text-3xl" aria-hidden>
-          ⚖️
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-semibold text-gray-900">{bank ? `Milchwägung läuft: Bank ${bank.bank_number}` : 'Keine Milchwägung offen'}</span>
-          <span className="block text-sm text-gray-600">{bank ? `${fmtDate(bank.session_date)} · ${bank.slots} Tiere aufgenommen` : 'Neue Wägung starten'}</span>
-        </span>
-        <span className="text-gray-500" aria-hidden>
-          ›
-        </span>
-      </Link>
-    </section>
+      {view === 'traechtigkeit' && (
+        <div className="-mx-3">
+          <PregnancyEntry moduleKey={moduleKey} />
+        </div>
+      )}
+      {view === 'behandlung' && (
+        <div className="-mx-3">
+          <JournalEntry moduleKey={moduleKey} />
+        </div>
+      )}
+      {view === 'journal' && (
+        <div className="-mx-3">
+          <TreatmentJournal moduleKey={moduleKey} />
+        </div>
+      )}
+
+      {view === 'besuch' && (
+        <div className="space-y-3">
+          <section className="space-y-2">
+            <h2 className="flex items-center justify-between text-sm font-semibold text-gray-700">
+              <span>Trächtigkeit untersuchen · {vet?.pending.length ?? '…'}</span>
+              <button type="button" onClick={() => onView('traechtigkeit')} className="min-h-11 rounded-lg border-2 border-brand-700 px-3 font-semibold text-brand-800">
+                🤰 Durchgang starten
+              </button>
+            </h2>
+            {vet && vet.pending.length === 0 ? (
+              <p className="rounded-xl bg-white p-4 text-sm text-gray-700 shadow-sm">Keine Tiere zum Untersuchen. 👍</p>
+            ) : (
+              <ul className="divide-y rounded-xl bg-white shadow-sm">
+                {(vet?.pending ?? []).map((c) => (
+                  <li key={c.animal.id} className={tier === c.animal.id ? 'bg-brand-50' : ''}>
+                    <button type="button" onClick={() => onFocus(c.animal.id)} className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-gray-900">{`${c.animal.lauf_nr ? `${c.animal.lauf_nr} · ` : ''}${c.animal.ear_tag}${c.animal.name ? ` ${c.animal.name}` : ''}`}</span>
+                        <span className="block text-sm text-gray-600">
+                          belegt {fmtDate(c.serviceDate)} · Tag {c.daysSince} ({Math.floor(c.daysSince / 7)} Wo.){c.unsure ? ' · zuletzt unsicher' : ''}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="flex items-center justify-between text-sm font-semibold text-gray-700">
+              <span>Heute abgegeben · {vet?.given.length ?? '…'}</span>
+              <button type="button" onClick={() => onView('behandlung')} className="min-h-11 rounded-lg border-2 border-brand-700 px-3 font-semibold text-brand-800">
+                💉 Behandlung erfassen
+              </button>
+            </h2>
+            {vet && vet.given.length === 0 ? (
+              <p className="rounded-xl bg-white p-4 text-sm text-gray-700 shadow-sm">Heute noch nichts ins Behandlungsjournal eingetragen.</p>
+            ) : (
+              <ul className="divide-y rounded-xl bg-white shadow-sm">
+                {(vet?.given ?? []).map((g) => (
+                  <li key={g.id} className="min-h-12 px-4 py-2">
+                    <span className="block font-medium text-gray-900">{g.who}</span>
+                    <span className="block text-sm text-gray-600">{g.what}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold text-gray-700">Pendenzen (Folgebehandlung, Kontrolle) · {r.length}</h2>
+            {r.length === 0 ? (
+              <p className="rounded-xl bg-white p-4 text-sm text-gray-700 shadow-sm">Keine offenen Pendenzen. 👍</p>
+            ) : (
+              <ul className="divide-y rounded-xl bg-white shadow-sm">
+                {r.map((x) => (
+                  <li key={x.id} className="flex items-center">
+                    <Link {...mod(`tiere/${x.animal_id}#journal`)} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pl-4 active:bg-gray-50">
+                      <span className="min-w-0 flex-1">
+                        <span className={`block font-medium ${x.due_date < today ? 'text-red-800' : 'text-gray-900'}`}>
+                          {x.lauf_nr ? `${x.lauf_nr} · ` : ''}
+                          {x.ear_tag}: {x.title}
+                        </span>
+                        <span className="block text-sm text-gray-600">{fmtDate(x.due_date)} · {dueText(x.due_date, today)}</span>
+                      </span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void undoAction(`Pendenz erledigt: ${x.title}`, () => completeReminder(db, x.id)).catch((e) => notifyError(errorText(e)))}
+                      className="mx-2 grid h-11 w-11 shrink-0 place-items-center rounded-lg border-2 border-green-700 text-lg font-bold text-green-800 active:bg-green-50"
+                      aria-label={`${x.title} erledigt`}
+                    >
+                      ✓
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {data.today.withdrawals.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold text-gray-700">Absetzfrist Milch · {data.today.withdrawals.length}</h2>
+              <ul className="divide-y rounded-xl bg-white shadow-sm">
+                {data.today.withdrawals.map((a) => (
+                  <li key={a.id} className="min-h-12 px-4 py-2">
+                    <span className="block font-medium text-red-800">{`${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${a.ear_tag}`}</span>
+                    <span className="block text-sm text-gray-600">bis und mit {fmtDate(a.until)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
+    </>
   )
 }
 

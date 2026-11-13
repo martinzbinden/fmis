@@ -13,6 +13,8 @@ export interface StallRules {
   milchzusatzDays: number
   /** Kälber: abtränken ab diesem Alter (Tage), ca. 3,5 Monate */
   abtraenkenDays: number
+  /** Tierarzt: Trächtigkeit untersuchen ab so vielen Tagen nach der Belegung */
+  kontrolleFromDays: number
   /** Trockenstellen so viele Tage vor der erwarteten Geburt */
   trockenDays: number
   /** Hinweis so viele Tage vor dem Termin schon zeigen */
@@ -20,8 +22,8 @@ export interface StallRules {
 }
 
 export const DEFAULT_STALL_RULES: Record<Species, StallRules> = {
-  sheep: { eimerDay: 10, absetzenDay: 40, milchzusatzDays: 0, abtraenkenDays: 0, trockenDays: 56, lookaheadDays: 3 },
-  cattle: { eimerDay: 0, absetzenDay: 0, milchzusatzDays: 30, abtraenkenDays: 106, trockenDays: 60, lookaheadDays: 3 },
+  sheep: { eimerDay: 10, absetzenDay: 40, milchzusatzDays: 0, abtraenkenDays: 0, kontrolleFromDays: 35, trockenDays: 56, lookaheadDays: 3 },
+  cattle: { eimerDay: 0, absetzenDay: 0, milchzusatzDays: 30, abtraenkenDays: 106, kontrolleFromDays: 40, trockenDays: 60, lookaheadDays: 3 },
 }
 
 /** Beschriftung und Einheit der Regeln je Tierart (nur die, die für die Tierart gelten). */
@@ -29,12 +31,14 @@ export const RULE_FIELDS: Record<Species, { key: keyof StallRules; label: string
   sheep: [
     { key: 'eimerDay', label: 'Auf Eimer umstellen fragen ab Tag' },
     { key: 'absetzenDay', label: 'Absetzen bei der Mutter ab Tag' },
+    { key: 'kontrolleFromDays', label: 'Trächtigkeit untersuchen ab Tag nach Belegung' },
     { key: 'trockenDays', label: 'Trockenstellen Tage vor der Ablammung' },
     { key: 'lookaheadDays', label: 'Hinweis Tage vorher zeigen' },
   ],
   cattle: [
     { key: 'milchzusatzDays', label: 'Milchzusatz bis Tag' },
     { key: 'abtraenkenDays', label: 'Abtränken ab Tag (3,5 Monate ≈ 106)' },
+    { key: 'kontrolleFromDays', label: 'Trächtigkeit untersuchen ab Tag nach Besamung' },
     { key: 'trockenDays', label: 'Trockenstellen Tage vor der Abkalbung' },
     { key: 'lookaheadDays', label: 'Hinweis Tage vorher zeigen' },
   ],
