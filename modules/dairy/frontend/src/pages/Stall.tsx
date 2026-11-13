@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { animalProvider } from '@fmis/core/animals'
+import { shortEarTag } from '@fmis/core/earTag'
 import { useDb } from '@fmis/core/DbContext'
 import FooterBar, { FOOTER_SLOT_ID } from '@fmis/core/FooterBar'
 import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
@@ -18,6 +19,7 @@ import Milchwaegung from './Milchwaegung'
 import PregnancyEntry from './PregnancyEntry'
 import TreatmentJournal from './TreatmentJournal'
 import { loadVet, type VetData } from '../lib/vetVisit'
+import { loadMilk, sortMilkRows, summarize, type MilkRow, type MilkSort } from '../lib/milkAmounts'
 
 // Stallkalender mit Arbeitsfokus: Jungtiere (Hinweise + Tränkeplan), Melken, Tierarzt, Milchwägung.
 // Jeder Fokus hat unten seine Werkzeugleiste; die Tier-Info lässt sich über jeden Fokus ein- und
@@ -91,6 +93,8 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
 
   const { data } = useQuery((pg) => loadStall(pg, species, today, rules), [species, today, rules])
   const vet = useQuery((pg) => loadVet(pg, today, rules), [today, rules]).data
+  const bans = useMemo(() => new Map((data?.today.withdrawals ?? []).map((w) => [w.id, w.until])), [data])
+  const milk = useQuery((pg) => loadMilk(pg, today, bans), [today, bans]).data
   const hints = useMemo(
     () => (data ? buildStallHints({ lambs: data.lambs, decisions: data.decisions, expected: data.expected, dryIds: data.dryIds, species, rules, today }) : []),
     [data, species, rules, today],
@@ -145,10 +149,13 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
 
   return (
     <div className={`mx-auto space-y-3 p-3 ${focus === 'tierarzt' && vetView === 'journal' ? 'max-w-3xl' : 'max-w-lg'}`} style={{ paddingBottom: infoOpen ? '58vh' : '9rem' }}>
-      <div className="flex items-baseline justify-between gap-2">
-        <h1 className="text-xl font-bold text-gray-800">Stall</h1>
-        <span className="text-sm text-gray-600">{fmtDate(today)}</span>
-      </div>
+      {/* in den eingebetteten Seiten (Milchwägung, Tierarzt ausser «Besuch») steht deren eigener Titel */}
+      {!(focus === 'milchwaegung' || (focus === 'tierarzt' && vetView !== 'besuch')) && (
+        <div className="flex items-baseline justify-between gap-2">
+          <h1 className="text-xl font-bold text-gray-800">Stall</h1>
+          <span className="text-sm text-gray-600">{fmtDate(today)}</span>
+        </div>
+      )}
 
       <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1" role="tablist" aria-label="Arbeitsfokus">
         {FOCI.map((f) => (
@@ -203,7 +210,7 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
         </>
       )}
 
-      {data && focus === 'melken' && <Melken data={data} today={today} />}
+      {data && focus === 'melken' && <Melken data={data} milk={milk} today={today} tier={tier} onFocus={focusAnimal} />}
       {data && focus === 'tierarzt' && (
         <Tierarzt data={data} vet={vet} today={today} moduleKey={moduleKey} view={vetView} onView={(v) => setParam('ansicht', v === 'besuch' ? null : v)} onFocus={focusAnimal} tier={tier} />
       )}
@@ -378,7 +385,7 @@ function HintCard({ hint, data, rules, today, moduleKey, sheep, tier, onFocus }:
 
 function ItemRow({ item, data, today, checked, onToggle, focused, onFocus }: { item: HintItem; data: StallData; today: string; checked: boolean; onToggle: () => void; focused: boolean; onFocus: (id: string | null) => void }) {
   const l = item.lamb
-  const title = l ? lambTitle(l, data.damLabel) : `${item.animal!.lauf_nr ? `${item.animal!.lauf_nr} · ` : ''}${item.animal!.ear_tag}${item.animal!.name ? ` ${item.animal!.name}` : ''}`
+  const title = l ? lambTitle(l, data.damLabel) : `${item.animal!.lauf_nr ? `${item.animal!.lauf_nr} · ` : ''}${shortEarTag(item.animal!.ear_tag)}${item.animal!.name ? ` ${item.animal!.name}` : ''}`
   const state = dueState(item.due, today)
   const animalId = l?.animalId ?? item.animal?.id ?? null
   return (
@@ -448,29 +455,99 @@ function FeedingPlan({ plan, data, today, tier, onFocus, sheep }: { plan: Return
 
 // ---- weitere Foki (erste Fassung: das Dringende aus «Heute») ----
 
-function Melken({ data, today }: { data: StallData; today: string }) {
+const SORT_LABEL: Record<MilkSort, string> = { menge: 'Menge', tag: 'Laktationstag', nummer: 'Nummer' }
+
+/** Melken: Melkverbote und die Milchmengen der melkenden Tiere (letzte Milchprüfung). */
+function Melken({ data, milk, today, tier, onFocus }: { data: StallData; milk: MilkRow[] | undefined; today: string; tier: string | null; onFocus: (id: string | null) => void }) {
   const w = data.today.withdrawals
+  const [sort, setSort] = useState<MilkSort>('menge')
+  const [onlyBan, setOnlyBan] = useState(false)
+  const rows = useMemo(() => (milk ? sortMilkRows(milk, sort).filter((r) => !onlyBan || r.banUntil) : []), [milk, sort, onlyBan])
+  const sum = useMemo(() => summarize(milk ?? []), [milk])
+  const name = (a: { lauf_nr: string | null; ear_tag: string; name: string | null }) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTag(a.ear_tag)}${a.name ? ` ${a.name}` : ''}`
   return (
-    <section className="space-y-2">
-      <h2 className="text-sm font-semibold text-gray-700">Melkverbot (Absetzfrist Milch) · {w.length}</h2>
-      {w.length === 0 ? (
-        <p className="rounded-xl bg-white p-4 text-sm text-gray-700 shadow-sm">Kein Tier mit Absetzfrist. 👍</p>
-      ) : (
-        <ul className="divide-y rounded-xl bg-white shadow-sm">
-          {w.map((a) => (
-            <li key={a.id}>
-              <Link {...mod(`tiere/${a.id}#journal`)} className="flex min-h-14 items-center gap-3 px-4 py-2 active:bg-gray-50">
-                <span aria-hidden>🚫</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-red-800">{`${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${a.ear_tag}${a.name ? ` ${a.name}` : ''}`}</span>
-                  <span className="block text-sm text-gray-600">nicht abliefern bis und mit {fmtDate(a.until)} · {dueText(a.until, today)}</span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <div className="space-y-3">
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-gray-700">Melkverbot (Absetzfrist Milch) · {w.length}</h2>
+        {w.length === 0 ? (
+          <p className="rounded-xl bg-white p-4 text-sm text-gray-700 shadow-sm">Kein Tier mit Absetzfrist. 👍</p>
+        ) : (
+          <ul className="divide-y rounded-xl bg-white shadow-sm">
+            {w.map((a) => (
+              <li key={a.id} className={tier === a.id ? 'bg-brand-50' : ''}>
+                <button type="button" onClick={() => onFocus(a.id)} className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left">
+                  <span aria-hidden>🚫</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium text-red-800">{name(a)}</span>
+                    <span className="block text-sm text-gray-600">nicht abliefern bis und mit {fmtDate(a.until)} · {dueText(a.until, today)}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-gray-700">Milchmengen (letzte Milchprüfung)</h2>
+        {!milk ? (
+          <p className="text-center text-gray-500">Lädt…</p>
+        ) : milk.length === 0 ? (
+          <p className="rounded-xl bg-white p-4 text-sm text-gray-700 shadow-sm">Keine melkenden Tiere mit Milchprüfung.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              {[
+                ['melkend', String(sum.count)],
+                ['Summe kg/Tag', String(sum.sumKg)],
+                ['Ø kg/Tier', sum.avgKg != null ? String(sum.avgKg) : '–'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg bg-white px-2 py-1.5 shadow-sm">
+                  <div className="text-lg font-bold leading-tight text-gray-900">{value}</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</div>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(Object.keys(SORT_LABEL) as MilkSort[]).map((k) => (
+                <button key={k} type="button" aria-pressed={sort === k} onClick={() => setSort(k)} className={`min-h-11 rounded-full border px-3 text-sm ${sort === k ? 'border-brand-700 bg-brand-700 font-semibold text-white' : 'border-gray-300 bg-white text-gray-800'}`}>
+                  {SORT_LABEL[k]}
+                </button>
+              ))}
+              {sum.banned > 0 && (
+                <button type="button" aria-pressed={onlyBan} onClick={() => setOnlyBan(!onlyBan)} className={`min-h-11 rounded-full border px-3 text-sm ${onlyBan ? 'border-red-700 bg-red-700 font-semibold text-white' : 'border-gray-300 bg-white text-gray-800'}`}>
+                  🚫 nur Melkverbot ({sum.banned})
+                </button>
+              )}
+            </div>
+            <ul className="divide-y rounded-xl bg-white shadow-sm">
+              {rows.map((r) => (
+                <li key={r.animal.id} className={tier === r.animal.id ? 'bg-brand-50' : ''}>
+                  <button type="button" onClick={() => onFocus(r.animal.id)} className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left">
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate font-medium ${r.banUntil ? 'text-red-800' : 'text-gray-900'}`}>
+                        {r.banUntil && <span aria-hidden>🚫 </span>}
+                        {name(r.animal)}
+                      </span>
+                      <span className="block text-sm text-gray-600">
+                        {r.dim != null ? `Tag ${r.dim} · ` : ''}
+                        geprüft {fmtDate(r.testDate)}
+                        {r.testAgeDays > 60 ? ' (alt)' : ''}
+                        {r.cells != null ? ` · ${r.cells} Zellen` : ''}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-lg font-bold text-gray-900">{r.kg} kg</span>
+                      {r.delta != null && r.delta !== 0 && <span className={`block text-xs font-semibold ${r.delta < 0 ? 'text-red-700' : 'text-green-700'}`}>{r.delta > 0 ? '▲' : '▼'} {Math.abs(r.delta)}</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+    </div>
   )
 }
 
@@ -537,7 +614,7 @@ function Tierarzt({ data, vet, today, moduleKey, view, onView, onFocus, tier }: 
                   <li key={c.animal.id} className={tier === c.animal.id ? 'bg-brand-50' : ''}>
                     <button type="button" onClick={() => onFocus(c.animal.id)} className="flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left">
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium text-gray-900">{`${c.animal.lauf_nr ? `${c.animal.lauf_nr} · ` : ''}${c.animal.ear_tag}${c.animal.name ? ` ${c.animal.name}` : ''}`}</span>
+                        <span className="block truncate font-medium text-gray-900">{`${c.animal.lauf_nr ? `${c.animal.lauf_nr} · ` : ''}${shortEarTag(c.animal.ear_tag)}${c.animal.name ? ` ${c.animal.name}` : ''}`}</span>
                         <span className="block text-sm text-gray-600">
                           belegt {fmtDate(c.serviceDate)} · Tag {c.daysSince} ({Math.floor(c.daysSince / 7)} Wo.){c.unsure ? ' · zuletzt unsicher' : ''}
                         </span>
@@ -582,7 +659,7 @@ function Tierarzt({ data, vet, today, moduleKey, view, onView, onFocus, tier }: 
                       <span className="min-w-0 flex-1">
                         <span className={`block font-medium ${x.due_date < today ? 'text-red-800' : 'text-gray-900'}`}>
                           {x.lauf_nr ? `${x.lauf_nr} · ` : ''}
-                          {x.ear_tag}: {x.title}
+                          {shortEarTag(x.ear_tag)}: {x.title}
                         </span>
                         <span className="block text-sm text-gray-600">{fmtDate(x.due_date)} · {dueText(x.due_date, today)}</span>
                       </span>
@@ -607,7 +684,7 @@ function Tierarzt({ data, vet, today, moduleKey, view, onView, onFocus, tier }: 
               <ul className="divide-y rounded-xl bg-white shadow-sm">
                 {data.today.withdrawals.map((a) => (
                   <li key={a.id} className="min-h-12 px-4 py-2">
-                    <span className="block font-medium text-red-800">{`${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${a.ear_tag}`}</span>
+                    <span className="block font-medium text-red-800">{`${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTag(a.ear_tag)}`}</span>
                     <span className="block text-sm text-gray-600">bis und mit {fmtDate(a.until)}</span>
                   </li>
                 ))}

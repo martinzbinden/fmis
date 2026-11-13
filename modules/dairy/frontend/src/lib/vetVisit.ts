@@ -2,6 +2,7 @@
 // was heute schon abgegeben wurde. Die Auswertung ist rein (testbar), das Laden steht darunter.
 
 import type { PGlite } from '@electric-sql/pglite'
+import { shortEarTag } from '@fmis/core/earTag'
 import { daysBetween, isoDate } from './format'
 import { notSupersededSql } from './journal'
 import type { TodayAnimal } from './today'
@@ -88,7 +89,7 @@ export async function loadVet(pg: PGlite, today: string, rules: StallRules): Pro
     given: given.rows.map((g) => ({
       id: g.id,
       animal_id: g.animal_id,
-      who: `${g.lauf_nr ? `${g.lauf_nr} · ` : ''}${g.ear_tag ?? g.animal_ear_tag ?? '?'}`,
+      who: `${g.lauf_nr ? `${g.lauf_nr} · ` : ''}${shortEarTag(g.ear_tag ?? g.animal_ear_tag ?? '?')}`,
       what: [g.medication, g.diagnosis ?? g.text].filter(Boolean).join(' · ') || 'Behandlung',
     })),
   }
