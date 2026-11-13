@@ -1,4 +1,5 @@
 import { PGlite } from '@electric-sql/pglite'
+import { createReadDeduper, queryKey } from './queryDedupe'
 
 // Aus der PGlite-Klasse abgeleitet statt eines eigenen Imports von 'Transaction'
 // — die Bibliothek exportiert diesen Typ nicht unter garantiertem Namen, ihre
@@ -134,34 +135,50 @@ function scopeToSchema(pg: PGlite, schema: string): PGlite {
   if (cached) return cached
 
   const setPath = `set local search_path to "${schema}", public`
+  // eine Ausführung je gleichzeitige identische Lese-Abfrage; jeder Schreibvorgang leert sie
+  const reads = createReadDeduper<Awaited<ReturnType<PGlite['query']>>>()
 
   const scoped = {
-    query: (query: string, params?: unknown[], options?: unknown) =>
-      durably(WRITES.test(query), () =>
-        timed(schema, query, () =>
-          pg.transaction(async (tx: PgTx) => {
-            await tx.exec(setPath)
-            return tx.query(query, params as never, options as never)
-          }),
-        ),
-      ),
-    exec: (query: string, options?: unknown) =>
-      durably(WRITES.test(query) || /;\s*\S/.test(query), () =>
+    query: (query: string, params?: unknown[], options?: unknown) => {
+      const write = WRITES.test(query)
+      const run = () =>
+        durably(write, () =>
+          timed(schema, query, () =>
+            pg.transaction(async (tx: PgTx) => {
+              await tx.exec(setPath)
+              return tx.query(query, params as never, options as never)
+            }),
+          ),
+        )
+      if (write) {
+        reads.invalidate()
+        return run()
+      }
+      // Lesen: gleichzeitige identische Abfragen teilen sich eine Ausführung (queryDedupe.ts).
+      // Abfragen mit eigenen Optionen (z.B. Parser) laufen immer einzeln.
+      return options ? run() : reads.read(queryKey(schema, query, params), run)
+    },
+    exec: (query: string, options?: unknown) => {
+      reads.invalidate()
+      return durably(WRITES.test(query) || /;\s*\S/.test(query), () =>
         timed(schema, query, () =>
           pg.transaction(async (tx: PgTx) => {
             await tx.exec(setPath)
             return tx.exec(query, options as never)
           }),
         ),
-      ),
+      )
+    },
     // Gruppen von Schreibvorgängen (inTransaction): nach dem Abschluss wegschreiben
-    transaction: <T>(callback: (tx: PgTx) => Promise<T>) =>
-      durably(true, () =>
+    transaction: <T>(callback: (tx: PgTx) => Promise<T>) => {
+      reads.invalidate()
+      return durably(true, () =>
         pg.transaction(async (tx: PgTx) => {
           await tx.exec(setPath)
           return callback(tx)
         }),
-      ),
+      )
+    },
   }
 
   const typed = scoped as unknown as PGlite

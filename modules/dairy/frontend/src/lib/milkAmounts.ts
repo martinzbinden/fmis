@@ -93,7 +93,8 @@ export function summarize(rows: MilkRow[]): MilkSummary {
   return { count: rows.length, sumKg, avgKg: rows.length ? Math.round((sumKg / rows.length) * 10) / 10 : null, banned: rows.filter((r) => r.banUntil).length }
 }
 
-export async function loadMilk(pg: PGlite, today: string, bans: Map<string, string>): Promise<MilkRow[]> {
+/** Ohne Melkverbot (banUntil null): das setzt die Seite aus den Absetzfristen dazu, damit die Abfrage nicht neu läuft, wenn sich diese ändern. */
+export async function loadMilk(pg: PGlite, today: string): Promise<MilkRow[]> {
   const [animals, tests, dryIds] = await Promise.all([
     pg.query<TodayAnimal>(`select id, ear_tag, lauf_nr, name from animals where deleted_at is null and status = 'aktiv' and sex = 'w'`),
     pg.query<Record<string, unknown>>(
@@ -117,7 +118,7 @@ export async function loadMilk(pg: PGlite, today: string, bans: Map<string, stri
         cell_count: num(t.cell_count),
       })),
       dryIds,
-      bans,
+      bans: new Map(),
     },
     today,
   )

@@ -94,7 +94,8 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
   const { data } = useQuery((pg) => loadStall(pg, species, today, rules), [species, today, rules])
   const vet = useQuery((pg) => loadVet(pg, today, rules), [today, rules]).data
   const bans = useMemo(() => new Map((data?.today.withdrawals ?? []).map((w) => [w.id, w.until])), [data])
-  const milk = useQuery((pg) => loadMilk(pg, today, bans), [today, bans]).data
+  const milkLoaded = useQuery((pg) => loadMilk(pg, today), [today]).data
+  const milk = useMemo(() => milkLoaded?.map((r) => ({ ...r, banUntil: bans.get(r.animal.id) ?? null })), [milkLoaded, bans])
   const hints = useMemo(
     () => (data ? buildStallHints({ lambs: data.lambs, decisions: data.decisions, expected: data.expected, dryIds: data.dryIds, species, rules, today }) : []),
     [data, species, rules, today],
