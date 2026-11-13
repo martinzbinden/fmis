@@ -11,6 +11,38 @@ export interface Migration {
   sql: string
 }
 
+// Schreibvorgänge warten, bis der Speicher in IndexedDB steht (siehe relaxedDurability oben). Mehrere
+// gleichzeitige Schreibvorgänge teilen sich das Wegschreiben: eines läuft, ein weiteres folgt danach.
+let flushFn: (() => Promise<void>) | null = null
+let flushRunning: Promise<void> | null = null
+let flushQueued: Promise<void> | null = null
+export function flushNow(): Promise<void> {
+  if (!flushFn) return Promise.resolve()
+  if (!flushRunning) {
+    const p = flushFn().finally(() => {
+      flushRunning = null
+    })
+    flushRunning = p
+    return p
+  }
+  // läuft schon eines: danach noch eines (deckt Änderungen ab, die nach dessen Beginn kamen)
+  if (!flushQueued) {
+    flushQueued = flushRunning
+      .catch(() => undefined)
+      .then(() => {
+        flushQueued = null
+        return flushNow()
+      })
+  }
+  return flushQueued
+}
+const WRITES = /^\s*(insert|update|delete|create|alter|drop|truncate|merge|copy)\b|^\s*with\b[\s\S]*\b(insert|update|delete)\b/i
+async function durably<T>(isWrite: boolean, run: () => Promise<T>): Promise<T> {
+  const result = await run()
+  if (isWrite) await flushNow()
+  return result
+}
+
 /**
  * EINE PGlite/IndexedDB für die ganze App statt vorher einer pro Modul-
  * INSTANZ (dairy, dairy_schafe, fields, livestock, wiesenjournal — je ~10 MB
@@ -22,7 +54,16 @@ export interface Migration {
 let sharedDbPromise: Promise<PGlite> | null = null
 function getSharedDb(): Promise<PGlite> {
   if (!sharedDbPromise) {
-    sharedDbPromise = Promise.resolve(new PGlite('idb://fmis'))
+    // relaxedDurability: Ohne diese Einstellung wartet jede Abfrage (auch ein reines Lesen) darauf, dass
+    // PGlite seinen Speicher in IndexedDB zurückschreibt: ~65–100 ms je Abfrage, auch bei «select 1» —
+    // eine Seite mit 25 Abfragen brauchte so mehrere Sekunden. Mit ihr kehrt die Abfrage sofort zurück
+    // (< 1 ms), das Wegschreiben läuft im Hintergrund. SCHREIBEN wartet trotzdem darauf (flushNow unten):
+    // «Gespeichert» heisst gespeichert, auch wenn die Seite gleich danach geschlossen wird.
+    const pg = new PGlite('idb://fmis', { relaxedDurability: true })
+    flushFn = () => pg.fs?.syncToFs(false) ?? Promise.resolve()
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && void flushNow().catch(() => undefined))
+    window.addEventListener('pagehide', () => void flushNow().catch(() => undefined))
+    sharedDbPromise = Promise.resolve(pg)
   }
   return sharedDbPromise
 }
@@ -34,6 +75,35 @@ const schemaByClient = new WeakMap<object, string>()
  * für «Rückgängig» (core/undo.ts), damit Schritte ihrem Modul zugeordnet sind. */
 export function schemaOf(pg: object): string | undefined {
   return schemaByClient.get(pg)
+}
+
+// Protokoll langsamer Abfragen zur Fehlersuche («die App ist träge»): in der Konsole des Browsers
+// `localStorage.fmis_slowlog = '1'` setzen und neu laden; danach zeigt `window.__slowq` Wartezeit
+// (in der einzigen Warteschlange der Verbindung) und Laufzeit je Abfrage. Aus = kein Mehraufwand.
+const SLOW_MS = 40
+let slowLogOn: boolean | null = null
+const slowLogEnabled = () => {
+  if (slowLogOn == null) {
+    try {
+      slowLogOn = localStorage.getItem('fmis_slowlog') === '1'
+    } catch {
+      slowLogOn = false
+    }
+  }
+  return slowLogOn
+}
+async function timed<T>(schema: string, sql: string, run: () => Promise<T>): Promise<T> {
+  if (!slowLogEnabled()) return run()
+  const queued = performance.now()
+  try {
+    return await run()
+  } finally {
+    const total = Math.round(performance.now() - queued)
+    if (total >= SLOW_MS) {
+      const w = window as unknown as { __slowq?: { at: number; schema: string; ms: number; sql: string }[] }
+      ;(w.__slowq ??= []).push({ at: Math.round(queued), schema, ms: total, sql: sql.replace(/\s+/g, ' ').slice(0, 120) })
+    }
+  }
 }
 
 /**
@@ -67,23 +137,35 @@ function scopeToSchema(pg: PGlite, schema: string): PGlite {
 
   const scoped = {
     query: (query: string, params?: unknown[], options?: unknown) =>
-      pg.transaction(async (tx: PgTx) => {
-        await tx.exec(setPath)
-        return tx.query(query, params as never, options as never)
-      }),
+      durably(WRITES.test(query), () =>
+        timed(schema, query, () =>
+          pg.transaction(async (tx: PgTx) => {
+            await tx.exec(setPath)
+            return tx.query(query, params as never, options as never)
+          }),
+        ),
+      ),
     exec: (query: string, options?: unknown) =>
-      pg.transaction(async (tx: PgTx) => {
-        await tx.exec(setPath)
-        return tx.exec(query, options as never)
-      }),
+      durably(WRITES.test(query) || /;\s*\S/.test(query), () =>
+        timed(schema, query, () =>
+          pg.transaction(async (tx: PgTx) => {
+            await tx.exec(setPath)
+            return tx.exec(query, options as never)
+          }),
+        ),
+      ),
+    // Gruppen von Schreibvorgängen (inTransaction): nach dem Abschluss wegschreiben
     transaction: <T>(callback: (tx: PgTx) => Promise<T>) =>
-      pg.transaction(async (tx: PgTx) => {
-        await tx.exec(setPath)
-        return callback(tx)
-      }),
+      durably(true, () =>
+        pg.transaction(async (tx: PgTx) => {
+          await tx.exec(setPath)
+          return callback(tx)
+        }),
+      ),
   }
 
   const typed = scoped as unknown as PGlite
+  if (slowLogEnabled()) ((window as unknown as { __db?: Record<string, PGlite> }).__db ??= {})[schema] = typed
   scopedByKey.set(schema, typed)
   schemaByClient.set(typed, schema)
   return typed
