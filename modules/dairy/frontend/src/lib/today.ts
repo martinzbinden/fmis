@@ -77,8 +77,29 @@ export interface TodayData {
   reminders: Reminder[]
 }
 
+/** Erwartete Geburten bis `today + days` aus der lokalen Datenbank (Belegungen, Geburten, Untersuchungen). */
+export async function loadExpectedBirths(pg: PGlite, species: Species, today: string, days = 14): Promise<ExpectedBirth[]> {
+  const [animals, matings, births, checks] = await Promise.all([
+    pg.query<TodayAnimal>(`select id, ear_tag, lauf_nr, name from animals where deleted_at is null and status = 'aktiv' and sex = 'w'`),
+    pg.query<{ animal_id: string; service_date: unknown; service_to: unknown }>('select animal_id, service_date, service_to from matings where deleted_at is null'),
+    pg.query<{ dam_id: string; birth_date: unknown }>('select dam_id, birth_date from births where deleted_at is null'),
+    pg.query<{ animal_id: string; check_date: unknown; result: string }>('select animal_id, check_date, result from pregnancy_checks where deleted_at is null'),
+  ])
+  return expectedBirths(
+    {
+      animals: animals.rows,
+      matings: matings.rows.map((m) => ({ animal_id: m.animal_id, service_date: isoDate(m.service_date)!, service_to: isoDate(m.service_to) ?? null })),
+      births: births.rows.map((b) => ({ dam_id: b.dam_id, birth_date: isoDate(b.birth_date)! })),
+      checks: checks.rows.map((c) => ({ animal_id: c.animal_id, check_date: isoDate(c.check_date)!, result: c.result })),
+    },
+    species,
+    today,
+    days,
+  )
+}
+
 export async function loadToday(pg: PGlite, species: Species, today: string): Promise<TodayData> {
-  const [pending, withdrawals, banks, animals, matings, births, checks, lists, reminders] = await Promise.all([
+  const [pending, withdrawals, banks, expected, lists, reminders] = await Promise.all([
     loadPendingOffspring(pg),
     pg.query<TodayAnimal & { until: unknown }>(
       `select a.id, a.ear_tag, a.lauf_nr, a.name, max(${MILK_UNTIL_SQL}) as until
@@ -98,10 +119,7 @@ export async function loadToday(pg: PGlite, species: Species, today: string): Pr
       // nur von heute/gestern — eine vergessene offene Bank von früher «läuft» nicht
       [today],
     ),
-    pg.query<TodayAnimal>(`select id, ear_tag, lauf_nr, name from animals where deleted_at is null and status = 'aktiv' and sex = 'w'`),
-    pg.query<{ animal_id: string; service_date: unknown; service_to: unknown }>('select animal_id, service_date, service_to from matings where deleted_at is null'),
-    pg.query<{ dam_id: string; birth_date: unknown }>('select dam_id, birth_date from births where deleted_at is null'),
-    pg.query<{ animal_id: string; check_date: unknown; result: string }>('select animal_id, check_date, result from pregnancy_checks where deleted_at is null'),
+    loadExpectedBirths(pg, species, today),
     pg.query<{ id: string; name: string; marked: number; open: number }>(
       `select l.id, l.name,
          count(*) filter (where e.reason is not null and e.reason <> '')::int as marked,
@@ -119,16 +137,7 @@ export async function loadToday(pg: PGlite, species: Species, today: string): Pr
     pendingEarTags: pending.length,
     withdrawals: withdrawals.rows.map((w) => ({ ...w, until: isoDate(w.until)! })),
     openBank: bank ? { bank_number: bank.bank_number, session_date: isoDate(bank.session_date)!, slots: bank.slots } : null,
-    expected: expectedBirths(
-      {
-        animals: animals.rows,
-        matings: matings.rows.map((m) => ({ animal_id: m.animal_id, service_date: isoDate(m.service_date)!, service_to: isoDate(m.service_to) ?? null })),
-        births: births.rows.map((b) => ({ dam_id: b.dam_id, birth_date: isoDate(b.birth_date)! })),
-        checks: checks.rows.map((c) => ({ animal_id: c.animal_id, check_date: isoDate(c.check_date)!, result: c.result })),
-      },
-      species,
-      today,
-    ),
+    expected,
     markedLists: lists.rows,
     reminders,
   }

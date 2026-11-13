@@ -84,8 +84,8 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
   useEffect(() => {
     if (preselected || !data) return
     const dams = new Set((params.get('mutter') ?? '').split(',').filter(Boolean))
-    const tier = params.get('tier')
-    setSelected(new Set(lambs.filter((l) => (dams.size && l.damId && dams.has(l.damId) && l.nursing) || (tier && (l.animalId === tier || l.key === tier))).map((l) => l.key)))
+    const tiere = new Set((params.get('tier') ?? '').split(',').filter(Boolean))
+    setSelected(new Set(lambs.filter((l) => (dams.size && l.damId && dams.has(l.damId) && l.nursing) || (tiere.size && ((l.animalId && tiere.has(l.animalId)) || tiere.has(l.key)))).map((l) => l.key)))
     setPreselected(true)
   }, [data, lambs, params, preselected])
 

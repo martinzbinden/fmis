@@ -91,6 +91,7 @@ export const SYNC_TABLES = {
   ],
   weanings: ['id', 'offspring_id', 'animal_id', 'wean_date', 'herd_group', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   animal_weights: ['id', 'animal_id', 'offspring_id', 'weigh_date', 'weight_kg', 'notes', 'created_by', 'updated_at', 'deleted_at'],
+  stall_decisions: ['id', 'step', 'offspring_id', 'animal_id', 'decision', 'decided_on', 'until', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   lamb_selection: ['id', 'animal_key', 'offspring_id', 'leaning', 'purpose', 'decided_on', 'notes', 'updated_at', 'deleted_at'],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
@@ -126,6 +127,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   claw_exams: new Set(['exam_date']),
   claw_findings: new Set(),
   breeding_values: new Set(['eval_date']),
+  stall_decisions: new Set(['decided_on', 'until']),
   lamb_selection: new Set(['decided_on']),
   pedigree_breeding_values: new Set(['eval_date']),
   pedigree_info: new Set(['document_date']),

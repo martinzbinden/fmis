@@ -78,7 +78,7 @@ const nameOf = (a: Pick<Animal, 'lauf_nr' | 'ear_tag' | 'name'>) => `${a.lauf_nr
 
 /** Tier-Info: Nummer tippen oder lesen → das Wichtigste zum Tier auf einen Blick
  * (für das Handy, ohne Scrollen). */
-export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
+export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey: string; embedded?: boolean }) {
   const species = speciesOf(moduleKey)
   const word = species === 'sheep' ? { birth: 'Ablammung', mating: 'Belegung', sire: 'Widder' } : { birth: 'Abkalbung', mating: 'Besamung', sire: 'Stier' }
   const { data } = useQuery((pg) => loadInfo(pg, species, moduleKey), [species, moduleKey])
@@ -87,7 +87,15 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
   // gewähltes Tier in der Adresse (?tier=): nach einer Kachel und «Zurück» wieder da
   const [params, setParams] = useSearchParams()
   const id = params.get('tier')
-  const setId = (animalId: string) => setParams({ tier: animalId }, { replace: true })
+  const setId = (animalId: string) =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p)
+        next.set('tier', animalId)
+        return next
+      },
+      { replace: true },
+    )
   const [picking, setPicking] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const [listMsg, setListMsg] = useState<string | null>(null)
@@ -120,7 +128,7 @@ export default function AnimalInfo({ moduleKey }: { moduleKey: string }) {
   const ctx = id ? data?.context.get(id) : undefined
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-2 p-3 pb-24">
+    <div className={`mx-auto flex max-w-lg flex-col gap-2 p-3 ${embedded ? '' : 'pb-24'}`}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <input

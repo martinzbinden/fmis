@@ -30,6 +30,7 @@ import Watchlists from './pages/Watchlists'
 import ClawEntry from './pages/ClawEntry'
 import GroupCompare from './pages/GroupCompare'
 import Board from './pages/Board'
+import Stall from './pages/Stall'
 import Lambs from './pages/Lambs'
 import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
@@ -63,6 +64,8 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     navItems: [
       // Stall zuerst: Milchwägung und Ausmerzliste stehen auf «Heute» und im Menü «Erfassen»
       { to: '', label: 'Heute', icon: '🏠' },
+      // Arbeitsfokus mit Hinweisen, Tränkeplan und Werkzeugleiste (Jungtiere, Melken, Tierarzt, Milchwägung)
+      { to: 'stall', label: 'Stall', icon: '📆' },
       { to: 'erfassen', label: 'Erfassen', icon: '✏️' },
       { to: 'tierinfo', label: 'Tier-Info', icon: '🔎' },
       { to: 'tiere', label: 'Tiere', icon: sheep ? '🐑' : '🐄' },
@@ -86,6 +89,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       klauen: 'Klauen',
       gruppen: 'Gruppen',
       dashboard: 'Dashboard',
+      stall: 'Stall',
       laemmer: sheep ? 'Lämmer' : 'Kälber',
       leistung: 'Leistung',
       journal: 'Beobachtung / Behandlung',
@@ -116,6 +120,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'klauen', element: <ClawEntry moduleKey={key} /> },
       { path: 'gruppen', element: <GroupCompare moduleKey={key} /> },
       { path: 'dashboard', element: <Board moduleKey={key} /> },
+      { path: 'stall', element: <Stall moduleKey={key} /> },
       { path: 'laemmer', element: <Lambs moduleKey={key} /> },
       { path: 'journal', element: <JournalEntry moduleKey={key} /> },
       { path: 'behandlungen', element: <TreatmentJournal moduleKey={key} /> },
