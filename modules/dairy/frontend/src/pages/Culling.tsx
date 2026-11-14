@@ -10,10 +10,11 @@ import { useQuery } from '../hooks/useQuery'
 import { useJumpTarget, useJumpTo } from '../hooks/useJumpTo'
 import { cullingInput, litterSummary, loadHerdContext, latestValues, type LitterSummary } from '../lib/herdContext'
 import TrendBadge from '../components/TrendBadge'
+import LactationSpark from '../components/LactationSpark'
 import type { LactationTrend } from '../lib/lactationTrend'
 import { cullingReasons, DEFAULT_THRESHOLDS, fmtCells, reasonScore, type CullingReason, type CullingThresholds } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
-import { fmtDate, todayIso } from '../lib/format'
+import { daysBetween, fmtDate, todayIso } from '../lib/format'
 import { RESULT_LABEL, type PregnancyStatus } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { ReasonChips } from './AnimalDetail'
@@ -60,6 +61,10 @@ interface Row {
   litter: LitterSummary
   /** Wert des Tiers (Mittel 100) für den Schutz wertvoller Tiere */
   value: number | null
+  sex: 'w' | 'm' | null
+  birthDate: string | null
+  /** letzte Geburt/Ablammung (Datum) */
+  lastBirth: string | null
 }
 
 /** «2·1·3 (Ø 2.0)» – die letzten vier Würfe, Mittel über alle. */
@@ -67,6 +72,14 @@ function fmtLitters(l: LitterSummary): string | null {
   if (l.sizes.length === 0) return null
   const last = l.sizes.slice(-4).join('·')
   return `Würfe ${l.sizes.length > 4 ? '…' : ''}${last}${l.sizes.length > 1 ? ` (Ø ${l.mean!.toFixed(1)})` : ''}`
+}
+
+/** «6 J. 3 Mt.» aus Geburtsdatum und heute. */
+function ageText(birthIso: string, todayIso: string): string {
+  const months = (Number(todayIso.slice(0, 4)) - Number(birthIso.slice(0, 4))) * 12 + Number(todayIso.slice(5, 7)) - Number(birthIso.slice(5, 7)) - (todayIso.slice(8, 10) < birthIso.slice(8, 10) ? 1 : 0)
+  const y = Math.floor(months / 12)
+  const m = months % 12
+  return y > 0 ? `${y} J.${m > 0 ? ` ${m} Mt.` : ''}` : `${m} Mt.`
 }
 
 const round2 = (v: number | null) => (v == null ? null : Math.round(v * 100) / 100)
@@ -130,6 +143,9 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           pregnancy: c.pregnancy,
           litter: litterSummary(c.births),
           value: values.get(c.animal.id) ?? null,
+          sex: c.animal.sex,
+          birthDate: c.animal.birth_date ? String(c.animal.birth_date).slice(0, 10) : null,
+          lastBirth: c.births.map((b) => b.birth_date).sort().at(-1) ?? null,
         }
       })
       .sort((a, b) => b.score - a.score || b.reasons.length - a.reasons.length || a.label.localeCompare(b.label))
@@ -405,14 +421,17 @@ function CullingPlanView({
           const pc = pregnancyChip(r.pregnancy)
           const m = marks.get(r.id) ?? null
           return (
-            <li key={r.id} className={`rounded-lg bg-white shadow-sm ${e.state === 'fix' ? 'ring-2 ring-red-700' : ''}`}>
-              <div className={`flex items-stretch gap-2 p-3 ${grey ? 'opacity-50' : ''}`}>
+            <li key={r.id} className={`rounded-lg bg-white shadow-sm ${e.state === 'fix' ? 'ring-2 ring-red-700' : ''} ${grey ? 'opacity-50' : ''}`}>
+              <div className="flex items-stretch gap-2 p-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Link to={`../tiere/${r.id}`} relative="path" className="font-semibold text-gray-800">
                       {r.laufNr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{r.laufNr}</span>}
                       {r.label}
                     </Link>
+                    <span aria-label={r.sex === 'm' ? 'männlich' : 'weiblich'} title={r.sex === 'm' ? 'männlich' : 'weiblich'} className="text-base font-bold text-gray-600">
+                      {r.sex === 'm' ? '♂' : '♀'}
+                    </span>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATE_TEXT[e.state].chip}`}>{STATE_TEXT[e.state].label}</span>
                     {r.value != null && (
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${isValuable(r.value, valueThreshold) ? 'bg-sky-100 text-sky-900' : 'bg-gray-100 text-gray-700'}`} title="Wert: Leistung, Zuchtwert, Wurfgrösse (Herdenmittel 100)">
@@ -420,6 +439,10 @@ function CullingPlanView({
                       </span>
                     )}
                   </div>
+                  <p className="mt-1 text-xs text-gray-600">
+                    {r.birthDate ? `geb. ${fmtDate(r.birthDate)} (${ageText(r.birthDate, today)})` : 'Geburtsdatum unbekannt'}
+                    {r.lastBirth ? ` · ${species === 'sheep' ? 'letzte Ablammung' : 'letzte Abkalbung'} ${fmtDate(r.lastBirth)} · Laktationstag ${daysBetween(r.lastBirth, today)}` : ''}
+                  </p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
                     <span className={`rounded px-1.5 py-0.5 ${pc.cls}`}>{pc.text}</span>
                     <span className="text-gray-500">
@@ -434,6 +457,7 @@ function CullingPlanView({
                     </div>
                   )}
                 </div>
+                {species === 'sheep' && r.trend && r.trend.levels.length > 0 && <LactationSpark levels={r.trend.levels} />}
               </div>
               <div className="flex gap-2 border-t px-3 py-2 print:hidden">
                 <button
