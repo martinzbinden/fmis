@@ -10,6 +10,11 @@ export interface NavItem {
   to: string
   label: string
   icon: string
+  /** Weitere Pfade (relativ zum Modul), bei denen dieser Punkt als aktiv gilt, z.B. die zweite Ansicht eines Umschalters. */
+  also?: string[]
+  /** Liefert den Punkt zur Laufzeit (z.B. die zuletzt benutzte Erfassungsfunktion). Die Fussleiste liest ihn bei jedem
+   * Rendern und nach `notifyNavChanged()`. */
+  resolve?: () => NavItem
 }
 
 /**

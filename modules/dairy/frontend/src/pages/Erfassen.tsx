@@ -12,6 +12,7 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
   const tvdOpen = useQuery((pg) => loadTvdBirths(pg, '2000-01-01')).data?.reduce((n, b) => n + reportable(b).length, 0) ?? 0
   const weanDue = useQuery((pg) => loadLambs(pg, localTodayIso())).data?.filter((l) => l.nursing && l.ageDays >= WEAN_FROM_DAYS).length ?? 0
   const items = [
+    { to: 'leistung', icon: '🥛', label: 'Leistung', desc: 'Milchleistung und Zuchtwerte, je Tier und Gruppe' },
     { to: 'tierinfo', icon: '🔎', label: 'Tier-Info', desc: 'Nummer tippen oder lesen: Alter, Abstammung, Index, Ablammung, Belegung, Trächtigkeit, Merklisten, Verlauf aller Erfassungen' },
     { to: 'geburt', icon: sheep ? '🐑' : '🐄', label: sheep ? 'Ablammung' : 'Abkalbung', desc: 'Mutter, Vater, Nachkommen – Ohrmarke auch später' },
     { to: 'ohrmarken', icon: '🏷️', label: 'Ohrmarken nachtragen', desc: sheep ? 'Lämmer, die bei der Ablammung noch keine Ohrmarke hatten' : 'Kälber, die bei der Abkalbung noch keine Ohrmarke hatten' },
@@ -32,7 +33,7 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
   ]
   return (
     <div className="mx-auto max-w-lg space-y-3 p-4 pb-24">
-      <h1 className="mb-2 text-xl font-bold text-gray-800">Erfassen</h1>
+      <h1 className="mb-2 text-xl font-bold text-gray-800">Mehr</h1>
       {items.map((item) => (
         <Link key={item.to} to={`../${item.to}`} relative="path" className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm active:bg-gray-50">
           <span className="text-3xl">{item.icon}</span>

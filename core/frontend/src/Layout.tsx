@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from 'react'
-import { NavLink, matchPath, useLocation, useNavigationType } from 'react-router-dom'
+import { useEffect, useReducer, type ReactNode } from 'react'
+import { Link, NavLink, matchPath, useLocation, useNavigationType } from 'react-router-dom'
 import SyncStatusDot from './SyncStatusDot'
 import { logout } from './auth'
 import { useHasPermission } from './AuthContext'
@@ -9,6 +9,7 @@ import { useSyncStatus } from './useSyncStatus'
 import type { ModuleDescriptor, NavItem } from './ModuleDescriptor'
 import { FOOTER_SLOT_ID } from './FooterBar'
 import UndoBar from './UndoBar'
+import { NAV_EVENT, navIsActive, resolveNav } from './navItems'
 
 export default function Layout({
   children,
@@ -34,6 +35,15 @@ export default function Layout({
   const { status, error, pending } = useSyncStatus(sync)
   useScrollTopOnNavigate()
   const page = usePageTitle(moduleKey, title, navItems, pageTitles)
+  // dynamische Punkte (NavItem.resolve) bei jedem Rendern und nach notifyNavChanged() neu lesen
+  const [, refreshNav] = useReducer((n: number) => n + 1, 0)
+  useEffect(() => {
+    window.addEventListener(NAV_EVENT, refreshNav)
+    return () => window.removeEventListener(NAV_EVENT, refreshNav)
+  }, [])
+  const { pathname } = useLocation()
+  const rest = pathname.slice(moduleKey.length + 1).replace(/^\/|\/$/g, '')
+  const shownNav = resolveNav(navItems)
 
   return (
     <div data-module={moduleKey} className="flex min-h-screen flex-col bg-gray-50">
@@ -92,23 +102,24 @@ export default function Layout({
         <div id={FOOTER_SLOT_ID} />
         <nav
           className="grid border-t bg-white pb-[env(safe-area-inset-bottom,0px)] lg:fixed lg:bottom-0 lg:left-0 lg:top-[57px] lg:!flex lg:w-52 lg:flex-col lg:gap-0.5 lg:border-r lg:border-t-0 lg:px-2 lg:pt-4"
-          style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+          style={{ gridTemplateColumns: `repeat(${shownNav.length}, minmax(0, 1fr))` }}
         >
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === ''}
-              className={({ isActive }) =>
-                `flex min-w-0 flex-col items-center justify-center gap-0.5 py-2 text-[11px] sm:text-xs lg:flex-row lg:justify-start lg:gap-3 lg:rounded-lg lg:px-3 lg:py-2.5 lg:text-sm ${
+          {shownNav.map((item) => {
+            const isActive = navIsActive(rest, item)
+            return (
+              <Link
+                key={item.label}
+                to={item.to}
+                aria-current={isActive ? 'page' : undefined}
+                className={`flex min-w-0 flex-col items-center justify-center gap-0.5 py-2 text-[11px] sm:text-xs lg:flex-row lg:justify-start lg:gap-3 lg:rounded-lg lg:px-3 lg:py-2.5 lg:text-sm ${
                   isActive ? 'text-brand-700 font-semibold lg:bg-brand-50' : 'text-gray-500 lg:hover:bg-gray-50'
-                }`
-              }
-            >
-              <span className="text-xl leading-none">{item.icon}</span>
-              <span className="max-w-full truncate px-0.5">{item.label}</span>
-            </NavLink>
-          ))}
+                }`}
+              >
+                <span className="text-xl leading-none">{item.icon}</span>
+                <span className="max-w-full truncate px-0.5">{item.label}</span>
+              </Link>
+            )
+          })}
         </nav>
       </div>
     </div>

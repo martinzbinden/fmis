@@ -38,6 +38,9 @@ import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
 import { createDairyAnimalProvider } from './lib/animalProvider'
 import { speciesTerms } from './lib/species'
 import { dairyYearSummary } from './lib/yearSummary'
+import LastCapture from './components/LastCapture'
+import ViewSwitch, { type View } from './components/ViewSwitch'
+import { captureNavItem } from './lib/lastCapture'
 import './theme.css'
 
 /**
@@ -55,6 +58,12 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
 
   const sheep = key === 'dairy_schafe'
   const terms = speciesTerms(key)
+  // Zwei Ansichten je Punkt der Fussleiste (ViewSwitch) und Erfassungsseiten, die sich der dynamische Punkt merkt
+  const HOME: View[] = [{ to: '', label: 'Heute' }, { to: 'stall', label: 'Kalender' }]
+  const ANIMALS: View[] = [{ to: 'tiere', label: 'Liste' }, { to: 'tierinfo', label: 'Tier-Info' }]
+  const GROUPS: View[] = [{ to: 'gruppen', label: 'Vergleich' }, { to: 'dashboard', label: 'Karten' }]
+  const views = (v: View[], el: ReactNode) => <ViewSwitch moduleKey={key} views={v}>{el}</ViewSwitch>
+  const capture = (path: string, el: ReactNode) => <LastCapture moduleKey={key} path={path}>{el}</LastCapture>
   const sync = createDairySyncClient(key)
   return {
     key,
@@ -62,18 +71,18 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     // Kühe und Schafe auf der Übersicht unterscheidbar
     icon: sheep ? '🐑' : '🐄',
     group: 'tiere',
+    // Fussleiste: höchstens 5 Punkte (Handy). Zwei Ansichten teilen sich je einen Punkt (Umschalter oben, ViewSwitch).
     navItems: [
-      // Stall zuerst: Milchwägung und Ausmerzliste stehen auf «Heute» und im Menü «Erfassen»
-      { to: '', label: 'Heute', icon: '🏠' },
-      // Arbeitsfokus mit Hinweisen, Tränkeplan und Werkzeugleiste (Jungtiere, Melken, Tierarzt, Milchwägung)
-      { to: 'stall', label: 'Stall', icon: '📆' },
-      { to: 'erfassen', label: 'Erfassen', icon: '✏️' },
-      { to: 'tierinfo', label: 'Tier-Info', icon: '🔎' },
-      { to: 'tiere', label: 'Tiere', icon: sheep ? '🐑' : '🐄' },
-      // Leistung: über Tier und Gruppe verlinkt (?tier= / ?tiere=), dazu «Heute» → Weitere Seiten
-      { to: 'gruppen', label: 'Gruppen', icon: '📊' },
-      // Karten je Tier in Spalten (Tiergruppen, Merklisten), am PC und Tablet
-      { to: 'dashboard', label: 'Dashboard', icon: '🗂️' },
+      // Heute + Kalender (Stall)
+      { to: '', label: 'Heute', icon: '🏠', also: ['stall'] },
+      // Liste + Tier-Info
+      { to: 'tiere', label: 'Tiere', icon: sheep ? '🐑' : '🐄', also: ['tierinfo', 'kuehe'] },
+      // Vergleich + Karten (Spalten je Gruppe/Merkliste)
+      { to: 'gruppen', label: 'Gruppen', icon: '📊', also: ['dashboard'] },
+      // zuletzt benutzte Erfassungsfunktion (lib/lastCapture.ts)
+      { ...captureNavItem(key, sheep), resolve: () => captureNavItem(key, sheep) },
+      // alle weiteren Funktionen und Seiten
+      { to: 'mehr', label: 'Mehr', icon: '☰', also: ['erfassen', 'leistung', 'laemmer', 'ausmerzen', 'behandlungen', 'anpaarung', 'selektion', 'merklisten', 'pruefbericht', 'stammbaum'] },
     ],
     historyPermission: `${key}:history:read`,
     pageTitles: {
@@ -90,8 +99,10 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       merklisten: 'Merklisten',
       klauen: 'Klauen',
       gruppen: 'Gruppen',
-      dashboard: 'Dashboard',
-      stall: 'Stall',
+      dashboard: 'Karten',
+      stall: 'Kalender',
+      mehr: 'Mehr',
+      tierinfo: 'Tier-Info',
       laemmer: sheep ? 'Lämmer' : 'Kälber',
       leistung: 'Leistung',
       journal: 'Beobachtung / Behandlung',
@@ -102,9 +113,9 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       milchwaegung: 'Milchwägung',
     },
     routes: [
-      { path: '', element: <Today moduleKey={key} /> },
+      { path: '', element: views(HOME, <Today moduleKey={key} />) },
       { path: 'leistung', element: <Milk moduleKey={key} /> },
-      { path: 'tiere', element: <Animals moduleKey={key} /> },
+      { path: 'tiere', element: views(ANIMALS, <Animals moduleKey={key} />) },
       { path: 'tiere/:id', element: <AnimalDetail moduleKey={key} /> },
       // frühere Adresse (auch für Schafe «kuehe») — gespeicherte Links und Lesezeichen
       { path: 'kuehe', element: <OldAnimalsPath moduleKey={key} /> },
@@ -112,27 +123,28 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'ausmerzen', element: <Culling moduleKey={key} /> },
       { path: 'ausmerzen/laemmer', element: <SlaughterLambs moduleKey={key} /> },
       { path: 'erfassen', element: <Erfassen moduleKey={key} /> },
-      { path: 'geburt', element: <BirthEntry moduleKey={key} /> },
-      { path: 'ohrmarken', element: <EarTagPending moduleKey={key} /> },
-      { path: 'tvd', element: <TvdBirths moduleKey={key} /> },
-      { path: 'belegung', element: <MatingEntry moduleKey={key} /> },
-      { path: 'traechtigkeit', element: <PregnancyEntry moduleKey={key} /> },
+      { path: 'mehr', element: <Erfassen moduleKey={key} /> },
+      { path: 'geburt', element: capture('geburt', <BirthEntry moduleKey={key} />) },
+      { path: 'ohrmarken', element: capture('ohrmarken', <EarTagPending moduleKey={key} />) },
+      { path: 'tvd', element: capture('tvd', <TvdBirths moduleKey={key} />) },
+      { path: 'belegung', element: capture('belegung', <MatingEntry moduleKey={key} />) },
+      { path: 'traechtigkeit', element: capture('traechtigkeit', <PregnancyEntry moduleKey={key} />) },
       { path: 'traechtigkeit/vergleich', element: <PregnancyCompare /> },
-      { path: 'tierinfo', element: <AnimalInfo moduleKey={key} /> },
+      { path: 'tierinfo', element: views(ANIMALS, <AnimalInfo moduleKey={key} />) },
       { path: 'merklisten', element: <Watchlists moduleKey={key} /> },
-      { path: 'klauen', element: <ClawEntry moduleKey={key} /> },
-      { path: 'gruppen', element: <GroupCompare moduleKey={key} /> },
-      { path: 'dashboard', element: <Board moduleKey={key} /> },
-      { path: 'stall', element: <Stall moduleKey={key} /> },
+      { path: 'klauen', element: capture('klauen', <ClawEntry moduleKey={key} />) },
+      { path: 'gruppen', element: views(GROUPS, <GroupCompare moduleKey={key} />) },
+      { path: 'dashboard', element: views(GROUPS, <Board moduleKey={key} />) },
+      { path: 'stall', element: views(HOME, <Stall moduleKey={key} />) },
       { path: 'laemmer', element: <Lambs moduleKey={key} /> },
-      { path: 'journal', element: <JournalEntry moduleKey={key} /> },
+      { path: 'journal', element: capture('journal', <JournalEntry moduleKey={key} />) },
       { path: 'behandlungen', element: <TreatmentJournal moduleKey={key} /> },
       { path: 'anpaarung', element: <MatingPlanner moduleKey={key} /> },
       { path: 'stammbaum/:key', element: <PedigreeAnimal moduleKey={key} /> },
       { path: 'selektion', element: <LambSelection moduleKey={key} /> },
       { path: 'pruefbericht', element: <Pruefbericht moduleKey={key} /> },
       { path: 'verlauf', element: <History moduleKey={key} /> },
-      { path: 'milchwaegung', element: <Milchwaegung moduleKey={key} /> },
+      { path: 'milchwaegung', element: capture('milchwaegung', <Milchwaegung moduleKey={key} />) },
       { path: 'melken', element: <Navigate to="../milchwaegung" replace /> },
       { path: '*', element: <Navigate to="." replace /> },
     ],

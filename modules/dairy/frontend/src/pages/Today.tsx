@@ -101,7 +101,7 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
       <h1 className="text-xl font-bold text-gray-800">Heute, {fmtDate(today)}</h1>
 
       <div className="grid grid-cols-2 gap-3">
-        <Link to="erfassen" className="flex min-h-20 flex-col items-center justify-center rounded-xl bg-brand-700 p-3 text-white shadow-sm active:bg-brand-800">
+        <Link to="mehr" className="flex min-h-20 flex-col items-center justify-center rounded-xl bg-brand-700 p-3 text-white shadow-sm active:bg-brand-800">
           <span className="text-2xl">✏️</span>
           <span className="font-semibold">Erfassen</span>
         </Link>
