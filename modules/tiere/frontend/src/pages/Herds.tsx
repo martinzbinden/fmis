@@ -19,6 +19,7 @@ import ReaderListsDialog from '../components/ReaderListsDialog'
 import ReaderProposals from '../components/ReaderProposals'
 import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LaufhofMode, LocationKind, StaySlot } from '../types'
 import { errorText, notifySuccess } from '@fmis/core/toast'
+import SelectAllBox from '@fmis/core/SelectAllBox'
 
 const SPECIES_ICON: Record<HerdSpecies, string> = { schafe: '🐑', rinder: '🐄' }
 const SPECIES_LABEL: Record<HerdSpecies, string> = { schafe: 'Schafe', rinder: 'Rinder' }
@@ -573,7 +574,12 @@ function MoveDialog({
         {blocks.map((b) => (
           <div key={b.key} className="rounded-lg border border-gray-200">
             <div className="flex items-center justify-between gap-2 border-b bg-gray-50 px-3 py-1.5">
-              <span className="font-medium text-gray-900">
+              <SelectAllBox
+                total={b.animalIds.length}
+                selected={b.checked.size}
+                onChange={(all) => setBlocks((prev) => prev.map((x) => (x === b ? { ...x, checked: new Set(all ? x.animalIds : []) } : x)))}
+              />
+              <span className="min-w-0 flex-1 font-medium text-gray-900">
                 {b.kind === 'group' ? (b.groupId === UNASSIGNED ? '📥 Ohne Gruppe' : `${SPECIES_ICON[speciesSel]} Gruppe «${b.name}»`) : b.kind === 'list' ? `🔖 Merkliste «${b.name}»` : b.name}
                 <span className="font-normal text-gray-600">
                   {' '}
@@ -738,6 +744,23 @@ function IdentifyDialog({
         </label>
         <div className="max-h-64 overflow-y-auto rounded border border-gray-200">
           {animals == null && <p className="p-2 text-xs text-gray-500">Lädt…</p>}
+          {candidates.length > 1 && (
+            <div className="flex items-center border-b bg-gray-50 px-2 text-xs text-gray-600">
+              <SelectAllBox
+                total={candidates.length}
+                selected={candidates.filter((a) => selected.has(a.id)).length}
+                onChange={(all) => {
+                  const next = new Set(selected)
+                  for (const a of candidates) {
+                    if (all) next.add(a.id)
+                    else next.delete(a.id)
+                  }
+                  setSelected(next)
+                }}
+                label={`${candidates.filter((a) => selected.has(a.id)).length} von ${candidates.length} gewählt`}
+              />
+            </div>
+          )}
           {candidates.map((a) => {
             const g = groupOf(a)
             const isSel = selected.has(a.id)

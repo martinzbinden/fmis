@@ -16,6 +16,7 @@ import { RULE_FIELDS, useStallRules, type StallRules } from '../lib/stallRules'
 import AnimalInfo from './AnimalInfo'
 import JournalEntry from './JournalEntry'
 import Milchwaegung from './Milchwaegung'
+import SelectAllBox from '@fmis/core/SelectAllBox'
 import PregnancyEntry from './PregnancyEntry'
 import TreatmentJournal from './TreatmentJournal'
 import { loadVet, type VetData } from '../lib/vetVisit'
@@ -337,7 +338,18 @@ function HintCard({ hint, data, rules, today, moduleKey, sheep, tier, onFocus }:
         </h2>
         <p className="text-sm text-gray-600">{t.help}</p>
       </header>
-      <ul className="mt-1 divide-y">
+      <div className="mt-1 flex items-center border-t text-xs text-gray-600">
+        <SelectAllBox
+          className="w-12 justify-center"
+          total={hint.items.length}
+          selected={chosen.length}
+          onChange={(all) => setSkipped(all ? new Set() : new Set(hint.items.map((i) => i.key)))}
+        />
+        <span>
+          {chosen.length} von {hint.items.length} gewählt
+        </span>
+      </div>
+      <ul className="divide-y border-t">
         {hint.items.map((i) => (
           <ItemRow key={i.key} item={i} data={data} today={today} checked={!skipped.has(i.key)} onToggle={() => toggle(i.key)} focused={!!tier && (i.lamb?.animalId === tier || i.animal?.id === tier)} onFocus={onFocus} />
         ))}
@@ -699,28 +711,81 @@ function Tierarzt({ data, vet, today, moduleKey, view, onView, onFocus, tier }: 
 }
 
 function RulesForm({ species, rules, onChange, onReset }: { species: 'cattle' | 'sheep'; rules: StallRules; onChange: (r: StallRules) => void; onReset: () => void }) {
+  // Einstellungen: erst ansehen, ändern erst nach dem Stift; mit ✕ verwerfen oder ✓ speichern
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(rules)
+  const icon = 'grid h-11 w-11 place-items-center rounded-lg border-2 text-lg font-bold'
   return (
     <div className="mt-2 space-y-2">
-      <p className="text-sm text-gray-600">Gilt nur auf diesem Gerät. 0 schaltet den Hinweis aus.</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm text-gray-600">Gilt nur auf diesem Gerät. 0 schaltet den Hinweis aus.</p>
+        {editing ? (
+          <div className="flex shrink-0 gap-1">
+            <button type="button" onClick={() => setEditing(false)} className={`${icon} border-gray-400 text-gray-700`} aria-label="Abbrechen" title="Abbrechen">
+              ✕
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(draft)
+                setEditing(false)
+              }}
+              className={`${icon} border-brand-700 bg-brand-700 text-white`}
+              aria-label="Speichern"
+              title="Speichern"
+            >
+              ✓
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(rules)
+              setEditing(true)
+            }}
+            className={`${icon} shrink-0 border-gray-300 text-gray-700`}
+            aria-label="Regeln bearbeiten"
+            title="Bearbeiten"
+          >
+            ✏️
+          </button>
+        )}
+      </div>
       {RULE_FIELDS[species].map((f) => (
         <label key={f.key} className="flex items-center justify-between gap-3 text-sm text-gray-800">
           <span>{f.label}</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={rules[f.key]}
-            onChange={(e) => {
-              const v = Math.max(0, Math.round(Number(e.target.value)))
-              if (Number.isFinite(v)) onChange({ ...rules, [f.key]: v })
-            }}
-            className="min-h-11 w-20 rounded-lg border-2 border-gray-400 px-2 text-right"
-          />
+          {editing ? (
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              value={draft[f.key]}
+              onChange={(e) => {
+                const v = Math.max(0, Math.round(Number(e.target.value)))
+                if (Number.isFinite(v)) setDraft({ ...draft, [f.key]: v })
+              }}
+              className="min-h-11 w-20 rounded-lg border-2 border-gray-400 px-2 text-right"
+            />
+          ) : (
+            <span className="min-w-12 rounded-lg bg-gray-100 px-3 py-2 text-right font-semibold text-gray-900">{rules[f.key]}</span>
+          )}
         </label>
       ))}
-      <button type="button" onClick={onReset} className="min-h-11 rounded-lg border-2 border-gray-400 px-3 font-semibold text-gray-800">
-        Vorgaben wiederherstellen
-      </button>
+      {editing && (
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm('Alle Regeln auf die Vorgaben zurücksetzen?')) {
+              onReset()
+              setEditing(false)
+            }
+          }}
+          className="min-h-11 rounded-lg border-2 border-gray-400 px-3 font-semibold text-gray-800"
+        >
+          Vorgaben wiederherstellen
+        </button>
+      )}
     </div>
   )
 }

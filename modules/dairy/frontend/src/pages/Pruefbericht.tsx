@@ -8,6 +8,7 @@ import { buildReport, summarize, testDates, type ReportRow, type ReportSummary }
 import { speciesOf, speciesTerms } from '../lib/species'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import PaperReport, { PAPER_CSS, ddmmyyyy } from '../components/PaperReport'
+import SelectAllBox from '@fmis/core/SelectAllBox'
 
 type Align = 'left' | 'right'
 
@@ -260,6 +261,12 @@ export default function Pruefbericht({ moduleKey }: { moduleKey: string }) {
                   Spalten ({visible.length} von {allColumns.length})
                 </summary>
                 <div className="mt-1 space-y-1 rounded bg-white p-2 shadow-sm">
+                  <SelectAllBox
+                    total={allColumns.length}
+                    selected={visible.length}
+                    onChange={(all) => saveColumns(all ? allColumns.map((c) => c.key) : [allColumns[0].key])}
+                    label={`${visible.length} von ${allColumns.length} Spalten`}
+                  />
                   {groups.map((g) => (
                     <div key={g} className="flex flex-wrap gap-x-3 gap-y-1">
                       <span className="w-full font-semibold text-gray-500 sm:w-32">{g}</span>
