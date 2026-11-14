@@ -18,7 +18,7 @@ import GroupEditModal from '../components/GroupEditModal'
 import { useQuery } from '../hooks/useQuery'
 import BoardCardView from '../components/BoardCardView'
 import { DragGhost, useBoardDrag } from '../components/boardDrag'
-import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, type MeatSettings, type MeatValue } from '../lib/meatValue'
+import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatLimits as buildMeatLimits, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, MEAT_BAR_MAX, type MeatLimit, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
 import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
@@ -217,7 +217,8 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     return m
   }, [cards, presetMatchers, presetState.colored, queryCtx])
   const shown = useMemo(() => cards.filter((c) => q.match(c)), [cards, q])
-  const meatMax = useMemo(() => Math.max(1, ...[...meatById.values()].map((v) => v?.net ?? 0)), [meatById])
+  // feste Skala (bis MEAT_BAR_MAX Fr.) mit den Grenzen schwere Aue und schweres Lamm T3/H3/C3
+  const meatLimitList = useMemo(() => buildMeatLimits(meatSettings, { ...meatPrices, lambH: proviande?.youngH ?? null, lambC: proviande?.youngC ?? null }), [meatSettings, meatPrices, proviande])
   function toggleMeat() {
     const next = !meatOn
     setMeatOn(next)
@@ -432,7 +433,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                   groupChoices={col.kind === 'group' && canMove ? [...groups.filter((g) => g.id !== col.id).map((g) => ({ id: g.id as string | null, name: g.name })), ...(col.id ? [{ id: null, name: 'Ohne Gruppe' }] : [])] : undefined}
                   onMoveToGroup={col.kind === 'group' && canMove ? (id) => moveToDraft([c.id], id) : undefined}
                   meat={meatById.get(c.id) ?? null}
-                  meatMax={meatMax}
+                  meatLimits={meatLimitList}
                   fields={cardFields}
                   pointerDown={pointerDown}
                 />
@@ -535,6 +536,16 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             <>
               Fleischwert am <b>{meatDate.split('-').reverse().join('.')}</b>
               {meatSettings.slaughterDate ? '' : ' (heute)'} · Preise Proviande{proviande ? ` Woche ${proviande.week}` : ' (wird geladen, bis dahin Stand KW 47)'}: Lamm {meatPrices.lamb.toFixed(2)}, Schaf {meatPrices.sheep.toFixed(2)} Fr./kg SG. Gewichte und Abzüge aus den Abrechnungen 2025 (Waagscheine).
+              <span className="mt-1 block text-xs text-gray-700">
+                Grenzen im Balken (Skala bis {MEAT_BAR_MAX} Fr.):{' '}
+                {meatLimitList.map((l, i) => (
+                  <span key={l.key}>
+                    {i > 0 && ' · '}
+                    <b>{l.label}</b> {Math.round(l.net)} Fr.
+                  </span>
+                ))}
+                {' '}(Aue = schwere Aue {36} kg SG; T3, H3, C3 = schweres Lamm {21} kg SG)
+              </span>
             </>
           }
         >
@@ -788,7 +799,7 @@ function ColumnCard({
   groupChoices,
   onMoveToGroup,
   meat,
-  meatMax,
+  meatLimits,
   fields,
   pointerDown,
 }: {
@@ -808,8 +819,8 @@ function ColumnCard({
   groupChoices?: { id: string | null; name: string }[]
   onMoveToGroup?: (groupId: string | null) => void
   meat?: MeatValue | null
-  /** grösster Fleischwert aller Karten: Massstab für den Balken */
-  meatMax?: number
+  /** Grenzen im Balken (feste Skala) */
+  meatLimits?: MeatLimit[]
   fields?: CardFieldKey[]
   pointerDown: (cardId: string, handle: boolean) => (e: React.PointerEvent) => void
 }) {
@@ -832,7 +843,7 @@ function ColumnCard({
       groupChoices={groupChoices}
       onMoveToGroup={onMoveToGroup}
       meat={meat}
-      meatMax={meatMax}
+      meatLimits={meatLimits}
       fields={fields}
       onDragCard={pointerDown(card.id, false)}
       onDragHandle={pointerDown(card.id, true)}

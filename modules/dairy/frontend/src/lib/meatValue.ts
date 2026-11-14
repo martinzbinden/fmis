@@ -44,6 +44,9 @@ export interface MeatPrices {
   lamb: number
   /** Schafe SM T3, CHF/kg SG */
   sheep: number
+  /** Lämmer LA H3 / LA C3 (Proviande), falls bekannt: für die Grenzen im Balken */
+  lambH?: number | null
+  lambC?: number | null
 }
 
 /** Falls die Proviande-Preise noch nicht geladen sind (Stand Woche 47/2026). */
@@ -135,4 +138,48 @@ export function saveMeatSettings(moduleKey: string, s: MeatSettings): void {
   } catch {
     // nur bis zum Neuladen
   }
+}
+
+
+// ---- Balken auf der Karte: feste Skala, Grenzen und Farbe nach Wert ----
+
+/** Ende der Skala (Fr.): schweres Lamm, 21 kg SG, Klasse C3. Darüber ist der Balken voll. */
+export const MEAT_BAR_MAX = 330
+/** Schlachtgewichte der Vergleichswerte: schweres Lamm und schwere Aue (kg SG). */
+export const MEAT_HEAVY_LAMB_KG = 21
+export const MEAT_HEAVY_EWE_KG = 36
+
+export interface MeatLimit {
+  key: 'aue' | 't3' | 'h3' | 'c3'
+  /** kurze Beschriftung */
+  label: string
+  /** Fleischwert nach Abzügen (Fr.) */
+  net: number
+  /** ausgeschrieben, z.B. für den Tooltip */
+  title: string
+}
+
+/** Grenzen der Skala: schwere Aue (SM T3) sowie das schwere Lamm (21 kg SG) in den Klassen T3, H3 und C3,
+ * nach denselben Abzügen wie der Fleischwert. H3 und C3 nur, wenn der Preis bekannt ist. */
+export function meatLimits(s: MeatSettings, p: MeatPrices): MeatLimit[] {
+  const fees = s.feePerAnimal + s.transportPerAnimal
+  const lamb = (price: number) => MEAT_HEAVY_LAMB_KG * price * s.lambFactor - fees
+  const out: MeatLimit[] = [
+    { key: 'aue', label: 'Aue', net: MEAT_HEAVY_EWE_KG * p.sheep * s.sheepFactor - fees, title: `Schwere Aue (${MEAT_HEAVY_EWE_KG} kg SG, SM T3)` },
+    { key: 't3', label: 'T3', net: lamb(p.lamb), title: `Schweres Lamm (${MEAT_HEAVY_LAMB_KG} kg SG, LA T3)` },
+  ]
+  if (p.lambH) out.push({ key: 'h3', label: 'H3', net: lamb(p.lambH), title: `Schweres Lamm (${MEAT_HEAVY_LAMB_KG} kg SG, LA H3)` })
+  if (p.lambC) out.push({ key: 'c3', label: 'C3', net: lamb(p.lambC), title: `Schweres Lamm (${MEAT_HEAVY_LAMB_KG} kg SG, LA C3)` })
+  return out
+}
+
+/** Farbe des Balkens nach Wert: von Orange (wenig) über Gelb zu Grün (viel), stufenlos auf der festen Skala. */
+export function meatBarColor(net: number): string {
+  const t = Math.max(0, Math.min(1, net / MEAT_BAR_MAX))
+  return `hsl(${Math.round(15 + t * 125)} 65% ${Math.round(46 - t * 8)}%)`
+}
+
+/** Länge des Balkens in Prozent der festen Skala (mindestens ein Rest, damit auch kleine Werte sichtbar sind). */
+export function meatBarPercent(net: number): number {
+  return Math.max(3, Math.min(100, (net / MEAT_BAR_MAX) * 100))
 }

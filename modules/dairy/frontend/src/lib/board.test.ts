@@ -33,6 +33,8 @@ const card = (p: Partial<BoardCard> = {}): BoardCard => ({
   idxScc: null,
   sccRelPeers: null,
   levels: [],
+  trend: null,
+  weighings: 0,
   intervalDays: null,
   lambMilk: null,
   breedingValue: null,

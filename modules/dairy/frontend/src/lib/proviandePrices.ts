@@ -9,6 +9,9 @@ export interface ProviandePrices {
   validFrom: string
   /** Jungtier: Lämmer LA T3 bzw. Kälber KV T3, CHF/kg SG */
   young: number | null
+  /** Lämmer LA H3 und LA C3 (für die Grenzen im Fleischwert-Balken), sonst null */
+  youngH: number | null
+  youngC: number | null
   /** ausgewachsen: Schafe SM T3 bzw. Kühe VK T3, CHF/kg SG */
   adult: number | null
   youngLabel: string
@@ -22,7 +25,7 @@ export function useProviandePrices(species: 'sheep' | 'cattle'): ProviandePrices
     const [y, a] = species === 'sheep' ? ['LA', 'SM'] : ['KV', 'VK']
     const load = () =>
       latestProviande().then((w) => {
-        if (live && w) setPrices({ week: w.week, validFrom: w.validFrom, young: w.prices[`${y} T`]?.sg ?? null, adult: w.prices[`${a} T`]?.sg ?? null, youngLabel: `${y} T3`, adultLabel: `${a} T3` })
+        if (live && w) setPrices({ week: w.week, validFrom: w.validFrom, young: w.prices[`${y} T`]?.sg ?? null, youngH: w.prices[`${y} H`]?.sg ?? null, youngC: w.prices[`${y} C`]?.sg ?? null, adult: w.prices[`${a} T`]?.sg ?? null, youngLabel: `${y} T3`, adultLabel: `${a} T3` })
       })
     void load()
     // beim ersten Öffnen kommen die Preise erst mit dem Abgleich des Mastplaners

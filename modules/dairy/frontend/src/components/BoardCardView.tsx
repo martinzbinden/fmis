@@ -5,7 +5,7 @@ import { areaLabel, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib
 import { fmtAge, fmtDate } from '../lib/format'
 import { RESULT_LABEL, METHOD_LABEL } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
-import { MEAT_BAND_BAR, MEAT_BAND_LABEL, type MeatValue } from '../lib/meatValue'
+import { meatBarColor, meatBarPercent, MEAT_BAND_LABEL, type MeatLimit, type MeatValue, MEAT_BAR_MAX } from '../lib/meatValue'
 import type { CardFieldKey } from '../lib/cardFields'
 import LactationSpark from './LactationSpark'
 import NursingLambs, { WeanedLambs } from './NursingLambs'
@@ -34,7 +34,7 @@ export default function BoardCardView({
   groupChoices,
   onMoveToGroup,
   meat,
-  meatMax,
+  meatLimits,
   fields = [],
   onDragCard,
   onDragHandle,
@@ -61,8 +61,8 @@ export default function BoardCardView({
   /** geschätzter Fleischwert (nur Schafe, wenn aktiv) */
   meat?: MeatValue | null
   /** auf der Karte gewählte Eigenschaften (Menü «Karte») */
-  /** grösster Fleischwert aller Karten (Massstab des Balkens) */
-  meatMax?: number
+  /** Grenzen im Fleischwert-Balken (schwere Aue, schweres Lamm T3/H3/C3); die Skala ist fest */
+  meatLimits?: MeatLimit[]
   fields?: CardFieldKey[]
   onDragCard: (e: ReactPointerEvent) => void
   onDragHandle: (e: ReactPointerEvent) => void
@@ -111,7 +111,7 @@ export default function BoardCardView({
               </span>
             )}
           </span>
-          {fields.length > 0 && <CardProps card={card} fields={fields} meat={meat ?? null} meatMax={meatMax} />}
+          {fields.length > 0 && <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} />}
         </button>
         {canDrag && (
           <span
@@ -252,10 +252,11 @@ export default function BoardCardView({
 const zwEstimateTitle = (e: NonNullable<BoardCard['breedingEstimate']>) =>
   `Eigene Schätzung aus der Abstammung, kein gemessener Zuchtwert: Mutter ${e.dam ?? 'unbekannt (100 angenommen)'}, Vater ${e.sire ?? 'unbekannt (100 angenommen)'}`
 
+const TREND_ARROW = { steigend: { arrow: '↗', tone: 'text-green-700' }, stabil: { arrow: '→', tone: 'text-gray-600' }, fallend: { arrow: '↘', tone: 'text-red-700' } } as const
 const f0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleString('de-CH'))
 
 /** Die gewählten Eigenschaften als kompakte Zeilen unter dem Kopf der Karte. */
-function CardProps({ card, fields, meat, meatMax }: { card: BoardCard; fields: CardFieldKey[]; meat: MeatValue | null; meatMax?: number }) {
+function CardProps({ card, fields, meat, meatLimits }: { card: BoardCard; fields: CardFieldKey[]; meat: MeatValue | null; meatLimits?: MeatLimit[] }) {
   const has = (k: CardFieldKey) => fields.includes(k)
   const line = (label: string, value: string, key: string) => (
     <div key={key} className="flex justify-between gap-2">
@@ -264,7 +265,22 @@ function CardProps({ card, fields, meat, meatMax }: { card: BoardCard; fields: C
     </div>
   )
   const rows: React.ReactNode[] = []
-  if (has('milk')) rows.push(line('Milch', `Herde ${f0(card.idxPerformance)} · Gleichalt. ${card.performanceRel == null ? '–' : `${f0(card.performanceRel * 100)} %`}`, 'milk'))
+  if (has('milk')) {
+    const trend = card.trend ? TREND_ARROW[card.trend] : null
+    rows.push(
+      <div key="milk" className="flex justify-between gap-2" title="Leistungsindex im Herdenvergleich (Pt, Mittel 100) und in % der Gleichaltrigen; Pfeil = Tendenz über die Laktationen">
+        <span className="text-gray-500">Milch</span>
+        <span className="text-right font-medium text-gray-900">
+          {f0(card.idxPerformance)} Pt – {card.performanceRel == null ? '–' : `${f0(card.performanceRel * 100)} %`}
+          {trend && (
+            <span className={`ml-1 font-bold ${trend.tone}`} role="img" aria-label={`Tendenz ${card.trend}`} title={`Tendenz über die Laktationen: ${card.trend}`}>
+              {trend.arrow}
+            </span>
+          )}
+        </span>
+      </div>,
+    )
+  }
   if (has('scc')) rows.push(line('Zellzahl', `Herde ${f0(card.idxScc)} · Gleichalt. ${card.sccRelPeers == null ? '–' : `${card.sccRelPeers} %`} · Ø ${f0(card.scc12m)}`, 'scc'))
   if (has('ltl')) rows.push(line('Lebenstagleistung', card.ltlMilk == null ? '–' : `${n1(card.ltlMilk, 2)} kg`, 'ltl'))
   if (has('zw')) {
@@ -279,6 +295,8 @@ function CardProps({ card, fields, meat, meatMax }: { card: BoardCard; fields: C
     } else rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
   }
   if (has('litter')) rows.push(line('Wurf', card.lastLitterSize == null ? '–' : `letzter ${card.lastLitterSize}${card.litterMean != null ? ` · Ø ${n1(card.litterMean)}` : ''}`, 'litter'))
+  if (has('lambing')) rows.push(line('Ablammung', card.lastBirth ? `${fmtDate(card.lastBirth)}${card.daysSinceBirth != null ? ` (${card.daysSinceBirth} Tage)` : ''}` : '–', 'lambing'))
+  if (has('weighings')) rows.push(line('Wägungen', card.lastBirth || card.weighings > 0 ? String(card.weighings) : '–', 'weighings'))
   if (has('interval')) rows.push(line('Zwischenablammzeit', card.intervalDays == null ? '–' : `Ø ${card.intervalDays} Tage`, 'interval'))
   if (has('lambMilk')) {
     const m = card.lambMilk
@@ -291,10 +309,21 @@ function CardProps({ card, fields, meat, meatMax }: { card: BoardCard; fields: C
     )
   }
   if (has('meat')) rows.push(line('Fleischwert', meat ? `≈ ${Math.round(meat.net)} Fr. · ${meat.kind} ${meat.kg} kg` : card.birthDate ? '–' : 'ohne Geburtsdatum', 'meat'))
-  if (has('meat') && meat && meatMax) {
+  if (has('meat') && meat) {
+    const limits = (meatLimits ?? []).filter((l) => l.net > 0 && l.net <= MEAT_BAR_MAX)
+    const limitText = limits.map((l) => `${l.title}: ${Math.round(l.net)} Fr.`).join(' · ')
     rows.push(
-      <div key="meatbar" className="h-2 w-full overflow-hidden rounded-full bg-gray-100" role="img" aria-label={`Fleischwert ${Math.round(meat.net)} Fr., ${MEAT_BAND_LABEL[meat.band]}`} title={`${MEAT_BAND_LABEL[meat.band]}, ${meat.ageDays} Tage, ${meat.kg} kg SG`}>
-        <div className={`h-full rounded-full ${MEAT_BAND_BAR[meat.band]}`} style={{ width: `${Math.max(4, Math.min(100, (meat.net / meatMax) * 100))}%` }} />
+      <div
+        key="meatbar"
+        className="relative my-0.5 h-2 w-full rounded-full bg-gray-100"
+        role="img"
+        aria-label={`Fleischwert ${Math.round(meat.net)} Fr., ${MEAT_BAND_LABEL[meat.band]}. Skala bis ${MEAT_BAR_MAX} Fr.`}
+        title={`${MEAT_BAND_LABEL[meat.band]}, ${meat.ageDays} Tage, ${meat.kg} kg SG. Skala 0–${MEAT_BAR_MAX} Fr.${limitText ? ` Grenzen: ${limitText}` : ''}`}
+      >
+        <div className="h-full rounded-full" style={{ width: `${meatBarPercent(meat.net)}%`, backgroundColor: meatBarColor(meat.net) }} />
+        {limits.map((l) => (
+          <span key={l.key} aria-hidden className="absolute -top-0.5 h-3 w-px bg-gray-800/70" style={{ left: `${(l.net / MEAT_BAR_MAX) * 100}%` }} title={`${l.title}: ${Math.round(l.net)} Fr.`} />
+        ))}
       </div>,
     )
   }

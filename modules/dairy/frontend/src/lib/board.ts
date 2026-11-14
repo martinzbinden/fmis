@@ -8,7 +8,7 @@ import { presetFilter } from '@fmis/core/filters/useSavedFilters'
 import { cullingReasons, reasonScore, type CullingReason, type CullingThresholds } from './culling'
 import type { Species } from './fertility'
 import { cullingInput, type AnimalContext } from './herdContext'
-import type { LactationLevel } from './lactationTrend'
+import type { LactationLevel, TrendDirection } from './lactationTrend'
 import type { DamMilk } from './lambMilk'
 import type { BreedingEstimate } from './breedingEstimate'
 import { speciesTerms } from './species'
@@ -54,6 +54,10 @@ export interface BoardCard {
   sccRelPeers: number | null
   /** Leistungsniveau je Laktation gegen die Herde (1.0 = Herdenmittel), für die Minigrafik */
   levels: LactationLevel[]
+  /** Tendenz über die Laktationen (ab 2 bewerteten Laktationen, sonst null) */
+  trend: TrendDirection | null
+  /** Wägungen (Prüfungen) der laufenden Laktation */
+  weighings: number
   /** mittlere Tage zwischen zwei Geburten (ab 2 Geburten) */
   intervalDays: number | null
   /** geschätzte Milch der Lämmer des letzten Wurfs (lib/lambMilk.ts); null ohne Lämmer */
@@ -139,6 +143,8 @@ export function buildCards(input: BoardInput): BoardCard[] {
         return p?.scc_geo_12m != null && mean ? Math.round((p.scc_geo_12m / mean) * 100) : null
       })(),
       levels: ctx.trend?.levels ?? [],
+      trend: ctx.trend?.direction ?? null,
+      weighings: ctx.currentLactationTests.length,
       intervalDays: birthInterval(ctx),
       lambMilk: input.lambMilk?.get(ref.id) ?? null,
       breedingEstimate: input.breedingEstimates?.get(ref.id) ?? null,

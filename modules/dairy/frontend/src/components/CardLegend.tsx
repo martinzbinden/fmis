@@ -48,6 +48,8 @@ const SAMPLE: BoardCard = {
   idxScc: 96,
   sccRelPeers: 128,
   levels: LEVELS,
+  trend: 'fallend',
+  weighings: 4,
   intervalDays: 362,
   lambMilk: { lambs: 2, missing: 1, totalKg: 52, perDay: 1.9 },
   breedingValue: 112,
@@ -118,7 +120,7 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
         </Item>
         {sheep && (
           <Item title="Fleischwert" sample={chip('bg-stone-200 text-stone-900', '≈ 159 Fr.')}>
-            Geschätzter Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen. Gewichte und Preise stellst du unter «🥩 Fleischwert» ein. Der Balken darunter zeigt den Wert im Verhältnis zum teuersten Tier, seine Farbe den Bereich (siehe «Fleischwert-Balken»). Das grüne Feld oben in der Spalte ist die Summe aller Karten.
+            Geschätzter Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen. Gewichte und Preise stellst du unter «🥩 Fleischwert» ein. Der Balken darunter hat eine feste Skala von 0 bis 330 Fr. (schweres Lamm, 21 kg Schlachtgewicht, Klasse C3). Seine Farbe geht mit dem Wert von Orange über Gelb nach Grün. Die kleinen senkrechten Striche sind Grenzen: schwere Aue (36 kg SG, SM T3) und schweres Lamm (21 kg SG) in den Klassen T3, H3 und C3, jeweils nach Abzügen. Ein Tipp auf den Balken zeigt die Werte. Das grüne Feld oben in der Spalte ist die Summe aller Karten (siehe «Fleischwert-Balken der Spalte»).
           </Item>
         )}
         {sheep && (
@@ -136,9 +138,10 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
             Das grüne Feld oben in jeder Spalte zeigt den geschätzten Fleischwert der ganzen Spalte als Balken mit Bereichen: <span className="font-semibold text-lime-700">hellgrün</span> Lämmer bis 120 Tage, <span className="font-semibold text-green-600">grün</span> Lämmer bis 210 Tage, <span className="font-semibold text-green-900">dunkelgrün</span> ältere Lämmer, <span className="font-semibold text-stone-600">grau</span> Schafe. Die Breite ist der Anteil am Wert der Spalte, darunter stehen Anzahl und Franken je Bereich.
           </Item>
         )}
-        <Item title="Milch" sample={<span className="text-[11px] text-gray-700">Herde 108 · Gleichalt. 105 %</span>}>
-          <b>Herde</b>: Leistungsindex im Vergleich mit der ganzen Herde. 100 ist der Durchschnitt, 10 Punkte sind eine Streuung. Höher ist besser.<br />
-          <b>Gleichalt.</b>: Leistung in Prozent der gleichaltrigen Tiere. 100 % ist gleich, mehr ist besser.
+        <Item title="Milch" sample={<span className="text-[11px] text-gray-700">108 Pt – 105 % <span className="font-bold text-green-700">↗</span></span>}>
+          <b>Pt</b>: Leistungsindex im Vergleich mit der ganzen Herde. 100 ist der Durchschnitt, 10 Punkte sind eine Streuung. Höher ist besser.<br />
+          <b>%</b>: Leistung in Prozent der gleichaltrigen Tiere. 100 % ist gleich, mehr ist besser.<br />
+          <b>Pfeil</b>: Tendenz über die Laktationen, nur bei mindestens zwei bewerteten Laktationen: <span className="font-bold text-green-700">↗</span> steigend, <span className="font-bold text-gray-600">→</span> stabil, <span className="font-bold text-red-700">↘</span> fallend (ab 5 Punkten je Laktation).
         </Item>
         <Item title="Zellzahl" sample={<span className="text-[11px] text-gray-700">Herde 96 · Gleichalt. 128 % · Ø 245</span>}>
           <b>Herde</b>: Zellzahl-Index. 100 ist der Durchschnitt, <i>höher ist besser</i> (tiefe Zellzahl gibt einen hohen Index).<br />
@@ -168,6 +171,12 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
             Grösse des letzten Wurfs (inklusive tot Geborene) und Mittel aller Würfe.
           </Item>
         )}
+        <Item title={sheep ? 'Ablammung' : 'Abkalbung'} sample={<span className="text-[11px] text-gray-700">21.10.2026 (24 Tage)</span>}>
+          Datum der letzten Geburt und die Tage seither.
+        </Item>
+        <Item title="Wägungen" sample={<span className="text-[11px] text-gray-700">4</span>}>
+          Anzahl Milchwägungen (Prüfungen) der laufenden Laktation, also seit der letzten Geburt.
+        </Item>
         <Item title={sheep ? 'Zwischenablammzeit' : 'Zwischenkalbezeit'} sample={<span className="text-[11px] text-gray-700">Ø 362 Tage</span>}>
           Mittlere Tage zwischen zwei Geburten, ab zwei Geburten.
         </Item>
