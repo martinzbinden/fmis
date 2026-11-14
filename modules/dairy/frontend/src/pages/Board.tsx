@@ -21,6 +21,8 @@ import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
+import QueryInput from '../components/QueryInput'
+import { describeCondition, matchesQuery, parseQuery, type QueryContext } from '../lib/boardQuery'
 import { buildLanes, loadList, moveKey, orderColumns, saveList } from '../lib/columnLayout'
 import { useColumnReorder } from '../hooks/useColumnReorder'
 import CardLegend from '../components/CardLegend'
@@ -149,14 +151,6 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     for (const c of cards) m.set(c.id, applyFilters(c, saved.filters, saved.modes, fields, evalCtx))
     return m
   }, [cards, saved.filters, saved.modes, fields, evalCtx])
-  const shown = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return cards.filter((c) => {
-      if (!results.get(c.id)?.visible) return false
-      return !q || [c.laufNr, c.shortTag, c.earTag, c.name].some((x) => x?.toLowerCase().includes(q))
-    })
-  }, [cards, results, search])
-
   // Entwurf Gruppenwechsel
   const [draft, setDraft] = useState<DraftMoves>({})
   useEffect(() => {
@@ -209,11 +203,23 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const proviande = useProviandePrices(species)
   const meatPrices = useMemo(() => ({ lamb: proviande?.young ?? FALLBACK_MEAT_PRICES.lamb, sheep: proviande?.adult ?? FALLBACK_MEAT_PRICES.sheep }), [proviande])
   const meatDate = meatSettings.slaughterDate || today
+  // Suchfeld: Freitext und Bedingungen wie «ZZ > 200» (lib/boardQuery.ts)
+  const parsed = useMemo(() => parseQuery(search), [search])
+  const meatQueryOn = parsed.conditions.some((c) => c.field.key === 'fleisch')
   const meatById = useMemo(() => {
     const m = new Map<string, ReturnType<typeof meatValue>>()
-    if (species === 'sheep' && (meatOn || cardFields.includes('meat'))) for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
+    if (species === 'sheep' && (meatOn || cardFields.includes('meat') || meatQueryOn)) for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
     return m
-  }, [cards, species, meatOn, cardFields, meatDate, meatSettings, meatPrices])
+  }, [cards, species, meatOn, cardFields, meatQueryOn, meatDate, meatSettings, meatPrices])
+  const queryCtx = useMemo<QueryContext>(
+    () => ({
+      groupName: (c) => groups.find((g) => g.id === c.groupId)?.name ?? null,
+      listNames: (c) => c.listIds.map((id) => lists.find((l) => l.id === id)?.name ?? ''),
+      meat: (c) => meatById.get(c.id)?.net ?? null,
+    }),
+    [groups, lists, meatById],
+  )
+  const shown = useMemo(() => cards.filter((c) => results.get(c.id)?.visible && matchesQuery(c, parsed, queryCtx)), [cards, results, parsed, queryCtx])
   const meatMax = useMemo(() => Math.max(1, ...[...meatById.values()].map((v) => v?.net ?? 0)), [meatById])
   function toggleMeat() {
     const next = !meatOn
@@ -438,14 +444,19 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     <div className="space-y-3 p-3 pb-40">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-xl font-bold text-gray-800">Dashboard</h1>
-        <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nummer oder Name" aria-label="Suchen" className="min-h-11 w-44 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm" />
-        <select value={sort} onChange={(e) => changeSort(e.target.value as SortKey)} aria-label="Sortierung" className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-2 text-sm">
-          {SORTS.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+        <QueryInput value={search} onChange={setSearch} parsed={parsed} groupNames={groups.map((g) => g.name)} listNames={lists.map((l) => l.name)} />
+        <label className="relative" title="Sortierung der Karten in den Spalten">
+          <svg aria-hidden viewBox="0 0 20 20" className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 16V4m0 0L3 7m3-3 3 3M14 4v12m0 0 3-3m-3 3-3-3" />
+          </svg>
+          <select value={sort} onChange={(e) => changeSort(e.target.value as SortKey)} aria-label="Sortierung" className="min-h-11 rounded-lg border-2 border-gray-300 bg-white pl-8 pr-2 text-sm">
+            {SORTS.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {species === 'sheep' && (
           <button type="button" onClick={toggleMeat} aria-pressed={meatOn} className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${meatOn ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-300 bg-white'}`}>
             🥩 Fleischwert
@@ -467,6 +478,14 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         </button>
       </div>
 
+      <div className="flex items-start gap-2">
+        <span className="mt-3 flex shrink-0 items-center gap-1 text-xs font-semibold text-gray-600" title="Filter: antippen = einfärben, nochmals = nur diese zeigen">
+          <svg aria-hidden viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+            <path d="M3 4h14l-5.5 6.5V16l-3 -1.5v-4z" />
+          </svg>
+          Filter
+        </span>
+        <div className="min-w-0 flex-1">
       <FilterBar
         filters={saved.filters}
         modes={saved.modes}
@@ -477,6 +496,24 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         onNew={() => setEditing({})}
         onClear={saved.clearModes}
       />
+        </div>
+      </div>
+
+      {(parsed.conditions.length > 0 || parsed.errors.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs" aria-label="Erkannte Bedingungen der Suche">
+          {parsed.conditions.map((c, i) => (
+            <span key={`c${i}`} className="rounded-full bg-sky-100 px-2.5 py-1 font-medium text-sky-900">
+              {describeCondition(c)}
+            </span>
+          ))}
+          {parsed.errors.map((e, i) => (
+            <span key={`e${i}`} className="rounded-full bg-red-100 px-2.5 py-1 font-medium text-red-900" title={e.text}>
+              {e.reason}
+            </span>
+          ))}
+          {parsed.free && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-800">Text: {parsed.free}</span>}
+        </div>
+      )}
 
       {meatOn && species === 'sheep' && (
         <SettingsEditor
