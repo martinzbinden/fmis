@@ -451,59 +451,65 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
 
   return (
     <div className="space-y-3 p-3 pb-40">
+      {/* links: Suchen, Sortieren, Gruppen/Merklisten; rechts oben nur die Einstellungen */}
       <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-bold text-gray-800">Dashboard</h1>
-        <QueryInput
-          fields={QUERY_FIELDS}
-          value={q.text}
-          onChange={q.setText}
-          choices={{ gruppe: groups.map((g) => g.name), liste: lists.map((l) => l.name) }}
-          examples={BOARD_EXAMPLES}
-          placeholder="Suchen: Nummer, Name oder ZZ > 200"
-          intro="Im Suchfeld findest du Tiere nach Nummer, Ohrmarke oder Name."
-          extraHelp={
-            <section>
-              <h3 className="mb-1 font-semibold text-gray-900">Gut zu wissen</h3>
-              <ul className="list-disc space-y-1 pl-5">
-                <li>Zellzahl: «ZZ &gt; 200» heisst 200 Tausend Zellen pro ml, «200000» geht auch. Alter: Einheit J, Mt oder T, ohne Einheit Jahre.</li>
-                <li>Die Eingabe wirkt zusammen mit den Filtern darüber (Knöpfe «nur zeigen»). «Zuchtwert» nimmt den eigenen Wert, sonst die Schätzung. «Fleischwert» ist eine Schätzung nach den Einstellungen des Fleischwerts.</li>
-              </ul>
-            </section>
-          }
-        />
-        <SortMenu options={SORTS} value={sort} onChange={q.setSort} autoLabel={q.suggestion?.label ?? null} autoOn={q.autoOn} onAutoChange={q.setAutoOn} flash={q.flash} />
-        {species === 'sheep' && (
-          <button type="button" onClick={toggleMeat} aria-pressed={meatOn} className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${meatOn ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-300 bg-white'}`}>
-            🥩 Fleischwert
-          </button>
-        )}
-        <button type="button" onClick={() => setShowLegend(true)} aria-label="Legende der Karten" title="Legende der Karten" className="grid h-11 w-11 place-items-center rounded-full border-2 border-gray-300 bg-white text-lg font-bold text-brand-700 active:bg-gray-100">
-          ⓘ
-        </button>
-        <CardFieldsMenu
-          species={species}
-          selected={cardFields}
-          onChange={(next) => {
-            setCardFields(next)
-            saveCardFields(moduleKey, next)
-          }}
-        />
-        <div role="radiogroup" aria-label="Spalten zeigen" className="flex overflow-hidden rounded-lg border-2 border-gray-300 bg-white text-sm">
-          {(
-            [
-              ['gruppen', 'Gruppen'],
-              ['beides', 'Beides'],
-              ['merklisten', 'Merklisten'],
-            ] as const
-          ).map(([k, label]) => (
-            <button key={k} type="button" role="radio" aria-checked={kinds === k} onClick={() => setKinds(k)} className={`min-h-11 px-3 ${kinds === k ? 'bg-brand-700 font-semibold text-white' : 'text-gray-800 active:bg-gray-100'}`}>
-              {label}
-            </button>
-          ))}
+        <h1 className="sr-only">Karten</h1>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <QueryInput
+            inputClassName="w-96 max-w-[70vw]"
+            fields={QUERY_FIELDS}
+            value={q.text}
+            onChange={q.setText}
+            choices={{ gruppe: groups.map((g) => g.name), liste: lists.map((l) => l.name) }}
+            examples={BOARD_EXAMPLES}
+            placeholder="Suchen: Nummer, Name oder ZZ > 200"
+            intro="Im Suchfeld findest du Tiere nach Nummer, Ohrmarke oder Name."
+            extraHelp={
+              <section>
+                <h3 className="mb-1 font-semibold text-gray-900">Gut zu wissen</h3>
+                <ul className="list-disc space-y-1 pl-5">
+                  <li>Zellzahl: «ZZ &gt; 200» heisst 200 Tausend Zellen pro ml, «200000» geht auch. Alter: Einheit J, Mt oder T, ohne Einheit Jahre.</li>
+                  <li>Die Eingabe wirkt zusammen mit den Filtern darüber (Knöpfe «nur zeigen»). «Zuchtwert» nimmt den eigenen Wert, sonst die Schätzung. «Fleischwert» ist eine Schätzung nach den Einstellungen des Fleischwerts.</li>
+                </ul>
+              </section>
+            }
+          />
+          <SortMenu options={SORTS} value={sort} onChange={q.setSort} autoLabel={q.suggestion?.label ?? null} autoOn={q.autoOn} onAutoChange={q.setAutoOn} flash={q.flash} />
+          <div role="radiogroup" aria-label="Spalten zeigen" className="flex overflow-hidden rounded-lg border-2 border-gray-300 bg-white text-sm">
+            {(
+              [
+                ['gruppen', 'Gruppen'],
+                ['beides', 'Beides'],
+                ['merklisten', 'Merklisten'],
+              ] as const
+            ).map(([k, label]) => (
+              <button key={k} type="button" role="radio" aria-checked={kinds === k} onClick={() => setKinds(k)} className={`min-h-11 px-3 ${kinds === k ? 'bg-brand-700 font-semibold text-white' : 'text-gray-800 active:bg-gray-100'}`}>
+                {label}
+              </button>
+            ))}
         </div>
-        <button type="button" onClick={() => setShowColumns(true)} className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm">
-          Spalten ({visibleColumns.length}/{columns.length})
-        </button>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {species === 'sheep' && (
+            <button type="button" onClick={toggleMeat} aria-pressed={meatOn} className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${meatOn ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-300 bg-white'}`}>
+              🥩 Fleischwert
+            </button>
+          )}
+          <button type="button" onClick={() => setShowLegend(true)} aria-label="Legende der Karten" title="Legende der Karten" className="grid h-11 w-11 place-items-center rounded-full border-2 border-gray-300 bg-white text-lg font-bold text-brand-700 active:bg-gray-100">
+            ⓘ
+          </button>
+          <CardFieldsMenu
+            species={species}
+            selected={cardFields}
+            onChange={(next) => {
+              setCardFields(next)
+              saveCardFields(moduleKey, next)
+            }}
+          />
+          <button type="button" onClick={() => setShowColumns(true)} className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm">
+            Spalten ({visibleColumns.length}/{columns.length})
+          </button>
+        </div>
       </div>
 
       <QueryPresets

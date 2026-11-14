@@ -19,6 +19,7 @@ export default function QueryInput<R, C>({
   intro,
   extraHelp,
   className = '',
+  inputClassName = 'w-72 max-w-[60vw]',
 }: {
   fields: QueryField<R, C>[]
   value: string
@@ -31,6 +32,8 @@ export default function QueryInput<R, C>({
   intro?: ReactNode
   extraHelp?: ReactNode
   className?: string
+  /** Breite des Eingabefelds (Tailwind), Vorgabe w-72 */
+  inputClassName?: string
 }) {
   const [focus, setFocus] = useState(false)
   const [active, setActive] = useState(-1)
@@ -86,7 +89,7 @@ export default function QueryInput<R, C>({
           aria-label="Suchen oder filtern"
           spellCheck={false}
           autoComplete="off"
-          className="min-h-11 w-72 max-w-[60vw] rounded-lg border-2 border-gray-300 bg-white pl-8 pr-8 text-sm"
+          className={`min-h-11 ${inputClassName} rounded-lg border-2 border-gray-300 bg-white pl-8 pr-8 text-sm`}
         />
         {value && (
           <button
