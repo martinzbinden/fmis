@@ -37,6 +37,9 @@ describe('lines for the portal', () => {
     expect(f[5]).toBe('CH90000555')
     expect(f[6]).toBe('ja')
   })
+  it('unclear sire (no matching mating) is reported as unbekannt', () => {
+    expect(lambFields(birth({ sire: 'CH90000555', sireDoubt: true }), lamb())[5]).toBe('unbekannt')
+  })
   it('only open lambs with a tag are listed', () => {
     const b = birth({ offspring: [lamb(), lamb({ id: 'x', reportedOn: '2026-03-09' }), lamb({ id: 'y', ear_tag: null })] })
     expect(reportable(b).map((l) => l.id)).toEqual(['l1'])

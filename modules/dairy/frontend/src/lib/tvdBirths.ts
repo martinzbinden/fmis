@@ -7,6 +7,8 @@ import { animalKey } from '@fmis/core/earTag'
 import { upsertRow } from '../db/write'
 import { isoDate } from './format'
 import { MARKING_DAYS } from './earTagPending'
+import type { Species } from './fertility'
+import { loadSireDoubts } from './sireCheck'
 
 export interface TvdLamb {
   id: string
@@ -26,6 +28,8 @@ export interface TvdBirth {
   dam_lauf_nr: string | null
   dam_name: string | null
   sire: string | null
+  /** Vater unklar: keine passende Belegung zur Tragzeit erfasst (lib/sireCheck.ts); wird nicht gemeldet */
+  sireDoubt?: boolean
   litter: number
   offspring: TvdLamb[]
 }
@@ -46,7 +50,8 @@ export function deadlineDays(species: 'sheep' | 'cattle'): number {
 
 /** Geburten, die per FMIS erfasst wurden (nicht aus dem Herdebuch-Import: die kennt die TVD schon), ab `sinceIso`
  * oder noch mit offenen Nachkommen. Neueste zuerst. */
-export async function loadTvdBirths(pg: PGlite, sinceIso: string): Promise<TvdBirth[]> {
+export async function loadTvdBirths(pg: PGlite, sinceIso: string, species: Species = 'sheep'): Promise<TvdBirth[]> {
+  const doubts = await loadSireDoubts(pg, species)
   const { rows } = await pg.query<Record<string, unknown>>(
     `select b.id as birth_id, b.birth_date, b.sire_ear_tag, b.sire_name,
             d.ear_tag as dam_ear_tag, d.lauf_nr as dam_lauf_nr, d.name as dam_name, d.breed_code as dam_breed,
@@ -73,6 +78,7 @@ export async function loadTvdBirths(pg: PGlite, sinceIso: string): Promise<TvdBi
         dam_lauf_nr: (r.dam_lauf_nr as string | null) ?? null,
         dam_name: (r.dam_name as string | null) ?? null,
         sire: ((r.sire_ear_tag as string | null) || (r.sire_name as string | null)) ?? null,
+        sireDoubt: doubts.has(id),
         litter: 0,
         offspring: [],
       }
@@ -109,7 +115,7 @@ export function lambFields(b: TvdBirth, l: TvdLamb): string[] {
     l.sex === 'w' ? 'weiblich' : l.sex === 'm' ? 'männlich' : '',
     l.breed ?? '',
     b.dam_ear_tag ? (animalKey(b.dam_ear_tag) ?? b.dam_ear_tag) : '',
-    b.sire ? (animalKey(b.sire) ?? b.sire) : 'unbekannt',
+    b.sire && !b.sireDoubt ? (animalKey(b.sire) ?? b.sire) : 'unbekannt',
     l.stillborn ? 'ja' : 'nein',
     String(b.litter),
   ]

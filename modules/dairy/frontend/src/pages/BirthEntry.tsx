@@ -13,6 +13,8 @@ import AnimalPicker from '../components/AnimalPicker'
 import BirthFollowUp from '../components/BirthFollowUp'
 import AnimalWarnings from '../components/AnimalWarnings'
 import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
+import { sireForBirth, loadSireDoubts, type MatingLite } from '../lib/sireCheck'
+import type { Species } from '../lib/fertility'
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
 import { recordBirth, validateBirth, type OffspringFate, type OffspringInput } from '../lib/recordBirth'
@@ -26,12 +28,12 @@ import { errorText } from '@fmis/core/toast'
 
 const RECENT_LIST = 15
 
-async function loadData(pg: PGlite) {
-  const [animals, sires, lastMatings, births, pending, events, recent] = await Promise.all([
+async function loadData(pg: PGlite, species: Species) {
+  const [animals, sires, allMatings, births, pending, events, recent, doubts] = await Promise.all([
     pg.query<Animal>('select * from animals where deleted_at is null order by lauf_nr nulls last, ear_tag'),
     loadSireOptions(pg),
-    pg.query<{ animal_id: string; service_date: unknown; sire_key: string | null; sire_ear_tag: string | null; sire_name: string | null }>(
-      `select distinct on (animal_id) animal_id, service_date, sire_key, sire_ear_tag, sire_name
+    pg.query<{ animal_id: string; service_date: unknown; service_to: unknown; sire_key: string | null; sire_ear_tag: string | null; sire_name: string | null }>(
+      `select animal_id, service_date, service_to, sire_key, sire_ear_tag, sire_name
        from matings where deleted_at is null order by animal_id, service_date desc`,
     ),
     pg.query<{ dam_id: string; birth_date: unknown; parity: unknown }>(
@@ -40,6 +42,7 @@ async function loadData(pg: PGlite) {
     loadPendingOffspring(pg),
     loadAnimalEvents(pg),
     loadRecentBirths(pg, RECENT_LIST),
+    loadSireDoubts(pg, species),
   ])
   return {
     events,
@@ -47,7 +50,12 @@ async function loadData(pg: PGlite) {
     animalIdByKey: new Map(animals.rows.map((a) => [animalKey(a.ear_tag), a.id])),
     animals: animals.rows,
     sires,
-    lastMating: new Map(lastMatings.rows.map((m) => [m.animal_id, { ...m, service_date: isoDate(m.service_date)! }])),
+    doubts,
+    matingsByDam: allMatings.rows.reduce((map, m) => {
+      const list = map.get(m.animal_id) ?? []
+      list.push({ ...m, service_date: isoDate(m.service_date)!, service_to: isoDate(m.service_to) })
+      return map.set(m.animal_id, list)
+    }, new Map<string, (MatingLite & { sire_ear_tag: string | null; sire_name: string | null })[]>()),
     births: births.rows.map((b) => ({ dam_id: b.dam_id, birth_date: isoDate(b.birth_date)!, parity: num(b.parity) })),
     pendingCount: pending.length,
   }
@@ -65,7 +73,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const species = speciesOf(moduleKey)
   const word = species === 'sheep' ? { event: 'Ablammung', young: 'Lamm', youngPl: 'Lämmer', mother: 'Aue' } : { event: 'Abkalbung', young: 'Kalb', youngPl: 'Kälber', mother: 'Kuh' }
-  const { data, refresh } = useQuery(loadData)
+  const { data, refresh } = useQuery((pg) => loadData(pg, species))
   // ?tier=<id> (Aktionen auf der Tierseite) wählt das Tier vor
   const [damIds, setDamIds] = useState<string[]>(() => {
     const t = new URLSearchParams(window.location.search).get('tier')
@@ -88,8 +96,12 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   const dam = females.find((a) => a.id === damIds[0])
   const damBirths = useMemo(() => (data?.births ?? []).filter((b) => b.dam_id === dam?.id), [data, dam])
   const lastBirth = damBirths.map((b) => b.birth_date).sort().at(-1) ?? null
-  const mating = dam ? data?.lastMating.get(dam.id) : undefined
-  const matingSinceBirth = mating && (!lastBirth || mating.service_date > lastBirth) ? mating : undefined
+  // Nur eine Belegung, die zur Tragzeit vor dem Geburtsdatum passt und eindeutig ist (sonst Vater leer lassen)
+  const matingSinceBirth = useMemo(() => {
+    const list = (dam ? data?.matingsByDam.get(dam.id) : undefined)?.filter((m) => !lastBirth || m.service_date > lastBirth) ?? []
+    const hit = sireForBirth(date, list, species)
+    return hit ? list.find((m) => m.service_date === hit.service_date && m.sire_key === hit.sire_key) : undefined
+  }, [data, dam, lastBirth, date, species])
 
   // Vater aus der letzten Belegung seit der letzten Geburt vorbelegen.
   useEffect(() => {
@@ -99,7 +111,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
       setSire(EMPTY_SIRE)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dam?.id])
+  }, [dam?.id, matingSinceBirth?.service_date, matingSinceBirth?.sire_key])
 
   function setCount(n: number) {
     setOffspring((prev) => Array.from({ length: n }, (_, i) => prev[i] ?? { ...EMPTY_OFFSPRING }))
@@ -222,7 +234,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
         {dam && (
           <p className="mt-2 text-xs text-gray-500">
             {lastBirth ? `Letzte ${word.event} ${lastBirth.split('-').reverse().join('.')}` : `Noch keine ${word.event} erfasst`}
-            {matingSinceBirth ? ` · belegt ${matingSinceBirth.service_date.split('-').reverse().join('.')}` : ''}
+            {matingSinceBirth ? ` · belegt ${matingSinceBirth.service_date.split('-').reverse().join('.')}` : ' · keine passende Belegung erfasst, Vater bitte prüfen'}
           </p>
         )}
       </div>
@@ -359,7 +371,12 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                     {b.dam_lauf_nr ? `${b.dam_lauf_nr} · ` : ''}
                     {animalLabel({ ear_tag: b.dam_ear_tag ?? '', name: b.dam_name })}
                   </Link>
-                  {(b.sire_name || b.sire_ear_tag) && <span className="block truncate text-xs text-gray-600">Vater {b.sire_name || shortEarTag(b.sire_ear_tag)}</span>}
+                  {(b.sire_name || b.sire_ear_tag) && (
+                    <span className="block truncate text-xs text-gray-600">
+                      Vater {b.sire_name || shortEarTag(b.sire_ear_tag)}
+                      {data.doubts.has(b.id) && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-900" title="Keine passende Belegung zur Tragzeit erfasst">⚠ Vater unklar</span>}
+                    </span>
+                  )}
                   <ul>
                     {b.offspring.map((o) => {
                       const sex = o.sex === 'w' ? '♀ ' : o.sex === 'm' ? '♂ ' : ''

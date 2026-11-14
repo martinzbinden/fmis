@@ -47,7 +47,7 @@ export default function TvdBirths({ moduleKey }: { moduleKey: string }) {
   const today = localTodayIso()
   const deadline = deadlineDays(species)
   const [tab, setTab] = useState<'offen' | 'gemeldet'>('offen')
-  const { data } = useQuery((pg) => loadTvdBirths(pg, addDays(today, -120)))
+  const { data } = useQuery((pg) => loadTvdBirths(pg, addDays(today, -120), species))
 
   const { open, done } = useMemo(() => {
     const all = data ?? []
@@ -148,6 +148,11 @@ function BirthCard({
         </span>
         <span className="text-xs text-gray-600">
           {b.litter > 1 ? `${b.litter} ${youngPl} im Wurf` : 'Einling'} · Vater {b.sire ? shortEarTag(b.sire) : 'unbekannt'}
+          {b.sireDoubt && (
+            <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-900" title="Keine passende Belegung zur Tragzeit erfasst: Vater wird als «unbekannt» gemeldet">
+              ⚠ Vater unklar, wird als «unbekannt» gemeldet
+            </span>
+          )}
         </span>
       </div>
       {ready.length > 0 && (
