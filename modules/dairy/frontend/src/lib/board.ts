@@ -10,6 +10,7 @@ import type { Species } from './fertility'
 import { cullingInput, type AnimalContext } from './herdContext'
 import type { LactationLevel } from './lactationTrend'
 import type { DamMilk } from './lambMilk'
+import type { BreedingEstimate } from './breedingEstimate'
 import { speciesTerms } from './species'
 import type { PregnancyStatus } from './pregnancy'
 import type { Watchlist, WatchlistEntry } from './watchlists'
@@ -58,6 +59,8 @@ export interface BoardCard {
   /** geschätzte Milch der Lämmer des letzten Wurfs (lib/lambMilk.ts); null ohne Lämmer */
   lambMilk: DamMilk | null
   breedingValue: number | null
+  /** Zuchtwert aus der Abstammung geschätzt (nur ohne eigenen Wert; nie mit `breedingValue` vermischt) */
+  breedingEstimate: BreedingEstimate | null
   // Ausmerzen und Gesundheit
   reasons: CullingReason[]
   reasonScore: number
@@ -75,6 +78,7 @@ export interface BoardInput {
   entries: WatchlistEntry[]
   nursing: ReadonlyMap<string, number>
   lambMilk?: ReadonlyMap<string, DamMilk>
+  breedingEstimates?: ReadonlyMap<string, BreedingEstimate>
   breedingTrait: string
 }
 
@@ -137,6 +141,7 @@ export function buildCards(input: BoardInput): BoardCard[] {
       levels: ctx.trend?.levels ?? [],
       intervalDays: birthInterval(ctx),
       lambMilk: input.lambMilk?.get(ref.id) ?? null,
+      breedingEstimate: input.breedingEstimates?.get(ref.id) ?? null,
       breedingValue: ctx.breedingValues[input.breedingTrait]?.value ?? null,
       reasons,
       reasonScore: reasonScore(reasons),

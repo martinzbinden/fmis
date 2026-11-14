@@ -51,6 +51,7 @@ const SAMPLE: BoardCard = {
   intervalDays: 362,
   lambMilk: { lambs: 2, missing: 1, totalKg: 52, perDay: 1.9 },
   breedingValue: 112,
+  breedingEstimate: null,
   reasons: [{ area: 'euter', weight: 2, text: 'Zellzahl hoch' }],
   reasonScore: 2,
   healthDays12m: 0,
@@ -158,6 +159,9 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
         </Item>
         <Item title={sheep ? 'Zuchtwert (GZW)' : 'Zuchtwert (ISET)'} sample={<span className="text-[11px] text-gray-700">112</span>}>
           Gesamtzuchtwert aus dem Herdebuch, höher ist besser.
+        </Item>
+        <Item title="Zuchtwert aus Abstammung" sample={<span className="text-[11px] font-medium italic text-violet-800">≈ 106 <span className="not-italic rounded bg-violet-100 px-1 text-[10px] font-semibold">Schätzung</span></span>}>
+          Tiere ohne eigenen Zuchtwert bekommen eine eigene Schätzung: das Mittel von Mutter und Vater. Ist ein Elternteil unbekannt oder ohne Zuchtwert, zählt er als 100 (Mittel), der bekannte Elternteil also nur halb. Violett und kursiv, damit sie nie mit einem gemessenen Zuchtwert verwechselt wird. Der Tooltip nennt die Elternwerte. Gemessene Werte gehen vor, die Schätzung fliesst nirgends in Ausmerzliste oder Filter ein.
         </Item>
         {sheep && (
           <Item title="Wurf" sample={<span className="text-[11px] text-gray-700">letzter 3 · Ø 2.3</span>}>

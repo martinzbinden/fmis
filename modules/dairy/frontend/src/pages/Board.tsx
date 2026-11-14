@@ -32,13 +32,15 @@ import { useCullingThresholds } from '../lib/cullingSettings'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadHerdContext } from '../lib/herdContext'
 import { loadNursingDams } from '../lib/lambs'
+import { estimateAll, loadParentLinks } from '../lib/breedingEstimate'
 import { DEFAULT_LAMB_MILK, loadDamMilk, loadLambMilkSettings, saveLambMilkSettings, type LambMilkSettings } from '../lib/lambMilk'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { addToWatchlist, loadWatchlists, removeEntry } from '../lib/watchlists'
 
 async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string, milk: LambMilkSettings) {
-  const [context, lists, nursing, lambMilk] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadNursingDams(pg, today), loadDamMilk(pg, today, milk)])
-  return { context, nursing, lambMilk, ...lists }
+  const trait = SIRE_TRAIT[species].trait
+  const [context, lists, nursing, lambMilk, links] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadNursingDams(pg, today), loadDamMilk(pg, today, milk), loadParentLinks(pg, trait)])
+  return { context, nursing, lambMilk, breedingEstimates: estimateAll(context, links, trait), ...lists }
 }
 
 const hiddenKey = (moduleKey: string) => `${moduleKey}_board_hidden_columns`
@@ -116,6 +118,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             entries: data.entries,
             nursing: data.nursing,
             lambMilk: data.lambMilk,
+            breedingEstimates: data.breedingEstimates,
             breedingTrait: SIRE_TRAIT[species].trait,
           })
         : [],

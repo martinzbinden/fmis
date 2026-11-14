@@ -178,7 +178,7 @@ export default function BoardCardView({
             <Row k="Ggü. Gleichaltrigen" v={card.performanceRel == null ? '–' : `${n0(card.performanceRel)} %`} />
             <Row k="Lebenstagleistung" v={card.ltlMilk == null ? '–' : `${n1(card.ltlMilk, 2)} kg`} />
             <Row k="Zellzahl Ø 12 Mt." v={card.scc12m == null ? '–' : `${n0(card.scc12m)} (1000/ml)`} />
-            {card.breedingValue != null && <Row k="Zuchtwert" v={n0(card.breedingValue)} />}
+            {card.breedingValue != null ? <Row k="Zuchtwert" v={n0(card.breedingValue)} /> : card.breedingEstimate && <Row k="Zuchtwert (Schätzung)" v={`≈ ${n0(card.breedingEstimate.value)} aus Abstammung`} />}
           </Section>
 
           <Section title="Ausmerzgründe">
@@ -206,6 +206,9 @@ export default function BoardCardView({
   )
 }
 
+const zwEstimateTitle = (e: NonNullable<BoardCard['breedingEstimate']>) =>
+  `Eigene Schätzung aus der Abstammung, kein gemessener Zuchtwert: Mutter ${e.dam ?? 'unbekannt (100 angenommen)'}, Vater ${e.sire ?? 'unbekannt (100 angenommen)'}`
+
 const f0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleString('de-CH'))
 
 /** Die gewählten Eigenschaften als kompakte Zeilen unter dem Kopf der Karte. */
@@ -221,7 +224,17 @@ function CardProps({ card, fields, meat, meatMax }: { card: BoardCard; fields: C
   if (has('milk')) rows.push(line('Milch', `Herde ${f0(card.idxPerformance)} · Gleichalt. ${card.performanceRel == null ? '–' : `${f0(card.performanceRel * 100)} %`}`, 'milk'))
   if (has('scc')) rows.push(line('Zellzahl', `Herde ${f0(card.idxScc)} · Gleichalt. ${card.sccRelPeers == null ? '–' : `${card.sccRelPeers} %`} · Ø ${f0(card.scc12m)}`, 'scc'))
   if (has('ltl')) rows.push(line('Lebenstagleistung', card.ltlMilk == null ? '–' : `${n1(card.ltlMilk, 2)} kg`, 'ltl'))
-  if (has('zw')) rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
+  if (has('zw')) {
+    const e = card.breedingEstimate
+    if (card.breedingValue == null && e) {
+      rows.push(
+        <div key="zw" className="flex justify-between gap-2" title={zwEstimateTitle(e)}>
+          <span className="text-gray-500">Zuchtwert</span>
+          <span className="text-right font-medium italic text-violet-800">≈ {f0(e.value)} <span className="not-italic rounded bg-violet-100 px-1 text-[10px] font-semibold">Schätzung</span></span>
+        </div>,
+      )
+    } else rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
+  }
   if (has('litter')) rows.push(line('Wurf', card.lastLitterSize == null ? '–' : `letzter ${card.lastLitterSize}${card.litterMean != null ? ` · Ø ${n1(card.litterMean)}` : ''}`, 'litter'))
   if (has('interval')) rows.push(line('Zwischenablammzeit', card.intervalDays == null ? '–' : `Ø ${card.intervalDays} Tage`, 'interval'))
   if (has('lambMilk')) {
