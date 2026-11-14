@@ -36,6 +36,8 @@ import { matchAnimals, uniqueMatch } from '../lib/pregnancy'
 import { speciesOf } from '../lib/species'
 import { savePhotos, type PreparedPhoto } from '../lib/photos'
 import PhotoPicker from '../components/PhotoPicker'
+import HoldButton from '../components/HoldButton'
+import ResumeGate, { RESUME_HOLD_MS } from '../components/ResumeGate'
 import { undoAction } from '@fmis/core/undo'
 import type { Animal } from '../types'
 
@@ -94,6 +96,8 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
     setRoundState(r)
     writeRound(moduleKey, r)
   }
+  // Ein gespeicherter oder wieder gewählter Durchgang läuft erst nach 1 s Gedrückthalten weiter (ResumeGate)
+  const [armedId, setArmedId] = useState<string | null>(null)
   const [startDate, setStartDate] = useState(today)
   const [startExaminer, setStartExaminer] = useState('')
   const examiners = useMemo(() => [...new Set(exams.map((e) => e.examiner).filter((x): x is string => !!x))].slice(0, 5), [exams])
@@ -293,16 +297,21 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
             )
           })}
         </ul>
-        <button
-          type="button"
-          onClick={() => {
-            setRound({ id: viewed.id, date: viewed.date, examiner: viewed.examiner })
-            setViewing(null)
-          }}
-          className="min-h-12 w-full rounded-xl border-2 border-brand-700 bg-white font-semibold text-brand-800 active:bg-gray-50"
-        >
-          Diesen Durchgang fortsetzen (weitere Tiere erfassen)
-        </button>
+        {round?.id === viewed.id ? (
+          <button type="button" onClick={() => setViewing(null)} className="min-h-12 w-full rounded-xl border-2 border-brand-700 bg-white font-semibold text-brand-800 active:bg-gray-50">
+            Zum laufenden Durchgang
+          </button>
+        ) : (
+          <HoldButton
+            label="Fortsetzen (weitere Tiere): 1 Sekunde gedrückt halten"
+            ms={RESUME_HOLD_MS}
+            onDone={() => {
+              setRound({ id: viewed.id, date: viewed.date, examiner: viewed.examiner })
+              setArmedId(viewed.id)
+              setViewing(null)
+            }}
+          />
+        )}
       </div>
     )
   }
@@ -339,7 +348,9 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
           <button
             type="button"
             onClick={() => {
-              setRound({ id: crypto.randomUUID(), date: startDate, examiner: startExaminer.trim() || null })
+              const id = crypto.randomUUID()
+              setRound({ id, date: startDate, examiner: startExaminer.trim() || null })
+              setArmedId(id)
               setTimeout(() => input.current?.focus(), 0)
             }}
             className="min-h-12 w-full rounded-xl bg-brand-700 text-lg font-bold text-white"
@@ -415,6 +426,23 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
           </p>
         </section>
       </div>
+    )
+  }
+
+  if (armedId !== round.id) {
+    return (
+      <ResumeGate
+        title="Klauen"
+        title2={`${fmtDate(round.date)} · ${round.examiner ?? 'ohne Angabe'}`}
+        info={`${ofRound.length} ${ofRound.length === 1 ? 'Tier' : 'Tiere'} erfasst · noch offen ${Math.max(0, animals.length - ofRound.length)}`}
+        onResume={() => setArmedId(round.id)}
+        onEnd={() => {
+          reader.setOn(false)
+          setRound(null)
+          reset()
+          setAfter(null)
+        }}
+      />
     )
   }
 

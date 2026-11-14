@@ -18,6 +18,8 @@ import { inTransaction } from '../db/transaction'
 import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { examiners, fmtDuration, fmtTimeRange, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, tagDigits, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
+import HoldButton from '../components/HoldButton'
+import ResumeGate, { RESUME_HOLD_MS } from '../components/ResumeGate'
 import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 async function loadData(pg: PGlite) {
@@ -99,6 +101,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     writeJson(roundKey(moduleKey), r)
     if (r) writeJson(lastKey(moduleKey), { examiner: r.examiner, method: r.method, unit: r.unit })
   }
+  // Ein gespeicherter oder wieder gewählter Durchgang läuft erst nach 1 s Gedrückthalten weiter (ResumeGate)
+  const [armedId, setArmedId] = useState<string | null>(null)
   const last = readJson<{ examiner: string | null; method: PregnancyMethod | null; unit?: DurationUnit }>(lastKey(moduleKey))
   const [startDate, setStartDate] = useState(localTodayIso)
   // Lämmer unter 7 Monaten (am Datum des Durchgangs) gehören nicht in die Untersuchung
@@ -191,7 +195,9 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
 
   function start() {
     if (!startMethod) return
-    setRound({ id: crypto.randomUUID(), date: startDate, examiner: startExaminer.trim() || null, method: startMethod, unit: startUnit })
+    const id = crypto.randomUUID()
+    setRound({ id, date: startDate, examiner: startExaminer.trim() || null, method: startMethod, unit: startUnit })
+    setArmedId(id)
     setEditRound(false)
     setTimeout(() => input.current?.focus(), 0)
   }
@@ -437,9 +443,24 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         active={round?.id === viewed.id}
         onBack={() => setViewing(null)}
         onResume={() => {
+          // Gedrückthalten bestätigt (RoundView): jetzt geht der Durchgang auf
           setRound({ id: viewed.id, date: viewed.date, examiner: viewed.examiner, method: viewed.method, unit: viewed.unit })
+          setArmedId(viewed.id)
           setViewing(null)
         }}
+        onOpenRunning={() => setViewing(null)}
+      />
+    )
+  }
+
+  if (round && !editRound && armedId !== round.id) {
+    return (
+      <ResumeGate
+        title="Trächtigkeit"
+        title2={roundTitle(round)}
+        info={`${ofRound.length} ${ofRound.length === 1 ? 'Tier' : 'Tiere'} erfasst · noch offen ${Math.max(0, animals.length - ofRound.length)}`}
+        onResume={() => setArmedId(round.id)}
+        onEnd={stop}
       />
     )
   }
@@ -712,6 +733,7 @@ function RoundView({
   active,
   onBack,
   onResume,
+  onOpenRunning,
 }: {
   round: ReturnType<typeof groupRounds>[number]
   checks: PregnancyCheck[]
@@ -720,6 +742,7 @@ function RoundView({
   active: boolean
   onBack: () => void
   onResume: () => void
+  onOpenRunning: () => void
 }) {
   const [filter, setFilter] = useState<PregnancyResult | 'alle'>('alle')
   // je Tier der neueste Eintrag (Korrekturen ersetzen frühere)
@@ -771,9 +794,13 @@ function RoundView({
         })}
         {shown.length === 0 && <li className="px-3 py-3 text-sm text-gray-600">Keine Tiere mit diesem Ergebnis.</li>}
       </ul>
-      <button type="button" onClick={onResume} className="min-h-12 w-full rounded-xl border-2 border-brand-700 bg-white font-semibold text-brand-800 active:bg-gray-50">
-        {active ? 'Zum laufenden Durchgang' : 'Diesen Durchgang fortsetzen (weitere Tiere erfassen)'}
-      </button>
+      {active ? (
+        <button type="button" onClick={onOpenRunning} className="min-h-12 w-full rounded-xl border-2 border-brand-700 bg-white font-semibold text-brand-800 active:bg-gray-50">
+          Zum laufenden Durchgang
+        </button>
+      ) : (
+        <HoldButton label="Fortsetzen (weitere Tiere): 1 Sekunde gedrückt halten" onDone={onResume} ms={RESUME_HOLD_MS} />
+      )}
     </div>
   )
 }
