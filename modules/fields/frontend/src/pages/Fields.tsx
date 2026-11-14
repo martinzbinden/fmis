@@ -1,3 +1,6 @@
+import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
+import { useListQuery } from '@fmis/core/query/useListQuery'
+import { DECLARATION_EXAMPLES, DECLARATION_QUERY_FIELDS, declarationTexts } from '../lib/declarationQuery'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
@@ -122,10 +125,10 @@ export default function Fields() {
     }
   }, [location.state])
 
-  const filtered = useMemo(
-    () => (declarations ?? []).filter((d) => year == null || d.jahr === year),
-    [declarations, year],
-  )
+  const yearDeclarations = useMemo(() => (declarations ?? []).filter((d) => year == null || d.jahr === year), [declarations, year])
+  const queryCtx = useMemo(() => ({ farmName: (id: string) => (farms ?? []).find((f) => f.id === id)?.name }), [farms])
+  const q = useListQuery({ storage: 'fields_declarations', fields: DECLARATION_QUERY_FIELDS, ctx: queryCtx, texts: declarationTexts, defaultSort: 'standard', validSorts: ['standard'] })
+  const filtered = useMemo(() => yearDeclarations.filter((d) => q.match(d)), [yearDeclarations, q])
 
   const detailsDecl = detailsDeclId ? (declarations ?? []).find((d) => d.id === detailsDeclId) : undefined
 
@@ -267,8 +270,17 @@ export default function Fields() {
               </option>
             ))}
           </select>
+          <QueryInput
+            fields={DECLARATION_QUERY_FIELDS}
+            value={q.text}
+            onChange={q.setText}
+            choices={{ kultur: [...new Set(yearDeclarations.map((d) => d.kultur_name_de).filter((x): x is string => !!x))], flurname: [...new Set(yearDeclarations.map((d) => d.flurname).filter((x): x is string => !!x))], betrieb: (farms ?? []).map((f) => f.name) }}
+            examples={DECLARATION_EXAMPLES}
+            placeholder="Suchen: Flurname, Kultur oder Fläche > 2"
+            intro="Im Suchfeld findest du Parzellen nach Flurname, Kultur, Sorte oder Betrieb."
+          />
           <span className="text-xs text-gray-500">
-            {filtered.length} Parzellen · {fmtArea(filtered.reduce((sum, d) => sum + (d.area_a ?? 0), 0))}
+            {filtered.length}{q.text ? ` von ${yearDeclarations.length}` : ''} Parzellen · {fmtArea(filtered.reduce((sum, d) => sum + (d.area_a ?? 0), 0))}
           </span>
           {canWrite && (
           <button
@@ -283,6 +295,8 @@ export default function Fields() {
           )}
         </div>
       )}
+
+      <QueryChips parsed={q.parsed} />
 
       {selectionMode && (
         <div className="flex items-center justify-between rounded-lg bg-brand-50 p-3 text-sm text-brand-900">

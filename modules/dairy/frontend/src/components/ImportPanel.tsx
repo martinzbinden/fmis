@@ -98,8 +98,12 @@ export default function ImportPanel({
           herdbook.map((f) => decodeHerdbookFile(f.name, f.data)),
           speciesOf(moduleKey),
         )
-        herdbookSummary = await importAdisData(db, parsed, (done, total) =>
-          progress('herdbook', done / total, `Herdebuch: ${done.toLocaleString('de-CH')} von ${total.toLocaleString('de-CH')} Datensätzen`),
+        herdbookSummary = await importAdisData(
+          db,
+          parsed,
+          (done, total) => progress('herdbook', done / total, `Herdebuch: ${done.toLocaleString('de-CH')} von ${total.toLocaleString('de-CH')} Datensätzen`),
+          // Schafe: Geburt und Tod folgen der TVD (Tierbestand), das Herdebuch liefert Zucht und Leistung
+          { tvdAuthoritative: speciesOf(moduleKey) === 'sheep' },
         )
         nextWarnings.push(...parsed.warnings)
       }

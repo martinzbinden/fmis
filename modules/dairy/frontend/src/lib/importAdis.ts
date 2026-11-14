@@ -476,11 +476,34 @@ async function importBreedingData(
  * lactation_number, closure_type): mehrere Zeilen pro Laktation mit
  * unterschiedlicher Abschlussart sind gewollt (siehe schema/0003_lactations.sql).
  */
+/** Geburt und Tod (Abgang) eines Tieres folgen der TVD, nicht dem Herdebuch (SMG-Net liefert Zuchtdaten und
+ * Milchleistung). Ein Tier, das schon im Bestand ist, behält darum Geburtsdatum, Abgangsdatum und Status; das
+ * Herdebuch füllt nur ein fehlendes Geburtsdatum. Neue Tiere (nur im Herdebuch) werden wie gelesen angelegt. */
+export function keepLifeFieldsFromStock<T extends { birth_date: string | null; exit_date: string | null; status: AnimalStatus }>(
+  animal: T,
+  prev: Record<string, unknown> | undefined,
+  tvdAuthoritative: boolean,
+): T {
+  if (!tvdAuthoritative || !prev) return animal
+  return {
+    ...animal,
+    birth_date: prev.birth_date ? sqlDate(prev.birth_date) : animal.birth_date,
+    exit_date: prev.exit_date ? sqlDate(prev.exit_date) : null,
+    status: (prev.status as AnimalStatus | undefined) ?? animal.status,
+  }
+}
+
+export interface ImportOptions {
+  /** Schafe: Geburt und Tod kommen aus der TVD (Tierbestand), das Herdebuch ändert sie bei bekannten Tieren nicht. */
+  tvdAuthoritative?: boolean
+}
+
 export async function importAdisData(
   pg: PGlite,
   parsed: ParseResult,
   /** Fortschritt je geschriebenem Datensatz (für die Upload-Seite). */
   onProgress?: (done: number, total: number) => void,
+  options: ImportOptions = {},
 ): Promise<ImportSummary> {
   const total =
     parsed.animals.length + parsed.milkTests.length + parsed.lactations.length + parsed.pedigree.length +
@@ -489,10 +512,10 @@ export async function importAdisData(
   const tick = () => onProgress?.(++done, total)
   // Eine Transaktion für den ganzen Import (siehe db/transaction.ts) — beim
   // vollständigen Schaf-Export (~3000 Zeilen) Sekunden statt Minuten.
-  return inTransaction(pg, (tx) => importAdisDataIn(tx, parsed, tick))
+  return inTransaction(pg, (tx) => importAdisDataIn(tx, parsed, tick, options))
 }
 
-async function importAdisDataIn(pg: PGlite, parsed: ParseResult, tick: () => void): Promise<ImportSummary> {
+async function importAdisDataIn(pg: PGlite, parsed: ParseResult, tick: () => void, options: ImportOptions = {}): Promise<ImportSummary> {
   const { rows: existingAnimals } = await pg.query<Record<string, unknown> & { id: string; ear_tag: string }>(
     'select * from animals',
   )
@@ -514,7 +537,7 @@ async function importAdisDataIn(pg: PGlite, parsed: ParseResult, tick: () => voi
     // überschreiben, wenn der Export nichts dazu liefert.
     const row = {
       id,
-      ...animal,
+      ...keepLifeFieldsFromStock(animal, prev, !!options.tvdAuthoritative),
       lauf_nr: animal.lauf_nr ?? (prev?.lauf_nr as string | null) ?? null,
       notes: (prev?.notes as string | null) ?? null,
       // Zugang: die TVD (lib/importTvd.ts) ist massgebend, das Herdebuch

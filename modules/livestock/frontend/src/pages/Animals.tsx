@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { useEarTagFilter } from '../hooks/useEarTagFilter'
-import EarTagFilterInput from '../components/EarTagFilterInput'
+import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
+import SortMenu from '@fmis/core/query/SortMenu'
+import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
+import { MAST_EXAMPLES, MAST_QUERY_FIELDS, MAST_SORTS, sortMast, type MastQueryContext } from '../lib/animalQuery'
 import { importOwnLambs, loadOwnMastLambs, type OwnLamb } from '../lib/ownLambs'
 import { useDb } from '@fmis/core/DbContext'
 import { fmtKg, fmtAge, num } from '../lib/format'
@@ -192,14 +194,18 @@ export default function Animals() {
   const { data, loading, refresh } = useQuery(loadAnimals)
   const [showImport, setShowImport] = useState(false)
   const [showOwn, setShowOwn] = useState(false)
-  const { filter, setFilter, filtered } = useEarTagFilter(data, (a) => a.ear_tag)
+  const queryCtx = useMemo<MastQueryContext>(() => ({ today: localTodayIso() }), [])
+  const q = useListQuery({ storage: 'livestock_animals', fields: MAST_QUERY_FIELDS, ctx: queryCtx, texts: (a: Row) => [a.ear_tag, a.group_name], defaultSort: 'tag', validSorts: MAST_SORTS.map((x) => x.key) })
+
+  const animals = data ?? []
+  const visibleAnimals = useMemo(() => {
+    const list = animals.filter((a) => q.match(a))
+    return q.queryCompare && q.sortKey === QUERY_SORT_KEY ? [...list].sort(q.queryCompare) : sortMast(list, q.sortKey)
+  }, [animals, q])
 
   if (loading && !data) {
     return <div className="p-4 text-center text-gray-500">Lädt…</div>
   }
-
-  const animals = data ?? []
-  const visibleAnimals = filtered ?? []
 
   if (animals.length === 0) {
     return (
@@ -248,8 +254,20 @@ export default function Animals() {
           <ImportLink />
         </div>
       )}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <QueryInput
+          fields={MAST_QUERY_FIELDS}
+          value={q.text}
+          onChange={q.setText}
+          choices={{ gruppe: [...new Set(animals.map((a) => a.group_name).filter((g): g is string => !!g))] }}
+          examples={MAST_EXAMPLES}
+          placeholder="Suchen: Ohrmarke oder Gewicht > 35"
+          intro="Im Suchfeld findest du Tiere nach Ohrmarke (auch Teilziffern) oder Gruppe."
+        />
+        <SortMenu options={MAST_SORTS} value={q.sortKey} onChange={q.setSort} autoLabel={q.suggestion?.label ?? null} autoOn={q.autoOn} onAutoChange={q.setAutoOn} flash={q.flash} />
+      </div>
       <div className="mb-3">
-        <EarTagFilterInput value={filter} onChange={setFilter} />
+        <QueryChips parsed={q.parsed} />
       </div>
       {visibleAnimals.length === 0 && (
         <p className="text-center text-gray-500">Keine Tiere gefunden.</p>

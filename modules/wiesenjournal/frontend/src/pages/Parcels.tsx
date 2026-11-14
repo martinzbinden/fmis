@@ -1,6 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
+import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
+import SortMenu from '@fmis/core/query/SortMenu'
+import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
+import { PARCEL_EXAMPLES, PARCEL_QUERY_FIELDS, PARCEL_SORTS, parcelTexts, sortParcels } from '../lib/parcelQuery'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import { upsertRow, softDeleteRow } from '../db/write'
@@ -68,6 +72,11 @@ export default function Parcels() {
 
   const parcels = data ?? []
   const gelanParcels = parcels.filter((p) => p.source === 'fields')
+  const q = useListQuery({ storage: 'wiesenjournal_parcels', fields: PARCEL_QUERY_FIELDS, ctx: null, texts: parcelTexts, defaultSort: 'standard', validSorts: PARCEL_SORTS.map((x) => x.key) })
+  const shownParcels = useMemo(() => {
+    const list = parcels.filter((p) => q.match(p))
+    return q.queryCompare && q.sortKey === QUERY_SORT_KEY ? [...list].sort(q.queryCompare) : sortParcels(list, q.sortKey)
+  }, [parcels, q])
 
   function openNew() {
     setForm({ ...EMPTY_FORM })
@@ -230,8 +239,27 @@ export default function Parcels() {
         </p>
       )}
 
+      {parcels.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <QueryInput
+              fields={PARCEL_QUERY_FIELDS}
+              value={q.text}
+              onChange={q.setText}
+              choices={{ betrieb: [...new Set(parcels.map((p) => p.farm_name).filter((x): x is string => !!x))], kultur: [...new Set(parcels.map((p) => p.kultur_name_de).filter((x): x is string => !!x))], typ: [...new Set(parcels.map((p) => p.wiesentyp).filter((x): x is string => !!x))] }}
+              examples={PARCEL_EXAMPLES}
+              placeholder="Suchen: Name oder Fläche > 2"
+              intro="Im Suchfeld findest du Parzellen nach Name, Betrieb, Kultur oder Wiesentyp."
+            />
+            <SortMenu options={PARCEL_SORTS} value={q.sortKey} onChange={q.setSort} autoLabel={q.suggestion?.label ?? null} autoOn={q.autoOn} onAutoChange={q.setAutoOn} flash={q.flash} />
+            {q.text && <span className="text-xs text-gray-500">{shownParcels.length} von {parcels.length}</span>}
+          </div>
+          <QueryChips parsed={q.parsed} />
+        </div>
+      )}
+
       <ul className="space-y-2">
-        {parcels.map((p) => (
+        {shownParcels.map((p) => (
           <li key={p.id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">

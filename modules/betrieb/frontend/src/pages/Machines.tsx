@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
@@ -6,6 +6,10 @@ import { useQuery } from '../hooks/useQuery'
 import { loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
 import { CATEGORY_ICON, CATEGORY_LABEL, categoryOf } from '../lib/maintenance'
 import { loadMachineFiles } from '../lib/machineFiles'
+import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
+import SortMenu from '@fmis/core/query/SortMenu'
+import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
+import { MACHINE_EXAMPLES, MACHINE_QUERY_FIELDS, MACHINE_SORTS, machineTexts, sortMachines } from '../lib/machineQuery'
 import MachineForm from '../components/MachineForm'
 import MachineImage from '../components/MachineImage'
 import type { Machine, MachineFile } from '../types'
@@ -62,16 +66,19 @@ export default function Machines() {
   const navigate = useNavigate()
   const machines = data?.machines ?? []
   const files = data?.files ?? []
+  const q = useListQuery({ storage: 'betrieb_machines', fields: MACHINE_QUERY_FIELDS, ctx: null, texts: machineTexts, defaultSort: 'name', validSorts: MACHINE_SORTS.map((x) => x.key) })
+  const shownMachines = useMemo(() => machines.filter((m) => q.match(m)), [machines, q])
+  const order = (list: Machine[]) => (q.queryCompare && q.sortKey === QUERY_SORT_KEY ? [...list].sort(q.queryCompare) : sortMachines(list, q.sortKey))
   // Eigene Maschinen nach Art, fremde (Nachbar, Lohnunternehmer) je
   // Eigentümer — deren Stunden und Kosten werden getrennt ausgewertet
-  const own = machines.filter((m) => !m.owner)
-  const owners = [...new Set(machines.map((m) => m.owner).filter((o): o is string => !!o))].sort((a, b) => a.localeCompare(b, 'de'))
+  const own = shownMachines.filter((m) => !m.owner)
+  const owners = [...new Set(shownMachines.map((m) => m.owner).filter((o): o is string => !!o))].sort((a, b) => a.localeCompare(b, 'de'))
   const sections: { title: string; list: Machine[] }[] = [
     ...(['zugfahrzeug', 'anbaugeraet', 'anhaenger', 'auto', 'uebrige'] as const).map((c) => ({
       title: CATEGORY_LABEL[c],
-      list: own.filter((m) => categoryOf(m) === c),
+      list: order(own.filter((m) => categoryOf(m) === c)),
     })),
-    ...owners.map((o) => ({ title: `Gehört ${o}`, list: machines.filter((m) => m.owner === o) })),
+    ...owners.map((o) => ({ title: `Gehört ${o}`, list: order(shownMachines.filter((m) => m.owner === o)) })),
   ]
 
   return (
@@ -102,6 +109,25 @@ export default function Machines() {
           )}
         </span>
       </div>
+
+      {machines.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <QueryInput
+              fields={MACHINE_QUERY_FIELDS}
+              value={q.text}
+              onChange={q.setText}
+              choices={{ art: [...new Set(machines.map((m) => MACHINE_KIND_LABEL[m.kind] ?? m.kind))], hersteller: [...new Set(machines.map((m) => m.manufacturer).filter((x): x is string => !!x))], besitzer: [...new Set(machines.map((m) => m.owner).filter((x): x is string => !!x))] }}
+              examples={MACHINE_EXAMPLES}
+              placeholder="Suchen: Name, Hersteller oder PS > 100"
+              intro="Im Suchfeld findest du Maschinen nach Name, Hersteller, Modell, Typennummer oder Eigentümer."
+            />
+            <SortMenu options={MACHINE_SORTS} value={q.sortKey} onChange={q.setSort} autoLabel={q.suggestion?.label ?? null} autoOn={q.autoOn} onAutoChange={q.setAutoOn} flash={q.flash} />
+            {q.text && <span className="text-xs text-gray-500">{shownMachines.length} von {machines.length}</span>}
+          </div>
+          <QueryChips parsed={q.parsed} />
+        </div>
+      )}
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && machines.length === 0 && <p className="text-center text-sm text-gray-500">Noch keine Maschinen erfasst.</p>}

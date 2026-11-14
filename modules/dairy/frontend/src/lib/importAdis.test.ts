@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseAdisFiles } from './importAdis'
+import { keepLifeFieldsFromStock, parseAdisFiles } from './importAdis'
 
 /** Satz mit Feldern an den Spec-Positionen (1-basiert, inklusiv). */
 function record(type: string, fields: [number, string][]): string {
@@ -27,5 +27,25 @@ describe('parseAdisFiles Milchproben', () => {
       ['2026-09-25', 0.5, 5.94, 6.44],
       ['2026-08-28', 0.5, 5.94, 6.44],
     ])
+  })
+})
+
+describe('keepLifeFieldsFromStock (Geburt und Tod folgen der TVD)', () => {
+  const herdbook = { birth_date: '2024-03-01', exit_date: '2026-10-01', status: 'abgegangen' as const }
+
+  it('keeps birth date, exit date and status of an animal already in stock', () => {
+    const prev = { birth_date: new Date('2024-03-04T00:00:00Z'), exit_date: null, status: 'aktiv' }
+    expect(keepLifeFieldsFromStock(herdbook, prev, true)).toEqual({ birth_date: '2024-03-04', exit_date: null, status: 'aktiv' })
+  })
+
+  it('fills only a missing birth date from the herd book', () => {
+    const prev = { birth_date: null, exit_date: null, status: 'aktiv' }
+    expect(keepLifeFieldsFromStock(herdbook, prev, true).birth_date).toBe('2024-03-01')
+  })
+
+  it('creates new animals as read, and does nothing when the herd book is the authority (cattle)', () => {
+    expect(keepLifeFieldsFromStock(herdbook, undefined, true)).toEqual(herdbook)
+    const prev = { birth_date: new Date('2024-03-04T00:00:00Z'), exit_date: null, status: 'aktiv' }
+    expect(keepLifeFieldsFromStock(herdbook, prev, false)).toEqual(herdbook)
   })
 })

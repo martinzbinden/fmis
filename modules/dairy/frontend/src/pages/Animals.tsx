@@ -1,10 +1,14 @@
 import { isDrySql } from '../lib/dryOff'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate } from '../lib/format'
-import AnimalTable, { matchesFilter, type AnimalRow } from '../components/AnimalTable'
+import AnimalTable, { type AnimalRow } from '../components/AnimalTable'
+import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
+import SortMenu from '@fmis/core/query/SortMenu'
+import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
+import { ANIMAL_EXAMPLES, ANIMAL_QUERY_FIELDS, animalTexts, type AnimalQueryContext } from '../lib/animalQuery'
 import { animalKey, animalLabel } from '@fmis/core/earTag'
 import { loadInbreeding } from '../lib/pedigreeData'
 import { ANIMAL_SORTS, loadAnimalFacts, sortAnimals, sortDate, sortLabel, type AnimalSort } from '../lib/animalSort'
@@ -59,15 +63,9 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
   const { data, loading } = useQuery(loadAnimals)
   const { data: facts } = useQuery(loadAnimalFacts)
   const viewKey = `${moduleKey}_animals_view`
-  const sortKey = `${moduleKey}_animals_sort`
   const [view, setView] = useState<ViewMode>(() => loadView(viewKey))
   // Sortierung: ?sort=… (Link aus der Tierauswahl) vor der gemerkten
   const [params] = useSearchParams()
-  const [sort, setSort] = useState<AnimalSort>(() => {
-    const p = params.get('sort') as AnimalSort | null
-    return p && ANIMAL_SORTS.includes(p) ? p : loadSort(sortKey)
-  })
-  const [filter, setFilter] = useState('')
   const { data: nursingData } = useQuery((pg) => loadNursingDams(pg, localTodayIso()))
   const nursing = useMemo(() => nursingData ?? new Map<string, number>(), [nursingData])
   const [nursingOnly, setNursingOnly] = useState(false)
@@ -76,27 +74,22 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const allAnimals = data ?? []
   // Ein Filterfeld über alle Spalten — gilt für Karten und Liste.
-  const animals = useMemo(
-    () =>
-      sortAnimals(
-        allAnimals.filter((a) => (!filter || matchesFilter(a, filter)) && (!nursingOnly || nursing.has(a.id)) && eligibleFor(action, a, nursing)),
-        facts,
-        sort,
-      ),
-    [allAnimals, filter, facts, sort, nursingOnly, nursing, action],
-  )
+  const queryCtx = useMemo<AnimalQueryContext>(() => ({ today: localTodayIso(), facts, nursing }), [facts, nursing])
+  const q = useListQuery({ storage: `${moduleKey}_animals`, fields: ANIMAL_QUERY_FIELDS, ctx: queryCtx, texts: animalTexts, defaultSort: 'nr', validSorts: ANIMAL_SORTS })
+  const sort = q.sortKey
+  // ?sort=… einmal übernehmen
+  const sortParam = params.get('sort')
+  useEffect(() => {
+    if (sortParam && (ANIMAL_SORTS as string[]).includes(sortParam)) q.setSort(sortParam)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortParam])
+  const animals = useMemo(() => {
+    const list = allAnimals.filter((a) => q.match(a) && (!nursingOnly || nursing.has(a.id)) && eligibleFor(action, a, nursing))
+    return q.queryCompare && sort === QUERY_SORT_KEY ? [...list].sort(q.queryCompare) : sortAnimals(list, facts, sort as AnimalSort)
+  }, [allAnimals, q, facts, sort, nursingOnly, nursing, action])
   const chosen = animals.filter((a) => selected.has(a.id)).map((a) => a.id)
   const allChosen = animals.length > 0 && chosen.length === animals.length
-  const sortWord = { nr: '', geburt: species === 'sheep' ? 'abgelammt' : 'abgekalbt', jung: 'geboren', behandelt: 'behandelt' }[sort]
-
-  function changeSort(v: AnimalSort) {
-    setSort(v)
-    try {
-      localStorage.setItem(sortKey, v)
-    } catch {
-      // nur bis zum Reload
-    }
-  }
+  const sortWord = ({ nr: '', geburt: species === 'sheep' ? 'abgelammt' : 'abgekalbt', jung: 'geboren', behandelt: 'behandelt' } as Record<string, string>)[sort] ?? ''
 
   function changeView(v: ViewMode) {
     setView(v)
@@ -134,23 +127,27 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
 
       {allAnimals.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="search"
-            placeholder="Filter (Name, Ohrmarke, Rasse, Status, …)"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base"
+          <QueryInput
+            fields={ANIMAL_QUERY_FIELDS}
+            value={q.text}
+            onChange={q.setText}
+            choices={{ rasse: [...new Set(allAnimals.map((a) => a.breed_code).filter((b): b is string => !!b))] }}
+            examples={ANIMAL_EXAMPLES}
+            placeholder="Suchen: Name, Ohrmarke oder Alter > 6 J"
+            intro="Im Suchfeld findest du Tiere nach Name, Nummer, Ohrmarke, Rasse oder Status."
           />
-          <select value={sort} onChange={(e) => changeSort(e.target.value as AnimalSort)} aria-label="Sortierung" className="min-h-11 rounded-lg border border-gray-300 bg-white px-2 text-sm">
-            {ANIMAL_SORTS.map((k) => (
-              <option key={k} value={k}>
-                {sortLabel(k, species)}
-              </option>
-            ))}
-          </select>
+          <SortMenu
+            options={ANIMAL_SORTS.map((k) => ({ key: k, label: sortLabel(k, species) }))}
+            value={sort}
+            onChange={q.setSort}
+            autoLabel={q.suggestion?.label ?? null}
+            autoOn={q.autoOn}
+            onAutoChange={q.setAutoOn}
+            flash={q.flash}
+          />
           <span className="text-xs text-gray-500">
             {animals.length}
-            {filter ? ` von ${allAnimals.length}` : ''}
+            {q.text ? ` von ${allAnimals.length}` : ''}
           </span>
           <div className="flex overflow-hidden rounded-lg border border-gray-300 text-sm">
             {(
@@ -171,6 +168,8 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
           </div>
         </div>
       )}
+
+      <QueryChips parsed={q.parsed} />
 
       {allAnimals.length > 0 && (
         <div className="space-y-2">
@@ -260,9 +259,9 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
             <div className="mt-1 text-xs text-gray-500">
               {a.breed_code ? `${a.breed_code} · ` : ''}geb. {fmtDate(a.birth_date)}
             </div>
-            {sort !== 'nr' && sort !== 'jung' && (
+            {sort !== 'nr' && sort !== 'jung' && sort !== QUERY_SORT_KEY && (
               <div className="mt-1 text-sm font-medium text-gray-800">
-                {sortDate(a, facts, sort) ? `${sortWord} ${fmtDate(sortDate(a, facts, sort))}` : `nie ${sortWord}`}
+                {sortDate(a, facts, sort as AnimalSort) ? `${sortWord} ${fmtDate(sortDate(a, facts, sort as AnimalSort))}` : `nie ${sortWord}`}
               </div>
             )}
             <div className="mt-1 text-xs text-gray-500">
