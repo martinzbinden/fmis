@@ -19,6 +19,7 @@ import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
+import CardLegend from '../components/CardLegend'
 import { loadCardFields, saveCardFields, type CardFieldKey } from '../lib/cardFields'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 import NumberInput from '@fmis/core/NumberInput'
@@ -162,6 +163,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const columns = useMemo(() => buildColumns(groups, lists), [groups, lists])
 
   // Fleischwert (nur Schafe): geschätzter Schlachterlös je Tier und Summe je Spalte, mit Proviande-Preisen
+  const [showLegend, setShowLegend] = useState(false)
   const [cardFields, setCardFields] = useState<CardFieldKey[]>(() => loadCardFields(moduleKey))
   const [meatOn, setMeatOn] = useState(() => {
     try {
@@ -313,6 +315,9 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             🥩 Fleischwert
           </button>
         )}
+        <button type="button" onClick={() => setShowLegend(true)} aria-label="Legende der Karten" title="Legende der Karten" className="grid h-11 w-11 place-items-center rounded-full border-2 border-gray-300 bg-white text-lg font-bold text-brand-700 active:bg-gray-100">
+          ⓘ
+        </button>
         <CardFieldsMenu
           species={species}
           selected={cardFields}
@@ -494,6 +499,8 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           onClose={() => setEditing(null)}
         />
       )}
+
+      {showLegend && <CardLegend species={species} onClose={() => setShowLegend(false)} />}
 
       {showColumns && (
         <Modal title="Spalten" onClose={() => setShowColumns(false)}>
