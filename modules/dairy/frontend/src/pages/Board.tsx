@@ -12,7 +12,9 @@ import FooterBar from '@fmis/core/FooterBar'
 import Modal from '@fmis/core/Modal'
 import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
 import { undoAction, useOnUndo } from '@fmis/core/undo'
-import { loadHerdData, memberAt, moveAnimals, removeMembers, type HerdData } from '@fmis/tiere/lib/herds'
+import { dissolveGroup, loadHerdData, memberAt, moveAnimals, removeMembers, saveGroup, type HerdData } from '@fmis/tiere/lib/herds'
+import { compositionAt } from '@fmis/tiere/lib/herdModel'
+import GroupEditModal from '../components/GroupEditModal'
 import { useQuery } from '../hooks/useQuery'
 import BoardCardView from '../components/BoardCardView'
 import { DragGhost, useBoardDrag } from '../components/boardDrag'
@@ -167,6 +169,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
 
   // Fleischwert (nur Schafe): geschätzter Schlachterlös je Tier und Summe je Spalte, mit Proviande-Preisen
   const [showLegend, setShowLegend] = useState(false)
+  const [editGroup, setEditGroup] = useState<string | null>(null)
   const [cardFields, setCardFields] = useState<CardFieldKey[]>(() => loadCardFields(moduleKey))
   const [meatOn, setMeatOn] = useState(() => {
     try {
@@ -468,6 +471,11 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                 >
                   ☑
                 </button>
+                {col.kind === 'group' && col.id && canMove && (
+                  <button type="button" onClick={() => setEditGroup(col.id)} aria-label={`Gruppe «${col.title}» umbenennen oder löschen`} title="Umbenennen oder löschen" className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
+                    ⋮
+                  </button>
+                )}
               </header>
               {meatOn && species === 'sheep' && list.length > 0 && (
                 <ColumnMeatSum values={list.map((c) => meatById.get(c.id) ?? null)} />
@@ -532,6 +540,39 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           onClose={() => setEditing(null)}
         />
       )}
+
+      {editGroup && herd && (() => {
+        const g = herd.groups.find((x) => x.id === editGroup)
+        if (!g) return null
+        return (
+          <GroupEditModal
+            name={g.name}
+            memberCount={compositionAt(g.id, herd.members, herd.counts, today).total}
+            blockedReason={pending > 0 ? 'Zuerst den Entwurf der Gruppenwechsel bestätigen oder verwerfen.' : null}
+            onClose={() => setEditGroup(null)}
+            onRename={async (next) => {
+              try {
+                await undoAction(`Gruppe «${g.name}» umbenannt in «${next}»`, () => saveGroup({ ...g, name: next }))
+                notifySuccess(`Gruppe heisst jetzt «${next}»`)
+                void loadHerdData().then(setHerd)
+              } catch (e) {
+                notifyError(errorText(e))
+                throw e
+              }
+            }}
+            onDelete={async () => {
+              try {
+                await undoAction(`Gruppe «${g.name}» gelöscht`, () => dissolveGroup(herd, g, today))
+                notifySuccess(`Gruppe «${g.name}» gelöscht`)
+                void loadHerdData().then(setHerd)
+              } catch (e) {
+                notifyError(errorText(e))
+                throw e
+              }
+            }}
+          />
+        )
+      })()}
 
       {showLegend && <CardLegend species={species} onClose={() => setShowLegend(false)} />}
 
