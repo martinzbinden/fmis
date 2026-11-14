@@ -30,13 +30,14 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
     { to: 'selektion', icon: '⭐', label: sheep ? 'Lämmer-Selektion' : 'Kälber-Selektion', desc: 'Remonte oder Mast nach Mutterleistung, Vater und Inzucht' },
     { to: 'merklisten', icon: '🔖', label: 'Merklisten', desc: 'Tiere vormerken, z.B. «Ausmerzen prüfen» – auch aus Warnungen bei der Erfassung' },
     { to: 'gruppen', icon: '📊', label: 'Gruppen', desc: 'Tiergruppen und Merklisten vergleichen: Leistung + Zuchtwert, Schlachterlös, Fortpflanzung, Klauen – beliebige Gruppen nebeneinander' },
+    { to: '/import', icon: '📥', label: 'Datenimport', desc: sheep ? 'TVD-Tierbestand, SMG-Dateien und weitere Dateien hochladen (gemeinsame Seite für alle Module)' : 'Herdebuch-Export und weitere Dateien hochladen (gemeinsame Seite für alle Module)' },
     { to: 'anpaarung', icon: '🧬', label: 'Anpaarung planen', desc: 'Erwartete Inzucht je Mutter × ' + (sheep ? 'Widder' : 'Stier') },
   ]
   return (
     <div className="mx-auto max-w-lg space-y-3 p-4 pb-24">
       <h1 className="mb-2 text-xl font-bold text-gray-800">Mehr</h1>
       {items.map((item) => (
-        <Link key={item.to} to={`../${item.to}`} relative="path" className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm active:bg-gray-50">
+        <Link key={item.to} to={item.to.startsWith('/') ? item.to : `../${item.to}`} relative="path" className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm active:bg-gray-50">
           <span className="text-3xl">{item.icon}</span>
           <span className="min-w-0 flex-1">
             <span className="block text-base font-semibold text-gray-800">{item.label}</span>
