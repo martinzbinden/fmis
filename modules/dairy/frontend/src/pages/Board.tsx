@@ -234,7 +234,25 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const jumpGroup = params.get('gruppe')?.replace(/^herde:/, '') ?? null
   const jumpTier = params.get('tier')
   const jumpKey = jumpGroup ? columnKey('group', jumpGroup) : null
-  const visibleColumns = columns.filter((c) => !hidden.has(c.key) || c.key === jumpKey)
+  // Nur Gruppen, nur Merklisten oder beides (je Gerät gemerkt)
+  const [kinds, setKindsState] = useState<'beides' | 'gruppen' | 'merklisten'>(() => {
+    try {
+      const v = localStorage.getItem(`${moduleKey}_board_kinds`)
+      return v === 'gruppen' || v === 'merklisten' ? v : 'beides'
+    } catch {
+      return 'beides'
+    }
+  })
+  function setKinds(k: 'beides' | 'gruppen' | 'merklisten') {
+    setKindsState(k)
+    try {
+      localStorage.setItem(`${moduleKey}_board_kinds`, k)
+    } catch {
+      // nur bis zum Neuladen
+    }
+  }
+  const kindShown = (kind: string) => kinds === 'beides' || (kinds === 'gruppen' ? kind === 'group' : kind === 'list')
+  const visibleColumns = columns.filter((c) => (kindShown(c.kind) && !hidden.has(c.key)) || c.key === jumpKey)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState<Set<string>>(new Set())
   const toggle = (set: Set<string>, id: string) => {
@@ -411,6 +429,8 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                   onToggle={() => setOpen((o) => toggle(o, `${col.key}:${c.id}`))}
                   onUndoDraft={() => setDraft((d) => clearTargets(d, [c.id]))}
                   onRemoveFromList={col.kind === 'list' ? () => void removeFromList(col.id!, c.id) : undefined}
+                  groupChoices={col.kind === 'group' && canMove ? [...groups.filter((g) => g.id !== col.id).map((g) => ({ id: g.id as string | null, name: g.name })), ...(col.id ? [{ id: null, name: 'Ohne Gruppe' }] : [])] : undefined}
+                  onMoveToGroup={col.kind === 'group' && canMove ? (id) => moveToDraft([c.id], id) : undefined}
                   meat={meatById.get(c.id) ?? null}
                   meatMax={meatMax}
                   fields={cardFields}
@@ -467,6 +487,19 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             saveCardFields(moduleKey, next)
           }}
         />
+        <div role="radiogroup" aria-label="Spalten zeigen" className="flex overflow-hidden rounded-lg border-2 border-gray-300 bg-white text-sm">
+          {(
+            [
+              ['gruppen', 'Gruppen'],
+              ['beides', 'Beides'],
+              ['merklisten', 'Merklisten'],
+            ] as const
+          ).map(([k, label]) => (
+            <button key={k} type="button" role="radio" aria-checked={kinds === k} onClick={() => setKinds(k)} className={`min-h-11 px-3 ${kinds === k ? 'bg-brand-700 font-semibold text-white' : 'text-gray-800 active:bg-gray-100'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <button type="button" onClick={() => setShowColumns(true)} className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm">
           Spalten ({visibleColumns.length}/{columns.length})
         </button>
@@ -752,6 +785,8 @@ function ColumnCard({
   onToggle,
   onUndoDraft,
   onRemoveFromList,
+  groupChoices,
+  onMoveToGroup,
   meat,
   meatMax,
   fields,
@@ -770,6 +805,8 @@ function ColumnCard({
   onToggle: () => void
   onUndoDraft: () => void
   onRemoveFromList?: () => void
+  groupChoices?: { id: string | null; name: string }[]
+  onMoveToGroup?: (groupId: string | null) => void
   meat?: MeatValue | null
   /** grösster Fleischwert aller Karten: Massstab für den Balken */
   meatMax?: number
@@ -792,6 +829,8 @@ function ColumnCard({
       onToggle={onToggle}
       onUndoDraft={pendingTo ? onUndoDraft : undefined}
       onRemoveFromList={onRemoveFromList}
+      groupChoices={groupChoices}
+      onMoveToGroup={onMoveToGroup}
       meat={meat}
       meatMax={meatMax}
       fields={fields}

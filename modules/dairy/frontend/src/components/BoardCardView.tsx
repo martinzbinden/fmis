@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { colorOf } from '@fmis/core/filters/filterModel'
 import { areaLabel, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib/board'
@@ -31,6 +31,8 @@ export default function BoardCardView({
   onToggle,
   onUndoDraft,
   onRemoveFromList,
+  groupChoices,
+  onMoveToGroup,
   meat,
   meatMax,
   fields = [],
@@ -51,8 +53,11 @@ export default function BoardCardView({
   onSelect: () => void
   onToggle: () => void
   onUndoDraft?: () => void
-  /** in einer Merklisten-Spalte: von dieser Liste nehmen */
+  /** in einer Merklisten-Spalte: von dieser Liste nehmen (kleiner Knopf neben dem Griff) */
   onRemoveFromList?: () => void
+  /** in einer Gruppen-Spalte: Zielgruppen für den kleinen Wechsel-Knopf neben dem Griff (null = ohne Gruppe) */
+  groupChoices?: { id: string | null; name: string }[]
+  onMoveToGroup?: (groupId: string | null) => void
   /** geschätzter Fleischwert (nur Schafe, wenn aktiv) */
   meat?: MeatValue | null
   /** auf der Karte gewählte Eigenschaften (Menü «Karte») */
@@ -66,6 +71,7 @@ export default function BoardCardView({
   const main = colors[0] ? colorOf(colors[0]) : null
   const age = card.birthDate ? fmtAge(card.birthDate, today) : null
   const pregnant = card.pregnancy?.result
+  const [picking, setPicking] = useState(false)
 
   return (
     <div
@@ -119,7 +125,51 @@ export default function BoardCardView({
             ⠿
           </span>
         )}
+        {onMoveToGroup && groupChoices && (
+          <button
+            type="button"
+            data-no-drag
+            onClick={() => setPicking((v) => !v)}
+            aria-expanded={picking}
+            aria-label="Gruppe wechseln"
+            title="Gruppe wechseln"
+            className={`grid h-11 w-8 shrink-0 place-items-center rounded text-base active:bg-gray-100 ${picking ? 'bg-sky-100 text-sky-900' : 'text-gray-500'}`}
+          >
+            ⇄
+          </button>
+        )}
+        {onRemoveFromList && (
+          <button type="button" data-no-drag onClick={onRemoveFromList} aria-label="Von der Liste nehmen" title="Von der Liste nehmen" className="grid h-11 w-8 shrink-0 place-items-center rounded text-base text-gray-500 active:bg-red-50 active:text-red-700">
+            ✕
+          </button>
+        )}
       </div>
+
+      {picking && onMoveToGroup && groupChoices && (
+        <div className="mt-1 flex items-center gap-1" data-no-drag>
+          <select
+            autoFocus
+            defaultValue=""
+            aria-label="In Gruppe verschieben (Entwurf)"
+            onChange={(e) => {
+              if (e.target.value === '') return
+              setPicking(false)
+              onMoveToGroup(e.target.value === 'none' ? null : e.target.value)
+            }}
+            className="min-h-9 min-w-0 flex-1 rounded border border-gray-300 bg-white px-1 text-xs"
+          >
+            <option value="">Gruppe wählen…</option>
+            {groupChoices.map((g) => (
+              <option key={g.id ?? 'none'} value={g.id ?? 'none'}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={() => setPicking(false)} aria-label="Abbrechen" className="grid h-9 w-9 place-items-center rounded text-gray-600 active:bg-gray-100">
+            ✕
+          </button>
+        </div>
+      )}
 
       {colors.length > 1 && (
         <div className="mt-1 flex gap-1" aria-hidden>
@@ -129,18 +179,11 @@ export default function BoardCardView({
         </div>
       )}
 
-      {(onUndoDraft || onRemoveFromList) && (
+      {onUndoDraft && (
         <div className="mt-1 flex gap-2 text-xs" data-no-drag>
-          {onUndoDraft && (
-            <button type="button" onClick={onUndoDraft} className="min-h-9 rounded border border-amber-500 px-2 text-amber-900">
-              ↩ Entwurf zurücknehmen
-            </button>
-          )}
-          {onRemoveFromList && (
-            <button type="button" onClick={onRemoveFromList} className="min-h-9 rounded border border-gray-300 px-2 text-gray-700">
-              ✕ von der Liste nehmen
-            </button>
-          )}
+          <button type="button" onClick={onUndoDraft} className="min-h-9 rounded border border-amber-500 px-2 text-amber-900">
+            ↩ Entwurf zurücknehmen
+          </button>
         </div>
       )}
 
