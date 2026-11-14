@@ -38,6 +38,9 @@ export interface BoardCard {
   lactationNumber: number | null
   litterMean: number | null
   lastLitterSize: number | null
+  /** letzter Wurf: lebend geboren / tot oder vor dem Markieren verendet (null ohne Geburt) */
+  litterAlive: number | null
+  litterDead: number | null
   // Leistung
   ltlMilk: number | null
   performanceRel: number | null
@@ -115,6 +118,8 @@ export function buildCards(input: BoardInput): BoardCard[] {
       lactationNumber: ctx.lactationNumber,
       litterMean: ctx.births.length ? litterMeanOf(ctx) : null,
       lastLitterSize: lastBirth && lastBirth.offspring.length ? lastBirth.offspring.length : null,
+      litterAlive: lastBirth && lastBirth.offspring.length ? lastBirth.offspring.filter((o) => !isDead(o)).length : null,
+      litterDead: lastBirth && lastBirth.offspring.length ? lastBirth.offspring.filter(isDead).length : null,
       ltlMilk: ctx.performance?.ltl_milk ?? null,
       performanceRel: ctx.performance?.performance_rel_stage ?? ctx.performance?.performance_rel ?? null,
       idxPerformance: ctx.performance?.idx_performance ?? null,
@@ -134,6 +139,14 @@ export function buildCards(input: BoardInput): BoardCard[] {
     })
   }
   return cards
+}
+
+const isDead = (o: { stillborn: boolean; died_24h: boolean; died_on: string | null }) => o.stillborn || o.died_24h || !!o.died_on
+
+/** Erfolgreich abgesetzte Lämmer des letzten Wurfs: lebend geboren und nicht (mehr) saugend. Verkaufte oder
+ * geschlachtete zählen mit, sie haben die Aufzucht geschafft. */
+export function weanedOfLastLitter(c: Pick<BoardCard, 'litterAlive' | 'nursing'>): number {
+  return c.litterAlive == null ? 0 : Math.max(0, c.litterAlive - c.nursing)
 }
 
 /** Mittlere Tage zwischen aufeinanderfolgenden Geburten; null unter 2 Geburten. */

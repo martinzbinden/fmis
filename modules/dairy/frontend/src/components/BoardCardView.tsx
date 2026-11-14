@@ -1,14 +1,14 @@
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { colorOf } from '@fmis/core/filters/filterModel'
-import { areaLabel, SEX_LABEL, type BoardCard } from '../lib/board'
+import { areaLabel, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib/board'
 import { fmtAge, fmtDate } from '../lib/format'
 import { RESULT_LABEL, METHOD_LABEL } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
 import type { MeatValue } from '../lib/meatValue'
 import type { CardFieldKey } from '../lib/cardFields'
 import LactationSpark from './LactationSpark'
-import NursingLambs from './NursingLambs'
+import NursingLambs, { WeanedLambs } from './NursingLambs'
 
 const SEX_ICON: Record<string, string> = { w: '♀', m: '♂', k: '⚲' }
 
@@ -91,6 +91,9 @@ export default function BoardCardView({
             {pregnant === 'unsicher' && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">unsicher</span>}
             {card.dry && <span className="rounded bg-gray-200 px-1.5 py-0.5 text-gray-800">trocken</span>}
             <NursingLambs count={card.nursing} young={terms.singular === 'Aue' ? 'Lämmer' : 'Kälber'} />
+            {fields.includes('weaned') && card.litterAlive != null && (
+              <WeanedLambs count={weanedOfLastLitter(card)} alive={card.litterAlive} dead={card.litterDead ?? 0} young={terms.singular === 'Aue' ? 'Lämmer' : 'Kälber'} />
+            )}
             {card.reasons.length > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-900">⚠ {card.reasons.length}</span>}
             {pendingTo && <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-950">→ {pendingTo} (Entwurf)</span>}
             {meat && !fields.includes('meat') && (

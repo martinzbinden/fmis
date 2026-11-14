@@ -24,6 +24,8 @@ const card = (p: Partial<BoardCard> = {}): BoardCard => ({
   lactationNumber: 3,
   litterMean: null,
   lastLitterSize: null,
+  litterAlive: null,
+  litterDead: null,
   ltlMilk: null,
   performanceRel: null,
   idxPerformance: null,
@@ -194,5 +196,15 @@ describe('Zwischenablammzeit', () => {
     const b = (d: string) => ({ birth_date: d }) as never
     expect(birthInterval({ births: [b('2025-01-01')] })).toBeNull()
     expect(birthInterval({ births: [b('2025-01-01'), b('2025-12-27'), b('2026-12-22')] })).toBe(360)
+  })
+})
+
+describe('Abgesetzte Lämmer letzter Wurf', () => {
+  it('lebend geboren minus saugend, nie negativ, 0 ohne Geburt', async () => {
+    const { weanedOfLastLitter } = await import('./board')
+    expect(weanedOfLastLitter({ litterAlive: 3, nursing: 0 })).toBe(3)
+    expect(weanedOfLastLitter({ litterAlive: 3, nursing: 2 })).toBe(1)
+    expect(weanedOfLastLitter({ litterAlive: 1, nursing: 2 })).toBe(0)
+    expect(weanedOfLastLitter({ litterAlive: null, nursing: 0 })).toBe(0)
   })
 })
