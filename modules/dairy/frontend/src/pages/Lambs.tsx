@@ -271,6 +271,9 @@ function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey:
   const [date, setDate] = useState(today)
   const [herd, setHerd] = useState<HerdData | null>(null)
   const [target, setTarget] = useState('')
+  const [reason, setReason] = useState<'abgesetzt' | 'weggenommen'>('abgesetzt')
+  // Gewicht an diesem Tag (optional): Grundlage für die Milchschätzung (lib/lambMilk.ts)
+  const [kg, setKg] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   useEffect(() => {
     void loadHerdData().then(setHerd)
@@ -292,8 +295,21 @@ function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey:
               wean_date: date,
               herd_group: toGroup?.name ?? null,
               notes: null,
+              reason,
               created_by: getCurrentUserEmail(),
             })
+            const w = Number(kg[l.key])
+            if (w > 0) {
+              await upsertRow(tx, 'animal_weights', {
+                id: crypto.randomUUID(),
+                animal_id: l.animalId,
+                offspring_id: l.offspringId,
+                weigh_date: date,
+                weight_kg: Math.round(w * 10) / 10,
+                notes: reason === 'weggenommen' ? 'beim Wegnehmen von der Mutter' : 'beim Absetzen',
+                created_by: getCurrentUserEmail(),
+              })
+            }
           }
         })
         if (toGroup && herd) {
@@ -316,6 +332,13 @@ function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey:
       <div className="font-medium text-gray-800">
         {chosenLambs.length} {chosenLambs.length === 1 ? word.one : word.many} absetzen: {chosenLambs.map(label).join(', ')}
       </div>
+      <div className="flex gap-2" role="group" aria-label="Grund">
+        {(['abgesetzt', 'weggenommen'] as const).map((r) => (
+          <button key={r} type="button" aria-pressed={reason === r} onClick={() => setReason(r)} className={`min-h-11 flex-1 rounded-lg border-2 px-2 text-sm font-semibold ${reason === r ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}>
+            {r === 'abgesetzt' ? 'Abgesetzt' : 'Von der Mutter weggenommen'}
+          </button>
+        ))}
+      </div>
       <div className="flex flex-wrap gap-2">
         <input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} className="min-h-11 rounded-lg border border-gray-300 px-2" aria-label="Datum" />
         <select value={target} onChange={(e) => setTarget(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2" aria-label="Tiergruppe">
@@ -326,6 +349,17 @@ function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey:
             </option>
           ))}
         </select>
+      </div>
+      <div className="rounded-lg bg-gray-50 p-2">
+        <div className="mb-1 text-xs text-gray-600">Gewicht heute in kg (optional, für die Milchschätzung)</div>
+        <ul className="max-h-56 space-y-1 overflow-y-auto">
+          {chosenLambs.map((l) => (
+            <li key={l.key} className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate">{label(l)}</span>
+              <NumberInput min={0} step={0.1} value={kg[l.key] ?? ''} placeholder="kg" onChange={(e) => setKg((k) => ({ ...k, [l.key]: e.target.value }))} className="min-h-11 w-24 rounded-lg border border-gray-300 px-2 text-right" aria-label={`Gewicht ${label(l)}`} />
+            </li>
+          ))}
+        </ul>
       </div>
       {target && untagged > 0 && <p className="text-xs text-amber-800">{untagged} ohne Ohrmarke: in den Tiergruppen als Anzahl ohne Nummer von Hand anpassen.</p>}
       <HoldButton disabled={busy} label={busy ? 'speichert …' : `Gedrückt halten: ${chosenLambs.length} absetzen`} onDone={() => void run()} />

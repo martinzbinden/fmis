@@ -92,7 +92,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "animal_key", "kind", "lactation_number", "calving_date", "age", "test_type", "count", "interval_days", "days", "milk_kg", "fat_pct", "fat_kg", "protein_pct", "protein_kg", "cell_count", "persistency", "document_date", "source", "import_key", "updated_at", "deleted_at",
     ],
     "weanings": [
-        "id", "offspring_id", "animal_id", "wean_date", "herd_group", "notes", "created_by", "updated_at", "deleted_at",
+        "id", "offspring_id", "animal_id", "wean_date", "herd_group", "notes", "created_by", "updated_at", "deleted_at", "reason",
     ],
     "animal_weights": [
         "id", "animal_id", "offspring_id", "weigh_date", "weight_kg", "notes", "created_by", "updated_at", "deleted_at",

@@ -49,6 +49,7 @@ const SAMPLE: BoardCard = {
   sccRelPeers: 128,
   levels: LEVELS,
   intervalDays: 362,
+  lambMilk: { lambs: 2, missing: 1, totalKg: 52, perDay: 1.9 },
   breedingValue: 112,
   reasons: [{ area: 'euter', weight: 2, text: 'Zellzahl hoch' }],
   reasonScore: 2,
@@ -56,7 +57,7 @@ const SAMPLE: BoardCard = {
 }
 
 const SAMPLE_MEAT: MeatValue = { kind: 'Schaf', ageDays: 2087, kg: 27, pricePerKg: 6.3, gross: 170.1, net: 158.9 }
-const ALL_FIELDS: CardFieldKey[] = ['weaned', 'milk', 'scc', 'spark', 'ltl', 'zw', 'litter', 'interval', 'meat']
+const ALL_FIELDS: CardFieldKey[] = ['weaned', 'lambMilk', 'milk', 'scc', 'spark', 'ltl', 'zw', 'litter', 'interval', 'meat']
 
 function Item({ sample, title, children }: { sample: ReactNode; title: string; children: ReactNode }) {
   return (
@@ -94,7 +95,7 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
           onDragCard={() => undefined}
           onDragHandle={() => undefined}
           meat={sheep ? SAMPLE_MEAT : null}
-          fields={ALL_FIELDS.filter((k) => sheep || (k !== 'meat' && k !== 'litter'))}
+          fields={ALL_FIELDS.filter((k) => sheep || (k !== 'meat' && k !== 'litter' && k !== 'lambMilk'))}
         />
       </div>
 
@@ -132,6 +133,11 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
           Ein Balken je Laktation, die Zahl darunter ist die Laktationsnummer. Die Höhe zeigt das Leistungsniveau gegenüber der Herde, die gestrichelte Linie ist das Herdenmittel (100 %).<br />
           <span className="font-semibold text-gray-900">Dunkel</span>: abgeschlossene Laktation ab 80 % der Herde. <span className="font-semibold text-red-700">Rot</span>: unter 80 % der Herde (hier die 3.). <span className="font-semibold text-gray-600">Hell mit gestricheltem Rand</span>: laufende Laktation, noch nicht abgeschlossen.
         </Item>
+        {sheep && (
+          <Item title="Milch der Lämmer" sample={<span className="text-[11px] text-gray-700">≈ 1.9 kg/Tag · 52 kg</span>}>
+            Geschätzte Milch, die die Lämmer des letzten Wurfs bei der Mutter getrunken haben: Zuwachs zwischen der ersten Wägung (Geburt oder Ohrmarke) und dem Absetzen oder Wegnehmen, mal Milchfaktor (Vorgabe 5 kg Milch je kg Zuwachs). Es zählt nur bis zum Alter von 35 Tagen und bis zur Umstellung auf Eimer. «1 ohne Wägung» heisst, bei einem Lamm fehlt eine Wägung. Eine Näherung, keine Messung.
+          </Item>
+        )}
         <Item title="Lebenstagleistung" sample={<span className="text-[11px] text-gray-700">0.84 kg</span>}>
           Milch je Lebenstag in kg.
         </Item>

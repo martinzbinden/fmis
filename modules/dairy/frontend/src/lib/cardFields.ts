@@ -1,6 +1,6 @@
 // Wählbare Eigenschaften der Dashboard-Karten (pages/Board.tsx): die Auswahl gilt je Gerät (localStorage).
 
-export type CardFieldKey = 'milk' | 'scc' | 'spark' | 'ltl' | 'zw' | 'litter' | 'interval' | 'meat' | 'weaned'
+export type CardFieldKey = 'milk' | 'scc' | 'spark' | 'ltl' | 'zw' | 'litter' | 'interval' | 'meat' | 'weaned' | 'lambMilk'
 
 export interface CardFieldDef {
   key: CardFieldKey
@@ -12,6 +12,7 @@ export interface CardFieldDef {
 
 export const CARD_FIELDS: CardFieldDef[] = [
   { key: 'weaned', label: 'Abgesetzte Lämmer letzter Wurf', hint: 'Lämmer des letzten Wurfs, die erfolgreich abgesetzt wurden (blaue Umriss-Lämmer mit Haken); saugende sind grün gefüllt' },
+  { key: 'lambMilk', label: 'Milch der Lämmer (Schätzung)', hint: 'Aus dem Zuwachs der Lämmer des letzten Wurfs: Wägung bei Geburt oder Ohrmarke und beim Absetzen (Einstellungen: Faktor, Altersgrenze)', species: 'sheep' },
   { key: 'milk', label: 'Milch: Index und Gleichaltrige', hint: 'Leistungsindex im Herdenvergleich (Mittel 100) und Leistung in % der Gleichaltrigen' },
   { key: 'scc', label: 'Zellzahl: Index und Gleichaltrige', hint: 'Zellzahl-Index (Herdenmittel 100), Ø 12 Monate und in % der Gleichaltrigen (tiefer ist besser)' },
   { key: 'spark', label: 'Laktationen als Minigrafik', hint: 'Leistungsniveau je Laktation gegen die Herde (gestrichelt = 100 %)' },

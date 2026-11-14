@@ -221,6 +221,16 @@ function CardProps({ card, fields, meat }: { card: BoardCard; fields: CardFieldK
   if (has('zw')) rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
   if (has('litter')) rows.push(line('Wurf', card.lastLitterSize == null ? '–' : `letzter ${card.lastLitterSize}${card.litterMean != null ? ` · Ø ${n1(card.litterMean)}` : ''}`, 'litter'))
   if (has('interval')) rows.push(line('Zwischenablammzeit', card.intervalDays == null ? '–' : `Ø ${card.intervalDays} Tage`, 'interval'))
+  if (has('lambMilk')) {
+    const m = card.lambMilk
+    rows.push(
+      line(
+        'Milch der Lämmer',
+        !m ? '–' : m.lambs === 0 ? `keine Wägungen (${m.missing})` : `≈ ${m.perDay.toFixed(1)} kg/Tag · ${Math.round(m.totalKg)} kg${m.missing > 0 ? ` · ${m.missing} ohne Wägung` : ''}`,
+        'lambMilk',
+      ),
+    )
+  }
   if (has('meat')) rows.push(line('Fleischwert', meat ? `≈ ${Math.round(meat.net)} Fr. · ${meat.kind} ${meat.kg} kg` : card.birthDate ? '–' : 'ohne Geburtsdatum', 'meat'))
   const spark = has('spark') && card.levels.length > 0
   if (rows.length === 0 && !spark) return null

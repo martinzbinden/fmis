@@ -89,7 +89,7 @@ export const SYNC_TABLES = {
   pedigree_performance: [
     'id', 'animal_key', 'kind', 'lactation_number', 'calving_date', 'age', 'test_type', 'count', 'interval_days', 'days', 'milk_kg', 'fat_pct', 'fat_kg', 'protein_pct', 'protein_kg', 'cell_count', 'persistency', 'document_date', 'source', 'import_key', 'updated_at', 'deleted_at',
   ],
-  weanings: ['id', 'offspring_id', 'animal_id', 'wean_date', 'herd_group', 'notes', 'created_by', 'updated_at', 'deleted_at'],
+  weanings: ['id', 'offspring_id', 'animal_id', 'wean_date', 'herd_group', 'notes', 'created_by', 'updated_at', 'deleted_at', 'reason'],
   animal_weights: ['id', 'animal_id', 'offspring_id', 'weigh_date', 'weight_kg', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   stall_decisions: ['id', 'step', 'offspring_id', 'animal_id', 'decision', 'decided_on', 'until', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   culling_marks: ['id', 'animal_id', 'mark', 'marked_on', 'notes', 'created_by', 'updated_at', 'deleted_at'],

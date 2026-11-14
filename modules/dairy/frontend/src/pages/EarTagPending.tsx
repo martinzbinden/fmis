@@ -5,6 +5,8 @@ import { animalKey, shortEarTag } from '@fmis/core/earTag'
 import { useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useDb } from '@fmis/core/DbContext'
+import { getCurrentUserEmail } from '@fmis/core/auth'
+import { upsertRow } from '../db/write'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
 import { assignEarTag, checkEarTag, daysSince, loadPendingOffspring, markDied, MARKING_DAYS, type PendingOffspring } from '../lib/earTagPending'
@@ -152,6 +154,8 @@ function PendingCard({
   const [sex, setSex] = useState<'w' | 'm' | null>(p.sex)
   const [dying, setDying] = useState(false)
   const [diedOn, setDiedOn] = useState(today)
+  // Gewicht beim Ohrmarkensetzen (optional): Startgewicht für die Milchschätzung (lib/lambMilk.ts)
+  const [weight, setWeight] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -168,7 +172,22 @@ function PendingCard({
     setBusy(true)
     setError(null)
     try {
-      const r = await inTransaction(db, (tx) => assignEarTag(tx, p, { earTag, sex }, dam, animals))
+      const kg = Number(weight)
+      const r = await inTransaction(db, async (tx) => {
+        const res = await assignEarTag(tx, p, { earTag, sex }, dam, animals)
+        if (kg > 0) {
+          await upsertRow(tx, 'animal_weights', {
+            id: crypto.randomUUID(),
+            animal_id: res.animalId,
+            offspring_id: p.id,
+            weigh_date: today,
+            weight_kg: Math.round(kg * 10) / 10,
+            notes: 'beim Ohrmarkensetzen',
+            created_by: getCurrentUserEmail(),
+          })
+        }
+        return res
+      })
       onSaved({ earTag, ...r })
     } catch (err) {
       setError(errorText(err, 'Speichern fehlgeschlagen'))
@@ -235,6 +254,10 @@ function PendingCard({
           Speichern
         </button>
       </div>
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <span className="shrink-0">Gewicht kg (optional)</span>
+        <input value={weight} onChange={(e) => setWeight(e.target.value.replace(',', '.'))} inputMode="decimal" placeholder="z.B. 4.8" aria-label={`Gewicht ${young} ${nr}`} className="w-24 rounded-lg border border-gray-300 px-2 py-2 text-right" />
+      </label>
       {suggestion && !earTag.trim() && (
         <div className="flex gap-2">
           <button type="button" onClick={() => setEarTag(suggestion)} className="link-btn min-w-0 flex-1 rounded-lg border border-brand-700 px-3 text-sm text-brand-700">

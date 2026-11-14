@@ -30,12 +30,13 @@ import { useCullingThresholds } from '../lib/cullingSettings'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadHerdContext } from '../lib/herdContext'
 import { loadNursingDams } from '../lib/lambs'
+import { DEFAULT_LAMB_MILK, loadDamMilk, loadLambMilkSettings, saveLambMilkSettings, type LambMilkSettings } from '../lib/lambMilk'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { addToWatchlist, loadWatchlists, removeEntry } from '../lib/watchlists'
 
-async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string) {
-  const [context, lists, nursing] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadNursingDams(pg, today)])
-  return { context, nursing, ...lists }
+async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string, milk: LambMilkSettings) {
+  const [context, lists, nursing, lambMilk] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadNursingDams(pg, today), loadDamMilk(pg, today, milk)])
+  return { context, nursing, lambMilk, ...lists }
 }
 
 const hiddenKey = (moduleKey: string) => `${moduleKey}_board_hidden_columns`
@@ -61,7 +62,8 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const canMove = useHasPermission('tiere:herden:write') && !!animalProvider(moduleKey)
   const { thresholds } = useCullingThresholds(moduleKey, species)
 
-  const { data } = useQuery((pg) => loadBoard(pg, species, today), [species, today])
+  const [lambMilkSettings, setLambMilkSettings] = useState<LambMilkSettings>(() => loadLambMilkSettings(moduleKey))
+  const { data } = useQuery((pg) => loadBoard(pg, species, today, lambMilkSettings), [species, today, lambMilkSettings])
   const [herd, setHerd] = useState<HerdData | null>(null)
   const [refs, setRefs] = useState<AnimalRef[] | null>(null)
   useEffect(() => {
@@ -111,6 +113,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             groupOf: new Map([...current].filter((e): e is [string, string] => e[1] != null)),
             entries: data.entries,
             nursing: data.nursing,
+            lambMilk: data.lambMilk,
             breedingTrait: SIRE_TRAIT[species].trait,
           })
         : [],
@@ -382,6 +385,36 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                 {num('sheepFactor', 'Schaf: Preis im Verhältnis zu T3', 0.01)}
                 {num('feePerAnimal', 'Abzüge je Tier (Fr.)', 0.1)}
                 {num('transportPerAnimal', 'Transport je Tier (Fr.)', 0.5)}
+              </div>
+            )
+          }}
+        </SettingsEditor>
+      )}
+
+      {cardFields.includes('lambMilk') && species === 'sheep' && (
+        <SettingsEditor
+          value={lambMilkSettings}
+          onSave={(v) => {
+            setLambMilkSettings(v)
+            saveLambMilkSettings(moduleKey, v)
+          }}
+          onReset={() => DEFAULT_LAMB_MILK}
+          label="Milch der Lämmer"
+          className="rounded-lg bg-white p-3 shadow-sm"
+          title="Milch der Lämmer: Zuwachs zwischen erster Wägung (Geburt oder Ohrmarke) und Absetzen, Wegnehmen oder Altersgrenze mal Faktor. Eine Näherung."
+        >
+          {({ value, set, editing }) => {
+            const f = (key: keyof LambMilkSettings, label: string, step = 1) => (
+              <label key={key} className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                {label}
+                {editing ? <NumberInput step={step} value={value[key]} onChange={(e) => set({ ...value, [key]: Number(e.target.value) })} className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm" /> : <ReadValue>{value[key]}</ReadValue>}
+              </label>
+            )
+            return (
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {f('factor', 'kg Milch je kg Zuwachs', 0.5)}
+                {f('maxDays', 'Rechnen bis Alter (Tage)')}
+                {f('minDays', 'Mindestens Tage zwischen Wägungen')}
               </div>
             )
           }}
