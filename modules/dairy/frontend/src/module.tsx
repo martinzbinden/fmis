@@ -31,6 +31,7 @@ import Watchlists from './pages/Watchlists'
 import ClawEntry from './pages/ClawEntry'
 import GroupCompare from './pages/GroupCompare'
 import Board from './pages/Board'
+import { GROUP_VIEWS, GROUP_VIEW_TOPIC, lastGroupView } from './lib/groupViews'
 import Stall from './pages/Stall'
 import Lambs from './pages/Lambs'
 import ImportPanel from './components/ImportPanel'
@@ -41,6 +42,7 @@ import { dairyYearSummary } from './lib/yearSummary'
 import LastCapture from './components/LastCapture'
 import ViewSwitch, { type View } from './components/ViewSwitch'
 import { captureNavItem } from './lib/lastCapture'
+import type { NavItem } from '@fmis/core/ModuleDescriptor'
 import './theme.css'
 
 /**
@@ -60,9 +62,9 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
   const terms = speciesTerms(key)
   // Zwei Ansichten je Punkt der Fussleiste (ViewSwitch) und Erfassungsseiten, die sich der dynamische Punkt merkt
   const HOME: View[] = [{ to: '', label: 'Heute' }, { to: 'stall', label: 'Kalender' }]
-  const ANIMALS: View[] = [{ to: 'tiere', label: 'Liste' }, { to: 'tierinfo', label: 'Tier-Info' }]
-  const GROUPS: View[] = [{ to: 'gruppen', label: 'Vergleich' }, { to: 'dashboard', label: 'Karten' }]
-  const views = (v: View[], el: ReactNode) => <ViewSwitch moduleKey={key} views={v}>{el}</ViewSwitch>
+  // Gruppen: Karten links (Vorgabe beim ersten Besuch), danach die zuletzt benutzte Ansicht (lib/groupViews.ts)
+  const GROUPS: View[] = GROUP_VIEWS
+  const views = (v: View[], el: ReactNode, remember?: string) => <ViewSwitch moduleKey={key} views={v} remember={remember}>{el}</ViewSwitch>
   const capture = (path: string, el: ReactNode) => <LastCapture moduleKey={key} path={path}>{el}</LastCapture>
   const sync = createDairySyncClient(key)
   return {
@@ -75,10 +77,10 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     navItems: [
       // Heute + Kalender (Stall)
       { to: '', label: 'Heute', icon: '🏠', also: ['stall'] },
-      // Liste + Tier-Info
-      { to: 'tiere', label: 'Tiere', icon: sheep ? '🐑' : '🐄', also: ['tierinfo', 'kuehe'] },
-      // Vergleich + Karten (Spalten je Gruppe/Merkliste)
-      { to: 'gruppen', label: 'Gruppen', icon: '📊', also: ['dashboard'] },
+      // nur Tier-Info; vom Einzeltier führt ein Sprung in seine Gruppe (components/GroupJump.tsx), die Tierliste steht unter «Mehr»
+      { to: 'tierinfo', label: 'Tier', icon: sheep ? '🐑' : '🐄', also: ['tiere', 'kuehe'] },
+      // Karten + Vergleich: öffnet die zuletzt benutzte Ansicht
+      { ...groupsNavItem(key), resolve: () => groupsNavItem(key) },
       // zuletzt benutzte Erfassungsfunktion (lib/lastCapture.ts)
       { ...captureNavItem(key, sheep), resolve: () => captureNavItem(key, sheep) },
       // alle weiteren Funktionen und Seiten
@@ -115,7 +117,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     routes: [
       { path: '', element: views(HOME, <Today moduleKey={key} />) },
       { path: 'leistung', element: <Milk moduleKey={key} /> },
-      { path: 'tiere', element: views(ANIMALS, <Animals moduleKey={key} />) },
+      { path: 'tiere', element: <Animals moduleKey={key} /> },
       { path: 'tiere/:id', element: <AnimalDetail moduleKey={key} /> },
       // frühere Adresse (auch für Schafe «kuehe») — gespeicherte Links und Lesezeichen
       { path: 'kuehe', element: <OldAnimalsPath moduleKey={key} /> },
@@ -130,11 +132,11 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'belegung', element: capture('belegung', <MatingEntry moduleKey={key} />) },
       { path: 'traechtigkeit', element: capture('traechtigkeit', <PregnancyEntry moduleKey={key} />) },
       { path: 'traechtigkeit/vergleich', element: <PregnancyCompare /> },
-      { path: 'tierinfo', element: views(ANIMALS, <AnimalInfo moduleKey={key} />) },
+      { path: 'tierinfo', element: <AnimalInfo moduleKey={key} /> },
       { path: 'merklisten', element: <Watchlists moduleKey={key} /> },
       { path: 'klauen', element: capture('klauen', <ClawEntry moduleKey={key} />) },
-      { path: 'gruppen', element: views(GROUPS, <GroupCompare moduleKey={key} />) },
-      { path: 'dashboard', element: views(GROUPS, <Board moduleKey={key} />) },
+      { path: 'gruppen', element: views(GROUPS, <GroupCompare moduleKey={key} />, GROUP_VIEW_TOPIC) },
+      { path: 'dashboard', element: views(GROUPS, <Board moduleKey={key} />, GROUP_VIEW_TOPIC) },
       { path: 'stall', element: views(HOME, <Stall moduleKey={key} />) },
       { path: 'laemmer', element: <Lambs moduleKey={key} /> },
       { path: 'journal', element: capture('journal', <JournalEntry moduleKey={key} />) },
@@ -159,6 +161,11 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       return dairyYearSummary(key, title, year)
     },
   }
+}
+
+/** Fussleisten-Punkt «Gruppen»: öffnet die zuletzt benutzte Ansicht (Vorgabe Karten). */
+function groupsNavItem(moduleKey: string): NavItem {
+  return { to: lastGroupView(moduleKey), label: 'Gruppen', icon: '📊', also: GROUP_VIEWS.map((v) => v.to) }
 }
 
 /** /<herde>/kuehe[/id] → /<herde>/tiere[/id], mit Suchparametern und Sprungmarke. */

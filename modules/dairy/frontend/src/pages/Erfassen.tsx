@@ -12,6 +12,7 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
   const tvdOpen = useQuery((pg) => loadTvdBirths(pg, '2000-01-01')).data?.reduce((n, b) => n + reportable(b).length, 0) ?? 0
   const weanDue = useQuery((pg) => loadLambs(pg, localTodayIso())).data?.filter((l) => l.nursing && l.ageDays >= WEAN_FROM_DAYS).length ?? 0
   const items = [
+    { to: 'tiere', icon: sheep ? '🐑' : '🐄', label: sheep ? 'Tierliste' : 'Tierliste', desc: 'Alle Tiere der Herde als Liste: suchen, filtern, Spalten wählen' },
     { to: 'leistung', icon: '🥛', label: 'Leistung', desc: 'Milchleistung und Zuchtwerte, je Tier und Gruppe' },
     { to: 'tierinfo', icon: '🔎', label: 'Tier-Info', desc: 'Nummer tippen oder lesen: Alter, Abstammung, Index, Ablammung, Belegung, Trächtigkeit, Merklisten, Verlauf aller Erfassungen' },
     { to: 'geburt', icon: sheep ? '🐑' : '🐄', label: sheep ? 'Ablammung' : 'Abkalbung', desc: 'Mutter, Vater, Nachkommen – Ohrmarke auch später' },

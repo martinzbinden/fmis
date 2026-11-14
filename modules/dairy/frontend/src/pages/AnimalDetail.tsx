@@ -17,6 +17,7 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Too
 import { useQuery } from '../hooks/useQuery'
 import { useJumpTo } from '../hooks/useJumpTo'
 import { cullingInput, loadHerdContext, type AnimalContext } from '../lib/herdContext'
+import GroupJump from '../components/GroupJump'
 import { cullingReasons, fmtCells, type CullingReason } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
@@ -255,6 +256,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
           {a.breed_code ? ` · ${a.breed_code}` : ''} · geb. {fmtDate(a.birth_date)}
           {a.birth_date ? ` (${fmtAge(a.birth_date, localTodayIso())})` : ''} · {a.status}
         </p>
+        <GroupJump moduleKey={moduleKey} animalId={a.id} className="mt-1" />
       </div>
 
       {/* Erfassen für dieses Tier (Tier vorgewählt) */}

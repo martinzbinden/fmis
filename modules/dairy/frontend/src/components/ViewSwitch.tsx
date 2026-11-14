@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
+import { rememberView } from '../lib/lastView'
 
 export interface View {
   /** Pfad im Modul, '' = Startseite */
@@ -9,9 +10,12 @@ export interface View {
 
 /** Zwei (oder drei) Ansichten teilen sich einen Punkt der Fussleiste: Umschalter oben auf der Seite.
  * Jede Ansicht hat ihre eigene Adresse, so gehen Zurück und gespeicherte Links weiter. */
-export default function ViewSwitch({ moduleKey, views, children }: { moduleKey: string; views: View[]; children: ReactNode }) {
+export default function ViewSwitch({ moduleKey, views, remember, children }: { moduleKey: string; views: View[]; /** Name, unter dem sich der Punkt die zuletzt benutzte Ansicht merkt (lib/lastView.ts) */ remember?: string; children: ReactNode }) {
   const { pathname } = useLocation()
   const rest = pathname.slice(moduleKey.length + 1).replace(/^\/|\/$/g, '')
+  useEffect(() => {
+    if (remember && views.some((v) => v.to === rest)) rememberView(moduleKey, remember, rest)
+  }, [moduleKey, remember, views, rest])
   return (
     <>
       <div className="px-3 pt-3">

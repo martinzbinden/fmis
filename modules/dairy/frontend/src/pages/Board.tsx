@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalProvider, refreshHerdData, type AnimalRef } from '@fmis/core/animals'
 import { useHasPermission } from '@fmis/core/AuthContext'
@@ -21,7 +22,7 @@ import CardFieldsMenu from '../components/CardFieldsMenu'
 import { loadCardFields, saveCardFields, type CardFieldKey } from '../lib/cardFields'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 import NumberInput from '@fmis/core/NumberInput'
-import { boardFields, boardPresets, buildCards, buildColumns, cardsInColumn, SORTS, sortCards, type BoardCard, type BoardColumn, type SortKey } from '../lib/board'
+import { columnKey, boardFields, boardPresets, buildCards, buildColumns, cardsInColumn, SORTS, sortCards, type BoardCard, type BoardColumn, type SortKey } from '../lib/board'
 import { clearTargets, draftSize, effectiveGroup, groupByTarget, pruneDraft, setTargets, summarizeDraft, type DraftMoves } from '../lib/boardDraft'
 import { SIRE_TRAIT } from '../lib/breedingTraits'
 import { useCullingThresholds } from '../lib/cullingSettings'
@@ -189,7 +190,12 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   }
   const [hidden, setHidden] = useState<Set<string>>(() => readHidden(moduleKey))
   const [showColumns, setShowColumns] = useState(false)
-  const visibleColumns = columns.filter((c) => !hidden.has(c.key))
+  // Sprung aus dem Einzeltier (?gruppe=herde:<id>&tier=<id>): die Gruppe steht im Blick, das Tier ist hervorgehoben
+  const [params] = useSearchParams()
+  const jumpGroup = params.get('gruppe')?.replace(/^herde:/, '') ?? null
+  const jumpTier = params.get('tier')
+  const jumpKey = jumpGroup ? columnKey('group', jumpGroup) : null
+  const visibleColumns = columns.filter((c) => !hidden.has(c.key) || c.key === jumpKey)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState<Set<string>>(new Set())
   const toggle = (set: Set<string>, id: string) => {
@@ -265,6 +271,25 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const columnCards = useCallback((col: BoardColumn) => sortCards(cardsInColumn(col, shown, groupOf), sort), [shown, groupOf, sort])
 
   const loading = !data || !herd || !refs
+  useEffect(() => {
+    if (loading || !jumpKey) return
+    if (jumpTier) setOpen((o) => (o.has(`${jumpKey}:${jumpTier}`) ? o : new Set([...o, `${jumpKey}:${jumpTier}`])))
+    const timers = [150, 600].map((ms) =>
+      setTimeout(() => {
+        const col = [...document.querySelectorAll<HTMLElement>('[data-drop-col]')].find((e) => e.dataset.dropCol === jumpKey)
+        col?.scrollIntoView({ inline: 'start', block: 'nearest' })
+        const card = jumpTier ? col?.querySelector<HTMLElement>(`[data-card="${CSS.escape(jumpTier)}"]`) : null
+        if (card) {
+          card.scrollIntoView({ block: 'center' })
+          card.classList.add('ring-4', 'ring-amber-400')
+          setTimeout(() => card.classList.remove('ring-4', 'ring-amber-400'), 4000)
+        }
+      }, ms),
+    )
+    return () => timers.forEach(clearTimeout)
+    // einmal je Sprung: nach dem Laden
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, jumpKey, jumpTier])
   const pending = draftSize(draft)
   const chosen = [...selected].filter((id) => cardById.has(id))
 

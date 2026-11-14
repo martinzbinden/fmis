@@ -13,6 +13,7 @@ import { eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
 import { cullingReasons, fmtCells } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { cullingInput } from '../lib/herdContext'
+import GroupJump from '../components/GroupJump'
 import { fmtInbreeding, inbreedingClass } from '../lib/inbreeding'
 import { rankLambs } from '../lib/lambSelection'
 import { loadLambSelection } from '../lib/lambSelectionData'
@@ -233,6 +234,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
                 {ctx.lactationNumber ? ` · ${ctx.lactationNumber}. Lakt.` : ''}
                 {inactive ? ` · ${a.status}` : ''}
               </div>
+              <GroupJump moduleKey={moduleKey} animalId={a.id} className="mt-2 border-white bg-white" />
             </header>
 
             {(milkUntil || meatUntil) && (
