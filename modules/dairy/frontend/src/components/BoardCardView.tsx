@@ -5,6 +5,7 @@ import { areaLabel, SEX_LABEL, type BoardCard } from '../lib/board'
 import { fmtAge, fmtDate } from '../lib/format'
 import { RESULT_LABEL, METHOD_LABEL } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
+import type { MeatValue } from '../lib/meatValue'
 
 const SEX_ICON: Record<string, string> = { w: '♀', m: '♂', k: '⚲' }
 
@@ -27,6 +28,7 @@ export default function BoardCardView({
   onToggle,
   onUndoDraft,
   onRemoveFromList,
+  meat,
   onDragCard,
   onDragHandle,
 }: {
@@ -46,6 +48,8 @@ export default function BoardCardView({
   onUndoDraft?: () => void
   /** in einer Merklisten-Spalte: von dieser Liste nehmen */
   onRemoveFromList?: () => void
+  /** geschätzter Fleischwert (nur Schafe, wenn aktiv) */
+  meat?: MeatValue | null
   onDragCard: (e: ReactPointerEvent) => void
   onDragHandle: (e: ReactPointerEvent) => void
 }) {
@@ -83,6 +87,11 @@ export default function BoardCardView({
             {card.nursing > 0 && <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-900">🍼 {card.nursing}</span>}
             {card.reasons.length > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-900">⚠ {card.reasons.length}</span>}
             {pendingTo && <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-950">→ {pendingTo} (Entwurf)</span>}
+            {meat && (
+              <span className={`rounded px-1.5 py-0.5 ${meat.kind === 'Lamm' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-900'}`} title={`${meat.kind}, ${meat.ageDays} Tage am Schlachttermin, ca. ${meat.kg} kg SG, ${meat.pricePerKg.toFixed(2)} Fr./kg, nach Abzügen`}>
+                ≈ {Math.round(meat.net)} Fr. · {meat.kind}
+              </span>
+            )}
           </span>
         </button>
         {canDrag && (

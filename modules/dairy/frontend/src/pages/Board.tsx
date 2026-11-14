@@ -15,6 +15,10 @@ import { loadHerdData, memberAt, moveAnimals, removeMembers, type HerdData } fro
 import { useQuery } from '../hooks/useQuery'
 import BoardCardView from '../components/BoardCardView'
 import { DragGhost, useBoardDrag } from '../components/boardDrag'
+import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, type MeatSettings, type MeatValue } from '../lib/meatValue'
+import { useProviandePrices } from '../lib/proviandePrices'
+import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
+import NumberInput from '@fmis/core/NumberInput'
 import { boardFields, boardPresets, buildCards, buildColumns, cardsInColumn, SORTS, sortCards, type BoardCard, type BoardColumn, type SortKey } from '../lib/board'
 import { clearTargets, draftSize, effectiveGroup, groupByTarget, pruneDraft, setTargets, summarizeDraft, type DraftMoves } from '../lib/boardDraft'
 import { SIRE_TRAIT } from '../lib/breedingTraits'
@@ -153,6 +157,33 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
 
   // Spalten, Auswahl, Aufklappen
   const columns = useMemo(() => buildColumns(groups, lists), [groups, lists])
+
+  // Fleischwert (nur Schafe): geschätzter Schlachterlös je Tier und Summe je Spalte, mit Proviande-Preisen
+  const [meatOn, setMeatOn] = useState(() => {
+    try {
+      return localStorage.getItem(`${moduleKey}_meat_on`) === '1'
+    } catch {
+      return false
+    }
+  })
+  const [meatSettings, setMeatSettings] = useState<MeatSettings>(() => loadMeatSettings(moduleKey))
+  const proviande = useProviandePrices(species)
+  const meatPrices = useMemo(() => ({ lamb: proviande?.young ?? FALLBACK_MEAT_PRICES.lamb, sheep: proviande?.adult ?? FALLBACK_MEAT_PRICES.sheep }), [proviande])
+  const meatDate = meatSettings.slaughterDate || today
+  const meatById = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof meatValue>>()
+    if (species === 'sheep' && meatOn) for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
+    return m
+  }, [cards, species, meatOn, meatDate, meatSettings, meatPrices])
+  function toggleMeat() {
+    const next = !meatOn
+    setMeatOn(next)
+    try {
+      localStorage.setItem(`${moduleKey}_meat_on`, next ? '1' : '0')
+    } catch {
+      // nur bis zum Neuladen
+    }
+  }
   const [hidden, setHidden] = useState<Set<string>>(() => readHidden(moduleKey))
   const [showColumns, setShowColumns] = useState(false)
   const visibleColumns = columns.filter((c) => !hidden.has(c.key))
@@ -249,6 +280,11 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             </option>
           ))}
         </select>
+        {species === 'sheep' && (
+          <button type="button" onClick={toggleMeat} aria-pressed={meatOn} className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${meatOn ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-300 bg-white'}`}>
+            🥩 Fleischwert
+          </button>
+        )}
         <button type="button" onClick={() => setShowColumns(true)} className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm">
           Spalten ({visibleColumns.length}/{columns.length})
         </button>
@@ -264,6 +300,52 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         onNew={() => setEditing({})}
         onClear={saved.clearModes}
       />
+
+      {meatOn && species === 'sheep' && (
+        <SettingsEditor
+          value={meatSettings}
+          onSave={(v) => {
+            setMeatSettings(v)
+            saveMeatSettings(moduleKey, v)
+          }}
+          onReset={() => DEFAULT_MEAT_SETTINGS}
+          label="Fleischwert"
+          className="rounded-lg bg-white p-3 shadow-sm"
+          title={
+            <>
+              Fleischwert am <b>{meatDate.split('-').reverse().join('.')}</b>
+              {meatSettings.slaughterDate ? '' : ' (heute)'} · Preise Proviande{proviande ? ` Woche ${proviande.week}` : ' (wird geladen, bis dahin Stand KW 47)'}: Lamm {meatPrices.lamb.toFixed(2)}, Schaf {meatPrices.sheep.toFixed(2)} Fr./kg SG. Gewichte und Abzüge aus den Abrechnungen 2025 (Waagscheine).
+            </>
+          }
+        >
+          {({ value, set, editing }) => {
+            const num = (key: Exclude<keyof MeatSettings, 'slaughterDate'>, label: string, step = 1) => (
+              <label key={key} className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                {label}
+                {editing ? <NumberInput step={step} value={value[key]} onChange={(e) => set({ ...value, [key]: Number(e.target.value) })} className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm" /> : <ReadValue>{value[key]}</ReadValue>}
+              </label>
+            )
+            return (
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                  Schlachttermin (leer = heute)
+                  {editing ? <input type="date" value={value.slaughterDate} onChange={(e) => set({ ...value, slaughterDate: e.target.value })} className="rounded border border-gray-300 px-2 py-1 text-sm" /> : <ReadValue>{value.slaughterDate ? value.slaughterDate.split('-').reverse().join('.') : 'heute'}</ReadValue>}
+                </label>
+                {num('lambMaxDays', 'Lamm bis Alter (Tage)')}
+                {num('lambKgYoung', 'Lamm bis 120 Tage, SG kg', 0.5)}
+                {num('lambKgMid', 'Lamm bis 210 Tage, SG kg', 0.5)}
+                {num('lambKgOld', 'Lamm älter, SG kg', 0.5)}
+                {num('sheepKgYoung', 'Schaf unter 1400 Tage, SG kg', 0.5)}
+                {num('sheepKgOld', 'Schaf ab 1400 Tage, SG kg', 0.5)}
+                {num('lambFactor', 'Lamm: Preis im Verhältnis zu T3', 0.01)}
+                {num('sheepFactor', 'Schaf: Preis im Verhältnis zu T3', 0.01)}
+                {num('feePerAnimal', 'Abzüge je Tier (Fr.)', 0.1)}
+                {num('transportPerAnimal', 'Transport je Tier (Fr.)', 0.5)}
+              </div>
+            )
+          }}
+        </SettingsEditor>
+      )}
 
       <p className="text-xs text-gray-600">
         {shown.length} von {cards.length} {terms.plural} sichtbar. Antippen klappt eine Karte auf, am Griff ⠿ ziehen verschiebt.
@@ -313,6 +395,9 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                   ☑
                 </button>
               </header>
+              {meatOn && species === 'sheep' && list.length > 0 && (
+                <ColumnMeatSum values={list.map((c) => meatById.get(c.id) ?? null)} />
+              )}
               <div className="max-h-[calc(100vh-20rem)] min-h-20 space-y-2 overflow-y-auto pr-0.5">
                 {list.map((c) => (
                   <ColumnCard
@@ -330,6 +415,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                     onToggle={() => setOpen((o) => toggle(o, `${col.key}:${c.id}`))}
                     onUndoDraft={() => setDraft((d) => clearTargets(d, [c.id]))}
                     onRemoveFromList={col.kind === 'list' ? () => void removeFromList(col.id!, c.id) : undefined}
+                    meat={meatById.get(c.id) ?? null}
                     pointerDown={pointerDown}
                   />
                 ))}
@@ -412,6 +498,23 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   )
 }
 
+/** Summe des geschätzten Fleischwerts einer Spalte (nach Abzügen), mit Anzahl Lämmer und Schafe. */
+function ColumnMeatSum({ values }: { values: (MeatValue | null)[] }) {
+  const sum = sumMeat(values)
+  const fr = (v: number) => Math.round(v).toLocaleString('de-CH')
+  return (
+    <div className="mb-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-950" aria-label="Fleischwert der Spalte">
+      <div className="text-sm font-bold">≈ {fr(sum.net)} Fr.</div>
+      <div>
+        {sum.lambs > 0 ? `${sum.lambs} ${sum.lambs === 1 ? 'Lamm' : 'Lämmer'}` : ''}
+        {sum.lambs > 0 && sum.sheep > 0 ? ' · ' : ''}
+        {sum.sheep > 0 ? `${sum.sheep} ${sum.sheep === 1 ? 'Schaf' : 'Schafe'}` : ''}
+        {sum.unknown > 0 ? ` · ${sum.unknown} ohne Geburtsdatum` : ''} · vor Abzügen {fr(sum.gross)} Fr.
+      </div>
+    </div>
+  )
+}
+
 function ColumnCard({
   card,
   col,
@@ -426,6 +529,7 @@ function ColumnCard({
   onToggle,
   onUndoDraft,
   onRemoveFromList,
+  meat,
   pointerDown,
 }: {
   card: BoardCard
@@ -441,6 +545,7 @@ function ColumnCard({
   onToggle: () => void
   onUndoDraft: () => void
   onRemoveFromList?: () => void
+  meat?: MeatValue | null
   pointerDown: (cardId: string, handle: boolean) => (e: React.PointerEvent) => void
 }) {
   void col
@@ -459,6 +564,7 @@ function ColumnCard({
       onToggle={onToggle}
       onUndoDraft={pendingTo ? onUndoDraft : undefined}
       onRemoveFromList={onRemoveFromList}
+      meat={meat}
       onDragCard={pointerDown(card.id, false)}
       onDragHandle={pointerDown(card.id, true)}
     />
