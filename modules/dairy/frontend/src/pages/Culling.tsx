@@ -11,7 +11,7 @@ import { useJumpTarget, useJumpTo } from '../hooks/useJumpTo'
 import { cullingInput, litterSummary, loadHerdContext, latestValues, type LitterSummary } from '../lib/herdContext'
 import TrendBadge from '../components/TrendBadge'
 import type { LactationTrend } from '../lib/lactationTrend'
-import { cullingReasons, fmtCells, reasonScore, type CullingReason, type CullingThresholds } from '../lib/culling'
+import { cullingReasons, DEFAULT_THRESHOLDS, fmtCells, reasonScore, type CullingReason, type CullingThresholds } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { fmtDate, todayIso } from '../lib/format'
 import { RESULT_LABEL, type PregnancyStatus } from '../lib/pregnancy'
@@ -19,6 +19,7 @@ import { speciesOf, speciesTerms } from '../lib/species'
 import { ReasonChips } from './AnimalDetail'
 import { animalLabel } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
+import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 
 const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: number }[] = [
   { key: 'intervalDays', label: 'Zwischengeburtszeit über (Tage)' },
@@ -78,7 +79,7 @@ function csvEscape(v: unknown): string {
 export default function Culling({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
   const terms = speciesTerms(moduleKey)
-  const { thresholds, update, reset } = useCullingThresholds(moduleKey, species)
+  const { thresholds, update } = useCullingThresholds(moduleKey, species)
   const jumpTo = useJumpTarget()
   // Sprung aus der Tier-Info: auch ein Tier ohne Hinweis muss sichtbar sein
   const [showAll, setShowAll] = useState(false)
@@ -222,24 +223,22 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
       </div>
 
       {showSettings && (
-        <div className="rounded-lg bg-white p-4 shadow-sm print:hidden">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {THRESHOLD_FIELDS.map((f) => (
-              <label key={f.key} className="flex items-center justify-between gap-2 text-xs text-gray-600">
-                {f.label}
-                <NumberInput
-                  step={f.step ?? 1}
-                  value={thresholds[f.key]}
-                  onChange={(e) => update({ ...thresholds, [f.key]: Number(e.target.value) })}
-                  className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm"
-                />
-              </label>
-            ))}
-          </div>
-          <button type="button" onClick={reset} className="link-btn mt-3 text-xs text-brand-700">
-            Vorgaben wiederherstellen
-          </button>
-        </div>
+        <SettingsEditor value={thresholds} onSave={update} onReset={() => DEFAULT_THRESHOLDS[species]} label="Schwellen" className="rounded-lg bg-white p-4 shadow-sm print:hidden" title="Schwellen für die Gründe der Ausmerzliste">
+          {({ value, set, editing }) => (
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {THRESHOLD_FIELDS.map((f) => (
+                <label key={f.key} className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                  {f.label}
+                  {editing ? (
+                    <NumberInput step={f.step ?? 1} value={value[f.key]} onChange={(e) => set({ ...value, [f.key]: Number(e.target.value) })} className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm" />
+                  ) : (
+                    <ReadValue>{value[f.key]}</ReadValue>
+                  )}
+                </label>
+              ))}
+            </div>
+          )}
+        </SettingsEditor>
       )}
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}

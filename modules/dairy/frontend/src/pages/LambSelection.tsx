@@ -13,6 +13,7 @@ import { preselectionLabel, type Preselection } from '../lib/lambRecommendation'
 import { speciesOf } from '../lib/species'
 import { InbreedingBadge } from './AnimalDetail'
 import NumberInput from '@fmis/core/NumberInput'
+import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 
 function settingsKey(moduleKey: string) {
   return `${moduleKey}_lamb_selection`
@@ -133,17 +134,15 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
     URL.revokeObjectURL(link.href)
   }
 
-  const weightField = (key: 'weightPerformance' | 'weightScc' | 'weightSire' | 'weightTrend', label: string) => (
+  type WeightKey = 'weightPerformance' | 'weightScc' | 'weightSire' | 'weightTrend'
+  const weightField = (v: SelectionSettings, set: (n: SelectionSettings) => void, editing: boolean, key: WeightKey, label: string) => (
     <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
       {label}
-      <NumberInput
-        min={0}
-        max={1}
-        step={0.05}
-        value={settings[key]}
-        onChange={(e) => updateSettings({ ...settings, [key]: Math.max(0, Number(e.target.value) || 0) })}
-        className="w-20 rounded border border-gray-300 px-2 py-1 text-right"
-      />
+      {editing ? (
+        <NumberInput min={0} max={1} step={0.05} value={v[key]} onChange={(e) => set({ ...v, [key]: Math.max(0, Number(e.target.value) || 0) })} className="w-20 rounded border border-gray-300 px-2 py-1 text-right" />
+      ) : (
+        <ReadValue>{v[key]}</ReadValue>
+      )}
     </label>
   )
 
@@ -190,32 +189,29 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
       </div>
 
       {showSettings && (
-        <div className="grid gap-2 rounded-lg bg-white p-4 shadow-sm sm:grid-cols-2 print:hidden">
-          {weightField('weightPerformance', 'Gewicht Leistung Mutter')}
-          {weightField('weightScc', 'Gewicht Zellzahl Mutter')}
-          {weightField('weightSire', `Gewicht ${sireTrait.label} Vater`)}
-          {weightField('weightTrend', 'Gewicht Tendenz Mutter über die Laktationen')}
-          <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
-            Höchstalter (Monate)
-            <NumberInput
-              min={1}
-              max={36}
-              value={settings.maxAgeMonths}
-              onChange={(e) => updateSettings({ ...settings, maxAgeMonths: Math.max(1, Number(e.target.value) || 1) })}
-              className="w-20 rounded border border-gray-300 px-2 py-1 text-right"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" checked={settings.scc12m} onChange={(e) => updateSettings({ ...settings, scc12m: e.target.checked })} />
-            Zellzahl nur letzte 12 Monate
-          </label>
-          <button type="button" onClick={() => updateSettings(DEFAULT_SELECTION_SETTINGS)} className="link-btn text-left text-sm text-brand-700 underline">
-            Vorgaben (60 / 40 / 0, 8 Monate)
-          </button>
-          <p className="text-xs text-gray-500 sm:col-span-2">
-            Die Gewichte werden auf 100 % umgerechnet. Fehlt ein Teilwert, zählt er als Herdenmittel 100.
-          </p>
-        </div>
+        <SettingsEditor value={settings} onSave={updateSettings} onReset={() => DEFAULT_SELECTION_SETTINGS} label="Gewichtung" className="rounded-lg bg-white p-4 shadow-sm print:hidden" title="Gewichtung des Index">
+          {({ value, set, editing }) => (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {weightField(value, set, editing, 'weightPerformance', 'Gewicht Leistung Mutter')}
+              {weightField(value, set, editing, 'weightScc', 'Gewicht Zellzahl Mutter')}
+              {weightField(value, set, editing, 'weightSire', `Gewicht ${sireTrait.label} Vater`)}
+              {weightField(value, set, editing, 'weightTrend', 'Gewicht Tendenz Mutter über die Laktationen')}
+              <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
+                Höchstalter (Monate)
+                {editing ? (
+                  <NumberInput min={1} max={36} value={value.maxAgeMonths} onChange={(e) => set({ ...value, maxAgeMonths: Math.max(1, Number(e.target.value) || 1) })} className="w-20 rounded border border-gray-300 px-2 py-1 text-right" />
+                ) : (
+                  <ReadValue>{value.maxAgeMonths}</ReadValue>
+                )}
+              </label>
+              <label className="flex items-center justify-between gap-2 text-sm text-gray-700">
+                Zellzahl nur letzte 12 Monate
+                {editing ? <input type="checkbox" checked={value.scc12m} onChange={(e) => set({ ...value, scc12m: e.target.checked })} className="h-5 w-5" /> : <ReadValue>{value.scc12m ? 'Ja' : 'Nein'}</ReadValue>}
+              </label>
+              <p className="text-xs text-gray-500 sm:col-span-2">Die Gewichte werden auf 100 % umgerechnet. Fehlt ein Teilwert, zählt er als Herdenmittel 100. Vorgaben: 60 / 40 / 0, 8 Monate.</p>
+            </div>
+          )}
+        </SettingsEditor>
       )}
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { animalLabel, shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
+import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 import { useQuery } from '../hooks/useQuery'
 import { loadLambSelection, SIRE_TRAIT } from '../lib/lambSelectionData'
 import { rankLambs, type LambRow } from '../lib/lambSelection'
@@ -116,35 +117,46 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
       </label>
 
       {showSettings && (
-        <div className="rounded-lg bg-white p-4 shadow-sm print:hidden">
-          {proviande ? (
-            <label className="mb-2 flex items-start gap-2 text-sm text-gray-800">
-              <input type="checkbox" checked={!stored.ownPrices} onChange={(e) => update({ ...stored, ownPrices: !e.target.checked })} className="mt-1 h-5 w-5" />
-              <span>
-                Proviande-Wochenpreise Woche {proviande.week} (ab {fmtDate(proviande.validFrom)}): LA T3 {proviande.young?.toFixed(2) ?? '–'}, SM T3 {proviande.adult?.toFixed(2) ?? '–'} CHF/kg SG
-              </span>
-            </label>
-          ) : (
-            <p className="mb-2 text-xs text-gray-600">Proviande-Wochenpreise noch nicht da (holt der Server automatisch).</p>
-          )}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {FIELDS.map((f) => (
-              <label key={f.key} className="flex items-center justify-between gap-2 text-sm text-gray-700">
-                {f.label}
-                <NumberInput
-                  min={0}
-                  step={f.step}
-                  value={Number(settings[f.key])}
-                  disabled={(f.key === 'priceLamb' || f.key === 'priceSheep') && !!proviande && !stored.ownPrices}
-                  onChange={(e) => update({ ...stored, [f.key]: Math.max(0, Number(e.target.value) || 0) })}
-                  className="w-24 rounded border border-gray-300 px-2 py-1 text-right disabled:bg-gray-100"
-                />
-              </label>
-            ))}
-          </div>
-          <button type="button" onClick={() => update(DEFAULT_SLAUGHTER_SETTINGS)} className="link-btn mt-3 text-xs text-brand-700">
-            Vorgaben wiederherstellen
-          </button>
+        <SettingsEditor value={stored} onSave={update} onReset={() => DEFAULT_SLAUGHTER_SETTINGS} label="Preise" className="rounded-lg bg-white p-4 shadow-sm print:hidden" title="Preise und Schlachtgewichte für den Erlös">
+          {({ value, set, editing }) => {
+            // Anzeige: Proviande-Wochenpreise, solange keine eigenen gewählt sind
+            const eff: SlaughterSettings = !value.ownPrices && proviande ? { ...value, priceLamb: proviande.young ?? value.priceLamb, priceSheep: proviande.adult ?? value.priceSheep } : value
+            return (
+              <div className="mt-2">
+                {proviande ? (
+                  <label className="mb-2 flex items-start gap-2 text-sm text-gray-800">
+                    {editing ? (
+                      <input type="checkbox" checked={!value.ownPrices} onChange={(e) => set({ ...value, ownPrices: !e.target.checked })} className="mt-1 h-5 w-5" />
+                    ) : (
+                      <span aria-hidden>{value.ownPrices ? '✏️' : '✓'}</span>
+                    )}
+                    <span>
+                      Proviande-Wochenpreise Woche {proviande.week} (ab {fmtDate(proviande.validFrom)}): LA T3 {proviande.young?.toFixed(2) ?? '–'}, SM T3 {proviande.adult?.toFixed(2) ?? '–'} CHF/kg SG
+                      {!editing && <span className="block text-xs text-gray-600">{value.ownPrices ? 'Es gelten eigene Preise.' : 'Diese Preise gelten.'}</span>}
+                    </span>
+                  </label>
+                ) : (
+                  <p className="mb-2 text-xs text-gray-600">Proviande-Wochenpreise noch nicht da (holt der Server automatisch).</p>
+                )}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {FIELDS.map((f) => (
+                    <label key={f.key} className="flex items-center justify-between gap-2 text-sm text-gray-700">
+                      {f.label}
+                      {editing ? (
+                        <NumberInput
+                          min={0}
+                          step={f.step}
+                          value={Number(eff[f.key])}
+                          disabled={(f.key === 'priceLamb' || f.key === 'priceSheep') && !!proviande && !value.ownPrices}
+                          onChange={(e) => set({ ...value, [f.key]: Math.max(0, Number(e.target.value) || 0) })}
+                          className="w-24 rounded border border-gray-300 px-2 py-1 text-right disabled:bg-gray-100"
+                        />
+                      ) : (
+                        <ReadValue>{Number(eff[f.key])}</ReadValue>
+                      )}
+                    </label>
+                  ))}
+                </div>
           <p className="mt-2 text-xs text-gray-500">
             Index: Gewichtung wie in der{' '}
             <Link to="../../selektion" relative="path" className="text-brand-700">
@@ -152,7 +164,10 @@ export default function SlaughterLambs({ moduleKey }: { moduleKey: string }) {
             </Link>
             .
           </p>
-        </div>
+              </div>
+            )
+          }}
+        </SettingsEditor>
       )}
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}

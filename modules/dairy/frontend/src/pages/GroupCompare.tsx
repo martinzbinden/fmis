@@ -5,6 +5,7 @@ import { herdLocator, refreshHerdData } from '@fmis/core/animals'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
+import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 import { notifyError, errorText } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
@@ -222,45 +223,59 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
       </div>
 
       {showSettings && (
-        <div className="space-y-2 rounded-lg bg-white p-3 text-sm shadow-sm">
-          {proviande ? (
-            <label className="flex items-start gap-2 text-gray-800">
-              <input type="checkbox" checked={!stored.ownPrices} onChange={(e) => updateSettings({ ...stored, ownPrices: !e.target.checked })} className="mt-1 h-5 w-5" />
-              <span>
-                Proviande-Wochenpreise Woche {proviande.week} (ab {fmtDate(proviande.validFrom)}): {proviande.youngLabel} {proviande.young?.toFixed(2) ?? '–'}, {proviande.adultLabel} {proviande.adult?.toFixed(2) ?? '–'} CHF/kg SG
-              </span>
-            </label>
-          ) : (
-            <p className="text-xs text-gray-600">Proviande-Wochenpreise noch nicht da (holt der Server automatisch, im Mastplaner unter Vermarktung sichtbar).</p>
-          )}
-          {(
-            [
-              ['priceYoung', species === 'sheep' ? 'Lämmer (LA T3), CHF/kg SG' : 'Kälber (KV T3), CHF/kg SG', 0.05],
-              ['carcassYoung', species === 'sheep' ? 'Schlachtgewicht Lamm, kg' : 'Schlachtgewicht Jungtier, kg', 0.5],
-              ['priceAdult', species === 'sheep' ? 'Schafe (SM T3), CHF/kg SG' : 'Kühe (VK T3), CHF/kg SG', 0.05],
-              ['carcassAdult', species === 'sheep' ? 'Schlachtgewicht Aue, kg' : 'Schlachtgewicht Kuh, kg', 0.5],
-              ['minAgeMonths', 'Jungtier schlachtreif ab, Monate', 0.5],
-              ['youngMaxDays', species === 'sheep' ? 'Lamm bis Alter, Tage' : 'Jungtier bis Alter, Tage', 1],
-            ] as [Exclude<keyof GroupSettings, 'ownPrices'>, string, number][]
-          ).map(([k, l, step]) => (
-            <label key={k} className="flex items-center justify-between gap-2 text-gray-700">
-              {l}
-              <NumberInput
-                min={0}
-                step={step}
-                value={settings[k] ?? ''}
-                placeholder="?"
-                disabled={(k === 'priceYoung' || k === 'priceAdult') && !!proviande && !stored.ownPrices}
-                onChange={(e) => updateSettings({ ...stored, [k]: e.target.value === '' ? (k === 'minAgeMonths' || k === 'youngMaxDays' ? DEFAULT_GROUP_SETTINGS[species][k] : null) : Math.max(0, Number(e.target.value) || 0) })}
-                className="w-24 rounded border border-gray-300 px-2 py-1 text-right disabled:bg-gray-100"
-              />
-            </label>
-          ))}
-          <p className="text-xs text-gray-600">Ohne Gewicht oder Preis bleibt der Erlös leer. Erlös = Schlachtgewicht × Preis; Jungtiere erst ab dem Mindestalter.</p>
-          <button type="button" onClick={() => updateSettings(DEFAULT_GROUP_SETTINGS[species])} className="link-btn text-xs text-brand-700">
-            Vorgaben wiederherstellen
-          </button>
-        </div>
+        <SettingsEditor value={stored} onSave={updateSettings} onReset={() => DEFAULT_GROUP_SETTINGS[species]} label="Preise" className="space-y-2 rounded-lg bg-white p-3 text-sm shadow-sm" title="Preise und Schlachtgewichte für den Erlös">
+          {({ value, set, editing }) => {
+            // Anzeige: Proviande-Wochenpreise, solange keine eigenen gewählt sind
+            const eff: GroupSettings = !value.ownPrices && proviande ? { ...value, priceYoung: proviande.young ?? value.priceYoung, priceAdult: proviande.adult ?? value.priceAdult } : value
+            return (
+              <div className="mt-2 space-y-2">
+                {proviande ? (
+                  <label className="flex items-start gap-2 text-gray-800">
+                    {editing ? (
+                      <input type="checkbox" checked={!value.ownPrices} onChange={(e) => set({ ...value, ownPrices: !e.target.checked })} className="mt-1 h-5 w-5" />
+                    ) : (
+                      <span aria-hidden>{value.ownPrices ? '✏️' : '✓'}</span>
+                    )}
+                    <span>
+                      Proviande-Wochenpreise Woche {proviande.week} (ab {fmtDate(proviande.validFrom)}): {proviande.youngLabel} {proviande.young?.toFixed(2) ?? '–'}, {proviande.adultLabel} {proviande.adult?.toFixed(2) ?? '–'} CHF/kg SG
+                      {!editing && <span className="block text-xs text-gray-600">{value.ownPrices ? 'Es gelten eigene Preise.' : 'Diese Preise gelten.'}</span>}
+                    </span>
+                  </label>
+                ) : (
+                  <p className="text-xs text-gray-600">Proviande-Wochenpreise noch nicht da (holt der Server automatisch, im Mastplaner unter Vermarktung sichtbar).</p>
+                )}
+                {(
+                  [
+                    ['priceYoung', species === 'sheep' ? 'Lämmer (LA T3), CHF/kg SG' : 'Kälber (KV T3), CHF/kg SG', 0.05],
+                    ['carcassYoung', species === 'sheep' ? 'Schlachtgewicht Lamm, kg' : 'Schlachtgewicht Jungtier, kg', 0.5],
+                    ['priceAdult', species === 'sheep' ? 'Schafe (SM T3), CHF/kg SG' : 'Kühe (VK T3), CHF/kg SG', 0.05],
+                    ['carcassAdult', species === 'sheep' ? 'Schlachtgewicht Aue, kg' : 'Schlachtgewicht Kuh, kg', 0.5],
+                    ['minAgeMonths', 'Jungtier schlachtreif ab, Monate', 0.5],
+                    ['youngMaxDays', species === 'sheep' ? 'Lamm bis Alter, Tage' : 'Jungtier bis Alter, Tage', 1],
+                  ] as [Exclude<keyof GroupSettings, 'ownPrices'>, string, number][]
+                ).map(([k, l, step]) => (
+                  <label key={k} className="flex items-center justify-between gap-2 text-gray-700">
+                    {l}
+                    {editing ? (
+                      <NumberInput
+                        min={0}
+                        step={step}
+                        value={eff[k] ?? ''}
+                        placeholder="?"
+                        disabled={(k === 'priceYoung' || k === 'priceAdult') && !!proviande && !value.ownPrices}
+                        onChange={(e) => set({ ...value, [k]: e.target.value === '' ? (k === 'minAgeMonths' || k === 'youngMaxDays' ? DEFAULT_GROUP_SETTINGS[species][k] : null) : Math.max(0, Number(e.target.value) || 0) })}
+                        className="w-24 rounded border border-gray-300 px-2 py-1 text-right disabled:bg-gray-100"
+                      />
+                    ) : (
+                      <ReadValue>{eff[k] ?? '–'}</ReadValue>
+                    )}
+                  </label>
+                ))}
+                <p className="text-xs text-gray-600">Ohne Gewicht oder Preis bleibt der Erlös leer. Erlös = Schlachtgewicht × Preis; Jungtiere erst ab dem Mindestalter.</p>
+              </div>
+            )
+          }}
+        </SettingsEditor>
       )}
 
       {!tabGroup && chosen.length === 0 && (
