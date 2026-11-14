@@ -5,7 +5,7 @@ import { areaLabel, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib
 import { fmtAge, fmtDate } from '../lib/format'
 import { RESULT_LABEL, METHOD_LABEL } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
-import type { MeatValue } from '../lib/meatValue'
+import { MEAT_BAND_BAR, MEAT_BAND_LABEL, type MeatValue } from '../lib/meatValue'
 import type { CardFieldKey } from '../lib/cardFields'
 import LactationSpark from './LactationSpark'
 import NursingLambs, { WeanedLambs } from './NursingLambs'
@@ -32,6 +32,7 @@ export default function BoardCardView({
   onUndoDraft,
   onRemoveFromList,
   meat,
+  meatMax,
   fields = [],
   onDragCard,
   onDragHandle,
@@ -55,6 +56,8 @@ export default function BoardCardView({
   /** geschätzter Fleischwert (nur Schafe, wenn aktiv) */
   meat?: MeatValue | null
   /** auf der Karte gewählte Eigenschaften (Menü «Karte») */
+  /** grösster Fleischwert aller Karten (Massstab des Balkens) */
+  meatMax?: number
   fields?: CardFieldKey[]
   onDragCard: (e: ReactPointerEvent) => void
   onDragHandle: (e: ReactPointerEvent) => void
@@ -102,7 +105,7 @@ export default function BoardCardView({
               </span>
             )}
           </span>
-          {fields.length > 0 && <CardProps card={card} fields={fields} meat={meat ?? null} />}
+          {fields.length > 0 && <CardProps card={card} fields={fields} meat={meat ?? null} meatMax={meatMax} />}
         </button>
         {canDrag && (
           <span
@@ -206,7 +209,7 @@ export default function BoardCardView({
 const f0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleString('de-CH'))
 
 /** Die gewählten Eigenschaften als kompakte Zeilen unter dem Kopf der Karte. */
-function CardProps({ card, fields, meat }: { card: BoardCard; fields: CardFieldKey[]; meat: MeatValue | null }) {
+function CardProps({ card, fields, meat, meatMax }: { card: BoardCard; fields: CardFieldKey[]; meat: MeatValue | null; meatMax?: number }) {
   const has = (k: CardFieldKey) => fields.includes(k)
   const line = (label: string, value: string, key: string) => (
     <div key={key} className="flex justify-between gap-2">
@@ -232,6 +235,13 @@ function CardProps({ card, fields, meat }: { card: BoardCard; fields: CardFieldK
     )
   }
   if (has('meat')) rows.push(line('Fleischwert', meat ? `≈ ${Math.round(meat.net)} Fr. · ${meat.kind} ${meat.kg} kg` : card.birthDate ? '–' : 'ohne Geburtsdatum', 'meat'))
+  if (has('meat') && meat && meatMax) {
+    rows.push(
+      <div key="meatbar" className="h-2 w-full overflow-hidden rounded-full bg-gray-100" role="img" aria-label={`Fleischwert ${Math.round(meat.net)} Fr., ${MEAT_BAND_LABEL[meat.band]}`} title={`${MEAT_BAND_LABEL[meat.band]}, ${meat.ageDays} Tage, ${meat.kg} kg SG`}>
+        <div className={`h-full rounded-full ${MEAT_BAND_BAR[meat.band]}`} style={{ width: `${Math.max(4, Math.min(100, (meat.net / meatMax) * 100))}%` }} />
+      </div>,
+    )
+  }
   const spark = has('spark') && card.levels.length > 0
   if (rows.length === 0 && !spark) return null
   return (

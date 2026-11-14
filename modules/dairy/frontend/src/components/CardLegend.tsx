@@ -56,7 +56,7 @@ const SAMPLE: BoardCard = {
   healthDays12m: 0,
 }
 
-const SAMPLE_MEAT: MeatValue = { kind: 'Schaf', ageDays: 2087, kg: 27, pricePerKg: 6.3, gross: 170.1, net: 158.9 }
+const SAMPLE_MEAT: MeatValue = { band: 'schaf', kind: 'Schaf', ageDays: 2087, kg: 27, pricePerKg: 6.3, gross: 170.1, net: 158.9 }
 const ALL_FIELDS: CardFieldKey[] = ['weaned', 'lambMilk', 'milk', 'scc', 'spark', 'ltl', 'zw', 'litter', 'interval', 'meat']
 
 function Item({ sample, title, children }: { sample: ReactNode; title: string; children: ReactNode }) {
@@ -117,7 +117,22 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
         </Item>
         {sheep && (
           <Item title="Fleischwert" sample={chip('bg-stone-200 text-stone-900', '≈ 159 Fr.')}>
-            Geschätzter Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen. Gewichte und Preise stellst du unter «🥩 Fleischwert» ein. Das grüne Feld oben in der Spalte ist die Summe aller Karten.
+            Geschätzter Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen. Gewichte und Preise stellst du unter «🥩 Fleischwert» ein. Der Balken darunter zeigt den Wert im Verhältnis zum teuersten Tier, seine Farbe den Bereich (siehe «Fleischwert-Balken»). Das grüne Feld oben in der Spalte ist die Summe aller Karten.
+          </Item>
+        )}
+        {sheep && (
+          <Item
+            title="Fleischwert-Balken der Spalte"
+            sample={
+              <span className="flex h-3 w-24 overflow-hidden rounded-full ring-1 ring-gray-300">
+                <span className="h-full bg-lime-300" style={{ width: '15%' }} />
+                <span className="h-full bg-green-500" style={{ width: '20%' }} />
+                <span className="h-full bg-green-800" style={{ width: '30%' }} />
+                <span className="h-full bg-stone-500" style={{ width: '35%' }} />
+              </span>
+            }
+          >
+            Das grüne Feld oben in jeder Spalte zeigt den geschätzten Fleischwert der ganzen Spalte als Balken mit Bereichen: <span className="font-semibold text-lime-700">hellgrün</span> Lämmer bis 120 Tage, <span className="font-semibold text-green-600">grün</span> Lämmer bis 210 Tage, <span className="font-semibold text-green-900">dunkelgrün</span> ältere Lämmer, <span className="font-semibold text-stone-600">grau</span> Schafe. Die Breite ist der Anteil am Wert der Spalte, darunter stehen Anzahl und Franken je Bereich.
           </Item>
         )}
         <Item title="Milch" sample={<span className="text-[11px] text-gray-700">Herde 108 · Gleichalt. 105 %</span>}>

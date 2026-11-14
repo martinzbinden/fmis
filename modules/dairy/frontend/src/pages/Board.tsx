@@ -18,7 +18,7 @@ import GroupEditModal from '../components/GroupEditModal'
 import { useQuery } from '../hooks/useQuery'
 import BoardCardView from '../components/BoardCardView'
 import { DragGhost, useBoardDrag } from '../components/boardDrag'
-import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, type MeatSettings, type MeatValue } from '../lib/meatValue'
+import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
 import CardLegend from '../components/CardLegend'
@@ -187,6 +187,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     if (species === 'sheep' && (meatOn || cardFields.includes('meat'))) for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
     return m
   }, [cards, species, meatOn, cardFields, meatDate, meatSettings, meatPrices])
+  const meatMax = useMemo(() => Math.max(1, ...[...meatById.values()].map((v) => v?.net ?? 0)), [meatById])
   function toggleMeat() {
     const next = !meatOn
     setMeatOn(next)
@@ -498,6 +499,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                     onUndoDraft={() => setDraft((d) => clearTargets(d, [c.id]))}
                     onRemoveFromList={col.kind === 'list' ? () => void removeFromList(col.id!, c.id) : undefined}
                     meat={meatById.get(c.id) ?? null}
+                    meatMax={meatMax}
                     fields={cardFields}
                     pointerDown={pointerDown}
                   />
@@ -620,14 +622,33 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
 function ColumnMeatSum({ values }: { values: (MeatValue | null)[] }) {
   const sum = sumMeat(values)
   const fr = (v: number) => Math.round(v).toLocaleString('de-CH')
+  const total = MEAT_BANDS.reduce((t, b) => t + Math.max(0, sum.byBand[b].net), 0)
+  const used = MEAT_BANDS.filter((b) => sum.byBand[b].n > 0)
   return (
     <div className="mb-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-950" aria-label="Fleischwert der Spalte">
       <div className="text-sm font-bold">≈ {fr(sum.net)} Fr.</div>
-      <div>
-        {sum.lambs > 0 ? `${sum.lambs} ${sum.lambs === 1 ? 'Lamm' : 'Lämmer'}` : ''}
-        {sum.lambs > 0 && sum.sheep > 0 ? ' · ' : ''}
-        {sum.sheep > 0 ? `${sum.sheep} ${sum.sheep === 1 ? 'Schaf' : 'Schafe'}` : ''}
-        {sum.unknown > 0 ? ` · ${sum.unknown} ohne Geburtsdatum` : ''} · vor Abzügen {fr(sum.gross)} Fr.
+      {total > 0 && (
+        <div
+          role="img"
+          aria-label={`Fleischwert nach Bereich: ${used.map((b) => `${MEAT_BAND_LABEL[b]} ${sum.byBand[b].n} Tiere, ${fr(sum.byBand[b].net)} Fr.`).join('; ')}`}
+          className="my-1 flex h-3 w-full overflow-hidden rounded-full bg-white ring-1 ring-emerald-200"
+        >
+          {used.map((b) => (
+            <span key={b} className={`${MEAT_BAND_BAR[b]} h-full`} style={{ width: `${(Math.max(0, sum.byBand[b].net) / total) * 100}%` }} title={`${MEAT_BAND_LABEL[b]}: ${sum.byBand[b].n} Tiere, ${fr(sum.byBand[b].net)} Fr.`} />
+          ))}
+        </div>
+      )}
+      <ul className="space-y-0.5">
+        {used.map((b) => (
+          <li key={b} className="flex items-center gap-1.5">
+            <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${MEAT_BAND_BAR[b]}`} aria-hidden />
+            <span className="min-w-0 flex-1 truncate">{MEAT_BAND_LABEL[b]}</span>
+            <span className="tabular-nums">{sum.byBand[b].n} · {fr(sum.byBand[b].net)} Fr.</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-0.5 text-[11px] text-emerald-900">
+        {sum.unknown > 0 ? `${sum.unknown} ohne Geburtsdatum · ` : ''}vor Abzügen {fr(sum.gross)} Fr.
       </div>
     </div>
   )
@@ -648,6 +669,7 @@ function ColumnCard({
   onUndoDraft,
   onRemoveFromList,
   meat,
+  meatMax,
   fields,
   pointerDown,
 }: {
@@ -665,6 +687,8 @@ function ColumnCard({
   onUndoDraft: () => void
   onRemoveFromList?: () => void
   meat?: MeatValue | null
+  /** grösster Fleischwert aller Karten: Massstab für den Balken */
+  meatMax?: number
   fields?: CardFieldKey[]
   pointerDown: (cardId: string, handle: boolean) => (e: React.PointerEvent) => void
 }) {
@@ -685,6 +709,7 @@ function ColumnCard({
       onUndoDraft={pendingTo ? onUndoDraft : undefined}
       onRemoveFromList={onRemoveFromList}
       meat={meat}
+      meatMax={meatMax}
       fields={fields}
       onDragCard={pointerDown(card.id, false)}
       onDragHandle={pointerDown(card.id, true)}

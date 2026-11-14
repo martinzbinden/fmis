@@ -49,7 +49,15 @@ export interface MeatPrices {
 /** Falls die Proviande-Preise noch nicht geladen sind (Stand Woche 47/2026). */
 export const FALLBACK_MEAT_PRICES: MeatPrices = { lamb: 13.4, sheep: 6.3 }
 
+/** Bereiche für die Grafik: Schaf (ein Bereich) und Lamm nach Alter (wie die Gewichtsstufen). */
+export type MeatBand = 'lamm1' | 'lamm2' | 'lamm3' | 'schaf'
+export const MEAT_BANDS: MeatBand[] = ['lamm1', 'lamm2', 'lamm3', 'schaf']
+export const MEAT_BAND_LABEL: Record<MeatBand, string> = { lamm1: 'Lamm bis 120 T.', lamm2: 'Lamm bis 210 T.', lamm3: 'Lamm älter', schaf: 'Schaf' }
+/** Tailwind-Klassen je Bereich (Balken); helle bis dunkle Grüntöne für die Lämmer, Grau für Schafe */
+export const MEAT_BAND_BAR: Record<MeatBand, string> = { lamm1: 'bg-lime-300', lamm2: 'bg-green-500', lamm3: 'bg-green-800', schaf: 'bg-stone-500' }
+
 export interface MeatValue {
+  band: MeatBand
   kind: 'Lamm' | 'Schaf'
   ageDays: number
   kg: number
@@ -71,7 +79,8 @@ export function meatValue(birthDate: string | null, date: string, s: MeatSetting
   const kg = lamb ? (ageDays <= 120 ? s.lambKgYoung : ageDays <= 210 ? s.lambKgMid : s.lambKgOld) : ageDays < 1400 ? s.sheepKgYoung : s.sheepKgOld
   const pricePerKg = (lamb ? p.lamb * s.lambFactor : p.sheep * s.sheepFactor)
   const gross = kg * pricePerKg
-  return { kind: lamb ? 'Lamm' : 'Schaf', ageDays, kg, pricePerKg, gross, net: gross - s.feePerAnimal - s.transportPerAnimal }
+  const band: MeatBand = lamb ? (ageDays <= 120 ? 'lamm1' : ageDays <= 210 ? 'lamm2' : 'lamm3') : 'schaf'
+  return { band, kind: lamb ? 'Lamm' : 'Schaf', ageDays, kg, pricePerKg, gross, net: gross - s.feePerAnimal - s.transportPerAnimal }
 }
 
 export interface MeatSum {
@@ -80,10 +89,12 @@ export interface MeatSum {
   unknown: number
   gross: number
   net: number
+  /** Tiere und Wert nach Bereich (für den Balken) */
+  byBand: Record<MeatBand, { n: number; net: number }>
 }
 
 export function sumMeat(values: (MeatValue | null)[]): MeatSum {
-  const out: MeatSum = { lambs: 0, sheep: 0, unknown: 0, gross: 0, net: 0 }
+  const out: MeatSum = { lambs: 0, sheep: 0, unknown: 0, gross: 0, net: 0, byBand: { lamm1: { n: 0, net: 0 }, lamm2: { n: 0, net: 0 }, lamm3: { n: 0, net: 0 }, schaf: { n: 0, net: 0 } } }
   for (const v of values) {
     if (!v) out.unknown++
     else {
@@ -91,6 +102,8 @@ export function sumMeat(values: (MeatValue | null)[]): MeatSum {
       else out.sheep++
       out.gross += v.gross
       out.net += v.net
+      out.byBand[v.band].n++
+      out.byBand[v.band].net += v.net
     }
   }
   return out
