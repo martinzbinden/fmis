@@ -8,7 +8,7 @@ const card = (p: Partial<BoardCard>): BoardCard =>
     pregnancy: null, expectedBirth: null, lastBirth: null, daysSinceBirth: 100, parity: 3, lactationNumber: 3, litterMean: 2, lastLitterSize: 2, litterAlive: 2, litterDead: 0, ltlMilk: 0.8, performanceRel: 1.05,
     idxPerformance: 100, scc12m: 250, idxScc: 100, sccRelPeers: 120, levels: [], intervalDays: 365, lambMilk: null, breedingValue: 110, breedingEstimate: null, reasons: [], reasonScore: 0, healthDays12m: 0, ...p,
   }) as BoardCard
-const ctx: QueryContext = { groupName: (c) => (c.groupId === 'g1' ? 'galt' : null), listNames: (c) => (c.listIds.includes('l1') ? ['Prüfen'] : []), meat: () => 159 }
+const ctx: QueryContext = { today: '2026-11-14', groupName: (c) => (c.groupId === 'g1' ? 'galt' : null), listNames: (c) => (c.listIds.includes('l1') ? ['Prüfen'] : []), meat: () => 159 }
 const hits = (q: string, c: BoardCard) => matchesQuery(c, parseQuery(q), ctx)
 
 describe('parseQuery', () => {
@@ -77,5 +77,23 @@ describe('describeCondition und suggest', () => {
     expect(suggest('zel').some((s) => /Zellzahl/.test(s.label))).toBe(true)
     expect(suggest('ZZ').map((s) => s.insert)).toContain('ZZ > ')
     expect(suggest('ZZ > 200 und lak').some((s) => /Laktation/.test(s.label))).toBe(true)
+  })
+})
+
+describe('Vorgefertigte Filtervorschläge sind Formeln', () => {
+  it('jede Formel wird erkannt (keine Fehler, mindestens eine Bedingung)', async () => {
+    const { boardPresets } = await import('./boardQuery')
+    for (const sheep of [true, false]) {
+      for (const p of boardPresets(sheep)) {
+        const q = parseQuery(p.formula)
+        expect(q.errors, p.name).toHaveLength(0)
+        expect(q.conditions.length, p.name).toBeGreaterThan(0)
+      }
+    }
+  })
+  it('Geburt in 30 Tagen: Tage bis zur erwarteten Geburt', () => {
+    expect(hits('Tage bis Geburt <= 30', card({ expectedBirth: '2026-12-01' }))).toBe(true)
+    expect(hits('Tage bis Geburt <= 30', card({ expectedBirth: '2027-02-01' }))).toBe(false)
+    expect(hits('Tage bis Geburt <= 30', card({ expectedBirth: null }))).toBe(false)
   })
 })

@@ -4,10 +4,10 @@ import type { PGlite } from '@electric-sql/pglite'
 import { animalProvider, refreshHerdData, type AnimalRef } from '@fmis/core/animals'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useDb } from '@fmis/core/DbContext'
-import FilterBar from '@fmis/core/filters/FilterBar'
-import FilterModal from '@fmis/core/filters/FilterModal'
-import { applyFilters, countMatches, type FilterDef, type FilterResult } from '@fmis/core/filters/filterModel'
-import { useSavedFilters } from '@fmis/core/filters/useSavedFilters'
+import type { FilterResult } from '@fmis/core/filters/filterModel'
+import QueryPresets from '@fmis/core/query/QueryPresets'
+import { usePresets } from '@fmis/core/query/presets'
+import { matchesQuery as engineMatches, parseQuery as engineParse } from '@fmis/core/query/engine'
 import FooterBar from '@fmis/core/FooterBar'
 import Modal from '@fmis/core/Modal'
 import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
@@ -21,15 +21,17 @@ import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
-import QueryInput from '../components/QueryInput'
-import { describeCondition, matchesQuery, parseQuery, type QueryContext } from '../lib/boardQuery'
+import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
+import SortMenu from '@fmis/core/query/SortMenu'
+import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
+import { BOARD_EXAMPLES, boardPresets, boardTexts, QUERY_FIELDS, type QueryContext } from '../lib/boardQuery'
 import { buildLanes, loadList, moveKey, orderColumns, saveList } from '../lib/columnLayout'
 import { useColumnReorder } from '../hooks/useColumnReorder'
 import CardLegend from '../components/CardLegend'
 import { loadCardFields, saveCardFields, type CardFieldKey } from '../lib/cardFields'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 import NumberInput from '@fmis/core/NumberInput'
-import { columnKey, boardFields, boardPresets, buildCards, buildColumns, cardsInColumn, SORTS, sortCards, type BoardCard, type BoardColumn, type SortKey } from '../lib/board'
+import { columnKey, buildCards, buildColumns, cardsInColumn, SORTS, sortCards, type BoardCard, type BoardColumn, type SortKey } from '../lib/board'
 import { clearTargets, draftSize, effectiveGroup, groupByTarget, pruneDraft, setTargets, summarizeDraft, type DraftMoves } from '../lib/boardDraft'
 import { SIRE_TRAIT } from '../lib/breedingTraits'
 import { useCullingThresholds } from '../lib/cullingSettings'
@@ -56,7 +58,6 @@ function readHidden(moduleKey: string): Set<string> {
     return new Set()
   }
 }
-const sortStorage = (moduleKey: string) => `${moduleKey}_board_sort`
 
 /** Dashboard am PC und Tablet: jede Tiergruppe und Merkliste eine Spalte, jedes Tier eine Karte.
  * Filter färben oder blenden aus; Karten lassen sich in eine andere Gruppe ziehen (als Entwurf, der
@@ -130,27 +131,6 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   )
   const cardById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards])
 
-  // Filter
-  const fields = useMemo(() => boardFields(moduleKey, species, { groups, lists }), [moduleKey, species, groups, lists])
-  const presets = useMemo(() => boardPresets(species), [species])
-  const saved = useSavedFilters(`${moduleKey}_board_filters`, presets)
-  const evalCtx = useMemo(() => ({ today }), [today])
-  const [editing, setEditing] = useState<{ filter?: FilterDef } | null>(null)
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<SortKey>(() => {
-    try {
-      const v = localStorage.getItem(sortStorage(moduleKey)) as SortKey | null
-      return v && SORTS.some((s) => s.key === v) ? v : 'nr'
-    } catch {
-      return 'nr'
-    }
-  })
-  const counts = useMemo(() => Object.fromEntries(saved.filters.map((f) => [f.id, countMatches(cards, f, fields, evalCtx)])), [saved.filters, cards, fields, evalCtx])
-  const results = useMemo(() => {
-    const m = new Map<string, FilterResult>()
-    for (const c of cards) m.set(c.id, applyFilters(c, saved.filters, saved.modes, fields, evalCtx))
-    return m
-  }, [cards, saved.filters, saved.modes, fields, evalCtx])
   // Entwurf Gruppenwechsel
   const [draft, setDraft] = useState<DraftMoves>({})
   useEffect(() => {
@@ -203,23 +183,40 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const proviande = useProviandePrices(species)
   const meatPrices = useMemo(() => ({ lamb: proviande?.young ?? FALLBACK_MEAT_PRICES.lamb, sheep: proviande?.adult ?? FALLBACK_MEAT_PRICES.sheep }), [proviande])
   const meatDate = meatSettings.slaughterDate || today
-  // Suchfeld: Freitext und Bedingungen wie «ZZ > 200» (lib/boardQuery.ts)
-  const parsed = useMemo(() => parseQuery(search), [search])
-  const meatQueryOn = parsed.conditions.some((c) => c.field.key === 'fleisch')
-  const meatById = useMemo(() => {
+  // Fleischwert aller Karten (Schafe): für die Karten, die Spaltensummen und die Formel «Fleischwert > 150»
+  const meatAll = useMemo(() => {
     const m = new Map<string, ReturnType<typeof meatValue>>()
-    if (species === 'sheep' && (meatOn || cardFields.includes('meat') || meatQueryOn)) for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
+    if (species === 'sheep') for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
     return m
-  }, [cards, species, meatOn, cardFields, meatQueryOn, meatDate, meatSettings, meatPrices])
+  }, [cards, species, meatDate, meatSettings, meatPrices])
+  const meatById = useMemo(() => (meatOn || cardFields.includes('meat') ? meatAll : new Map<string, ReturnType<typeof meatValue>>()), [meatAll, meatOn, cardFields])
+
+  // Suchfeld: Freitext und Formeln wie «ZZ > 200» (lib/boardQuery.ts), Sortierung nach dem Filter vorschlagen (core/query)
   const queryCtx = useMemo<QueryContext>(
     () => ({
+      today,
       groupName: (c) => groups.find((g) => g.id === c.groupId)?.name ?? null,
       listNames: (c) => c.listIds.map((id) => lists.find((l) => l.id === id)?.name ?? ''),
-      meat: (c) => meatById.get(c.id)?.net ?? null,
+      meat: (c) => meatAll.get(c.id)?.net ?? null,
     }),
-    [groups, lists, meatById],
+    [groups, lists, meatAll, today],
   )
-  const shown = useMemo(() => cards.filter((c) => results.get(c.id)?.visible && matchesQuery(c, parsed, queryCtx)), [cards, results, parsed, queryCtx])
+  const q = useListQuery({ storage: `${moduleKey}_board`, fields: QUERY_FIELDS, ctx: queryCtx, texts: boardTexts, defaultSort: 'nr', validSorts: SORTS.map((x) => x.key) })
+  const sort = q.sortKey
+  const builtinPresets = useMemo(() => boardPresets(species === 'sheep'), [species])
+  const presetState = usePresets(`${moduleKey}_board`, builtinPresets)
+  // Formeln der Vorschläge einmal zerlegen: Treffer je Vorschlag (Zähler) und Einfärben
+  const presetMatchers = useMemo(() => presetState.presets.map((p) => ({ p, parsed: engineParse(QUERY_FIELDS, p.formula) })), [presetState.presets])
+  const counts = useMemo(() => Object.fromEntries(presetMatchers.map(({ p, parsed }) => [p.id, cards.filter((c) => engineMatches(c, parsed, queryCtx, boardTexts)).length])), [presetMatchers, cards, queryCtx])
+  const results = useMemo(() => {
+    const m = new Map<string, FilterResult>()
+    for (const c of cards) {
+      const hit = presetMatchers.filter(({ p, parsed }) => presetState.colored.has(p.id) && engineMatches(c, parsed, queryCtx, boardTexts))
+      m.set(c.id, { visible: true, colors: hit.map(({ p }) => p.color), names: hit.map(({ p }) => p.name) } as FilterResult)
+    }
+    return m
+  }, [cards, presetMatchers, presetState.colored, queryCtx])
+  const shown = useMemo(() => cards.filter((c) => q.match(c)), [cards, q])
   const meatMax = useMemo(() => Math.max(1, ...[...meatById.values()].map((v) => v?.net ?? 0)), [meatById])
   function toggleMeat() {
     const next = !meatOn
@@ -255,15 +252,6 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
       // nur bis zum Neuladen
     }
   }
-  function changeSort(v: SortKey) {
-    setSort(v)
-    try {
-      localStorage.setItem(sortStorage(moduleKey), v)
-    } catch {
-      // nur bis zum Neuladen
-    }
-  }
-
   // Aktionen
   function moveToDraft(ids: string[], target: string | null) {
     if (!canMove) {
@@ -311,7 +299,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     },
   })
 
-  const columnCards = useCallback((col: BoardColumn) => sortCards(cardsInColumn(col, shown, groupOf), sort), [shown, groupOf, sort])
+  const columnCards = useCallback((col: BoardColumn) => (q.queryCompare && sort === QUERY_SORT_KEY ? [...cardsInColumn(col, shown, groupOf)].sort(q.queryCompare) : sortCards(cardsInColumn(col, shown, groupOf), sort as SortKey)), [shown, groupOf, sort, q.queryCompare])
 
   const loading = !data || !herd || !refs
   useEffect(() => {
@@ -444,19 +432,25 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     <div className="space-y-3 p-3 pb-40">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-xl font-bold text-gray-800">Dashboard</h1>
-        <QueryInput value={search} onChange={setSearch} parsed={parsed} groupNames={groups.map((g) => g.name)} listNames={lists.map((l) => l.name)} />
-        <label className="relative" title="Sortierung der Karten in den Spalten">
-          <svg aria-hidden viewBox="0 0 20 20" className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 16V4m0 0L3 7m3-3 3 3M14 4v12m0 0 3-3m-3 3-3-3" />
-          </svg>
-          <select value={sort} onChange={(e) => changeSort(e.target.value as SortKey)} aria-label="Sortierung" className="min-h-11 rounded-lg border-2 border-gray-300 bg-white pl-8 pr-2 text-sm">
-            {SORTS.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <QueryInput
+          fields={QUERY_FIELDS}
+          value={q.text}
+          onChange={q.setText}
+          choices={{ gruppe: groups.map((g) => g.name), liste: lists.map((l) => l.name) }}
+          examples={BOARD_EXAMPLES}
+          placeholder="Suchen: Nummer, Name oder ZZ > 200"
+          intro="Im Suchfeld findest du Tiere nach Nummer, Ohrmarke oder Name."
+          extraHelp={
+            <section>
+              <h3 className="mb-1 font-semibold text-gray-900">Gut zu wissen</h3>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Zellzahl: «ZZ &gt; 200» heisst 200 Tausend Zellen pro ml, «200000» geht auch. Alter: Einheit J, Mt oder T, ohne Einheit Jahre.</li>
+                <li>Die Eingabe wirkt zusammen mit den Filtern darüber (Knöpfe «nur zeigen»). «Zuchtwert» nimmt den eigenen Wert, sonst die Schätzung. «Fleischwert» ist eine Schätzung nach den Einstellungen des Fleischwerts.</li>
+              </ul>
+            </section>
+          }
+        />
+        <SortMenu options={SORTS} value={sort} onChange={q.setSort} autoLabel={q.suggestion?.label ?? null} autoOn={q.autoOn} onAutoChange={q.setAutoOn} flash={q.flash} />
         {species === 'sheep' && (
           <button type="button" onClick={toggleMeat} aria-pressed={meatOn} className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${meatOn ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-300 bg-white'}`}>
             🥩 Fleischwert
@@ -478,42 +472,21 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         </button>
       </div>
 
-      <div className="flex items-start gap-2">
-        <span className="mt-3 flex shrink-0 items-center gap-1 text-xs font-semibold text-gray-600" title="Filter: antippen = einfärben, nochmals = nur diese zeigen">
-          <svg aria-hidden viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-            <path d="M3 4h14l-5.5 6.5V16l-3 -1.5v-4z" />
-          </svg>
-          Filter
-        </span>
-        <div className="min-w-0 flex-1">
-      <FilterBar
-        filters={saved.filters}
-        modes={saved.modes}
+      <QueryPresets
+        presets={presetState.presets}
+        text={q.text}
+        onText={q.setText}
+        colored={presetState.colored}
+        onColored={presetState.setColored}
         counts={counts}
-        fields={fields}
-        onCycle={saved.cycle}
-        onEdit={(f) => setEditing({ filter: f })}
-        onNew={() => setEditing({})}
-        onClear={saved.clearModes}
+        fields={QUERY_FIELDS}
+        onEdit={presetState.edit}
+        onAdd={(p) => presetState.add(p)}
+        onRemove={presetState.remove}
+        onReset={presetState.reset}
       />
-        </div>
-      </div>
 
-      {(parsed.conditions.length > 0 || parsed.errors.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs" aria-label="Erkannte Bedingungen der Suche">
-          {parsed.conditions.map((c, i) => (
-            <span key={`c${i}`} className="rounded-full bg-sky-100 px-2.5 py-1 font-medium text-sky-900">
-              {describeCondition(c)}
-            </span>
-          ))}
-          {parsed.errors.map((e, i) => (
-            <span key={`e${i}`} className="rounded-full bg-red-100 px-2.5 py-1 font-medium text-red-900" title={e.text}>
-              {e.reason}
-            </span>
-          ))}
-          {parsed.free && <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-800">Text: {parsed.free}</span>}
-        </div>
-      )}
+      <QueryChips parsed={q.parsed} />
 
       {meatOn && species === 'sheep' && (
         <SettingsEditor
@@ -643,24 +616,6 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             Verwerfen
           </button>
         </FooterBar>
-      )}
-
-      {editing && (
-        <FilterModal
-          fields={fields}
-          rows={cards}
-          ctx={evalCtx}
-          initial={editing.filter}
-          onSave={(f) => {
-            saved.save(f)
-            setEditing(null)
-          }}
-          onDelete={editing.filter && !editing.filter.preset ? () => {
-            saved.remove(editing.filter!.id)
-            setEditing(null)
-          } : undefined}
-          onClose={() => setEditing(null)}
-        />
       )}
 
       {editGroup && herd && (() => {
