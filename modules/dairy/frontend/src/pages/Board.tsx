@@ -21,6 +21,8 @@ import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
+import { buildLanes, loadList, moveKey, orderColumns, saveList } from '../lib/columnLayout'
+import { useColumnReorder } from '../hooks/useColumnReorder'
 import CardLegend from '../components/CardLegend'
 import { loadCardFields, saveCardFields, type CardFieldKey } from '../lib/cardFields'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
@@ -168,7 +170,29 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const [confirming, setConfirming] = useState(false)
 
   // Spalten, Auswahl, Aufklappen
-  const columns = useMemo(() => buildColumns(groups, lists), [groups, lists])
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => loadList(moduleKey, 'column_order'))
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(loadList(moduleKey, 'collapsed_columns')))
+  const baseColumns = useMemo(() => buildColumns(groups, lists), [groups, lists])
+  const columns = useMemo(() => orderColumns(baseColumns, columnOrder), [baseColumns, columnOrder])
+  function toggleCollapsed(key: string, on?: boolean) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (on ?? !next.has(key)) next.add(key)
+      else next.delete(key)
+      saveList(moduleKey, 'collapsed_columns', [...next])
+      return next
+    })
+  }
+  function setAllCollapsed(on: boolean) {
+    const next = on ? new Set(columns.map((c) => c.key)) : new Set<string>()
+    setCollapsed(next)
+    saveList(moduleKey, 'collapsed_columns', [...next])
+  }
+  function moveColumn(from: string, to: string, after: boolean) {
+    const next = moveKey(columnOrder, baseColumns.map((c) => c.key), from, to, after)
+    setColumnOrder(next)
+    saveList(moduleKey, 'column_order', next)
+  }
 
   // Fleischwert (nur Schafe): geschätzter Schlachterlös je Tier und Summe je Spalte, mit Proviande-Preisen
   const [showLegend, setShowLegend] = useState(false)
@@ -266,6 +290,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   }
 
   const scroller = useRef<HTMLDivElement | null>(null)
+  const colDrag = useColumnReorder({ onMove: moveColumn, scroller })
   const { drag, hover, pointerDown, ghost } = useBoardDrag({
     enabled: true,
     scroller,
@@ -304,6 +329,107 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   }, [loading, jumpKey, jumpTier])
   const pending = draftSize(draft)
   const chosen = [...selected].filter((id) => cardById.has(id))
+
+  function renderColumn(col: BoardColumn, stacked: boolean) {
+    const list = columnCards(col)
+    const isCollapsed = collapsed.has(col.key)
+    const dropTarget = colDrag.target?.key === col.key ? colDrag.target : null
+    const meatSum = meatOn && species === 'sheep' && list.length > 0 ? sumMeat(list.map((c) => meatById.get(c.id) ?? null)) : null
+    const icon = col.kind === 'list' ? '🔖' : species === 'sheep' ? '🐑' : '🐄'
+    return (
+      <section
+        key={col.key}
+        data-drop-col={col.key}
+        data-col-key={col.key}
+        data-stacked={stacked ? '1' : undefined}
+        aria-label={col.title}
+        className={`relative shrink-0 snap-start rounded-xl p-2 ${stacked ? 'w-full' : 'w-72'} ${hover === col.key ? 'bg-brand-50 ring-2 ring-brand-700' : 'bg-gray-100'} ${colDrag.drag?.key === col.key ? 'opacity-50' : ''}`}
+      >
+        {dropTarget && <span aria-hidden className={`absolute z-10 rounded bg-brand-700 ${stacked ? 'inset-x-0 h-1' : 'inset-y-0 w-1'} ${dropTarget.after ? (stacked ? '-bottom-1.5' : '-right-2') : stacked ? '-top-1.5' : '-left-2'}`} />}
+        <header className={`flex items-center gap-1 ${isCollapsed ? '' : 'mb-2'}`}>
+          <span
+            onPointerDown={colDrag.handleDown(col.key, col.title)}
+            style={{ touchAction: 'none' }}
+            role="img"
+            aria-label={`Spalte «${col.title}» verschieben`}
+            title="Ziehen, um die Spalte zu verschieben"
+            className="grid h-9 w-7 shrink-0 cursor-grab place-items-center rounded text-lg text-gray-500 active:bg-gray-200"
+          >
+            ⠿
+          </span>
+          <button
+            type="button"
+            onClick={() => toggleCollapsed(col.key)}
+            aria-expanded={!isCollapsed}
+            aria-label={`Spalte «${col.title}» ${isCollapsed ? 'ausklappen' : 'einklappen'}`}
+            title={isCollapsed ? 'Ausklappen' : 'Einklappen (mehrere eingeklappte Spalten stehen gestapelt)'}
+            className="grid h-9 w-8 shrink-0 place-items-center rounded text-base text-gray-600 active:bg-gray-200"
+          >
+            {isCollapsed ? '▸' : '▾'}
+          </button>
+          <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-800">
+            {icon} {col.title}
+          </h2>
+          <span className="text-xs text-gray-600">{list.length}</span>
+          {!isCollapsed && (
+            <button
+              type="button"
+              onClick={() => setSelected((sel) => (list.every((c) => sel.has(c.id)) ? new Set([...sel].filter((id) => !list.some((c) => c.id === id))) : new Set([...sel, ...list.map((c) => c.id)])))}
+              disabled={list.length === 0}
+              aria-label={`Alle in «${col.title}» auswählen`}
+              title="Alle auswählen"
+              className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200 disabled:opacity-30"
+            >
+              ☑
+            </button>
+          )}
+          {col.kind === 'group' && col.id && canMove && (
+            <button type="button" onClick={() => setEditGroup(col.id)} aria-label={`Gruppe «${col.title}» umbenennen oder löschen`} title="Umbenennen oder löschen" className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
+              ⋮
+            </button>
+          )}
+        </header>
+        {isCollapsed ? (
+          meatSum && (
+            <div className="ml-[3.75rem] text-xs text-emerald-900">
+              ≈ {Math.round(meatSum.net).toLocaleString('de-CH')} Fr. · {meatSum.lambs > 0 ? `${meatSum.lambs} L.` : ''}
+              {meatSum.lambs > 0 && meatSum.sheep > 0 ? ' · ' : ''}
+              {meatSum.sheep > 0 ? `${meatSum.sheep} S.` : ''}
+            </div>
+          )
+        ) : (
+          <>
+            {meatOn && species === 'sheep' && list.length > 0 && <ColumnMeatSum values={list.map((c) => meatById.get(c.id) ?? null)} />}
+            <div className="max-h-[calc(100vh-20rem)] min-h-20 space-y-2 overflow-y-auto pr-0.5">
+              {list.map((c) => (
+                <ColumnCard
+                  key={c.id}
+                  card={c}
+                  col={col}
+                  moduleKey={moduleKey}
+                  today={today}
+                  result={results.get(c.id)}
+                  selected={selected.has(c.id)}
+                  expanded={open.has(`${col.key}:${c.id}`)}
+                  pendingTo={col.kind === 'group' && c.id in draft ? groupName(draft[c.id]) : null}
+                  canDrag={true}
+                  onSelect={() => setSelected((sel) => toggle(sel, c.id))}
+                  onToggle={() => setOpen((o) => toggle(o, `${col.key}:${c.id}`))}
+                  onUndoDraft={() => setDraft((d) => clearTargets(d, [c.id]))}
+                  onRemoveFromList={col.kind === 'list' ? () => void removeFromList(col.id!, c.id) : undefined}
+                  meat={meatById.get(c.id) ?? null}
+                  meatMax={meatMax}
+                  fields={cardFields}
+                  pointerDown={pointerDown}
+                />
+              ))}
+              {list.length === 0 && <p className="rounded-lg border-2 border-dashed border-gray-300 p-3 text-center text-xs text-gray-500">{hover === col.key ? 'Hier ablegen' : 'keine Tiere'}</p>}
+            </div>
+          </>
+        )}
+      </section>
+    )
+  }
 
   if (loading) return <p className="p-6 text-center text-gray-500">Lädt…</p>
   if (cards.length === 0) return <p className="p-6 text-center text-gray-600">Keine aktiven {terms.plural}. {terms.importHint}</p>
@@ -429,7 +555,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
       )}
 
       <p className="text-xs text-gray-600">
-        {shown.length} von {cards.length} {terms.plural} sichtbar. Antippen klappt eine Karte auf, am Griff ⠿ ziehen verschiebt.
+        {shown.length} von {cards.length} {terms.plural} sichtbar. Antippen klappt eine Karte auf, am Griff ⠿ ziehen verschiebt. Spalten: Griff ⠿ im Kopf ordnet um, ▾ klappt ein (gestapelt).
       </p>
 
       {chosen.length > 0 && (
@@ -451,68 +577,22 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
       )}
 
       <div ref={scroller} className="flex snap-x items-start gap-3 overflow-x-auto pb-4">
-        {visibleColumns.map((col) => {
-          const list = columnCards(col)
-          return (
-            <section
-              key={col.key}
-              data-drop-col={col.key}
-              aria-label={col.title}
-              className={`w-72 shrink-0 snap-start rounded-xl p-2 ${hover === col.key ? 'bg-brand-50 ring-2 ring-brand-700' : 'bg-gray-100'}`}
-            >
-              <header className="mb-2 flex items-center gap-1">
-                <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-800">
-                  {col.kind === 'list' ? '🔖' : species === 'sheep' ? '🐑' : '🐄'} {col.title}
-                </h2>
-                <span className="text-xs text-gray-600">{list.length}</span>
-                <button
-                  type="button"
-                  onClick={() => setSelected((s) => (list.every((c) => s.has(c.id)) ? new Set([...s].filter((id) => !list.some((c) => c.id === id))) : new Set([...s, ...list.map((c) => c.id)])))}
-                  disabled={list.length === 0}
-                  aria-label={`Alle in «${col.title}» auswählen`}
-                  title="Alle auswählen"
-                  className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200 disabled:opacity-30"
-                >
-                  ☑
-                </button>
-                {col.kind === 'group' && col.id && canMove && (
-                  <button type="button" onClick={() => setEditGroup(col.id)} aria-label={`Gruppe «${col.title}» umbenennen oder löschen`} title="Umbenennen oder löschen" className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
-                    ⋮
-                  </button>
-                )}
-              </header>
-              {meatOn && species === 'sheep' && list.length > 0 && (
-                <ColumnMeatSum values={list.map((c) => meatById.get(c.id) ?? null)} />
-              )}
-              <div className="max-h-[calc(100vh-20rem)] min-h-20 space-y-2 overflow-y-auto pr-0.5">
-                {list.map((c) => (
-                  <ColumnCard
-                    key={c.id}
-                    card={c}
-                    col={col}
-                    moduleKey={moduleKey}
-                    today={today}
-                    result={results.get(c.id)}
-                    selected={selected.has(c.id)}
-                    expanded={open.has(`${col.key}:${c.id}`)}
-                    pendingTo={col.kind === 'group' && c.id in draft ? groupName(draft[c.id]) : null}
-                    canDrag={true}
-                    onSelect={() => setSelected((s) => toggle(s, c.id))}
-                    onToggle={() => setOpen((o) => toggle(o, `${col.key}:${c.id}`))}
-                    onUndoDraft={() => setDraft((d) => clearTargets(d, [c.id]))}
-                    onRemoveFromList={col.kind === 'list' ? () => void removeFromList(col.id!, c.id) : undefined}
-                    meat={meatById.get(c.id) ?? null}
-                    meatMax={meatMax}
-                    fields={cardFields}
-                    pointerDown={pointerDown}
-                  />
-                ))}
-                {list.length === 0 && <p className="rounded-lg border-2 border-dashed border-gray-300 p-3 text-center text-xs text-gray-500">{hover === col.key ? 'Hier ablegen' : 'keine Tiere'}</p>}
-              </div>
-            </section>
-          )
-        })}
+        {buildLanes(visibleColumns, collapsed).map((lane) =>
+          lane.kind === 'column' ? (
+            renderColumn(lane.col, false)
+          ) : (
+            <div key={`stack:${lane.cols.map((c) => c.key).join('+')}`} className="w-64 shrink-0 snap-start space-y-2">
+              {lane.cols.map((c) => renderColumn(c, true))}
+            </div>
+          ),
+        )}
       </div>
+
+      {colDrag.drag && (
+        <div ref={colDrag.ghost} aria-hidden className="pointer-events-none fixed left-0 top-0 z-[3000] rounded-lg border-2 border-brand-700 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xl">
+          {colDrag.drag.label}
+        </div>
+      )}
 
       <DragGhost drag={drag} ghost={ghost} />
 
@@ -583,6 +663,15 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
 
       {showColumns && (
         <Modal title="Spalten" onClose={() => setShowColumns(false)}>
+          <div className="mb-2 flex gap-2">
+            <button type="button" onClick={() => setAllCollapsed(true)} className="min-h-11 flex-1 rounded-lg border-2 border-gray-300 px-2 text-sm font-semibold">
+              Alle einklappen
+            </button>
+            <button type="button" onClick={() => setAllCollapsed(false)} className="min-h-11 flex-1 rounded-lg border-2 border-gray-300 px-2 text-sm font-semibold">
+              Alle ausklappen
+            </button>
+          </div>
+          <p className="mb-2 text-xs text-gray-600">Reihenfolge: am Griff ⠿ im Spaltenkopf ziehen. Eingeklappte Spalten nebeneinander stehen gestapelt in einer Spur.</p>
           <ul className="space-y-1">
             {columns.map((c) => (
               <li key={c.key}>
