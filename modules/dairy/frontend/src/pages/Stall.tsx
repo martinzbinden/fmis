@@ -772,6 +772,17 @@ function RulesForm({ species, rules, onChange, onReset }: { species: 'cattle' | 
           )}
         </label>
       ))}
+      <label className="flex items-center justify-between gap-3 text-sm text-gray-800">
+        <span>
+          Geburt: gewählter Vater gilt als belegt
+          <span className="block text-xs text-gray-600">Aus: «Vater unklar» erscheint auch dann, wenn keine passende Belegung erfasst ist</span>
+        </span>
+        {editing ? (
+          <input type="checkbox" checked={draft.vaterGewaehlt === 1} onChange={(e) => setDraft({ ...draft, vaterGewaehlt: e.target.checked ? 1 : 0 })} className="h-6 w-6 shrink-0" />
+        ) : (
+          <span className="min-w-12 rounded-lg bg-gray-100 px-3 py-2 text-right font-semibold text-gray-900">{rules.vaterGewaehlt === 1 ? 'Ja' : 'Nein'}</span>
+        )}
+      </label>
       {editing && (
         <button
           type="button"

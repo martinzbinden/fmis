@@ -19,11 +19,13 @@ export interface StallRules {
   trockenDays: number
   /** Hinweis so viele Tage vor dem Termin schon zeigen */
   lookaheadDays: number
+  /** Geburt: ein bei der Erfassung gewählter Vater gilt als belegt (1 = ja, 0 = nein: nur passende Belegungen zählen) */
+  vaterGewaehlt: number
 }
 
 export const DEFAULT_STALL_RULES: Record<Species, StallRules> = {
-  sheep: { eimerDay: 10, absetzenDay: 40, milchzusatzDays: 0, abtraenkenDays: 0, kontrolleFromDays: 35, trockenDays: 56, lookaheadDays: 3 },
-  cattle: { eimerDay: 0, absetzenDay: 0, milchzusatzDays: 30, abtraenkenDays: 106, kontrolleFromDays: 40, trockenDays: 60, lookaheadDays: 3 },
+  sheep: { eimerDay: 10, absetzenDay: 40, milchzusatzDays: 0, abtraenkenDays: 0, kontrolleFromDays: 35, trockenDays: 56, lookaheadDays: 3, vaterGewaehlt: 1 },
+  cattle: { eimerDay: 0, absetzenDay: 0, milchzusatzDays: 30, abtraenkenDays: 106, kontrolleFromDays: 40, trockenDays: 60, lookaheadDays: 3, vaterGewaehlt: 1 },
 }
 
 /** Beschriftung und Einheit der Regeln je Tierart (nur die, die für die Tierart gelten). */

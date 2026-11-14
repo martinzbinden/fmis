@@ -50,8 +50,8 @@ export function deadlineDays(species: 'sheep' | 'cattle'): number {
 
 /** Geburten, die per FMIS erfasst wurden (nicht aus dem Herdebuch-Import: die kennt die TVD schon), ab `sinceIso`
  * oder noch mit offenen Nachkommen. Neueste zuerst. */
-export async function loadTvdBirths(pg: PGlite, sinceIso: string, species: Species = 'sheep'): Promise<TvdBirth[]> {
-  const doubts = await loadSireDoubts(pg, species)
+export async function loadTvdBirths(pg: PGlite, sinceIso: string, species: Species = 'sheep', chosenCounts = true): Promise<TvdBirth[]> {
+  const doubts = await loadSireDoubts(pg, species, chosenCounts)
   const { rows } = await pg.query<Record<string, unknown>>(
     `select b.id as birth_id, b.birth_date, b.sire_ear_tag, b.sire_name,
             d.ear_tag as dam_ear_tag, d.lauf_nr as dam_lauf_nr, d.name as dam_name, d.breed_code as dam_breed,

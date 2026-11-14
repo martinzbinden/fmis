@@ -6,6 +6,7 @@ import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
+import { loadRules } from '../lib/stallRules'
 import { ageDays, COLUMNS, deadlineDays, deadlineTone, lambFields, lambState, loadTvdBirths, markReported, reportable, toCsv, toTabText, type TvdBirth } from '../lib/tvdBirths'
 
 function addDays(iso: string, days: number): string {
@@ -47,7 +48,7 @@ export default function TvdBirths({ moduleKey }: { moduleKey: string }) {
   const today = localTodayIso()
   const deadline = deadlineDays(species)
   const [tab, setTab] = useState<'offen' | 'gemeldet'>('offen')
-  const { data } = useQuery((pg) => loadTvdBirths(pg, addDays(today, -120), species))
+  const { data } = useQuery((pg) => loadTvdBirths(pg, addDays(today, -120), species, loadRules(moduleKey, species).vaterGewaehlt === 1))
 
   const { open, done } = useMemo(() => {
     const all = data ?? []

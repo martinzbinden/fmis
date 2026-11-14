@@ -33,10 +33,17 @@ export function matingsInWindow(birthDate: string, matings: MatingLite[], specie
   })
 }
 
-/** `ohne`: kein Vater eingetragen (nichts zu prüfen); `belegt`: eine passende Belegung nennt diesen Vater;
+/** `ohne`: kein Vater eingetragen (nichts zu prüfen); `belegt`: eine passende Belegung nennt diesen Vater (oder der Vater
+ * wurde bei der Geburt gewählt und `chosenCounts` ist an, Regel «Vater bei Geburt gewählt gilt als belegt»);
  * `unklar`: keine passende Belegung oder nur von anderen Böcken. */
-export function sireCheck(birth: { birth_date: string; sire_key: string | null }, matings: MatingLite[], species: Species): SireState {
+export function sireCheck(
+  birth: { birth_date: string; sire_key: string | null; sire_chosen?: boolean | null },
+  matings: MatingLite[],
+  species: Species,
+  chosenCounts = false,
+): SireState {
   if (!birth.sire_key) return 'ohne'
+  if (chosenCounts && birth.sire_chosen) return 'belegt'
   const hits = matingsInWindow(birth.birth_date, matings, species)
   return hits.some((m) => m.sire_key === birth.sire_key) ? 'belegt' : 'unklar'
 }
@@ -50,10 +57,10 @@ export function sireForBirth(birthDate: string, matings: MatingLite[], species: 
 }
 
 /** Geburten mit unklarem Vater (Schlüssel = births.id), ab `sinceIso`. */
-export async function loadSireDoubts(pg: PGlite, species: Species, sinceIso = '2025-01-01'): Promise<Set<string>> {
+export async function loadSireDoubts(pg: PGlite, species: Species, chosenCounts: boolean, sinceIso = '2025-01-01'): Promise<Set<string>> {
   const [births, matings] = await Promise.all([
-    pg.query<{ id: string; dam_id: string; birth_date: unknown; sire_key: string | null; sire_ear_tag: string | null }>(
-      `select id, dam_id, birth_date, sire_key, sire_ear_tag from births
+    pg.query<{ id: string; dam_id: string; birth_date: unknown; sire_key: string | null; sire_ear_tag: string | null; sire_chosen: boolean | null }>(
+      `select id, dam_id, birth_date, sire_key, sire_ear_tag, sire_chosen from births
        where deleted_at is null and birth_date >= $1 and (sire_key is not null or sire_ear_tag is not null)`,
       [sinceIso],
     ),
@@ -70,7 +77,7 @@ export async function loadSireDoubts(pg: PGlite, species: Species, sinceIso = '2
   const doubts = new Set<string>()
   for (const b of births.rows) {
     const key = b.sire_key ?? animalKey(b.sire_ear_tag ?? '')
-    if (sireCheck({ birth_date: isoDate(b.birth_date)!, sire_key: key }, byDam.get(b.dam_id) ?? [], species) === 'unklar') doubts.add(b.id)
+    if (sireCheck({ birth_date: isoDate(b.birth_date)!, sire_key: key, sire_chosen: b.sire_chosen }, byDam.get(b.dam_id) ?? [], species, chosenCounts) === 'unklar') doubts.add(b.id)
   }
   return doubts
 }

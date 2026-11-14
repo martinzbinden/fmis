@@ -24,6 +24,19 @@ describe('sireCheck (Schafe, Tragzeit 150 ± 15)', () => {
   })
 })
 
+describe('Vater gewählt gilt als belegt (Regel)', () => {
+  const b = { birth_date: '2026-11-04', sire_key: 'A', sire_chosen: true }
+  it('an: gewählter Vater zählt auch ohne Belegung', () => {
+    expect(sireCheck(b, [], 'sheep', true)).toBe('belegt')
+  })
+  it('aus: nur passende Belegungen zählen', () => {
+    expect(sireCheck(b, [], 'sheep', false)).toBe('unklar')
+  })
+  it('nicht gewählt (Import, alte Vorbelegung): bleibt unklar', () => {
+    expect(sireCheck({ ...b, sire_chosen: null }, [], 'sheep', true)).toBe('unklar')
+  })
+})
+
 describe('sireForBirth', () => {
   it('eindeutig → Belegung, mehrere Böcke oder keine → null', () => {
     expect(sireForBirth('2026-11-04', [m('2026-06-07', 'A')], 'sheep')?.sire_key).toBe('A')

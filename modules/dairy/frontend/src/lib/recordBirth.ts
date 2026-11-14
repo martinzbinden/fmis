@@ -70,6 +70,7 @@ export async function recordBirth(pg: PGlite, input: BirthInput): Promise<{ birt
     sire_key: sireKey,
     sire_ear_tag: input.sire.ear_tag.trim() || null,
     sire_name: input.sire.name.trim() || null,
+    sire_chosen: sireKey ? true : null,
     ease: input.ease,
     conception_date: input.conception_date,
     source: 'manual',

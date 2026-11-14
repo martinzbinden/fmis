@@ -45,7 +45,7 @@ export const SYNC_TABLES = {
   ],
   births: [
     'id', 'dam_id', 'birth_date', 'parity', 'sire_key', 'sire_ear_tag', 'sire_name',
-    'ease', 'conception_date', 'source', 'import_key', 'notes', 'updated_at', 'deleted_at',
+    'ease', 'conception_date', 'source', 'import_key', 'notes', 'updated_at', 'deleted_at', 'sire_chosen',
   ],
   birth_offspring: [
     'id', 'birth_id', 'ear_tag', 'animal_key', 'sex', 'stillborn', 'died_24h',

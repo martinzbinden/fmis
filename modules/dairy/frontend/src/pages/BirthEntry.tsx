@@ -15,6 +15,7 @@ import AnimalWarnings from '../components/AnimalWarnings'
 import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
 import { sireForBirth, loadSireDoubts, type MatingLite } from '../lib/sireCheck'
 import type { Species } from '../lib/fertility'
+import { loadRules } from '../lib/stallRules'
 import SireSelect, { EMPTY_SIRE, type SireValue } from '../components/SireSelect'
 import { loadSireOptions } from '../lib/sires'
 import { recordBirth, validateBirth, type OffspringFate, type OffspringInput } from '../lib/recordBirth'
@@ -28,7 +29,7 @@ import { errorText } from '@fmis/core/toast'
 
 const RECENT_LIST = 15
 
-async function loadData(pg: PGlite, species: Species) {
+async function loadData(pg: PGlite, species: Species, chosenCounts: boolean) {
   const [animals, sires, allMatings, births, pending, events, recent, doubts] = await Promise.all([
     pg.query<Animal>('select * from animals where deleted_at is null order by lauf_nr nulls last, ear_tag'),
     loadSireOptions(pg),
@@ -42,7 +43,7 @@ async function loadData(pg: PGlite, species: Species) {
     loadPendingOffspring(pg),
     loadAnimalEvents(pg),
     loadRecentBirths(pg, RECENT_LIST),
-    loadSireDoubts(pg, species),
+    loadSireDoubts(pg, species, chosenCounts),
   ])
   return {
     events,
@@ -73,7 +74,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const species = speciesOf(moduleKey)
   const word = species === 'sheep' ? { event: 'Ablammung', young: 'Lamm', youngPl: 'Lämmer', mother: 'Aue' } : { event: 'Abkalbung', young: 'Kalb', youngPl: 'Kälber', mother: 'Kuh' }
-  const { data, refresh } = useQuery((pg) => loadData(pg, species))
+  const { data, refresh } = useQuery((pg) => loadData(pg, species, loadRules(moduleKey, species).vaterGewaehlt === 1))
   // ?tier=<id> (Aktionen auf der Tierseite) wählt das Tier vor
   const [damIds, setDamIds] = useState<string[]>(() => {
     const t = new URLSearchParams(window.location.search).get('tier')
