@@ -14,6 +14,7 @@ import Culling from './pages/Culling'
 import Erfassen from './pages/Erfassen'
 import BirthEntry from './pages/BirthEntry'
 import EarTagPending from './pages/EarTagPending'
+import TvdBirths from './pages/TvdBirths'
 import SlaughterLambs from './pages/SlaughterLambs'
 import MatingEntry from './pages/MatingEntry'
 import PregnancyEntry from './pages/PregnancyEntry'
@@ -82,6 +83,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       'ausmerzen/laemmer': 'Lämmer zum Schlachttermin',
       geburt: terms.calving,
       ohrmarken: 'Ohrmarken nachtragen',
+      tvd: 'TVD-Geburtsmeldungen',
       belegung: sheep ? 'Belegung' : 'Besamung / Belegung',
       traechtigkeit: 'Trächtigkeit',
       'traechtigkeit/vergleich': 'Trächtigkeit vergleichen',
@@ -112,6 +114,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'erfassen', element: <Erfassen moduleKey={key} /> },
       { path: 'geburt', element: <BirthEntry moduleKey={key} /> },
       { path: 'ohrmarken', element: <EarTagPending moduleKey={key} /> },
+      { path: 'tvd', element: <TvdBirths moduleKey={key} /> },
       { path: 'belegung', element: <MatingEntry moduleKey={key} /> },
       { path: 'traechtigkeit', element: <PregnancyEntry moduleKey={key} /> },
       { path: 'traechtigkeit/vergleich', element: <PregnancyCompare /> },

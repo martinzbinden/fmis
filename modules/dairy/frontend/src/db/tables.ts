@@ -49,7 +49,7 @@ export const SYNC_TABLES = {
   ],
   birth_offspring: [
     'id', 'birth_id', 'ear_tag', 'animal_key', 'sex', 'stillborn', 'died_24h',
-    'birth_weight_kg', 'import_key', 'updated_at', 'deleted_at', 'died_on', 'loss_cause', 'defects', 'loss_note',
+    'birth_weight_kg', 'import_key', 'updated_at', 'deleted_at', 'died_on', 'loss_cause', 'defects', 'loss_note', 'tvd_reported_on',
   ],
   animal_journal: [
     'id', 'animal_id', 'entry_date', 'source', 'text', 'ref_id', 'updated_at', 'deleted_at',
@@ -117,7 +117,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   matings: new Set(['service_date', 'service_to']),
   pregnancy_checks: new Set(['check_date']),
   births: new Set(['birth_date', 'conception_date']),
-  birth_offspring: new Set(['died_on']),
+  birth_offspring: new Set(['died_on', 'tvd_reported_on']),
   weanings: new Set(['wean_date']),
   animal_weights: new Set(['weigh_date']),
   ear_tag_stock: new Set(['stock_date']),

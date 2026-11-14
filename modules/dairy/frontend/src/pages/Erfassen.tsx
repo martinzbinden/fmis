@@ -2,17 +2,20 @@ import { Link } from 'react-router-dom'
 import { speciesOf } from '../lib/species'
 import { useQuery } from '../hooks/useQuery'
 import { loadPendingOffspring } from '../lib/earTagPending'
+import { loadTvdBirths, reportable } from '../lib/tvdBirths'
 import { loadLambs, WEAN_FROM_DAYS } from '../lib/lambs'
 import { localTodayIso } from '../lib/format'
 
 export default function Erfassen({ moduleKey }: { moduleKey: string }) {
   const sheep = speciesOf(moduleKey) === 'sheep'
   const pending = useQuery(loadPendingOffspring).data?.length ?? 0
+  const tvdOpen = useQuery((pg) => loadTvdBirths(pg, '2000-01-01')).data?.reduce((n, b) => n + reportable(b).length, 0) ?? 0
   const weanDue = useQuery((pg) => loadLambs(pg, localTodayIso())).data?.filter((l) => l.nursing && l.ageDays >= WEAN_FROM_DAYS).length ?? 0
   const items = [
     { to: 'tierinfo', icon: '🔎', label: 'Tier-Info', desc: 'Nummer tippen oder lesen: Alter, Abstammung, Index, Ablammung, Belegung, Trächtigkeit, Merklisten, Verlauf aller Erfassungen' },
     { to: 'geburt', icon: sheep ? '🐑' : '🐄', label: sheep ? 'Ablammung' : 'Abkalbung', desc: 'Mutter, Vater, Nachkommen – Ohrmarke auch später' },
     { to: 'ohrmarken', icon: '🏷️', label: 'Ohrmarken nachtragen', desc: sheep ? 'Lämmer, die bei der Ablammung noch keine Ohrmarke hatten' : 'Kälber, die bei der Abkalbung noch keine Ohrmarke hatten' },
+    { to: 'tvd', icon: '📨', label: 'TVD-Geburtsmeldungen', desc: sheep ? 'Angaben je Lamm für die Meldung im Agate-Portal, kopieren oder als CSV, Abhaken' : 'Angaben je Kalb für die Meldung im Agate-Portal, kopieren oder als CSV, Abhaken' },
     { to: 'laemmer?aktion=absetzen', icon: '✂️', label: 'Absetzen', desc: sheep ? `Saugende Lämmer ab ${WEAN_FROM_DAYS} Tagen wählen, in eine Lämmergruppe zügeln` : `Saugende Kälber ab ${WEAN_FROM_DAYS} Tagen wählen` },
     { to: 'laemmer', icon: '🍼', label: sheep ? 'Lämmer' : 'Kälber', desc: 'Alter, Gewicht, saugend oder abgesetzt – wägen, Schoppen, Drenchen, Bolus, Behandlung für mehrere auf einmal' },
     { to: 'belegung', icon: '❤️', label: sheep ? 'Belegung' : 'Besamung / Belegung', desc: sheep ? 'Widder und Zeitraum, für die ganze Gruppe' : 'Stier und Datum' },
@@ -40,6 +43,11 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
           {item.to === 'ohrmarken' && pending > 0 && (
             <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${pending} offen`}>
               {pending}
+            </span>
+          )}
+          {item.to === 'tvd' && tvdOpen > 0 && (
+            <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${tvdOpen} offen`}>
+              {tvdOpen}
             </span>
           )}
           {item.to.startsWith('laemmer?aktion=absetzen') && weanDue > 0 && (

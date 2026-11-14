@@ -48,7 +48,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     ],
     "birth_offspring": [
         "id", "birth_id", "ear_tag", "animal_key", "sex", "stillborn", "died_24h",
-        "birth_weight_kg", "import_key", "updated_at", "deleted_at", "died_on", "loss_cause", "defects", "loss_note",
+        "birth_weight_kg", "import_key", "updated_at", "deleted_at", "died_on", "loss_cause", "defects", "loss_note", "tvd_reported_on",
     ],
     "animal_journal": [
         "id", "animal_id", "entry_date", "source", "text", "ref_id", "updated_at", "deleted_at",

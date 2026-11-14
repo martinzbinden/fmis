@@ -198,7 +198,13 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
           <Link to={`../tiere/${done.damId}`} relative="path" className="link-btn font-medium text-brand-700">
             Zur {word.mother}
           </Link>
-          <div className="mt-1 text-xs text-green-800">Die Geburtsmeldung an die TVD bleibt wie bisher separat.</div>
+          <div className="mt-1 text-xs text-green-800">
+            Die Geburtsmeldung an die TVD machst du im Agate-Portal;{' '}
+            <Link to="../tvd" relative="path" className="link-btn font-medium text-brand-700">
+              die Angaben dazu stehen hier
+            </Link>
+            .
+          </div>
         </div>
       )}
       {done && <BirthFollowUp birthId={done.birthId} moduleKey={moduleKey} />}
