@@ -1,5 +1,6 @@
 """Gruppen vom Lesegerät: Signatur, Ablegen und Abgleich (ohne echtes Gerät)."""
 
+import asyncio
 import unittest
 from contextlib import asynccontextmanager
 from unittest import mock
@@ -99,3 +100,60 @@ class ReadDeviceTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SyncSwitchTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        rp._sync_until = 0.0
+        rp._wake = asyncio.Event()
+
+    def test_is_off_by_default(self) -> None:
+        self.assertEqual(rp.sync_seconds_left(1000.0), 0)
+
+    def test_on_keeps_alive_for_the_ttl_and_then_falls_back(self) -> None:
+        with mock.patch.object(rp, "SYNC_TTL_S", 600):
+            self.assertEqual(rp.set_sync(True, 1000.0), 600)
+            self.assertEqual(rp.sync_seconds_left(1599.0), 1)
+            self.assertEqual(rp.sync_seconds_left(1600.0), 0)
+
+    def test_heartbeat_extends_and_off_switches_off_at_once(self) -> None:
+        with mock.patch.object(rp, "SYNC_TTL_S", 600):
+            rp.set_sync(True, 1000.0)
+            rp.set_sync(True, 1500.0)  # Herzschlag
+            self.assertGreater(rp.sync_seconds_left(2000.0), 0)
+            self.assertEqual(rp.set_sync(False, 1600.0), 0)
+            self.assertEqual(rp.sync_seconds_left(1601.0), 0)
+
+    def test_heartbeat_never_switches_on_by_itself(self) -> None:
+        with mock.patch.object(rp, "SYNC_TTL_S", 600):
+            self.assertEqual(rp.renew_sync(1000.0), 0)  # aus (z. B. nach Neustart): bleibt aus
+            self.assertEqual(rp.sync_seconds_left(1001.0), 0)
+            rp.set_sync(True, 1000.0)
+            self.assertEqual(rp.renew_sync(1500.0), 600)  # an: verlängert
+            self.assertEqual(rp.renew_sync(2200.0), 0)  # in der Zwischenzeit abgelaufen: bleibt aus
+
+    def test_only_switching_on_wakes_the_poller(self) -> None:
+        rp.set_sync(True, 1000.0)
+        self.assertTrue(rp._wake.is_set())
+        rp._wake.clear()
+        rp.set_sync(True, 1100.0)  # Herzschlag, war schon an
+        self.assertFalse(rp._wake.is_set())
+
+    async def test_poller_asks_the_device_only_while_on(self) -> None:
+        calls: list[int] = []
+
+        async def fake_refresh() -> dict:
+            calls.append(1)
+            rp._sync_until = 0.0  # nach der ersten Abfrage ausschalten, damit die Schleife endet
+            raise asyncio.CancelledError
+
+        with mock.patch.object(rp, "INTERVAL_S", 1), mock.patch.object(rp, "IDLE_CHECK_S", 0.01), mock.patch.object(rp, "refresh", fake_refresh):
+            # aus: kein Abfragen
+            task = asyncio.create_task(rp.periodic())
+            await asyncio.sleep(0.05)
+            self.assertEqual(calls, [])
+            # an: sofort eine Abfrage
+            rp.set_sync(True)
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+            self.assertEqual(calls, [1])

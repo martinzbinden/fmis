@@ -55,7 +55,9 @@ services:
       # Instanz und Mail nur an diese Adressen. In Prod beide leer.
       FMIS_INSTANZ: ${FMIS_INSTANZ:-}
       # Lesegerät im Hintergrund abfragen (neue Gruppen im Gerät → Vorschläge in Tiergruppen), Takt in
-      # Sekunden, 0 = aus (modules/tiere/backend/app/reader_pools.py)
+      # Sekunden, 0 = aus. Gefragt wird nur, solange der Schalter «Sync» auf der Seite Tiergruppen an ist
+      # (Standard aus, fällt nach 10 Min. ohne Arbeit zurück; READER_SYNC_TTL_S), damit AgriLink das
+      # Gerät nicht mit dem Server teilen muss (modules/tiere/backend/app/reader_pools.py)
       READER_POOL_POLL_S: ${READER_POOL_POLL_S:-90}
       MAIL_ALLOWLIST: ${MAIL_ALLOWLIST:-}
     depends_on:

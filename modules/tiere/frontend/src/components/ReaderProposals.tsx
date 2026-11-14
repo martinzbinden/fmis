@@ -25,6 +25,15 @@ interface ReaderStatus {
   last_ok_at: number | null
   last_error: string | null
   interval_s: number
+  sync_on: boolean
+  sync_seconds_left: number
+  sync_ttl_s: number
+}
+
+interface SyncState {
+  sync_on: boolean
+  sync_seconds_left: number
+  sync_ttl_s: number
 }
 
 const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` })
@@ -53,6 +62,44 @@ export default function ReaderProposals({ data, canWrite, onImported }: { data: 
     const t = setInterval(loadStatus, 60_000)
     return () => clearInterval(t)
   }, [loadStatus])
+
+  // Schalter «Sync»: das Gerät wird nur abgefragt, solange er an ist (es nimmt nur eine Verbindung auf einmal an,
+  // AgriLink und die Milchwägung sollen nicht gestört werden). Standard aus; die Seite hält ihn mit einem
+  // Herzschlag am Leben, nach einem Arbeitsunterbruch fällt er auf dem Server von selbst auf aus.
+  const syncOn = !!status?.sync_on
+  async function postSync(on: boolean, renew = false): Promise<SyncState> {
+    const res = await fetch(`${API_URL}/tiere/reader/sync`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ on, renew }),
+    })
+    if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `Fehler ${res.status}`)
+    return (await res.json()) as SyncState
+  }
+  async function toggleSync() {
+    const next = !syncOn
+    setStatus((s) => (s ? { ...s, sync_on: next } : s))
+    try {
+      const r = await postSync(next)
+      setStatus((s) => (s ? { ...s, ...r } : s))
+      // eingeschaltet: der Server fragt das Gerät sofort ab, die Vorschläge kurz darauf holen
+      if (next) setTimeout(() => void syncModuleNow('tiere').then(loadStatus), 4000)
+    } catch (e) {
+      notifyError(errorText(e))
+      loadStatus()
+    }
+  }
+  useEffect(() => {
+    if (!syncOn) return
+    const beat = () => {
+      if (document.hidden) return
+      postSync(true, true)
+        .then((r) => setStatus((s) => (s ? { ...s, ...r } : s)))
+        .catch(() => undefined)
+    }
+    const t = setInterval(beat, 60_000)
+    return () => clearInterval(t)
+  }, [syncOn])
 
   const fresh = useMemo(() => (proposals ?? []).filter((p) => p.status === 'neu'), [proposals])
   const older = useMemo(() => (proposals ?? []).filter((p) => p.status === 'bekannt'), [proposals])
@@ -110,6 +157,21 @@ export default function ReaderProposals({ data, canWrite, onImported }: { data: 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold text-sky-950">📥 Vom Lesegerät{fresh.length > 0 ? ` · ${fresh.length} neu` : ''}</h2>
         {reachable && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={syncOn}
+            onClick={() => void toggleSync()}
+            className="flex min-h-11 items-center gap-2 rounded-lg px-1 text-sky-950"
+            title="Das Gerät wird nur abgefragt, solange der Sync an ist. Er schaltet sich nach einem Arbeitsunterbruch von selbst aus."
+          >
+            <span className={`relative inline-block h-7 w-12 shrink-0 rounded-full transition-colors ${syncOn ? 'bg-sky-700' : 'bg-gray-400'}`}>
+              <span className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${syncOn ? 'left-[22px]' : 'left-0.5'}`} />
+            </span>
+            <span className="text-sm font-medium">Sync {syncOn ? 'ein' : 'aus'}</span>
+          </button>
+        )}
+        {reachable && (
           <button type="button" disabled={busy} onClick={() => void refreshNow()} className="min-h-11 rounded-lg border border-sky-700 bg-white px-3 text-sky-900 disabled:opacity-50">
             {busy ? 'fragt …' : 'Jetzt abfragen'}
           </button>
@@ -118,7 +180,10 @@ export default function ReaderProposals({ data, canWrite, onImported }: { data: 
       {status && reachable && (
         <p className="text-xs text-sky-900/80">
           {status.last_ok_at ? `Zuletzt erreicht ${fmtDateTime(new Date(status.last_ok_at * 1000).toISOString())}` : 'Noch nicht erreicht'}
-          {status.last_error ? ` · zuletzt: ${status.last_error}` : ''}. Das Gerät wird alle {Math.round(status.interval_s / 60)} Min. abgefragt, sobald es im Netz ist.
+          {status.last_error ? ` · zuletzt: ${status.last_error}` : ''}.{' '}
+          {syncOn
+            ? `Sync ein: das Gerät wird alle ${Math.round(status.interval_s / 60)} Min. abgefragt, solange diese Seite offen ist (nach ${Math.round(status.sync_ttl_s / 60)} Min. ohne Arbeit schaltet er sich aus).`
+            : 'Sync aus: das Gerät wird nicht im Hintergrund abgefragt, so stört FMIS AgriLink nicht. Einschalten, wenn du mit Tierlisten und dem Lesegerät arbeitest.'}
         </p>
       )}
 

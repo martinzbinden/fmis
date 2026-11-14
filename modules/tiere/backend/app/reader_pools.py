@@ -1,9 +1,13 @@
 """Gruppen vom Lesegerät holen und zum Import vorschlagen.
 
 Das Lesegerät (APR600) merkt sich gescannte Gruppen im eigenen Speicher («Datenpools»), auch ohne
-Empfang. Der Server fragt es im Hintergrund alle paar Minuten ab (`periodic`, Takt über
-READER_POOL_POLL_S, 0 = aus): ist es erreichbar und nicht anderweitig belegt, werden Gruppen, die
-wir noch nicht kennen, samt Ohrmarken in `reader_pools` abgelegt. Die App zeigt sie dann zum
+Empfang. Der Server fragt es nur ab, solange der Schalter «Sync» eingeschaltet ist (`set_sync`,
+auf der Seite Tiergruppen): dann im Takt READER_POOL_POLL_S (0 = nie), sonst nie. Das Gerät
+nimmt nur eine Verbindung auf einmal an; AgriLink, ADT oder eine Wägung dürfen darum nicht von
+einer Hintergrundabfrage gestört werden. Der Schalter ist standardmässig aus und fällt von selbst
+zurück, wenn die Seite SYNC_TTL_S Sekunden keinen Herzschlag mehr schickt (Arbeitsunterbruch,
+Seite geschlossen, Neustart des Servers). Ist das Gerät erreichbar und nicht anderweitig belegt,
+werden Gruppen, die wir noch nicht kennen, samt Ohrmarken in `reader_pools` abgelegt. Die App zeigt sie dann zum
 Import an (neue Gruppe oder bestehende ersetzen). Der Server schreibt nur hier und nur ergänzend;
 ob etwas importiert wird, entscheidet ein Mensch.
 
@@ -18,6 +22,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import time
 import uuid as uuidlib
@@ -25,6 +30,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from zoneinfo import ZoneInfo
 
@@ -43,6 +49,31 @@ INTERVAL_S = 0 if os.environ.get("FMIS_INSTANZ") == "dev" else int(os.environ.ge
 WRITE = "tiere:herden:write"
 RAW_MAX = 2000
 _lock = asyncio.Lock()
+
+# Schalter «Sync»: nur im Speicher, nach einem Neustart aus. Die Seite hält ihn mit einem Herzschlag
+# (set_sync(True) alle Minute) am Leben; bleibt der aus, fällt er nach SYNC_TTL_S von selbst auf aus.
+SYNC_TTL_S = int(os.environ.get("READER_SYNC_TTL_S", "600"))
+_sync_until = 0.0
+_wake = asyncio.Event()
+IDLE_CHECK_S = 60
+
+
+def sync_seconds_left(now: float | None = None) -> int:
+    """Wie lange der Schalter noch an bleibt, wenn kein Herzschlag mehr kommt; 0 = aus."""
+    left = _sync_until - (time.time() if now is None else now)
+    return math.ceil(left) if left > 0 else 0
+
+
+def set_sync(on: bool, now: float | None = None) -> int:
+    """Schalter setzen oder (bei an) verlängern. Gibt die verbleibenden Sekunden zurück. Wird er neu
+    eingeschaltet, fragt `periodic` das Gerät sofort ab."""
+    global _sync_until
+    t = time.time() if now is None else now
+    was_on = sync_seconds_left(t) > 0
+    _sync_until = t + SYNC_TTL_S if on else 0.0
+    if on and not was_on:
+        _wake.set()
+    return sync_seconds_left(t)
 
 # Zustand für die Statusanzeige (nur im Speicher; nach einem Neustart leer)
 state: dict[str, Any] = {"last_try_at": None, "last_ok_at": None, "last_error": None, "last_new": 0}
@@ -132,23 +163,61 @@ async def refresh() -> dict[str, Any]:
 
 
 async def periodic() -> None:
-    """Hintergrund (backend/app/main.py): kurz nach dem Start, dann im Takt."""
+    """Hintergrund (backend/app/main.py): fragt das Gerät nur ab, solange der Schalter «Sync» an ist."""
     if INTERVAL_S <= 0:
         return
-    await asyncio.sleep(45)
     while True:
+        wait = IDLE_CHECK_S
+        if sync_seconds_left() > 0:
+            wait = INTERVAL_S
+            try:
+                result = await refresh()
+                if result.get("new"):
+                    log.info("Lesegerät: %s neue Gruppe(n) zum Import vorgeschlagen", result["new"])
+            except Exception:
+                log.exception("Abgleich mit dem Lesegerät fehlgeschlagen")
         try:
-            result = await refresh()
-            if result.get("new"):
-                log.info("Lesegerät: %s neue Gruppe(n) zum Import vorgeschlagen", result["new"])
-        except Exception:
-            log.exception("Abgleich mit dem Lesegerät fehlgeschlagen")
-        await asyncio.sleep(INTERVAL_S)
+            await asyncio.wait_for(_wake.wait(), timeout=wait)
+        except asyncio.TimeoutError:
+            pass
+        _wake.clear()
+
+
+def renew_sync(now: float | None = None) -> int:
+    """Herzschlag der Seite: verlängert den Schalter nur, wenn er noch an ist. Ein inzwischen abgelaufener
+    oder durch Neustart zurückgesetzter Schalter geht so nicht heimlich wieder an."""
+    t = time.time() if now is None else now
+    return set_sync(True, t) if sync_seconds_left(t) > 0 else 0
 
 
 @router.get("/reader/status")
 async def reader_status(user: CurrentUser = Depends(require_auth)) -> dict[str, Any]:
-    return {**state, "interval_s": INTERVAL_S, "enabled": INTERVAL_S > 0 and await resolve_reader("tiere") is not None}
+    left = sync_seconds_left()
+    return {
+        **state,
+        "interval_s": INTERVAL_S,
+        "enabled": INTERVAL_S > 0 and await resolve_reader("tiere") is not None,
+        "sync_on": left > 0,
+        "sync_seconds_left": left,
+        "sync_ttl_s": SYNC_TTL_S,
+    }
+
+
+class SyncBody(BaseModel):
+    on: bool
+    # true = nur verlängern, falls noch an (Herzschlag der Seite)
+    renew: bool = False
+
+
+@router.post("/reader/sync")
+async def reader_sync(body: SyncBody, user: CurrentUser = Depends(require_auth)) -> dict[str, Any]:
+    """Schalter «Sync» setzen; der Herzschlag der Seite ruft das mit on=true wieder auf und verlängert ihn."""
+    if WRITE not in user.permissions:
+        raise HTTPException(status_code=403, detail="Das Lesegerät abfragen braucht das Recht Tiergruppen")
+    if INTERVAL_S <= 0:
+        raise HTTPException(status_code=409, detail="Die Abfrage des Lesegeräts ist auf dieser Instanz abgeschaltet")
+    left = renew_sync() if body.renew else set_sync(body.on)
+    return {"sync_on": left > 0, "sync_seconds_left": left, "sync_ttl_s": SYNC_TTL_S}
 
 
 @router.post("/reader/refresh")
