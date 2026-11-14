@@ -93,13 +93,13 @@ export default function BoardCardView({
             <NursingLambs count={card.nursing} young={terms.singular === 'Aue' ? 'Lämmer' : 'Kälber'} />
             {card.reasons.length > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-900">⚠ {card.reasons.length}</span>}
             {pendingTo && <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-950">→ {pendingTo} (Entwurf)</span>}
-            {meat && (
+            {meat && !fields.includes('meat') && (
               <span className={`rounded px-1.5 py-0.5 ${meat.kind === 'Lamm' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-900'}`} title={`${meat.kind}, ${meat.ageDays} Tage am Schlachttermin, ca. ${meat.kg} kg SG, ${meat.pricePerKg.toFixed(2)} Fr./kg, nach Abzügen`}>
                 ≈ {Math.round(meat.net)} Fr. · {meat.kind}
               </span>
             )}
           </span>
-          {fields.length > 0 && <CardProps card={card} fields={fields} />}
+          {fields.length > 0 && <CardProps card={card} fields={fields} meat={meat ?? null} />}
         </button>
         {canDrag && (
           <span
@@ -203,7 +203,7 @@ export default function BoardCardView({
 const f0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleString('de-CH'))
 
 /** Die gewählten Eigenschaften als kompakte Zeilen unter dem Kopf der Karte. */
-function CardProps({ card, fields }: { card: BoardCard; fields: CardFieldKey[] }) {
+function CardProps({ card, fields, meat }: { card: BoardCard; fields: CardFieldKey[]; meat: MeatValue | null }) {
   const has = (k: CardFieldKey) => fields.includes(k)
   const line = (label: string, value: string, key: string) => (
     <div key={key} className="flex justify-between gap-2">
@@ -218,6 +218,7 @@ function CardProps({ card, fields }: { card: BoardCard; fields: CardFieldKey[] }
   if (has('zw')) rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
   if (has('litter')) rows.push(line('Wurf', card.lastLitterSize == null ? '–' : `letzter ${card.lastLitterSize}${card.litterMean != null ? ` · Ø ${n1(card.litterMean)}` : ''}`, 'litter'))
   if (has('interval')) rows.push(line('Zwischenablammzeit', card.intervalDays == null ? '–' : `Ø ${card.intervalDays} Tage`, 'interval'))
+  if (has('meat')) rows.push(line('Fleischwert', meat ? `≈ ${Math.round(meat.net)} Fr. · ${meat.kind} ${meat.kg} kg` : card.birthDate ? '–' : 'ohne Geburtsdatum', 'meat'))
   const spark = has('spark') && card.levels.length > 0
   if (rows.length === 0 && !spark) return null
   return (

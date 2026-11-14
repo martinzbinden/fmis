@@ -175,9 +175,9 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const meatDate = meatSettings.slaughterDate || today
   const meatById = useMemo(() => {
     const m = new Map<string, ReturnType<typeof meatValue>>()
-    if (species === 'sheep' && meatOn) for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
+    if (species === 'sheep' && (meatOn || cardFields.includes('meat'))) for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
     return m
-  }, [cards, species, meatOn, meatDate, meatSettings, meatPrices])
+  }, [cards, species, meatOn, cardFields, meatDate, meatSettings, meatPrices])
   function toggleMeat() {
     const next = !meatOn
     setMeatOn(next)

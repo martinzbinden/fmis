@@ -1,6 +1,6 @@
 // Wählbare Eigenschaften der Dashboard-Karten (pages/Board.tsx): die Auswahl gilt je Gerät (localStorage).
 
-export type CardFieldKey = 'milk' | 'scc' | 'spark' | 'ltl' | 'zw' | 'litter' | 'interval'
+export type CardFieldKey = 'milk' | 'scc' | 'spark' | 'ltl' | 'zw' | 'litter' | 'interval' | 'meat'
 
 export interface CardFieldDef {
   key: CardFieldKey
@@ -18,6 +18,7 @@ export const CARD_FIELDS: CardFieldDef[] = [
   { key: 'zw', label: 'Zuchtwert (GZW / ISET)', hint: 'Gesamtzuchtwert aus dem Herdebuch' },
   { key: 'litter', label: 'Wurfgrösse', hint: 'Letzter Wurf und Mittel aller Würfe', species: 'sheep' },
   { key: 'interval', label: 'Zwischenablammzeit', hint: 'Mittlere Tage zwischen zwei Geburten' },
+  { key: 'meat', label: 'Geschätzter Fleischwert', hint: 'Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen (Einstellungen: Knopf «Fleischwert»)', species: 'sheep' },
 ]
 
 export const DEFAULT_CARD_FIELDS: CardFieldKey[] = ['milk', 'scc', 'spark']
