@@ -28,6 +28,10 @@ const card = (p: Partial<BoardCard> = {}): BoardCard => ({
   performanceRel: null,
   idxPerformance: null,
   scc12m: null,
+  idxScc: null,
+  sccRelPeers: null,
+  levels: [],
+  intervalDays: null,
   breedingValue: null,
   reasons: [],
   reasonScore: 0,
@@ -181,5 +185,14 @@ describe('Entwurf Gruppenwechsel', () => {
     const d = { a: 'g2', b: 'g1', c: 'weg', zzz: 'g2' } as Record<string, string | null>
     const pruned = pruneDraft(d, current, (id) => id !== 'weg')
     expect(pruned).toEqual({ a: 'g2' })
+  })
+})
+
+describe('Zwischenablammzeit', () => {
+  it('Mittel der Abstände, null unter zwei Geburten', async () => {
+    const { birthInterval } = await import('./board')
+    const b = (d: string) => ({ birth_date: d }) as never
+    expect(birthInterval({ births: [b('2025-01-01')] })).toBeNull()
+    expect(birthInterval({ births: [b('2025-01-01'), b('2025-12-27'), b('2026-12-22')] })).toBe(360)
   })
 })

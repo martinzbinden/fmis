@@ -8,6 +8,7 @@ import { presetFilter } from '@fmis/core/filters/useSavedFilters'
 import { cullingReasons, reasonScore, type CullingReason, type CullingThresholds } from './culling'
 import type { Species } from './fertility'
 import { cullingInput, type AnimalContext } from './herdContext'
+import type { LactationLevel } from './lactationTrend'
 import { speciesTerms } from './species'
 import type { PregnancyStatus } from './pregnancy'
 import type { Watchlist, WatchlistEntry } from './watchlists'
@@ -42,6 +43,14 @@ export interface BoardCard {
   performanceRel: number | null
   idxPerformance: number | null
   scc12m: number | null
+  /** Zellzahl-Index im Herdenvergleich (Mittel 100; Ø 12 Monate, sonst Laktation) */
+  idxScc: number | null
+  /** Zellzahl Ø 12 Monate in % des Mittels der Gleichaltrigen (gleiche Laktationsgruppe); tiefer ist besser */
+  sccRelPeers: number | null
+  /** Leistungsniveau je Laktation gegen die Herde (1.0 = Herdenmittel), für die Minigrafik */
+  levels: LactationLevel[]
+  /** mittlere Tage zwischen zwei Geburten (ab 2 Geburten) */
+  intervalDays: number | null
   breedingValue: number | null
   // Ausmerzen und Gesundheit
   reasons: CullingReason[]
@@ -68,6 +77,16 @@ export function buildCards(input: BoardInput): BoardCard[] {
   for (const e of input.entries) {
     if (e.done_at) continue
     lists.set(e.animal_id, [...(lists.get(e.animal_id) ?? []), e.list_id])
+  }
+  // Zellzahl Ø 12 Monate: Mittel je Laktationsgruppe (Gleichaltrige) für den Vergleich
+  const sccByGroup = new Map<number, number[]>()
+  for (const c of input.context.values()) {
+    const p = c.performance
+    if (p?.scc_geo_12m != null && c.animal.status === 'aktiv') sccByGroup.set(p.lactation_group, [...(sccByGroup.get(p.lactation_group) ?? []), p.scc_geo_12m])
+  }
+  const sccPeerMean = (g: number): number | null => {
+    const v = sccByGroup.get(g)
+    return v && v.length >= 3 ? v.reduce((s, x) => s + x, 0) / v.length : null
   }
   const cards: BoardCard[] = []
   for (const ref of input.refs) {
@@ -100,6 +119,14 @@ export function buildCards(input: BoardInput): BoardCard[] {
       performanceRel: ctx.performance?.performance_rel_stage ?? ctx.performance?.performance_rel ?? null,
       idxPerformance: ctx.performance?.idx_performance ?? null,
       scc12m: ctx.performance?.scc_geo_12m ?? null,
+      idxScc: ctx.performance?.idx_scc_12m ?? ctx.performance?.idx_scc ?? null,
+      sccRelPeers: (() => {
+        const p = ctx.performance
+        const mean = p ? sccPeerMean(p.lactation_group) : null
+        return p?.scc_geo_12m != null && mean ? Math.round((p.scc_geo_12m / mean) * 100) : null
+      })(),
+      levels: ctx.trend?.levels ?? [],
+      intervalDays: birthInterval(ctx),
       breedingValue: ctx.breedingValues[input.breedingTrait]?.value ?? null,
       reasons,
       reasonScore: reasonScore(reasons),
@@ -107,6 +134,13 @@ export function buildCards(input: BoardInput): BoardCard[] {
     })
   }
   return cards
+}
+
+/** Mittlere Tage zwischen aufeinanderfolgenden Geburten; null unter 2 Geburten. */
+export function birthInterval(ctx: Pick<AnimalContext, 'births'>): number | null {
+  const dates = ctx.births.map((b) => Date.parse(`${b.birth_date}T00:00:00Z`)).sort((a, b) => a - b)
+  if (dates.length < 2) return null
+  return Math.round((dates[dates.length - 1] - dates[0]) / (dates.length - 1) / 86_400_000)
 }
 
 function litterMeanOf(ctx: AnimalContext): number | null {

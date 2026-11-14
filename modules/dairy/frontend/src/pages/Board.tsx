@@ -17,6 +17,8 @@ import BoardCardView from '../components/BoardCardView'
 import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatValue, saveMeatSettings, sumMeat, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
+import CardFieldsMenu from '../components/CardFieldsMenu'
+import { loadCardFields, saveCardFields, type CardFieldKey } from '../lib/cardFields'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 import NumberInput from '@fmis/core/NumberInput'
 import { boardFields, boardPresets, buildCards, buildColumns, cardsInColumn, SORTS, sortCards, type BoardCard, type BoardColumn, type SortKey } from '../lib/board'
@@ -159,6 +161,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const columns = useMemo(() => buildColumns(groups, lists), [groups, lists])
 
   // Fleischwert (nur Schafe): geschätzter Schlachterlös je Tier und Summe je Spalte, mit Proviande-Preisen
+  const [cardFields, setCardFields] = useState<CardFieldKey[]>(() => loadCardFields(moduleKey))
   const [meatOn, setMeatOn] = useState(() => {
     try {
       return localStorage.getItem(`${moduleKey}_meat_on`) === '1'
@@ -285,6 +288,14 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             🥩 Fleischwert
           </button>
         )}
+        <CardFieldsMenu
+          species={species}
+          selected={cardFields}
+          onChange={(next) => {
+            setCardFields(next)
+            saveCardFields(moduleKey, next)
+          }}
+        />
         <button type="button" onClick={() => setShowColumns(true)} className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm">
           Spalten ({visibleColumns.length}/{columns.length})
         </button>
@@ -416,6 +427,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                     onUndoDraft={() => setDraft((d) => clearTargets(d, [c.id]))}
                     onRemoveFromList={col.kind === 'list' ? () => void removeFromList(col.id!, c.id) : undefined}
                     meat={meatById.get(c.id) ?? null}
+                    fields={cardFields}
                     pointerDown={pointerDown}
                   />
                 ))}
@@ -530,6 +542,7 @@ function ColumnCard({
   onUndoDraft,
   onRemoveFromList,
   meat,
+  fields,
   pointerDown,
 }: {
   card: BoardCard
@@ -546,6 +559,7 @@ function ColumnCard({
   onUndoDraft: () => void
   onRemoveFromList?: () => void
   meat?: MeatValue | null
+  fields?: CardFieldKey[]
   pointerDown: (cardId: string, handle: boolean) => (e: React.PointerEvent) => void
 }) {
   void col
@@ -565,6 +579,7 @@ function ColumnCard({
       onUndoDraft={pendingTo ? onUndoDraft : undefined}
       onRemoveFromList={onRemoveFromList}
       meat={meat}
+      fields={fields}
       onDragCard={pointerDown(card.id, false)}
       onDragHandle={pointerDown(card.id, true)}
     />

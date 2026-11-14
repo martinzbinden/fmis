@@ -6,6 +6,9 @@ import { fmtAge, fmtDate } from '../lib/format'
 import { RESULT_LABEL, METHOD_LABEL } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
 import type { MeatValue } from '../lib/meatValue'
+import type { CardFieldKey } from '../lib/cardFields'
+import LactationSpark from './LactationSpark'
+import NursingLambs from './NursingLambs'
 
 const SEX_ICON: Record<string, string> = { w: '♀', m: '♂', k: '⚲' }
 
@@ -29,6 +32,7 @@ export default function BoardCardView({
   onUndoDraft,
   onRemoveFromList,
   meat,
+  fields = [],
   onDragCard,
   onDragHandle,
 }: {
@@ -50,6 +54,8 @@ export default function BoardCardView({
   onRemoveFromList?: () => void
   /** geschätzter Fleischwert (nur Schafe, wenn aktiv) */
   meat?: MeatValue | null
+  /** auf der Karte gewählte Eigenschaften (Menü «Karte») */
+  fields?: CardFieldKey[]
   onDragCard: (e: ReactPointerEvent) => void
   onDragHandle: (e: ReactPointerEvent) => void
 }) {
@@ -84,7 +90,7 @@ export default function BoardCardView({
             {pregnant === 'nein' && <span className="rounded bg-orange-100 px-1.5 py-0.5 text-orange-900">leer</span>}
             {pregnant === 'unsicher' && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">unsicher</span>}
             {card.dry && <span className="rounded bg-gray-200 px-1.5 py-0.5 text-gray-800">trocken</span>}
-            {card.nursing > 0 && <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-900">🍼 {card.nursing}</span>}
+            <NursingLambs count={card.nursing} young={terms.singular === 'Aue' ? 'Lämmer' : 'Kälber'} />
             {card.reasons.length > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-900">⚠ {card.reasons.length}</span>}
             {pendingTo && <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-950">→ {pendingTo} (Entwurf)</span>}
             {meat && (
@@ -93,6 +99,7 @@ export default function BoardCardView({
               </span>
             )}
           </span>
+          {fields.length > 0 && <CardProps card={card} fields={fields} />}
         </button>
         {canDrag && (
           <span
@@ -190,6 +197,39 @@ export default function BoardCardView({
         </div>
       )}
     </div>
+  )
+}
+
+const f0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleString('de-CH'))
+
+/** Die gewählten Eigenschaften als kompakte Zeilen unter dem Kopf der Karte. */
+function CardProps({ card, fields }: { card: BoardCard; fields: CardFieldKey[] }) {
+  const has = (k: CardFieldKey) => fields.includes(k)
+  const line = (label: string, value: string, key: string) => (
+    <div key={key} className="flex justify-between gap-2">
+      <span className="text-gray-500">{label}</span>
+      <span className="text-right font-medium text-gray-900">{value}</span>
+    </div>
+  )
+  const rows: React.ReactNode[] = []
+  if (has('milk')) rows.push(line('Milch', `Herde ${f0(card.idxPerformance)} · Gleichalt. ${card.performanceRel == null ? '–' : `${f0(card.performanceRel * 100)} %`}`, 'milk'))
+  if (has('scc')) rows.push(line('Zellzahl', `Herde ${f0(card.idxScc)} · Gleichalt. ${card.sccRelPeers == null ? '–' : `${card.sccRelPeers} %`} · Ø ${f0(card.scc12m)}`, 'scc'))
+  if (has('ltl')) rows.push(line('Lebenstagleistung', card.ltlMilk == null ? '–' : `${n1(card.ltlMilk, 2)} kg`, 'ltl'))
+  if (has('zw')) rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
+  if (has('litter')) rows.push(line('Wurf', card.lastLitterSize == null ? '–' : `letzter ${card.lastLitterSize}${card.litterMean != null ? ` · Ø ${n1(card.litterMean)}` : ''}`, 'litter'))
+  if (has('interval')) rows.push(line('Zwischenablammzeit', card.intervalDays == null ? '–' : `Ø ${card.intervalDays} Tage`, 'interval'))
+  const spark = has('spark') && card.levels.length > 0
+  if (rows.length === 0 && !spark) return null
+  return (
+    <span className="mt-1 block space-y-0.5 border-t border-gray-100 pt-1 text-[11px]">
+      {rows}
+      {spark && (
+        <span className="flex items-end justify-between gap-2" title="Leistungsniveau je Laktation gegen die Herde">
+          <span className="text-gray-500">Laktationen</span>
+          <LactationSpark levels={card.levels} />
+        </span>
+      )}
+    </span>
   )
 }
 
