@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_MILK_FEED, fmtMilkFeed, milkFeed, milkFeedPoints, type MilkFeedInput, type MilkFeedSettings } from './milkFeed'
 
-const S: MilkFeedSettings = { ...DEFAULT_MILK_FEED.sheep, declinePerMonth: 0, minDailyKg: 0.1 }
+// feste Werte für die Rechenbeispiele (unabhängig von den Vorgaben des Betriebs)
+const S: MilkFeedSettings = { ...DEFAULT_MILK_FEED.sheep, milkingsPerDay: 2, milkPrice: 2.5, declinePerMonth: 0, minDailyKg: 0.1 }
 const base: MilkFeedInput = { species: 'sheep', today: '2026-11-15', sample: null, lastBirth: '2026-11-01', dry: false, expectedBirth: null, pregnancy: null }
 
 describe('milkFeed', () => {
@@ -25,6 +26,9 @@ describe('milkFeed', () => {
     expect(mated.birth).toBe('2027-03-01')
     const empty = milkFeed({ ...base, expectedBirth: '2027-03-01', pregnancy: { result: 'nein', date: '2026-11-10', examiner: null, method: null, weeks: null } }, S)
     expect(empty.birthBasis).toBe('annahme')
+    // Untersuchung zu früh nach der Belegung (hier 9 Tage): die Belegung gilt weiter
+    const early = milkFeed({ ...base, expectedBirth: '2027-03-31', pregnancy: { result: 'nein', date: '2026-11-10', examiner: null, method: null, weeks: null } }, S)
+    expect(early.birthBasis).toBe('belegung')
   })
 
   it('trächtig mit Wochen ohne Belegung: Rest der Tragzeit ab der Untersuchung', () => {

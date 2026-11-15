@@ -36,8 +36,9 @@ export interface MilkFeedSettings {
   dryDaysBeforeBirth: number
   /** ohne gemeldete Belegung: Annahme Belegung in … Tagen */
   matingInDays: number
-  /** Grundfutter je Tier und Tag (Fr.), auch trocken */
-  feedPerDay: number
+  /** Grundfutter: Preis je kg (Fr., z.B. zugekauftes Heu) und Verzehr je Tier und Tag (kg), auch trocken */
+  feedPricePerKg: number
+  feedKgPerDay: number
   /** Kraftfutter je kg Milch (Fr.) */
   feedPerKgMilk: number
   /** ältere Wägungen gelten nicht mehr (Tage) */
@@ -47,8 +48,9 @@ export interface MilkFeedSettings {
 }
 
 export const DEFAULT_MILK_FEED: Record<Species, MilkFeedSettings> = {
-  sheep: { milkingsPerDay: 2, milkPrice: 2.5, declinePerMonth: 10, minDailyKg: 0.3, dryDaysBeforeBirth: 60, matingInDays: 30, feedPerDay: 1.5, feedPerKgMilk: 0.25, maxSampleAgeDays: 60, frPerPoint: 100 },
-  cattle: { milkingsPerDay: 2, milkPrice: 0.75, declinePerMonth: 8, minDailyKg: 8, dryDaysBeforeBirth: 56, matingInDays: 45, feedPerDay: 6, feedPerKgMilk: 0.15, maxSampleAgeDays: 45, frPerPoint: 300 },
+  // Stand 15.11.2026: Schafe nur morgens gemolken (1 Melkung), Milchpreis 2.90 Fr./kg
+  sheep: { milkingsPerDay: 1, milkPrice: 2.9, declinePerMonth: 10, minDailyKg: 0.3, dryDaysBeforeBirth: 60, matingInDays: 30, feedPricePerKg: 0.6, feedKgPerDay: 2.5, feedPerKgMilk: 0.25, maxSampleAgeDays: 60, frPerPoint: 100 },
+  cattle: { milkingsPerDay: 2, milkPrice: 0.75, declinePerMonth: 8, minDailyKg: 8, dryDaysBeforeBirth: 56, matingInDays: 45, feedPricePerKg: 0.4, feedKgPerDay: 15, feedPerKgMilk: 0.15, maxSampleAgeDays: 45, frPerPoint: 300 },
 }
 
 /** Letzte Wägung eines Tiers. */
@@ -73,6 +75,12 @@ export interface MilkFeedInput {
   /** saugende Lämmer: Milch je Tag und Tage bis zum Absetzen (null = keine saugenden Lämmer) */
   lambs?: { perDay: number; weanInDays: number } | null
 }
+
+/** Grundfutter je Tier und Tag in Fr. */
+export const feedPerDay = (s: Pick<MilkFeedSettings, 'feedPricePerKg' | 'feedKgPerDay'>) => s.feedPricePerKg * s.feedKgPerDay
+
+/** Eine Trächtigkeitsuntersuchung beurteilt eine Belegung frühestens nach so vielen Tagen. */
+export const MIN_CHECK_DAYS = 25
 
 export type BirthBasis = 'belegung' | 'untersuchung' | 'annahme'
 
@@ -108,7 +116,8 @@ function nextBirth(i: MilkFeedInput, s: MilkFeedSettings): { birth: string; basi
   // Belegung gemeldet und nicht nachher leer untersucht
   if (i.expectedBirth) {
     const service = addDays(i.expectedBirth, -gestation)
-    const emptyAfter = p && p.result === 'nein' && p.date > service
+    // «leer» hebt die Belegung nur auf, wenn die Untersuchung spät genug danach war
+    const emptyAfter = p && p.result === 'nein' && daysBetween(service, p.date) >= MIN_CHECK_DAYS
     if (!emptyAfter) return { birth: i.expectedBirth < i.today ? i.today : i.expectedBirth, basis: 'belegung' }
   }
   if (p && p.result === 'ja' && p.weeks != null) {
@@ -155,7 +164,7 @@ export function milkFeed(i: MilkFeedInput, s: MilkFeedSettings): MilkFeed {
     milkUntil = milkDays > 0 ? addDays(i.today, milkDays - 1) : null
   }
   const milkValue = milkKg * s.milkPrice
-  const feedCost = feedDays * s.feedPerDay + milkKg * s.feedPerKgMilk
+  const feedCost = feedDays * feedPerDay(s) + milkKg * s.feedPerKgMilk
   const unknown = !i.dry && kg0 == null
   return {
     birth,
@@ -285,7 +294,8 @@ export function useMilkFeedSettings(moduleKey: string, species: Species): MilkFe
 /** Felder für die Einstellungen (Ausmerzliste und Dashboard). */
 export const MILK_FEED_FIELDS: { key: keyof MilkFeedSettings; label: string; step: number }[] = [
   { key: 'milkPrice', label: 'Milchpreis (Fr./kg)', step: 0.05 },
-  { key: 'feedPerDay', label: 'Grundfutter je Tag (Fr.)', step: 0.1 },
+  { key: 'feedPricePerKg', label: 'Grundfutter Preis (Fr./kg, z.B. Zukauf)', step: 0.05 },
+  { key: 'feedKgPerDay', label: 'Grundfutter je Tier und Tag (kg)', step: 0.1 },
   { key: 'feedPerKgMilk', label: 'Kraftfutter je kg Milch (Fr.)', step: 0.05 },
   { key: 'milkingsPerDay', label: 'Milchwägung: Melkungen pro Tag', step: 1 },
   { key: 'declinePerMonth', label: 'Rückgang Milch je Monat (%)', step: 1 },
