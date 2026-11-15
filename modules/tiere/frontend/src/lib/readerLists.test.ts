@@ -6,7 +6,7 @@ const entry = (p: Partial<ReaderEntry> = {}): ReaderEntry => ({
   earTag: 'CH113900000103',
   laufNr: '101',
   group: 'Ablammgruppe',
-  facts: { lastBirth: '2026-03-12', pregnancy: { date: '2026-10-10', result: 'ja' }, lastService: '2026-09-20' },
+  facts: { lastBirth: '2026-03-12', pregnancy: { date: '2026-10-10', result: 'ja' }, lastService: '2026-09-20', nursing: 1 },
   ...p,
 })
 
@@ -17,32 +17,37 @@ describe('deviceText', () => {
   })
 })
 
-describe('Gruppenwechsel', () => {
-  it('VID: Nummer, Tage in Laktation und Gruppe; Alarm: Ablammung mit Tagen', () => {
-    expect(vidText(entry(), 'gruppe', today)).toBe('101 L245 Ablammgrupp')
-    expect(alertText(entry(), 'gruppe', today)).toBe('Abl 12.03.26 245 T')
+describe('VID: Laufnummer, UID, Tage in Laktation, saugende Lämmer', () => {
+  it('«101 (0103) 245d 1L»', () => {
+    expect(vidText(entry(), 'gruppe', today)).toBe('101 (0103) 245d 1L')
+    expect(vidText(entry(), 'traechtigkeit', today)).toBe('101 (0103) 245d 1L')
   })
-  it('lange Namen werden auf 20 Zeichen gekürzt (die Gruppe zuerst), ohne Gruppe Nummer und Laktation', () => {
-    expect(vidText(entry({ group: 'Schlachten 2.11.26 Sonder' }), 'gruppe', today)).toBe('101 L245 Schlachten')
-    expect(vidText(entry({ group: null }), 'gruppe', today)).toBe('101 L245')
-  })
-  it('trockengestellte Tiere zeigen «trocken», ohne Geburt nur die Nummer', () => {
+  it('ohne saugende Lämmer kein «L», trockengestellt «trocken», ohne Geburt nur Nummer und UID', () => {
+    expect(vidText(entry({ facts: { lastBirth: '2026-03-12', pregnancy: null, nursing: 0 } }), 'gruppe', today)).toBe('101 (0103) 245d')
+    expect(vidText(entry({ dry: true, facts: { lastBirth: '2026-03-12', pregnancy: null, nursing: 0 } }), 'gruppe', today)).toBe('101 (0103) trocken')
+    expect(vidText(entry({ facts: { lastBirth: null, pregnancy: null } }), 'gruppe', today)).toBe('101 (0103)')
     expect(lactationText(entry({ dry: true }), today)).toBe('trocken')
-    expect(vidText(entry({ dry: true, group: 'Stall' }), 'gruppe', today)).toBe('101 trocken Stall')
-    expect(vidText(entry({ facts: { lastBirth: null, pregnancy: null }, group: null }), 'gruppe', today)).toBe('101')
   })
-  it('ohne Laufnummer die kurze Ohrmarke', () => {
-    expect(vidText(entry({ laufNr: null }), 'gruppe', today)).toMatch(/^9000\.0010 /)
+  it('ohne Laufnummer die kurze Ohrmarke, höchstens 20 Zeichen', () => {
+    expect(vidText(entry({ laufNr: null }), 'gruppe', today)).toMatch(/^9000\.0010 \(0103\)/)
+    const long = entry({ laufNr: '12345678', facts: { lastBirth: '2020-01-01', pregnancy: null, nursing: 12 } })
+    expect(vidText(long, 'gruppe', today).length).toBeLessThanOrEqual(20)
   })
-  it('ohne Ablammung kein Alarm', () => {
-    expect(alertText(entry({ facts: { lastBirth: null, pregnancy: null } }), 'gruppe', today)).toBe('')
-    expect(alertText(entry({ facts: null }), 'gruppe', today)).toBe('')
+})
+
+describe('Gruppenwechsel', () => {
+  it('Alarm: letzte Ablammung und Gruppe', () => {
+    expect(alertText(entry(), 'gruppe', today)).toBe('Abl 12.03. Ablammgru')
+    expect(alertText(entry({ group: 'Stall' }), 'gruppe', today)).toBe('Abl 12.03. Stall')
+  })
+  it('ohne Ablammung nur die Gruppe, ohne beides kein Alarm', () => {
+    expect(alertText(entry({ facts: { lastBirth: null, pregnancy: null }, group: 'Stall' }), 'gruppe', today)).toBe('Stall')
+    expect(alertText(entry({ facts: null, group: null }), 'gruppe', today)).toBe('')
   })
 })
 
 describe('Trächtigkeitsuntersuchung', () => {
-  it('VID: Nummer, Tage in Laktation und Ablammung; Alarm: Belegung und letzte Untersuchung', () => {
-    expect(vidText(entry(), 'traechtigkeit', today)).toBe('101 L245 Abl 12.03.')
+  it('Alarm: Belegung und letzte Untersuchung', () => {
     expect(alertText(entry(), 'traechtigkeit', today)).toBe('Bel 20.09. US ja 33T')
   })
   it('ohne Belegung nur die Untersuchung, ohne Untersuchung die Belegung', () => {
@@ -74,21 +79,21 @@ describe('buildReaderLists', () => {
     expect(lines[0]).toBe('[FileType]')
     expect(lines[1]).toBe('FileType=AgriLink Linklist File, File Version 1.00')
     expect(lines).toContain('[LinkList]')
-    expect(lines).toContain('756000090000010,101 L245 Ablammgrupp,1')
+    expect(lines).toContain('756000090000010,101 (0103) 245d 1L,1')
     const alerts = out.alertList.split('\r\n')
     expect(alerts[1]).toBe('FileType=AgriLink Alertlist File, File Version 1.00')
     expect(alerts).toContain('[AlertList]')
-    expect(alerts).toContain('1,Abl 12.03.26 245 T')
+    expect(alerts).toContain('1,Abl 12.03. Ablammgru')
   })
 
-  it('gleicher Alarmtext teilt sich eine Nummer, Tiere ohne Alarm bekommen 0', () => {
+  it('gleicher Alarmtext teilt sich eine Nummer, Tiere ohne Ablammung bekommen nur die Gruppe', () => {
     const a = entry()
     const b = entry({ earTag: 'CH113900000114', laufNr: '102' })
     const c = entry({ earTag: 'CH113900000125', laufNr: '103', facts: null })
     const out = buildReaderLists([a, b, c], 'gruppe', today)
-    expect(out.stats).toEqual({ animals: 3, withAlert: 2, noTag: 0, alertOverflow: 0, alerts: 1 })
-    expect(out.linkList).toContain('756000090000011,102 L245 Ablammgrupp,1')
-    expect(out.linkList).toContain('756000090000012,103 Ablammgruppe,0')
+    expect(out.stats).toEqual({ animals: 3, withAlert: 3, noTag: 0, alertOverflow: 0, alerts: 2 })
+    expect(out.linkList).toContain('756000090000011,102 (0114) 245d 1L,1')
+    expect(out.linkList).toContain('756000090000012,103 (0125),2')
   })
 
   it('Tiere ohne verwertbare Ohrmarke fehlen in der Liste', () => {

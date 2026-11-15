@@ -11,6 +11,7 @@ import { inTransaction } from '../db/transaction'
 import { isDrySql } from './dryOff'
 import { isoDate, localTodayIso, num } from './format'
 import { loadHerdContext } from './herdContext'
+import { loadNursingDams } from './lambs'
 import { speciesOf } from './species'
 
 export function createDairyAnimalProvider(moduleKey: string, title: string): AnimalProvider {
@@ -63,13 +64,15 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
     async readerFacts() {
       // gleiche Auswertung wie Tierdetail und Ausmerzliste: letzte Geburt, Untersuchung seit dieser Geburt
       const pg = await getDb(moduleKey)
-      const context = await loadHerdContext(pg, speciesOf(moduleKey), localTodayIso())
+      const today = localTodayIso()
+      const [context, nursing] = await Promise.all([loadHerdContext(pg, speciesOf(moduleKey), today), loadNursingDams(pg, today)])
       const out = new Map<string, ReaderFacts>()
       for (const [id, c] of context) {
         out.set(id, {
           lastBirth: c.fertility.last_birth,
           pregnancy: c.pregnancy ? { date: c.pregnancy.date, result: c.pregnancy.result } : null,
           lastService: c.fertility.services_since_birth > 0 ? (c.fertility.last_service?.service_date ?? null) : null,
+          nursing: nursing.get(id) ?? 0,
         })
       }
       return out

@@ -4,9 +4,10 @@
 // (CLinkList, CAlertList, CTag); AgriLink prüft sie beim Laden.
 //
 // Auf dem Gerät liegt nur eine Link-Liste: je nach Aufgabe die passende Variante laden.
-//   gruppe:        VID «Nummer L240 Gruppe», Alarm «Abl 12.03.26 240 T»       (Gruppenwechsel)
-//   traechtigkeit: VID «Nummer L240 Abl 12.03.», Alarm «Bel 20.09. US ja 31T» (Trächtigkeitsuntersuchung)
-// L240 = Tage in Laktation (Tage seit der letzten Geburt); trockengestellte Tiere zeigen «trocken».
+// Die VID ist in beiden Varianten gleich: «101 (2511) 245d 1L» = Laufnummer, Ende der Ohrmarke (UID), Tage in
+// Laktation (Tage seit der letzten Geburt; trockengestellte Tiere «trocken»), Anzahl saugende Lämmer.
+//   gruppe:        Alarm «Abl 12.03. Ablammgrup»  (letzte Ablammung und Gruppe)       (Gruppenwechsel)
+//   traechtigkeit: Alarm «Bel 20.09. US ja 31T»   (Belegung und letzte Untersuchung)  (Trächtigkeitsuntersuchung)
 
 import type { ReaderFacts } from '@fmis/core/animals'
 import { earTagToReaderIso } from '@fmis/core/tagReader'
@@ -15,8 +16,8 @@ import { shortEarTag } from '@fmis/core/earTag'
 export type ListVariant = 'gruppe' | 'traechtigkeit'
 
 export const VARIANTS: { key: ListVariant; label: string; example: string }[] = [
-  { key: 'gruppe', label: 'Gruppenwechsel', example: 'Nummer, Tage in Laktation und Gruppe; Alarm: letzte Ablammung' },
-  { key: 'traechtigkeit', label: 'Trächtigkeitsuntersuchung', example: 'Nummer, Tage in Laktation und Ablammung; Alarm: Belegung und letzte Untersuchung' },
+  { key: 'gruppe', label: 'Gruppenwechsel', example: 'Alarm: letzte Ablammung und Gruppe' },
+  { key: 'traechtigkeit', label: 'Trächtigkeitsuntersuchung', example: 'Alarm: Belegung und letzte Untersuchung' },
 ]
 
 export interface ReaderEntry {
@@ -44,7 +45,6 @@ export function deviceText(text: string): string {
 const dayNumber = (iso: string) => Math.round(Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) / 86_400_000)
 const days = (from: string, today: string) => dayNumber(today) - dayNumber(from)
 const ddmm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`
-const ddmmyy = (iso: string) => `${ddmm(iso)}${iso.slice(2, 4)}`
 const clip = (s: string) => deviceText(s).slice(0, MAX_TEXT).trimEnd()
 
 const RESULT: Record<string, string> = { ja: 'ja', nein: 'leer', unsicher: '?' }
@@ -52,25 +52,27 @@ const RESULT: Record<string, string> = { ja: 'ja', nein: 'leer', unsicher: '?' }
 /** Nummer, die am Gerät erscheint: Laufnummer, sonst die kurze Ohrmarke. */
 const nameOf = (e: ReaderEntry) => e.laufNr || shortEarTag(e.earTag)
 
-/** Tage in Laktation: «L245» (Tage seit der letzten Geburt), «trocken» bei trockengestellten Tieren, sonst nichts. */
+/** Tage in Laktation: «245d» (Tage seit der letzten Geburt), «trocken» bei trockengestellten Tieren, sonst nichts. */
 export function lactationText(e: ReaderEntry, today: string): string {
   if (e.dry) return 'trocken'
   const b = e.facts?.lastBirth
-  return b ? `L${days(b, today)}` : ''
+  return b ? `${days(b, today)}d` : ''
 }
 
-export function vidText(e: ReaderEntry, variant: ListVariant, today: string): string {
-  const lact = lactationText(e, today)
-  if (variant === 'gruppe') return clip(`${nameOf(e)} ${lact} ${e.group ?? ''}`)
-  const b = e.facts?.lastBirth
-  return clip(b ? `${nameOf(e)} ${lact} Abl ${ddmm(b)}` : nameOf(e))
+/** Ende der Ohrmarke (UID): die letzten vier Ziffern. */
+const uidOf = (earTag: string) => earTag.replace(/\D/g, '').slice(-4)
+
+/** VID: «101 (2511) 245d 1L» — Laufnummer, UID, Tage in Laktation, Anzahl saugende Lämmer. Ohne Laufnummer die kurze Ohrmarke. */
+export function vidText(e: ReaderEntry, _variant: ListVariant, today: string): string {
+  const n = e.facts?.nursing ?? 0
+  return clip([nameOf(e), uidOf(e.earTag) ? `(${uidOf(e.earTag)})` : '', lactationText(e, today), n > 0 ? `${n}L` : ''].filter(Boolean).join(' '))
 }
 
 /** Alarmtext (leer = kein Alarm). */
 export function alertText(e: ReaderEntry, variant: ListVariant, today: string): string {
   const f = e.facts
+  if (variant === 'gruppe') return clip(`${f?.lastBirth ? `Abl ${ddmm(f.lastBirth)}` : ''} ${e.group ?? ''}`)
   if (!f?.lastBirth) return ''
-  if (variant === 'gruppe') return clip(`Abl ${ddmmyy(f.lastBirth)} ${days(f.lastBirth, today)} T`)
   const bel = f.lastService ? `Bel ${ddmm(f.lastService)}` : ''
   if (!f.pregnancy) return f.lastService ? clip(`${bel} ${days(f.lastService, today)}T US?`) : 'keine US seit Abl.'
   // mit Belegung ohne Datum der Untersuchung (20 Zeichen), sonst mit Datum

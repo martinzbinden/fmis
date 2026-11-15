@@ -35,6 +35,8 @@ export interface ReaderFacts {
   pregnancy: { date: string; result: 'ja' | 'nein' | 'unsicher' } | null
   /** letzte Belegung seit dieser Geburt, ISO-Datum */
   lastService?: string | null
+  /** Anzahl saugende Lämmer/Kälber */
+  nursing?: number
 }
 
 export interface AnimalProvider {
