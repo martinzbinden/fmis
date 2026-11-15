@@ -60,6 +60,18 @@ Die Testumgebung enthält echte Betriebs- und Personendaten. Darum:
     POSTGRES_PASSWORD=<neu>
     # wie Prod: TRAEFIK_*, SMTP_*, LOGIN_DOMAINS, SSO_ENABLED, INITIAL_ADMIN_EMAIL, SESSION_TTL_DAYS
 
-Authelia braucht eine Regel für `dev-fmis.riedackerhof.ch` (nur Gruppe admins), sonst
-antwortet die Testumgebung mit 403. Dann `fmis-deploy.sh dev --immer` und die zwei cron-Zeilen
-aus dem Kopf von `fmis-deploy.sh`.
+Ausserhalb dieses Repos (eingerichtet 2026-11-15, Details in `/opt/gateway/docs/sicherheitskonzept.md`):
+
+- **Authelia** (erste Instanz, CT106): Regel für `dev-fmis.riedackerhof.ch`, `two_factor`, nur Gruppe
+  `admin-it` (die frühere Gruppe `admins` gibt es nicht mehr). Ohne Regel antwortet die Testumgebung
+  mit 403. Skript: `/opt/gateway/docs/authelia-dev-fmis-regel.sh`.
+- **Pi-hole** (Raspi und Replikat CT107): `dev-fmis.riedackerhof.ch` → `192.168.0.73` (Traefik).
+  Skript: `/opt/gateway/docs/pihole-dev-fmis.py`.
+- **Kein öffentlicher DNS-Eintrag:** Der Wildcard bei KAS zeigt nicht auf den Homeserver, die
+  Testumgebung ist darum nur im Heimnetz erreichbar. Das ist Absicht: Sie läuft mit Code vor der
+  Produktion, die API-Pfade laufen ohne Authelia, und die Bremse für den Mail-Link (`rl-fmis-auth`
+  in `/opt/gateway/traefik-dynamic/sicherheit.yml`) gilt nur für `fmis.`. Vor einem öffentlichen
+  CNAME `dev-fmis` → `523.riedackerhof.ch` zuerst diese Bremse für `dev-fmis.` ergänzen.
+- **Zertifikat:** Das Wildcard-Zertifikat `*.riedackerhof.ch` deckt den Namen ab.
+
+Dann `fmis-deploy.sh dev --immer` und die zwei cron-Zeilen aus dem Kopf von `fmis-deploy.sh`.
