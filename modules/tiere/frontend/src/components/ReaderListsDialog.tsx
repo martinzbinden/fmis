@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { animalProviders, type ReaderFacts } from '@fmis/core/animals'
-import { errorText } from '@fmis/core/toast'
+import { API_URL, getToken } from '@fmis/core/auth'
+import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
 import { todayIso } from '../lib/format'
 import { memberAt, type HerdData } from '../lib/herds'
 import { buildReaderLists, VARIANTS, type ListVariant, type ReaderEntry } from '../lib/readerLists'
@@ -24,6 +25,8 @@ export default function ReaderListsDialog({ data, onClose }: { data: HerdData; o
   const [variant, setVariant] = useState<ListVariant>('gruppe')
   const [entries, setEntries] = useState<ReaderEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
@@ -46,6 +49,31 @@ export default function ReaderListsDialog({ data, onClose }: { data: HerdData; o
       live = false
     }
   }, [data, today])
+
+  /** Link-Liste (nur VID, Alarmnummer 0) direkt aufs Gerät: der Server sichert die alte Liste, ersetzt sie, liest zurück und
+   * spielt bei einer Abweichung die alte wieder auf. Die Sicherung kommt als Datei. */
+  async function sendToDevice(rows: { iso: string; vid: string }[]) {
+    if (!window.confirm(`Die Link-Liste auf dem APR600 wird durch ${rows.length} Tiere ersetzt. Die alte Liste wird vorher gesichert (Sie kommt als Datei) und bei einem Fehler wieder aufgespielt. Alarmtexte werden nicht gesendet. Weiter?`)) return
+    setSending(true)
+    setSent(null)
+    try {
+      const res = await fetch(`${API_URL}/tiere/reader/linklist`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries: rows.map((r) => ({ iso: r.iso, vid: r.vid, alert: 0 })) }),
+      })
+      const body = (await res.json().catch(() => null)) as { detail?: string; sent?: number; verified?: number; backup?: string; backup_entries?: number } | null
+      if (!res.ok || !body) throw new Error(typeof body?.detail === 'string' ? body.detail : `Fehler ${res.status}`)
+      if (body.backup) download(`APR600_Sicherung_${today}_Linkliste.txt`, body.backup)
+      setSent(`✓ ${body.sent} Tiere gesendet und auf dem Gerät geprüft. Die alte Liste (${body.backup_entries} Einträge) ist als Datei gesichert.`)
+      notifySuccess('Link-Liste ist auf dem Gerät')
+    } catch (e) {
+      setSent(null)
+      notifyError(errorText(e))
+    } finally {
+      setSending(false)
+    }
+  }
 
   const lists = useMemo(() => (entries ? buildReaderLists(entries, variant, today) : null), [entries, variant, today])
   const label = VARIANTS.find((v) => v.key === variant)!.label.replace(/\W+/g, '')
@@ -91,6 +119,17 @@ export default function ReaderListsDialog({ data, onClose }: { data: HerdData; o
               <li>Dann die Link-Liste öffnen (Linklist → Load) und hochladen.</li>
               <li>Am Gerät eine Ohrmarke lesen: Nummer und Alarmtext erscheinen.</li>
             </ol>
+            <div className="space-y-1 rounded-lg border-2 border-brand-700 bg-brand-50 p-3">
+              <h3 className="font-semibold text-gray-900">Direkt aufs Gerät (nur Link-Liste)</h3>
+              <p className="text-gray-700">
+                Der Server ersetzt die Link-Liste auf dem APR600 (VID: Nummer, UID, Tage, Lämmer), prüft sie nach und sichert die alte Liste als Datei. Die Alarmtexte
+                bleiben, wie sie sind; die Alarmliste lädst du weiter mit AgriLink. Das Gerät muss im WLAN sein.
+              </p>
+              <button type="button" disabled={sending || lists.rows.length === 0} onClick={() => void sendToDevice(lists.rows)} className="min-h-11 rounded-lg border-2 border-brand-700 bg-white px-4 font-semibold text-brand-800 disabled:opacity-50">
+                {sending ? 'sendet …' : `Link-Liste aufs Gerät senden (${lists.rows.length})`}
+              </button>
+              {sent && <p className="rounded bg-green-100 p-2 text-green-900">{sent}</p>}
+            </div>
             <p className="text-xs text-gray-500">Stand von heute. Nach Gruppenwechseln, Ablammungen oder Untersuchungen neue Listen erzeugen.</p>
           </>
         )}

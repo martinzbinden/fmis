@@ -215,7 +215,7 @@ class ReaderConnection:
         self.noise_bytes = 0
         self.frames = 0
 
-    async def send_command(self, command: str, *args: str, timeout: float = 5.0) -> str:
+    async def send_command(self, command: str, *args: str, timeout: float = 5.0, encoding: str = "ascii") -> str:
         """Sendet [BEFEHL|arg1|...], wartet auf [BEFEHLOK]/[BEFEHLERROR] und
         gibt den reinen Text dazwischen zurück (roh, pipe-getrennt) — jeder
         Aufrufer parst das je nach Befehl selbst weiter, da jeder Befehl ein
@@ -246,7 +246,7 @@ class ReaderConnection:
                 raise ReaderError(f"Zeitüberschreitung bei Befehl {command}") from None
             if not data:
                 raise ReaderError("Verbindung vom Leser geschlossen")
-            buf += data.decode("ascii", errors="replace")
+            buf += data.decode(encoding, errors="replace")
             if error_closer in buf:
                 raise ReaderError(f"Leser meldet Fehler für {command}")
             if ok_closer in buf:
@@ -254,6 +254,24 @@ class ReaderConnection:
                 payload_start = start + len(opener) if start != -1 else 0
                 payload = buf[payload_start : buf.find(ok_closer)]
                 return payload.strip("\r\n")
+
+    async def send_line(self, line: str, *, timeout: float = 1.0) -> bool:
+        """Sendet eine rohe Zeile ohne Befehlsnamen, z.B. einen Link-Listen-Eintrag `[E<hex>|VID|0]` (wie AgriLink).
+        Das Gerät antwortet mit dem Echo der Zeile; gibt zurück, ob es kam. Text als Latin-1 (Umlaute der alten VID)."""
+        self._writer.write(line.encode("latin-1"))
+        await self._writer.drain()
+        got = ""
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline and line not in got:
+            try:
+                data = await asyncio.wait_for(self._reader.read(4096), timeout=max(0.05, deadline - loop.time()))
+            except asyncio.TimeoutError:
+                break
+            if not data:
+                raise ReaderError("Verbindung vom Leser geschlossen")
+            got += data.decode("latin-1", errors="replace")
+        return line in got
 
     async def live_reads(self) -> AsyncIterator[str]:
         """Liefert unaufgefordert eintreffende Live-Reads als lange Ohrmarke

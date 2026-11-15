@@ -80,9 +80,18 @@ export function alertText(e: ReaderEntry, variant: ListVariant, today: string): 
   return clip(`${bel} ${us} ${days(f.pregnancy.date, today)}T`)
 }
 
+/** Ein Link-Listen-Eintrag in der Form für den Server (components/ReaderListsDialog.tsx: «aufs Gerät senden»). */
+export interface DeviceRow {
+  iso: string
+  vid: string
+  alert: number
+}
+
 export interface ReaderLists {
   linkList: string
   alertList: string
+  /** dieselben Einträge wie die Link-Liste, für das direkte Senden */
+  rows: DeviceRow[]
   stats: { animals: number; withAlert: number; noTag: number; alertOverflow: number; alerts: number }
 }
 
@@ -92,6 +101,7 @@ const header = (type: string) =>
 export function buildReaderLists(entries: ReaderEntry[], variant: ListVariant, today: string): ReaderLists {
   const alerts = new Map<string, number>()
   const links: string[] = []
+  const rows: DeviceRow[] = []
   const stats = { animals: 0, withAlert: 0, noTag: 0, alertOverflow: 0, alerts: 0 }
   for (const e of entries) {
     const iso = earTagToReaderIso(e.earTag)
@@ -113,12 +123,15 @@ export function buildReaderLists(entries: ReaderEntry[], variant: ListVariant, t
       if (id) stats.withAlert++
     }
     stats.animals++
-    links.push(`${iso},${vidText(e, variant, today)},${id}`)
+    const vid = vidText(e, variant, today)
+    links.push(`${iso},${vid},${id}`)
+    rows.push({ iso, vid, alert: id })
   }
   stats.alerts = alerts.size
   return {
     linkList: [header('Linklist'), '[LinkList]', ...links, ''].join('\r\n'),
     alertList: [header('Alertlist'), '[AlertList]', ...[...alerts].map(([text, id]) => `${id},${text}`), ''].join('\r\n'),
+    rows,
     stats,
   }
 }

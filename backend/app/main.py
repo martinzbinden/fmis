@@ -28,6 +28,7 @@ from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
 from modules.betrieb.backend.app import machine_files as betrieb_machine_files
 from modules.betrieb.backend.app import school_timetable as betrieb_school
 from modules.betrieb.backend.app import sync as betrieb_sync
+from modules.tiere.backend.app import reader_lists as tiere_reader_lists
 from modules.tiere.backend.app import reader_pools as tiere_reader_pools
 from modules.tiere.backend.app import sync as tiere_sync
 from modules.bau.backend.app import sync as bau_sync
@@ -131,6 +132,12 @@ for _spec in MODULE_SPECS:
 # livestock's APR600-Datenpool-Import (Gruppen-Ohrmarken vom Leser).
 app.include_router(
     tiere_reader_pools.router,
+    prefix="/tiere",
+    dependencies=[Depends(require_module_enabled("tiere"))],
+)
+# Link-Liste (Ohrmarke → VID) direkt aufs Lesegerät senden (modules/tiere/backend/app/reader_lists.py)
+app.include_router(
+    tiere_reader_lists.router,
     prefix="/tiere",
     dependencies=[Depends(require_module_enabled("tiere"))],
 )

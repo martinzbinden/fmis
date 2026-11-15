@@ -112,3 +112,14 @@ describe('buildReaderLists', () => {
     expect(out.linkList.split('\r\n').filter((l) => l.endsWith(',0')).length).toBe(3)
   })
 })
+
+describe('Zeilen fürs direkte Senden', () => {
+  it('rows entsprechen der Link-Liste, mit Ohrmarke aus 15 Ziffern', () => {
+    const out = buildReaderLists([entry(), entry({ earTag: 'CH113900000114', laufNr: '102' })], 'gruppe', today)
+    expect(out.rows).toEqual([
+      { iso: '756000090000010', vid: '101 (0103) 245d 1L', alert: 1 },
+      { iso: '756000090000011', vid: '102 (0114) 245d 1L', alert: 1 },
+    ])
+    for (const r of out.rows) expect(r.iso).toMatch(/^\d{15}$/)
+  })
+})
