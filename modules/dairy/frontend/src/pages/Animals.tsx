@@ -1,4 +1,5 @@
 import { isDrySql } from '../lib/dryOff'
+import { openImport } from '@fmis/core/importModal'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
@@ -273,13 +274,13 @@ export default function Animals({ moduleKey }: { moduleKey: string }) {
         ))}
       </ul>
 
-      <Link to="/import" className="mt-6 block rounded-lg bg-white p-4 text-sm shadow-sm active:bg-gray-50">
+      <button type="button" onClick={openImport} className="mt-6 block w-full rounded-lg bg-white p-4 text-left text-sm shadow-sm active:bg-gray-50">
         <span className="font-semibold text-brand-700">📥 Daten importieren</span>
         <span className="block text-xs text-gray-500">
           Herdebuch-Export, TVD-Tierbestand{moduleKey === 'dairy' ? '' : ', SMG-Leistungsausweise'} — auf der zentralen Upload-Seite, die
           Dateien werden der richtigen Herde automatisch zugeordnet.
         </span>
-      </Link>
+      </button>
     </div>
   )
 }

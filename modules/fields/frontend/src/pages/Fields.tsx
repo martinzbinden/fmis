@@ -1,4 +1,5 @@
 import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
+import { openImport } from '@fmis/core/importModal'
 import { useListQuery } from '@fmis/core/query/useListQuery'
 import { DECLARATION_EXAMPLES, DECLARATION_QUERY_FIELDS, declarationTexts } from '../lib/declarationQuery'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -242,12 +243,12 @@ export default function Fields() {
 
       {layerMode === 'import' && (
       <>
-      <Link to="/import" className="block rounded-lg bg-white p-4 text-sm shadow-sm active:bg-gray-50">
+      <button type="button" onClick={openImport} className="block w-full rounded-lg bg-white p-4 text-left text-sm shadow-sm active:bg-gray-50">
         <span className="font-semibold text-brand-700">📥 Raumdaten importieren</span>
         <span className="block text-xs text-gray-500">
           GELAN «Raumdatenexport Bewirtschafter» (ZIP, beide Betriebe zusammen möglich) — auf der zentralen Upload-Seite.
         </span>
-      </Link>
+      </button>
 
       {farms && farms.length === 0 && (
         <p className="text-center text-gray-500">Noch keine Betriebe — zuerst Raumdaten importieren.</p>

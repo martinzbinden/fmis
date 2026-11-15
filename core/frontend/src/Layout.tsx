@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useState, type ReactNode } from 'react'
+import ImportButton from './ImportButton'
 import { Link, NavLink, matchPath, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import SyncStatusDot from './SyncStatusDot'
 import { logout } from './auth'
@@ -84,9 +85,7 @@ export default function Layout({
         <div className="flex shrink-0 items-center sm:gap-1">
           <SyncStatusDot status={status} error={error} pending={pending} onSync={() => void sync.syncNow()} />
           {canImport && (
-            <NavLink to="/import" className="hidden min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 sm:grid" title="Daten importieren">
-              📥
-            </NavLink>
+            <ImportButton className="hidden min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 sm:grid" />
           )}
           {canViewHistory && (
             // Zweites Antippen schliesst den Verlauf wieder: zurück zur Seite, von der man kam

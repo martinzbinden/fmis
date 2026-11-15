@@ -19,7 +19,7 @@ import betriebModule from '@fmis/betrieb/module'
 import tiereModule from '@fmis/tiere/module'
 import bauModule from '@fmis/bau/module'
 import Dashboard from './pages/Dashboard'
-import Upload from './pages/Upload'
+import ImportModal, { ImportRoute } from './ImportModal'
 import YearOverview from './pages/YearOverview'
 import { registerAnimalProviders, registerHerdLocator } from '@fmis/core/animals'
 import { syncPendingModules } from '@fmis/core/sync'
@@ -168,6 +168,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
     <ViewAsBar />
     <PendingSync keys={enabledModules.map((m) => m.key)} />
     {enabledModules.map((m) => (m.globalOverlay ? <m.globalOverlay key={`overlay-${m.key}`} /> : null))}
+    <ImportModal modules={enabledModules} />
     <Routes>
       <Route path="/dashboard" element={<Dashboard modules={enabledModules} onLoggedOut={onLoggedOut} />} />
       <Route
@@ -178,14 +179,7 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
           </PageShell>
         }
       />
-      <Route
-        path="/import"
-        element={
-          <PageShell title="Import" onLoggedOut={onLoggedOut}>
-            <Upload modules={enabledModules} />
-          </PageShell>
-        }
-      />
+      <Route path="/import" element={<ImportRoute />} />
       <Route
         path="/verwaltung/*"
         element={

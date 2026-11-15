@@ -4,6 +4,7 @@ import { useAuthUser } from '@fmis/core/AuthContext'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import { expandUploads, type ImportClaim, type ImportStatus, type UploadFile } from '@fmis/core/upload'
 import PasteImport from './PasteImport'
+import { closeImport, setImportBusy } from '@fmis/core/importModal'
 
 interface Run {
   id: string
@@ -99,7 +100,7 @@ const PHASE_CHIP: Record<ImportStatus['phase'], string> = {
  * Modul kennt, wird gemeldet — neue Formate müssen zuerst im Code angelernt
  * werden (ModuleImporter eines Moduls). Jeder Upload bleibt als eigener Block
  * stehen; die Importe laufen nacheinander (Warteschlange), mit Fortschritt. */
-export default function Upload({ modules }: { modules: ModuleDescriptor[] }) {
+export default function Upload({ modules, inModal = false }: { modules: ModuleDescriptor[]; inModal?: boolean }) {
   const user = useAuthUser()
   // Importe brauchen zusätzlich das Recht «Daten importieren» (Mitarbeit hat es nicht; der Server verlangt es ebenfalls)
   const mayImport = !!user?.permissions.includes('core:import:write')
@@ -176,6 +177,8 @@ export default function Upload({ modules }: { modules: ModuleDescriptor[] }) {
 
   const anyActive =
     batches.some((b) => b.analyzing) || queue.some((id) => runs[id] && (!runs[id].startedAt || runs[id].status.phase === 'running'))
+  // am 📥-Knopf zeigen, dass im Hintergrund etwas läuft (core/importModal.ts)
+  useEffect(() => setImportBusy(anyActive), [anyActive])
 
   // Uhr für Laufzeiten; Warnung beim Verlassen, solange etwas läuft.
   useEffect(() => {
@@ -205,9 +208,9 @@ export default function Upload({ modules }: { modules: ModuleDescriptor[] }) {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
+    <div className={inModal ? 'space-y-4' : 'mx-auto max-w-2xl space-y-4 p-4 pb-24'}>
       <div>
-        <h1 className="text-xl font-bold text-gray-800">Daten importieren</h1>
+        {!inModal && <h1 className="text-xl font-bold text-gray-800">Daten importieren</h1>}
         <p className="text-xs text-gray-500">
           Dateien einzeln, mehrere zusammen oder als ZIP. Welches Modul und welche Herde sie bekommt, wird am Inhalt erkannt.
           Importe ergänzen nur, sie löschen nichts. Weitere Dateien kannst du jederzeit dazulegen — sie kommen als eigener
@@ -334,7 +337,7 @@ export default function Upload({ modules }: { modules: ModuleDescriptor[] }) {
                           {r.finishedAt ? `Dauer ${fmtDuration(elapsed)}` : fmtDuration(elapsed)}
                           {remaining != null && remaining > 2000 ? ` · noch ca. ${fmtDuration(remaining)}` : ''}
                           {' · '}
-                          <Link to={`/${r.mod.key}`} className="text-brand-700">
+                          <Link to={`/${r.mod.key}`} onClick={closeImport} className="text-brand-700">
                             {r.mod.title} →
                           </Link>
                         </span>

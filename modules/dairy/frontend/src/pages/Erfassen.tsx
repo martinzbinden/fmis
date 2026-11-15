@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { openImport } from '@fmis/core/importModal'
 import { speciesOf } from '../lib/species'
 import { useQuery } from '../hooks/useQuery'
 import { loadPendingOffspring } from '../lib/earTagPending'
@@ -37,7 +38,14 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
     <div className="mx-auto max-w-lg space-y-3 p-4 pb-24">
       <h1 className="mb-2 text-xl font-bold text-gray-800">Mehr</h1>
       {items.map((item) => (
-        <Link key={item.to} to={item.to.startsWith('/') ? item.to : `../${item.to}`} relative="path" className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm active:bg-gray-50">
+        <Link
+          key={item.to}
+          to={item.to.startsWith('/') ? item.to : `../${item.to}`}
+          relative="path"
+          // Datenimport als Fenster über dieser Seite, statt die Seite zu verlassen
+          onClick={item.to === '/import' ? (e) => (e.preventDefault(), openImport()) : undefined}
+          className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm active:bg-gray-50"
+        >
           <span className="text-3xl">{item.icon}</span>
           <span className="min-w-0 flex-1">
             <span className="block text-base font-semibold text-gray-800">{item.label}</span>

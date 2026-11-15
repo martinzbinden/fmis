@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { openImport } from '@fmis/core/importModal'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
@@ -66,12 +67,12 @@ const today = () => localTodayIso()
 
 function ImportLink() {
   return (
-    <Link to="/import" className="block rounded-lg border border-gray-200 bg-white p-4 text-sm active:bg-gray-50">
+    <button type="button" onClick={openImport} className="block w-full rounded-lg border border-gray-200 bg-white p-4 text-left text-sm active:bg-gray-50">
       <span className="font-semibold text-brand-700">📥 Tiere importieren</span>
       <span className="block text-xs text-gray-500">
         TVD-Begleitdokument (PDF) oder CSV <code>ear_tag,birth_date,sex</code> — auf der zentralen Upload-Seite.
       </span>
-    </Link>
+    </button>
   )
 }
 

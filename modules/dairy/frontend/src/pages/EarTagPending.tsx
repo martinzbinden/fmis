@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { openImport } from '@fmis/core/importModal'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey, shortEarTag } from '@fmis/core/earTag'
@@ -91,9 +92,9 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
           ) : (
             <>
               Vorrat noch nicht eingelesen:{' '}
-              <Link to="/import" className="link-btn font-medium text-brand-700">
+              <button type="button" onClick={openImport} className="link-btn font-medium text-brand-700">
                 TVD-Lagerbestand importieren
-              </Link>
+              </button>
             </>
           )}
         </p>
