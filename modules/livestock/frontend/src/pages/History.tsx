@@ -18,6 +18,7 @@ const TABLE_LABEL: Record<string, string> = {
   feed_records: 'Futtereintrag',
   expenses: 'Kosten',
   slaughter_results: 'Schlachtresultat',
+  slaughter_records: 'Schlachtung (Abrechnung)',
   market_prices: 'Marktpreis',
   direct_marketing_settings: 'Direktvermarktung',
 }
@@ -70,6 +71,8 @@ function describeEntry(entry: DataHistory): { label: string; link: string | null
         label: s(snap.category) ?? 'Kosten',
         link: snap.group_id ? `/gruppen/${s(snap.group_id)}` : null,
       }
+    case 'slaughter_records':
+      return { label: `${s(snap.category) ?? 'Schlachtung'} ${s(snap.ear_tag) ?? ''} ${s(snap.slaughter_date) ?? ''}`.replace(/\s+/g, ' ').trim(), link: '/schlachtungen' }
     case 'slaughter_results':
       return {
         label: `Schlachtung ${s(snap.slaughter_date) ?? ''}`.trim(),

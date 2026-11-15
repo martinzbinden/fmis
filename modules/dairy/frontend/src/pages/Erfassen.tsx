@@ -31,6 +31,7 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
     { to: 'selektion', icon: '⭐', label: sheep ? 'Lämmer-Selektion' : 'Kälber-Selektion', desc: 'Remonte oder Mast nach Mutterleistung, Vater und Inzucht' },
     { to: 'merklisten', icon: '🔖', label: 'Merklisten', desc: 'Tiere vormerken, z.B. «Ausmerzen prüfen» – auch aus Warnungen bei der Erfassung' },
     { to: 'gruppen', icon: '📊', label: 'Gruppen', desc: 'Tiergruppen und Merklisten vergleichen: Leistung + Zuchtwert, Schlachterlös, Fortpflanzung, Klauen – beliebige Gruppen nebeneinander' },
+    { to: '/livestock/schlachtungen', icon: '🧾', label: 'Schlachtungen', desc: 'Schlachtabrechnungen aller Tiere: Gewicht nach Alter und Laktationstagen, Preise je Taxation (im Mastplaner)' },
     { to: '/import', icon: '📥', label: 'Datenimport', desc: sheep ? 'TVD-Tierbestand, SMG-Dateien und weitere Dateien hochladen (gemeinsame Seite für alle Module)' : 'Herdebuch-Export und weitere Dateien hochladen (gemeinsame Seite für alle Module)' },
     { to: 'anpaarung', icon: '🧬', label: 'Anpaarung planen', desc: 'Erwartete Inzucht je Mutter × ' + (sheep ? 'Widder' : 'Stier') },
   ]

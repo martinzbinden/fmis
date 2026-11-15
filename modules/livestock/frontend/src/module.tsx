@@ -16,6 +16,8 @@ import MedicationReference from './pages/MedicationReference'
 import FeedEntry from './pages/FeedEntry'
 import FeedReference from './pages/FeedReference'
 import SlaughterEntry from './pages/SlaughterEntry'
+import Slaughterings from './pages/Slaughterings'
+import { slaughterPasteImporter } from './lib/pasteSlaughter'
 import Economics from './pages/Economics'
 import Vermarktung from './pages/Vermarktung'
 import History from './pages/History'
@@ -51,6 +53,7 @@ const livestockModule: ModuleDescriptor = {
     futter: 'Futter',
     'futter/referenz': 'Futtermittel-Referenz',
     schlachtung: 'Schlachtung',
+    schlachtungen: 'Schlachtungen',
     vermarktung: 'Vermarktung',
   },
   routes: [
@@ -66,6 +69,7 @@ const livestockModule: ModuleDescriptor = {
     { path: 'futter', element: <FeedEntry /> },
     { path: 'futter/referenz', element: <FeedReference /> },
     { path: 'schlachtung', element: <SlaughterEntry /> },
+    { path: 'schlachtungen', element: <Slaughterings /> },
     { path: 'wirtschaftlichkeit', element: <Economics /> },
     { path: 'vermarktung', element: <Vermarktung /> },
     { path: 'verlauf', element: <History /> },
@@ -74,6 +78,7 @@ const livestockModule: ModuleDescriptor = {
   DbProvider: LivestockDbProvider,
   sync: syncClient,
   animals: livestockAnimalProvider,
+  pasteImporters: [slaughterPasteImporter],
   importer: createLivestockImporter(({ claim, ...run }) => (
     <IntakePanel rows={intakeOf(claim).rows} warnings={intakeOf(claim).warnings} {...run} />
   )),

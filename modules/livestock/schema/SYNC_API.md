@@ -17,6 +17,7 @@ Diese Reihenfolge ist verbindlich für Push-Payloads (Backend validiert per Name
 - `feed_records`: id, group_id, date, feed_type, quantity, unit, cost_total, supplier, notes, updated_at, deleted_at
 - `expenses`: id, group_id, date, category, description, amount, updated_at, deleted_at
 - `slaughter_results`: id, animal_id, slaughter_date, slaughterhouse, carcass_weight_kg, classification, fat_class, price_per_kg, total_revenue, notes, updated_at, deleted_at, channel, butcher_cost
+- `slaughter_records`: id, slaughter_date, ear_tag, animal_key, category, carcass_kg, classification, price_per_kg, amount, remark, buyer, settlement_no, weigh_slip_no, source, notes, updated_at, deleted_at (Schlachtungen aller Tiere aus den Abrechnungen, schema/0007)
 - `market_prices`: id, valid_from, la_t3, sm_t3, bio_premium, fee_per_animal, source, notes, updated_at, deleted_at — Proviande-Wochenpreise
   für Lämmer (LA) und Schafe (SM), T3, Fr./kg SG; gilt die jüngste Zeile (Seite «Vermarktung»).
 - `direct_marketing_settings`: id, valid_from, butcher, fee_per_animal, fee_per_kg_carcass, meat_yield_pct, disposal_per_kg,

@@ -211,6 +211,7 @@ export function resetUndo(): void {
 
 /** Bereichsnamen für «Rückgängig» und den Verlauf (Tabellen aller Module). */
 export const TABLE_LABELS: Record<string, string> = {
+  slaughter_records: 'Schlachtung',
   // Milchschafe / Milchkühe
   animals: 'Tier', milk_tests: 'Milchwägung', lactations: 'Laktation', milking_banks: 'Bank (Milchwägung)', milking_slots: 'Platz (Milchwägung)',
   animal_journal: 'Journal', treatment_templates: 'Behandlungsvorlage', pedigree: 'Abstammung', matings: 'Belegung',

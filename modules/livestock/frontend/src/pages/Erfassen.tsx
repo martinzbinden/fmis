@@ -5,6 +5,7 @@ const items = [
   { to: '/medikamente', icon: '💊', label: 'Medikamente erfassen', desc: 'Pro Tier oder ganze Gruppe' },
   { to: '/futter', icon: '🌾', label: 'Futter erfassen', desc: 'Pro Gruppe' },
   { to: '/schlachtung', icon: '🔪', label: 'Schlachtung erfassen', desc: 'Pro Ohrmarke' },
+  { to: '/schlachtungen', icon: '🧾', label: 'Schlachtungen', desc: 'Alle Tiere aus den Abrechnungen: Gewicht nach Alter, Jahreszeit, Taxation' },
 ]
 
 export default function Erfassen() {
