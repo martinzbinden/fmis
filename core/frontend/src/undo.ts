@@ -27,11 +27,25 @@ export interface UndoChange {
  * Zeilen am Ende der älteste Stand steht. */
 export type UndoRestore = (changes: UndoChange[]) => Promise<void>
 
+/** Liest den heutigen Stand der betroffenen Zeilen (für «Wiederholen», siehe redoStep). */
+export type UndoSnapshot = (changes: UndoChange[]) => Promise<UndoChange[]>
+
 /** Ein Modul-Anteil eines Schritts mit seiner eigenen Wiederherstellung. */
 export interface UndoPart {
   source: string
   restore: UndoRestore
   changes: UndoChange[]
+  snapshot?: UndoSnapshot
+}
+
+/** Stand der Zeilen jetzt (Zeile nicht mehr da: weggelassen) — als `before` einer Wiederherstellung. */
+export async function snapshotRows(q: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }, changes: UndoChange[]): Promise<UndoChange[]> {
+  const out: UndoChange[] = []
+  for (const c of changes) {
+    const { rows } = await q.query(`select * from "${c.table}" where id = $1`, [c.id])
+    if (rows[0]) out.push({ table: c.table, id: c.id, kind: 'update', before: rows[0] })
+  }
+  return out
 }
 
 export interface UndoStep {
@@ -46,6 +60,8 @@ export interface UndoStep {
   /** Text aus Nutzersicht, z.B. «Ablammung Berta, 1 Lamm» (undoAction) */
   label?: string
   undone: boolean
+  /** Stände vor dem Zurücknehmen: damit lässt sich das Zurücknehmen selbst rückgängig machen (redoStep) */
+  redo?: UndoPart[]
 }
 
 /** Schreibungen innert dieser Frist zählen zur selben Aktion. */
@@ -91,26 +107,26 @@ export function useOnUndo(listener: (step: UndoStep) => void): void {
   useEffect(() => onUndo((s) => ref.current(s)), [])
 }
 
-function addTo(step: UndoStep, source: string, restore: UndoRestore, changes: UndoChange[]) {
+function addTo(step: UndoStep, source: string, restore: UndoRestore, changes: UndoChange[], snapshot?: UndoSnapshot) {
   step.changes = [...step.changes, ...changes]
   const part = step.parts.find((p) => p.source === source)
   if (part) part.changes = [...part.changes, ...changes]
-  else step.parts = [...step.parts, { source, restore, changes: [...changes] }]
+  else step.parts = [...step.parts, { source, restore, changes: [...changes], snapshot }]
 }
 
 /** Von den write.ts der Module nach jedem erfolgreichen Schreiben aufgerufen. */
-export function recordUndo(source: string, restore: UndoRestore, changes: UndoChange[], now = Date.now()): void {
+export function recordUndo(source: string, restore: UndoRestore, changes: UndoChange[], now = Date.now(), snapshot?: UndoSnapshot): void {
   if (suppressed > 0 || changes.length === 0) return
   const last = steps[steps.length - 1]
   const inAction = action?.stepId != null ? steps.find((s) => s.id === action!.stepId && !s.undone) : undefined
   if (inAction) {
-    addTo(inAction, source, restore, changes)
+    addTo(inAction, source, restore, changes, snapshot)
     inAction.lastAt = now
   } else if (!action && last && !last.undone && last.source === source && last.parts.length === 1 && now - last.lastAt < GROUP_MS) {
-    addTo(last, source, restore, changes)
+    addTo(last, source, restore, changes, snapshot)
     last.lastAt = now
   } else {
-    const step: UndoStep = { id: nextId++, source, at: now, lastAt: now, changes: [...changes], parts: [{ source, restore, changes: [...changes] }], label: action?.label, undone: false }
+    const step: UndoStep = { id: nextId++, source, at: now, lastAt: now, changes: [...changes], parts: [{ source, restore, changes: [...changes], snapshot }], label: action?.label, undone: false }
     if (action) action.stepId = step.id
     steps.push(step)
     if (steps.length > MAX_STEPS) steps = steps.slice(-MAX_STEPS)
@@ -144,14 +160,36 @@ export async function undoStep(id: number): Promise<void> {
   if (!step || step.undone) return
   suppressed++
   try {
+    // Stand vor dem Zurücknehmen merken: daraus lässt sich das Zurücknehmen wieder rückgängig machen
+    const redo: UndoPart[] = []
+    for (const part of step.parts) {
+      if (part.snapshot) redo.push({ source: part.source, restore: part.restore, changes: await part.snapshot(part.changes) })
+    }
     // zuletzt geschriebene Module zuerst, je Modul in umgekehrter Reihenfolge
     for (const part of [...step.parts].reverse()) await part.restore([...part.changes].reverse())
+    step.redo = redo
   } finally {
     suppressed--
   }
   step.undone = true
   emit()
   undoListeners.forEach((l) => l(step))
+}
+
+/** Macht das Zurücknehmen eines Schritts rückgängig: der Stand vor dem Zurücknehmen kommt wieder. Nur möglich, solange die
+ * Sitzung läuft und der Schritt zurückgenommen ist. */
+export async function redoStep(id: number): Promise<void> {
+  const step = steps.find((s) => s.id === id)
+  if (!step || !step.undone || !step.redo) return
+  suppressed++
+  try {
+    for (const part of step.redo) await part.restore([...part.changes])
+  } finally {
+    suppressed--
+  }
+  step.undone = false
+  step.redo = undefined
+  emit()
 }
 
 /** Der Server hat das Zurücknehmen abgelehnt (Korrekturfrist): Schritt gilt

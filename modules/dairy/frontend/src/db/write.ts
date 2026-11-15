@@ -2,7 +2,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { SYNC_TABLES, type SyncTable } from './tables'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 import { schemaOf } from '@fmis/core/db'
-import { recordUndo, type UndoChange, type UndoRestore } from '@fmis/core/undo'
+import { recordUndo, snapshotRows, type UndoChange, type UndoRestore } from '@fmis/core/undo'
 import { scheduleSync } from '@fmis/core/sync'
 import { inTransaction, onTransactionCommit, rootOf, undoBufferOf } from './transaction'
 
@@ -209,7 +209,7 @@ function restoreFor(root: PGlite): UndoRestore {
 }
 
 onTransactionCommit((root, changes) => {
-  recordUndo(schemaOf(root) ?? 'dairy', restoreFor(root), changes)
+  recordUndo(schemaOf(root) ?? 'dairy', restoreFor(root), changes, Date.now(), (cs) => snapshotRows(root, cs))
   // bald senden, auch wenn das Modul in dieser Sitzung nicht angezeigt wird
   scheduleSync(schemaOf(root))
 })

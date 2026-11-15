@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { describeStep, getUndoSteps, onUndo, recordUndo, resetUndo, undoAction, undoStep, type UndoChange } from './undo'
+import { describeStep, getUndoSteps, onUndo, recordUndo, redoStep, resetUndo, undoAction, undoStep, type UndoChange } from './undo'
 
 const ins = (id: string, table = 'watchlist_entries'): UndoChange => ({ table, id, kind: 'insert', before: null })
 const upd = (id: string, before: Record<string, unknown>): UndoChange => ({ table: 'animals', id, kind: 'update', before })
@@ -61,3 +61,36 @@ describe('undo', () => {
     expect(describeStep({ changes: [ins('a', 'births'), ins('b', 'birth_offspring'), ins('c', 'animals')] })).toBe('Geburt u.a.: 3 neu')
   })
 })
+
+describe('Wiederholen (redo)', () => {
+  it('macht das Zurücknehmen rückgängig: Zeilenstände davor und danach', async () => {
+    resetUndo()
+    const db = new Map<string, string>([['a', 'neu']])
+    const restore = async (cs: UndoChange[]) => {
+      for (const c of cs) {
+        if (c.before) db.set(c.id, String((c.before as { v: string }).v))
+        else db.delete(c.id)
+      }
+    }
+    const snapshot = async (cs: UndoChange[]) => cs.filter((c) => db.has(c.id)).map((c) => ({ table: c.table, id: c.id, kind: 'update' as const, before: { v: db.get(c.id)! } }))
+    // Änderung: a war «alt», ist jetzt «neu»
+    recordUndo('dairy', restore, [{ table: 't', id: 'a', kind: 'update', before: { v: 'alt' } }], 1000, snapshot)
+    const id = getUndoSteps()[0].id
+    await undoStep(id)
+    expect(db.get('a')).toBe('alt')
+    expect(getUndoSteps()[0].undone).toBe(true)
+    await redoStep(id)
+    expect(db.get('a')).toBe('neu')
+    expect(getUndoSteps()[0].undone).toBe(false)
+    // wieder zurücknehmbar
+    await undoStep(id)
+    expect(db.get('a')).toBe('alt')
+  })
+  it('ohne zurückgenommenen Schritt passiert nichts', async () => {
+    resetUndo()
+    recordUndo('dairy', async () => undefined, [{ table: 't', id: 'x', kind: 'insert', before: null }], 1000, async () => [])
+    await redoStep(getUndoSteps()[0].id)
+    expect(getUndoSteps()[0].undone).toBe(false)
+  })
+})
+

@@ -9,7 +9,7 @@ import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from './auth'
 import { schemaOf } from './db'
 import { scheduleSync } from './sync'
-import { recordUndo, type UndoChange } from './undo'
+import { recordUndo, snapshotRows, type UndoChange } from './undo'
 
 type HistoryAction = 'insert' | 'update' | 'delete'
 /** PGlite oder eine laufende Transaktion — beide haben query(). */
@@ -143,7 +143,7 @@ export function createWriter<S extends Tables>(opts: { getDb: () => Promise<PGli
   function afterCommit(pg: PGlite, changes: (UndoChange | null)[]): void {
     const source = schemaOf(pg)
     const done = changes.filter((c): c is UndoChange => c != null)
-    if (source && done.length > 0) recordUndo(source, (cs) => restoreChanges(pg, cs), done)
+    if (source && done.length > 0) recordUndo(source, (cs) => restoreChanges(pg, cs), done, Date.now(), (cs) => snapshotRows(pg, cs))
     notifyDataChanged()
     if (done.length > 0) scheduleSync(source)
   }

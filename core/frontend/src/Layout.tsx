@@ -1,5 +1,5 @@
 import { useEffect, useReducer, type ReactNode } from 'react'
-import { Link, NavLink, matchPath, useLocation, useNavigationType } from 'react-router-dom'
+import { Link, NavLink, matchPath, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import SyncStatusDot from './SyncStatusDot'
 import { logout } from './auth'
 import { useHasPermission } from './AuthContext'
@@ -41,7 +41,9 @@ export default function Layout({
     window.addEventListener(NAV_EVENT, refreshNav)
     return () => window.removeEventListener(NAV_EVENT, refreshNav)
   }, [])
-  const { pathname } = useLocation()
+  const location = useLocation()
+  const { pathname } = location
+  const navigate = useNavigate()
   const rest = pathname.slice(moduleKey.length + 1).replace(/^\/|\/$/g, '')
   const shownNav = resolveNav(navItems)
 
@@ -71,9 +73,20 @@ export default function Layout({
             </NavLink>
           )}
           {canViewHistory && (
-            <NavLink to="verlauf" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100">
+            // Zweites Antippen schliesst den Verlauf wieder: zurück zur Seite, von der man kam
+            <button
+              type="button"
+              onClick={() => {
+                if (rest === 'verlauf') navigate((location.state as { from?: string } | null)?.from ?? `/${moduleKey}`)
+                else navigate(`/${moduleKey}/verlauf`, { state: { from: `${location.pathname}${location.search}` } })
+              }}
+              aria-pressed={rest === 'verlauf'}
+              title={rest === 'verlauf' ? 'Verlauf schliessen' : 'Verlauf'}
+              aria-label={rest === 'verlauf' ? 'Verlauf schliessen' : 'Verlauf öffnen'}
+              className={`grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 ${rest === 'verlauf' ? 'bg-gray-200' : ''}`}
+            >
               📜
-            </NavLink>
+            </button>
           )}
           <NotificationBell />
           <AdminMenu />

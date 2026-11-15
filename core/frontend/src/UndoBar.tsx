@@ -3,7 +3,7 @@ import Modal from './Modal'
 import { describeRejected } from './outbox'
 import { syncModuleNow } from './sync'
 import { notifyError, notifySuccess, errorText } from './toast'
-import { describeStep, markNotUndone, undoStep, useUndoSteps, type UndoStep } from './undo'
+import { describeStep, markNotUndone, redoStep, undoStep, useUndoSteps, type UndoStep } from './undo'
 
 /** Wie lange die Leiste nach dem Speichern sichtbar bleibt (mit Handschuhen
  * im Stall braucht man mehr als ein paar Sekunden). */
@@ -27,6 +27,17 @@ async function runUndo(step: UndoStep): Promise<void> {
     notifySuccess(`Zurückgenommen – ${describeStep(step)}`)
   } catch (e) {
     notifyError(`Rückgängig fehlgeschlagen: ${errorText(e)}`)
+  }
+}
+
+/** Macht das Zurücknehmen rückgängig («Wiederholen»): der Schritt gilt wieder. */
+async function runRedo(step: UndoStep): Promise<void> {
+  try {
+    await redoStep(step.id)
+    await Promise.all(step.parts.map((p) => syncModuleNow(p.source)))
+    notifySuccess(`Wieder angewendet – ${describeStep(step)}`)
+  } catch (e) {
+    notifyError(`Wiederholen fehlgeschlagen: ${errorText(e)}`)
   }
 }
 
@@ -102,35 +113,55 @@ export default function UndoBar() {
 export function SessionUndoList({ source, title }: { source?: string; title?: string }) {
   const steps = useUndoSteps().filter((s) => !source || s.source === source)
   const [busyId, setBusyId] = useState<number | null>(null)
+  // Sicherheitsabfrage: erst «Rückgängig», dann «Ja, zurücknehmen»
+  const [confirmId, setConfirmId] = useState<number | null>(null)
   // mit Titel (Verlaufsseiten) ganz weglassen, solange es nichts gibt
   if (steps.length === 0) return title ? null : <p className="text-sm text-gray-600">In dieser Sitzung noch nichts gespeichert.</p>
+  const run = (s: UndoStep, fn: (s: UndoStep) => Promise<void>) => {
+    setBusyId(s.id)
+    setConfirmId(null)
+    void fn(s).finally(() => setBusyId(null))
+  }
   return (
     <div className="space-y-2">
       {title && <h2 className="text-sm font-semibold text-gray-700">{title}</h2>}
       <ul className="divide-y rounded-lg border border-gray-200 bg-white">
         {[...steps].reverse().map((s) => (
-          <li key={s.id} className={`flex items-center gap-2 px-3 py-2 text-sm ${s.undone ? 'text-gray-500' : 'text-gray-900'}`}>
-            <span className="w-12 shrink-0 tabular-nums text-gray-600">{timeOf(s.at)}</span>
-            <span className={`min-w-0 flex-1 ${s.undone ? 'line-through' : ''}`}>{describeStep(s)}</span>
-            {s.undone ? (
-              <span className="shrink-0 text-xs">zurückgenommen</span>
-            ) : (
-              <button
-                type="button"
-                disabled={busyId != null}
-                onClick={() => {
-                  setBusyId(s.id)
-                  void runUndo(s).finally(() => setBusyId(null))
-                }}
-                className="min-h-11 shrink-0 rounded-lg border border-gray-300 px-3 text-sm disabled:opacity-50"
-              >
-                {busyId === s.id ? '…' : '↶ Rückgängig'}
-              </button>
+          <li key={s.id} className={`px-3 py-2 text-sm ${s.undone ? 'text-gray-500' : 'text-gray-900'}`}>
+            <div className="flex items-center gap-2">
+              <span className="w-12 shrink-0 tabular-nums text-gray-600">{timeOf(s.at)}</span>
+              <span className={`min-w-0 flex-1 ${s.undone ? 'line-through' : ''}`}>{describeStep(s)}</span>
+              {s.undone ? (
+                s.redo ? (
+                  <button type="button" disabled={busyId != null} onClick={() => run(s, runRedo)} title="Das Zurücknehmen rückgängig machen" className="min-h-11 shrink-0 rounded-lg border border-gray-300 px-3 text-sm disabled:opacity-50">
+                    {busyId === s.id ? '…' : '↷ Wiederholen'}
+                  </button>
+                ) : (
+                  <span className="shrink-0 text-xs">zurückgenommen</span>
+                )
+              ) : (
+                confirmId !== s.id && (
+                  <button type="button" disabled={busyId != null} onClick={() => setConfirmId(s.id)} className="min-h-11 shrink-0 rounded-lg border border-gray-300 px-3 text-sm disabled:opacity-50">
+                    {busyId === s.id ? '…' : '↶ Rückgängig'}
+                  </button>
+                )
+              )}
+            </div>
+            {confirmId === s.id && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 p-2 text-amber-900" role="alert">
+                <span className="min-w-0 flex-1 text-xs">Wirklich zurücknehmen? «{describeStep(s)}» wird rückgängig gemacht.</span>
+                <button type="button" onClick={() => run(s, runUndo)} className="min-h-11 rounded-lg bg-amber-700 px-3 text-sm font-semibold text-white">
+                  Ja, zurücknehmen
+                </button>
+                <button type="button" onClick={() => setConfirmId(null)} className="min-h-11 rounded-lg border border-amber-700 px-3 text-sm">
+                  Abbrechen
+                </button>
+              </div>
             )}
           </li>
         ))}
       </ul>
-      <p className="text-xs text-gray-600">Nach dem Neuladen der App ist diese Liste leer. Ältere Änderungen kann ein Admin im Verlauf (📜) zurücknehmen.</p>
+      <p className="text-xs text-gray-600">Nach dem Neuladen der App ist diese Liste leer. Ein zurückgenommener Schritt lässt sich bis dahin mit «Wiederholen» wieder anwenden. Ältere Änderungen kann ein Admin im Verlauf (📜) zurücknehmen.</p>
     </div>
   )
 }
