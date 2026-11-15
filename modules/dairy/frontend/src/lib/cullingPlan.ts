@@ -28,6 +28,8 @@ export interface PlanBase {
   pregnancy: PregnancyStatus | null
   /** Wert des Tiers (Mittel 100), null = unbekannt */
   value: number | null
+  /** Zusatzpunkte aus Milch gegen Futter bis zur Geburt (lib/milkFeed.ts milkFeedPoints) */
+  milkFeedPoints?: number
 }
 
 /** Zusatz zur Punktzahl aus dem aktuellen Trächtigkeitsergebnis: ein frisches «leer» zieht das Tier nach oben,
@@ -40,7 +42,7 @@ export function pregnancyAdjustment(p: PregnancyStatus | null, today: string): n
   return -4
 }
 
-export const priority = (r: Pick<PlanBase, 'score' | 'pregnancy'>, today: string): number => r.score + pregnancyAdjustment(r.pregnancy, today)
+export const priority = (r: Pick<PlanBase, 'score' | 'pregnancy' | 'milkFeedPoints'>, today: string): number => r.score + pregnancyAdjustment(r.pregnancy, today) + (r.milkFeedPoints ?? 0)
 
 /** Wertvoll = Wert ab der Grenze (0 = Schutz aus). */
 export const isValuable = (value: number | null, threshold: number): boolean => threshold > 0 && value != null && value >= threshold

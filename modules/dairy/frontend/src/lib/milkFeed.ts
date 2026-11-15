@@ -36,11 +36,13 @@ export interface MilkFeedSettings {
   feedPerKgMilk: number
   /** ältere Wägungen gelten nicht mehr (Tage) */
   maxSampleAgeDays: number
+  /** Vorschlag Schlachtung: 1 Punkt je … Fr. Verlust (0 = Bilanz zählt nicht) */
+  frPerPoint: number
 }
 
 export const DEFAULT_MILK_FEED: Record<Species, MilkFeedSettings> = {
-  sheep: { milkingsPerDay: 2, milkPrice: 2.5, declinePerMonth: 10, minDailyKg: 0.3, dryDaysBeforeBirth: 60, matingInDays: 30, feedPerDay: 1.5, feedPerKgMilk: 0.25, maxSampleAgeDays: 60 },
-  cattle: { milkingsPerDay: 2, milkPrice: 0.75, declinePerMonth: 8, minDailyKg: 8, dryDaysBeforeBirth: 56, matingInDays: 45, feedPerDay: 6, feedPerKgMilk: 0.15, maxSampleAgeDays: 45 },
+  sheep: { milkingsPerDay: 2, milkPrice: 2.5, declinePerMonth: 10, minDailyKg: 0.3, dryDaysBeforeBirth: 60, matingInDays: 30, feedPerDay: 1.5, feedPerKgMilk: 0.25, maxSampleAgeDays: 60, frPerPoint: 100 },
+  cattle: { milkingsPerDay: 2, milkPrice: 0.75, declinePerMonth: 8, minDailyKg: 8, dryDaysBeforeBirth: 56, matingInDays: 45, feedPerDay: 6, feedPerKgMilk: 0.15, maxSampleAgeDays: 45, frPerPoint: 300 },
 }
 
 /** Letzte Wägung eines Tiers. */
@@ -151,6 +153,16 @@ export function milkFeed(i: MilkFeedInput, s: MilkFeedSettings): MilkFeed {
   }
 }
 
+/** Punkte für den Vorschlag Schlachtung (lib/cullingPlan.ts): Verlust zieht nach oben (bis +3), ein Tier, das
+ * deutlich mehr Milch bringt als es frisst, nach unten (bis −2). Ohne Bilanz oder mit 0 Fr./Punkt: 0. */
+export const MILK_FEED_POINTS_MAX = 3
+export const MILK_FEED_POINTS_MIN = -2
+export function milkFeedPoints(balance: number | null, frPerPoint: number): number {
+  if (balance == null || !(frPerPoint > 0)) return 0
+  const p = Math.round(-balance / frPerPoint)
+  return Math.max(MILK_FEED_POINTS_MIN, Math.min(MILK_FEED_POINTS_MAX, p)) || 0
+}
+
 /** Kurztext «Milch 85 kg 212 Fr. − Futter 230 Fr. = −18 Fr.» */
 export function fmtMilkFeed(m: MilkFeed): string {
   const fr = (v: number) => Math.round(v).toLocaleString('de-CH')
@@ -233,4 +245,5 @@ export const MILK_FEED_FIELDS: { key: keyof MilkFeedSettings; label: string; ste
   { key: 'dryDaysBeforeBirth', label: 'Trockenstellen vor Geburt (Tage)', step: 1 },
   { key: 'matingInDays', label: 'Ohne Belegung: Belegung in … Tagen', step: 1 },
   { key: 'maxSampleAgeDays', label: 'Wägung gilt höchstens (Tage)', step: 1 },
+  { key: 'frPerPoint', label: 'Vorschlag: 1 Punkt je … Fr. Verlust (0 = aus)', step: 10 },
 ]

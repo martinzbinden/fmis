@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_MILK_FEED, fmtMilkFeed, milkFeed, type MilkFeedInput, type MilkFeedSettings } from './milkFeed'
+import { DEFAULT_MILK_FEED, fmtMilkFeed, milkFeed, milkFeedPoints, type MilkFeedInput, type MilkFeedSettings } from './milkFeed'
 
 const S: MilkFeedSettings = { ...DEFAULT_MILK_FEED.sheep, declinePerMonth: 0, minDailyKg: 0.1 }
 const base: MilkFeedInput = { species: 'sheep', today: '2026-11-15', sample: null, lastBirth: '2026-11-01', dry: false, expectedBirth: null, pregnancy: null }
@@ -52,6 +52,17 @@ describe('milkFeed', () => {
     expect(milkFeed({ ...base, sample: { date: '2026-10-01', kg: 1, perMilking: false } }, S).balance).toBeNull()
     expect(milkFeed({ ...base, lastBirth: null, sample: { date: '2026-08-01', kg: 1, perMilking: false } }, S).balance).toBeNull()
     expect(fmtMilkFeed(milkFeed(base, S))).toContain('keine aktuelle Wägung')
+  })
+
+  it('Punkte für den Vorschlag: Verlust nach oben (max. +3), Gewinn nach unten (max. −2)', () => {
+    expect(milkFeedPoints(-270, 100)).toBe(3)
+    expect(milkFeedPoints(-160, 100)).toBe(2)
+    expect(milkFeedPoints(-20, 100)).toBe(0)
+    expect(milkFeedPoints(160, 100)).toBe(-2)
+    expect(milkFeedPoints(900, 100)).toBe(-2)
+    expect(milkFeedPoints(-500, 100)).toBe(3)
+    expect(milkFeedPoints(null, 100)).toBe(0)
+    expect(milkFeedPoints(-500, 0)).toBe(0)
   })
 
   it('Geburt überfällig: ab heute, kein Melken mehr', () => {

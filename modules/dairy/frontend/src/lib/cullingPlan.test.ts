@@ -20,6 +20,10 @@ describe('pregnancyAdjustment', () => {
   it('Dringlichkeit = Punkte plus Trächtigkeit', () => {
     expect(priority({ score: 2, pregnancy: preg('nein', '2026-11-10') }, TODAY)).toBe(5)
   })
+  it('Milch gegen Futter zählt dazu und macht ein Tier ohne Gründe zum Kandidaten', () => {
+    expect(priority({ score: 2, pregnancy: null, milkFeedPoints: -2 }, TODAY)).toBe(0)
+    expect(states([row('a', 0, { milkFeedPoints: 2 }), row('b', 1), row('c', 1, { milkFeedPoints: -1 })])).toEqual(['a:vorschlag', 'b:vorschlag'])
+  })
 })
 
 describe('valueScores', () => {

@@ -22,7 +22,7 @@ import { animalLabel } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 import { loadDryAnimalIds } from '../lib/dryOff'
-import { loadMilkSamples, milkFeed, useMilkFeedSettings, type MilkFeed, type MilkFeedSettings } from '../lib/milkFeed'
+import { loadMilkSamples, milkFeed, milkFeedPoints, useMilkFeedSettings, type MilkFeed, type MilkFeedSettings } from '../lib/milkFeed'
 import { MilkFeedChip, MilkFeedSettingsPanel } from '../components/MilkFeedChip'
 
 const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: number }[] = [
@@ -70,6 +70,8 @@ interface Row {
   lastBirth: string | null
   /** Milch gegen Futter bis zur nächsten Geburt (lib/milkFeed.ts) */
   milkFeed: MilkFeed
+  /** Punkte daraus für den Vorschlag */
+  milkFeedPoints: number
 }
 
 /** «2·1·3 (Ø 2.0)» – die letzten vier Würfe, Mittel über alle. */
@@ -168,6 +170,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           ),
         }
       })
+      .map((r) => ({ ...r, milkFeedPoints: milkFeedPoints(r.milkFeed.balance, milkFeedSettings.frPerPoint) }))
       .sort((a, b) => b.score - a.score || b.reasons.length - a.reasons.length || a.label.localeCompare(b.label))
   }, [data, thresholds, species, milkData, milkFeedSettings])
 
@@ -254,7 +257,9 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           Melkungen pro Tag, oder Milchprüfung) mit monatlichem Rückgang fortgeschrieben bis zum Trockenstellen, mal
           Milchpreis; davon ab Grundfutter je Tag bis zur Geburt und Kraftfutter je kg Milch. Die Geburt kommt aus der
           gemeldeten Belegung, sonst aus der Trächtigkeitsuntersuchung (Wochen), sonst aus der Annahme «Belegung in …
-          Tagen». Grün = die Milch deckt das Futter, rot = nicht. Werte unter 🥛−🌾 Milch/Futter.
+          Tagen». Grün = die Milch deckt das Futter, rot = nicht. Im Vorschlag Schlachtung gibt ein Verlust Punkte
+          (1 Punkt je eingestellten Betrag, höchstens +3), ein deutlicher Gewinn zieht ab (höchstens −2). Werte unter
+          🥛−🌾 Milch/Futter.
         </p>
       </details>
 
@@ -487,7 +492,7 @@ function CullingPlanView({
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
                     <span className={`rounded px-1.5 py-0.5 ${pc.cls}`}>{pc.text}</span>
-                    <MilkFeedChip m={r.milkFeed} s={milkFeedSettings} />
+                    <MilkFeedChip m={r.milkFeed} s={milkFeedSettings} points={r.milkFeedPoints} />
                     <span className="text-gray-500">
                       {r.lactation ? `${r.lactation}. Laktation` : 'noch nicht gemolken'}
                       {r.performanceRel != null ? ` · Leistung ${Math.round(r.performanceRel * 100)} %` : ''}

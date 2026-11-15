@@ -22,11 +22,11 @@ export function milkFeedTitle(m: MilkFeed, s: MilkFeedSettings): string {
 }
 
 /** Kleiner Chip «Milch − Futter bis Geburt: +35 Fr.»; grün = Milch deckt das Futter, rot = nicht. */
-export function MilkFeedChip({ m, s, short = false }: { m: MilkFeed; s: MilkFeedSettings; short?: boolean }) {
+export function MilkFeedChip({ m, s, short = false, points }: { m: MilkFeed; s: MilkFeedSettings; short?: boolean; points?: number }) {
   const cls = m.balance == null ? 'bg-gray-100 text-gray-700' : m.balance >= 0 ? 'bg-green-100 text-green-900' : 'bg-red-100 text-red-900'
   const value = m.balance == null ? '?' : `${m.balance >= 0 ? '+' : '−'}${fr(Math.abs(m.balance))} Fr.`
   return (
-    <span className={`rounded px-1.5 py-0.5 ${cls}`} title={milkFeedTitle(m, s)}>
+    <span className={`rounded px-1.5 py-0.5 ${cls}`} title={`${milkFeedTitle(m, s)}${points ? `\nVorschlag Schlachtung: ${points > 0 ? '+' : '−'}${Math.abs(points)} Punkte` : ''}`}>
       🥛−🌾 {short ? '' : 'bis Geburt '}
       <b>{value}</b>
       {!short && m.balance != null && (
@@ -35,6 +35,7 @@ export function MilkFeedChip({ m, s, short = false }: { m: MilkFeed; s: MilkFeed
           ({fr(m.milkKg)} kg {fr(m.milkValue)} − {fr(m.feedCost)})
         </span>
       )}
+      {points ? <span className="ml-1 rounded bg-white/70 px-1 font-semibold">{points > 0 ? '+' : '−'}{Math.abs(points)} P.</span> : null}
     </span>
   )
 }

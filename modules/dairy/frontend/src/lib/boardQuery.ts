@@ -13,6 +13,8 @@ export interface QueryContext {
   listNames: (card: BoardCard) => string[]
   /** geschätzter Fleischwert nach Abzügen (null = unbekannt) */
   meat?: (card: BoardCard) => number | null
+  /** Milch gegen Futter bis zur nächsten Geburt (lib/milkFeed.ts): Bilanz in Fr. und Tagesmilch heute in kg */
+  milkFeed?: (card: BoardCard) => { balance: number | null; dailyKg: number | null } | null
 }
 
 const none = <T,>(v: T | null | undefined) => (v == null ? null : v)
@@ -57,6 +59,8 @@ export const QUERY_FIELDS: QueryField<BoardCard, QueryContext>[] = [
   { kind: 'num', key: 'behandlung', label: 'Behandlungstage 12 Monate', unit: 'Tage', aliases: ['behandlungstage', 'behandlungen'], example: 'Behandlungstage > 0', get: (c) => c.healthDays12m },
   { kind: 'num', key: 'lambmilch', label: 'Milch der Lämmer', unit: 'kg/Tag', aliases: ['laemmermilch', 'lambmilch'], example: 'Lämmermilch > 1.5', get: (c) => (c.lambMilk && c.lambMilk.lambs > 0 ? c.lambMilk.perDay : null) },
   { kind: 'num', key: 'fleisch', label: 'Geschätzter Fleischwert', unit: 'Fr.', aliases: ['fleischwert', 'fleisch', 'fw'], example: 'Fleischwert > 150', get: (c, ctx) => ctx.meat?.(c) ?? null },
+  { kind: 'num', key: 'bilanz', label: 'Milch − Futter bis Geburt', unit: 'Fr.', aliases: ['bilanz', 'milchfutter', 'milchgegenfutter', 'mf'], example: 'Bilanz < 0', get: (c, ctx) => ctx.milkFeed?.(c)?.balance ?? null },
+  { kind: 'num', key: 'tagesmilch', label: 'Tagesmilch heute (Schätzung aus letzter Wägung)', unit: 'kg', aliases: ['tagesmilch', 'milchheute', 'milchkg', 'tm'], example: 'Tagesmilch < 0.8', get: (c, ctx) => ctx.milkFeed?.(c)?.dailyKg ?? null },
   { kind: 'flag', key: 'leer', label: 'leer (nicht trächtig)', aliases: ['leer', 'nichttraechtig'], test: (c) => c.pregnancy?.result === 'nein' },
   { kind: 'flag', key: 'traechtig', label: 'trächtig', aliases: ['traechtig', 'tragend'], test: (c) => c.pregnancy?.result === 'ja' },
   { kind: 'flag', key: 'unsicher', label: 'Trächtigkeit unsicher', aliases: ['unsicher'], test: (c) => c.pregnancy?.result === 'unsicher' },
@@ -79,6 +83,8 @@ export const BOARD_EXAMPLES = [
   { q: 'Tage seit Ablammung > 60 und leer', text: 'seit über 60 Tagen abgelammt und nicht trächtig' },
   { q: 'Gruppe = galt', text: 'Tiere der Gruppe «galt» (auch nur der Anfang des Namens)' },
   { q: 'Fleischwert > 150', text: 'geschätzter Fleischwert über 150 Franken (Schafe)' },
+  { q: 'Bilanz < 0', text: 'Milch bis zur Geburt deckt das Futter nicht' },
+  { q: 'Tagesmilch < 0.8', text: 'heute weniger als 0.8 kg Milch (aus der letzten Wägung)' },
   { q: '101', text: 'Nummer, Ohrmarke oder Name enthält «101»' },
 ]
 

@@ -126,11 +126,19 @@ async function loadBanks(pg: PGlite, date: string): Promise<BankWithSlots[]> {
   }))
 }
 
+// Frist: sonst bleibt bei hängender Verbindung der automatische Abruf für immer stehen (er wartet auf die Antwort)
+const API_TIMEOUT_MS = 45_000
+
 async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  const signal = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(API_TIMEOUT_MS) : undefined
   const res = await fetch(`${API_URL}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
     body: body ? JSON.stringify(body) : undefined,
+    signal,
+  }).catch((err: unknown) => {
+    if (err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')) throw new Error(`keine Antwort innert ${API_TIMEOUT_MS / 1000} s`)
+    throw err
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => null)) as { detail?: string } | null

@@ -194,20 +194,20 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     if (species === 'sheep') for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
     return m
   }, [cards, species, meatDate, meatSettings, meatPrices])
-  // Milch gegen Futter bis zur nächsten Geburt (nur wenn als Kartenfeld gewählt)
+  // Milch gegen Futter bis zur nächsten Geburt: Kartenfeld und Formelsuche («Bilanz < 0», «Tagesmilch < 0.8»)
   const milkFeedSettings = useMilkFeedSettings(moduleKey, species)
   const milkFeedOn = cardFields.includes('milkFeed')
-  const milkData = useQuery((pg) => (milkFeedOn ? Promise.all([loadMilkSamples(pg), loadDryAnimalIds(pg)]) : Promise.resolve(null)), [milkFeedOn]).data
+  const milkData = useQuery((pg) => Promise.all([loadMilkSamples(pg), loadDryAnimalIds(pg)]), []).data
   const milkFeedById = useMemo(() => {
     const m = new Map<string, MilkFeed>()
-    if (!milkFeedOn || !milkData) return m
+    if (!milkData) return m
     for (const c of cards)
       m.set(
         c.id,
         milkFeed({ species, today, sample: milkData[0].get(c.id) ?? null, lastBirth: c.lastBirth, dry: c.dry || milkData[1].has(c.id), expectedBirth: c.expectedBirth, pregnancy: c.pregnancy }, milkFeedSettings),
       )
     return m
-  }, [milkFeedOn, milkData, cards, species, today, milkFeedSettings])
+  }, [milkData, cards, species, today, milkFeedSettings])
   const meatById = useMemo(() => (meatOn || cardFields.includes('meat') ? meatAll : new Map<string, ReturnType<typeof meatValue>>()), [meatAll, meatOn, cardFields])
 
   // Suchfeld: Freitext und Formeln wie «ZZ > 200» (lib/boardQuery.ts), Sortierung nach dem Filter vorschlagen (core/query)
@@ -217,8 +217,9 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
       groupName: (c) => groups.find((g) => g.id === c.groupId)?.name ?? null,
       listNames: (c) => c.listIds.map((id) => lists.find((l) => l.id === id)?.name ?? ''),
       meat: (c) => meatAll.get(c.id)?.net ?? null,
+      milkFeed: (c) => milkFeedById.get(c.id) ?? null,
     }),
-    [groups, lists, meatAll, today],
+    [groups, lists, meatAll, milkFeedById, today],
   )
   const q = useListQuery({ storage: `${moduleKey}_board`, fields: QUERY_FIELDS, ctx: queryCtx, texts: boardTexts, defaultSort: 'nr', validSorts: SORTS.map((x) => x.key) })
   const sort = q.sortKey
@@ -452,7 +453,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                   groupChoices={col.kind === 'group' && canMove ? [...groups.filter((g) => g.id !== col.id).map((g) => ({ id: g.id as string | null, name: g.name })), ...(col.id ? [{ id: null, name: 'Ohne Gruppe' }] : [])] : undefined}
                   onMoveToGroup={col.kind === 'group' && canMove ? (id) => moveToDraft([c.id], id) : undefined}
                   meat={meatById.get(c.id) ?? null}
-                  milkFeed={milkFeedById.get(c.id) ?? null}
+                  milkFeed={milkFeedOn ? (milkFeedById.get(c.id) ?? null) : null}
                   meatLimits={meatLimitList}
                   fields={cardFields}
                   pointerDown={pointerDown}

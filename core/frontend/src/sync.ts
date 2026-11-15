@@ -6,6 +6,24 @@ import { notifyError, notifyInfo, errorText } from './toast'
 
 export type SyncStatus = 'offline' | 'synced' | 'syncing' | 'error'
 
+// Frist je Anfrage. Ohne Frist blieb eine hängende Verbindung (schwaches WLAN im Stall) für immer auf
+// «Synchronisiert…» (gelb), und jeder weitere Sync wartete dahinter. Ein abgebrochener Push ist harmlos:
+// die Outbox bleibt stehen und wird beim nächsten Sync nochmals gesendet (Last-Write-Wins, gleicher Stand).
+const PUSH_TIMEOUT_MS = 60_000
+const PULL_TIMEOUT_MS = 120_000
+
+async function fetchWithin(ms: number, input: string, init: RequestInit): Promise<Response> {
+  const hasTimeout = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+  try {
+    return await fetch(input, hasTimeout ? { ...init, signal: AbortSignal.timeout(ms) } : init)
+  } catch (err) {
+    if (err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new Error(`Keine Antwort vom Server innert ${Math.round(ms / 1000)} s — nochmals versuchen (Punkt antippen)`)
+    }
+    throw err
+  }
+}
+
 export interface SyncClient {
   /** Gibt die vom Server abgelehnten Zeilen zurück (bleiben in der Outbox). */
   push(): Promise<RejectedRow[]>
@@ -179,7 +197,7 @@ export function createSyncClient(
       })
     }
 
-    const res = await fetch(`${base}/push`, {
+    const res = await fetchWithin(PUSH_TIMEOUT_MS, `${base}/push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ tables: payload }),
@@ -219,7 +237,7 @@ export function createSyncClient(
     const url = new URL(`${base}/pull`, window.location.origin)
     if (since) url.searchParams.set('since', since)
 
-    const res = await fetch(url.toString(), { headers: authHeaders() })
+    const res = await fetchWithin(PULL_TIMEOUT_MS, url.toString(), { headers: authHeaders() })
     if (!res.ok) {
       handleUnauthorized(res)
       throw new Error(failureText('Pull', res.status))
