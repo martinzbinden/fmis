@@ -192,7 +192,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   // Fleischwert aller Karten (Schafe): für die Karten, die Spaltensummen und die Formel «Fleischwert > 150»
   const meatAll = useMemo(() => {
     const m = new Map<string, ReturnType<typeof meatValue>>()
-    if (species === 'sheep') for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
+    if (species === 'sheep') for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices, c.lastBirth))
     return m
   }, [cards, species, meatDate, meatSettings, meatPrices])
   // Milch gegen Futter bis zur nächsten Geburt: Kartenfeld und Formelsuche («Bilanz < 0», «Tagesmilch < 0.8»)
@@ -617,8 +617,9 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                 {num('lambKgYoung', 'Lamm bis 120 Tage, SG kg', 0.5)}
                 {num('lambKgMid', 'Lamm bis 210 Tage, SG kg', 0.5)}
                 {num('lambKgOld', 'Lamm älter, SG kg', 0.5)}
-                {num('sheepKgYoung', 'Schaf unter 1400 Tage, SG kg', 0.5)}
-                {num('sheepKgOld', 'Schaf ab 1400 Tage, SG kg', 0.5)}
+                {num('sheepKgFresh', 'Schaf frisch abgelammt, SG kg', 0.5)}
+                {num('sheepKgLate', 'Schaf spät in der Laktation, SG kg', 0.5)}
+                {num('sheepLateDays', 'Schaf schwer ab Laktationstag', 10)}
                 {num('lambFactor', 'Lamm: Preis im Verhältnis zu T3', 0.01)}
                 {num('sheepFactor', 'Schaf: Preis im Verhältnis zu T3', 0.01)}
                 {num('feePerAnimal', 'Abzüge je Tier (Fr.)', 0.1)}

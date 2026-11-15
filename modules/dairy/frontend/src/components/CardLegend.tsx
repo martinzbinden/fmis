@@ -128,7 +128,7 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
         </Item>
         {sheep && (
           <Item title="Fleischwert" sample={chip('bg-stone-200 text-stone-900', '≈ 159 Fr.')}>
-            Geschätzter Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen. Gewichte und Preise stellst du unter «🥩 Fleischwert» ein. Der Balken darunter hat eine feste Skala von 0 bis 330 Fr. (schweres Lamm, 21 kg Schlachtgewicht, Klasse C3). Seine Farbe geht mit dem Wert von Orange über Gelb nach Grün. Die kleinen senkrechten Striche sind Grenzen: schwere Aue (36 kg SG, SM T3) und schweres Lamm (21 kg SG) in den Klassen T3, H3 und C3, jeweils nach Abzügen. Ein Tipp auf den Balken zeigt die Werte. Das grüne Feld oben in der Spalte ist die Summe aller Karten (siehe «Fleischwert-Balken der Spalte»).
+            Geschätzter Schlachterlös am Schlachttermin und Proviande-Preis, nach Abzügen. Lämmer nach Alter (bis 120 Tage 15.8 kg, bis 210 Tage 17 kg, älter 20 kg), Schafe nach Laktationstagen (frisch abgelammt 21 kg, ab 200 Tagen 25 kg). Gewichte und Preise stellst du unter «🥩 Fleischwert» ein. Der Balken darunter hat eine feste Skala von 0 bis 330 Fr. (schweres Lamm, 21 kg Schlachtgewicht, Klasse C3). Seine Farbe geht mit dem Wert von Orange über Gelb nach Grün. Die kleinen senkrechten Striche sind Grenzen: schwere Aue (36 kg SG, SM T3) und schweres Lamm (21 kg SG) in den Klassen T3, H3 und C3, jeweils nach Abzügen. Ein Tipp auf den Balken zeigt die Werte. Das grüne Feld oben in der Spalte ist die Summe aller Karten (siehe «Fleischwert-Balken der Spalte»).
           </Item>
         )}
         {sheep && (

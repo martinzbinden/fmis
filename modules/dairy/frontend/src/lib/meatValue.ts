@@ -1,8 +1,10 @@
 // Fleischwert (Schlachterlös) eines Schafs, geschätzt aus Alter und Proviande-Preis — für das Dashboard
 // (pages/Board.tsx), um Schlachtgruppen zu vergleichen. Die Vorgaben stammen aus den Abrechnungen
-// der Metzgerschaft (Waagscheine 2025: 21 Lämmer, 13 Schafe): Schlachtgewicht (SG) je Altersstufe,
-// erzielter Preis im Verhältnis zum Wochenpreis T3, Abzüge je Tier.
-// Lämmer wogen unabhängig vom Alter ca. 13–15 kg SG (Mittel 14.2), Schafe 16–36 kg (Mittel 25).
+// der Schlachtbetriebe: Schlachtgewicht (SG) je Altersstufe, erzielter Preis im Verhältnis zum Wochenpreis T3,
+// Abzüge je Tier. Abrechnungen 2025–2026 (76 Lämmer, 62 mit Geburtsdatum): bis 120 Tage Ø 15.8 kg, 121–150 Tage
+// Ø 17.0 kg; das Alter erklärt wenig, die Jahreszeit mehr (Winterlämmer 17–19 kg, August 14 kg). Ältere Lämmer:
+// Annahme des Betriebs 20 kg, bis Abrechnungen anderes zeigen. Schafe nach Laktationstagen am Schlachttag:
+// frisch abgelammt leichter (21 kg), ab 200 Tagen schwer (25 kg), dazwischen linear.
 
 export interface MeatSettings {
   /** Schlachttermin (JJJJ-MM-TT), leer = heute */
@@ -13,9 +15,10 @@ export interface MeatSettings {
   lambKgYoung: number
   lambKgMid: number
   lambKgOld: number
-  /** Schaf: SG unter / ab 1400 Tagen (kg) */
-  sheepKgYoung: number
-  sheepKgOld: number
+  /** Schaf: SG frisch abgelammt / ab `sheepLateDays` Laktationstagen (kg); dazwischen linear, ohne Ablammung schwer */
+  sheepKgFresh: number
+  sheepKgLate: number
+  sheepLateDays: number
   /** erzielter Preis im Verhältnis zum Wochenpreis T3 */
   lambFactor: number
   sheepFactor: number
@@ -28,12 +31,13 @@ export interface MeatSettings {
 export const DEFAULT_MEAT_SETTINGS: MeatSettings = {
   slaughterDate: '',
   lambMaxDays: 420,
-  lambKgYoung: 14.5,
-  lambKgMid: 14.8,
+  lambKgYoung: 15.8,
+  lambKgMid: 17,
   // in den Abrechnungen 2025 kaum ältere Lämmer (13.2 kg); Annahme des Betriebs ab 15.11.2026: 20 kg
   lambKgOld: 20,
-  sheepKgYoung: 19,
-  sheepKgOld: 27,
+  sheepKgFresh: 21,
+  sheepKgLate: 25,
+  sheepLateDays: 200,
   lambFactor: 0.95,
   sheepFactor: 1,
   feePerAnimal: 3.68,
@@ -75,12 +79,20 @@ export interface MeatValue {
 const DAY = 86_400_000
 export const ageOnDate = (birthIso: string, dateIso: string) => Math.round((Date.parse(`${dateIso}T00:00:00Z`) - Date.parse(`${birthIso}T00:00:00Z`)) / DAY)
 
-export function meatValue(birthDate: string | null, date: string, s: MeatSettings, p: MeatPrices): MeatValue | null {
+/** Schaf: SG nach Laktationstagen am Schlachttag (frisch leichter, ab sheepLateDays schwer); ohne Ablammung schwer. */
+export function sheepKg(lastBirth: string | null | undefined, date: string, s: MeatSettings): number {
+  if (!lastBirth) return s.sheepKgLate
+  const dim = ageOnDate(lastBirth, date)
+  if (dim < 0 || dim >= s.sheepLateDays || s.sheepLateDays <= 0) return s.sheepKgLate
+  return Math.round((s.sheepKgFresh + ((s.sheepKgLate - s.sheepKgFresh) * dim) / s.sheepLateDays) * 2) / 2
+}
+
+export function meatValue(birthDate: string | null, date: string, s: MeatSettings, p: MeatPrices, lastBirth: string | null = null): MeatValue | null {
   if (!birthDate) return null
   const ageDays = ageOnDate(birthDate, date)
   if (ageDays < 0) return null
   const lamb = ageDays < s.lambMaxDays
-  const kg = lamb ? (ageDays <= 120 ? s.lambKgYoung : ageDays <= 210 ? s.lambKgMid : s.lambKgOld) : ageDays < 1400 ? s.sheepKgYoung : s.sheepKgOld
+  const kg = lamb ? (ageDays <= 120 ? s.lambKgYoung : ageDays <= 210 ? s.lambKgMid : s.lambKgOld) : sheepKg(lastBirth, date, s)
   const pricePerKg = (lamb ? p.lamb * s.lambFactor : p.sheep * s.sheepFactor)
   const gross = kg * pricePerKg
   const band: MeatBand = lamb ? (ageDays <= 120 ? 'lamm1' : ageDays <= 210 ? 'lamm2' : 'lamm3') : 'schaf'
@@ -129,6 +141,9 @@ export function loadMeatSettings(moduleKey: string): MeatSettings {
     }
     // alte Vorgabe 13.2 kg (aus zu wenigen Abrechnungen) auf die neue heben
     if (out.lambKgOld === 13.2) out.lambKgOld = DEFAULT_MEAT_SETTINGS.lambKgOld
+    // alte Vorgaben 14.5 / 14.8 kg (vor den Abrechnungen 2025–2026) auf die neuen heben
+    if (out.lambKgYoung === 14.5) out.lambKgYoung = DEFAULT_MEAT_SETTINGS.lambKgYoung
+    if (out.lambKgMid === 14.8) out.lambKgMid = DEFAULT_MEAT_SETTINGS.lambKgMid
     return out
   } catch {
     return DEFAULT_MEAT_SETTINGS

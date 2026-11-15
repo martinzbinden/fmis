@@ -13,9 +13,11 @@ describe('meatValue', () => {
     expect(meatValue('2025-10-02', '2026-11-26', S, P)!.kind).toBe('Schaf') // 420 Tage
     expect(meatValue('2025-10-03', '2026-11-26', S, P)!.kind).toBe('Lamm') // 419 Tage
   })
-  it('Schaf: leichter unter 1400 Tagen', () => {
-    expect(meatValue('2024-04-26', '2026-11-26', S, P)!.kg).toBe(S.sheepKgYoung)
-    expect(meatValue('2022-01-30', '2026-11-26', S, P)!.kg).toBe(S.sheepKgOld)
+  it('Schaf: nach Laktationstagen, frisch abgelammt leichter, ab 200 Tagen und ohne Ablammung schwer', () => {
+    expect(meatValue('2022-01-30', '2026-11-26', S, P, '2026-11-26')!.kg).toBe(21)
+    expect(meatValue('2022-01-30', '2026-11-26', S, P, '2026-08-18')!.kg).toBe(23) // 100 Tage
+    expect(meatValue('2022-01-30', '2026-11-26', S, P, '2026-03-01')!.kg).toBe(25)
+    expect(meatValue('2022-01-30', '2026-11-26', S, P)!.kg).toBe(S.sheepKgLate)
   })
   it('ohne Geburtsdatum kein Wert; Summe zählt Unbekannte getrennt', () => {
     expect(meatValue(null, '2026-11-26', S, P)).toBeNull()
