@@ -94,9 +94,10 @@ export default function History() {
         <input
           type="text"
           placeholder="Suche…"
+          aria-label="Verlauf durchsuchen"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
+          className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
         />
       </div>
 

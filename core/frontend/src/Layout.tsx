@@ -2,7 +2,8 @@ import { useEffect, useReducer, useState, type ReactNode } from 'react'
 import ImportButton from './ImportButton'
 import { Link, NavLink, matchPath, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import SyncStatusDot from './SyncStatusDot'
-import { logout } from './auth'
+import ProfileMenu from './ProfileMenu'
+import SidePanel, { PanelButton } from './SidePanel'
 import { useHasPermission } from './AuthContext'
 import AdminMenu from './AdminMenu'
 import NotificationBell from './NotificationBell'
@@ -21,6 +22,7 @@ export default function Layout({
   historyPermission,
   sync,
   onLoggedOut,
+  history,
 }: {
   children: ReactNode
   moduleKey: string
@@ -30,6 +32,8 @@ export default function Layout({
   historyPermission: string
   sync: ModuleDescriptor['sync']
   onLoggedOut: () => void
+  /** Verlauf des Moduls (Route «verlauf»), erscheint im Seitenfenster 📜 */
+  history?: ReactNode
 }) {
   const canViewHistory = useHasPermission(historyPermission)
   const canImport = useHasPermission('core:import:write')
@@ -72,9 +76,9 @@ export default function Layout({
       <a href="#inhalt" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-3 focus:font-semibold focus:text-brand-800 focus:shadow-lg">
         Zum Inhalt springen
       </a>
-      <header className={`sticky top-0 z-20 flex items-center transition-transform duration-200 ${headerHidden ? '-translate-y-full' : ''} justify-between gap-1 border-b bg-white px-2 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))] sm:px-3`}>
+      <header data-app-header className={`sticky top-0 z-20 flex items-center transition-transform duration-200 ${headerHidden ? '-translate-y-full' : ''} justify-between gap-1 border-b bg-white px-2 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))] sm:px-3`}>
         <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-          <NavLink to="/dashboard" className="grid min-h-12 min-w-12 shrink-0 place-items-center rounded-full text-xl active:bg-gray-100" title="Zur Übersicht" aria-label="Zur Übersicht">
+          <NavLink to="/dashboard" className="grid min-h-12 min-w-10 shrink-0 place-items-center rounded-full text-xl active:bg-gray-100 sm:min-w-12" title="Zur Übersicht" aria-label="Zur Übersicht">
             🏠
           </NavLink>
           {/* Modul klein (führt zu dessen Startseite), darunter die Seite — auch
@@ -91,38 +95,23 @@ export default function Layout({
           {canImport && (
             <ImportButton className="hidden min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 sm:grid" />
           )}
-          {canViewHistory && (
-            // Zweites Antippen schliesst den Verlauf wieder: zurück zur Seite, von der man kam
-            <button
-              type="button"
-              onClick={() => {
-                if (rest === 'verlauf') navigate((location.state as { from?: string } | null)?.from ?? `/${moduleKey}`)
-                else navigate(`/${moduleKey}/verlauf`, { state: { from: `${location.pathname}${location.search}` } })
-              }}
-              aria-pressed={rest === 'verlauf'}
-              title={rest === 'verlauf' ? 'Verlauf schliessen' : 'Verlauf'}
-              aria-label={rest === 'verlauf' ? 'Verlauf schliessen' : 'Verlauf öffnen'}
-              className={`grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 ${rest === 'verlauf' ? 'bg-gray-200' : ''}`}
-            >
+          {canViewHistory && history && (
+            // Seitenfenster wie Status, Import und Benachrichtigungen; nochmals antippen schliesst
+            <PanelButton panel="verlauf" label="Verlauf">
               📜
-            </button>
+            </PanelButton>
           )}
           <NotificationBell />
           <AdminMenu />
-          <button
-            type="button"
-            onClick={() => {
-              logout()
-              onLoggedOut()
-            }}
-            title="Abmelden"
-            aria-label="Abmelden"
-            className="hidden min-h-12 min-w-12 place-items-center rounded-full px-3 text-xs text-gray-600 active:bg-gray-100 sm:grid"
-          >
-            Abmelden
-          </button>
+          <ProfileMenu onLoggedOut={onLoggedOut} />
         </div>
       </header>
+      {canViewHistory && history && (
+        <SidePanel panel="verlauf" title="Verlauf">
+          {/* die Verlaufsseite bringt ihren eigenen Titel und Rand mit: hier trägt das Fenster den Titel */}
+          <div className="-m-4 [&>div>h1:first-child]:sr-only [&>div]:pb-4">{history}</div>
+        </SidePanel>
+      )}
 
       {/* Ab Desktop-Breite (lg) steht das Menü links statt unten, unter der Kopfzeile (57 px) */}
       <main id="inhalt" tabIndex={-1} className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] outline-none lg:pl-52">

@@ -20,6 +20,10 @@ import tiereModule from '@fmis/tiere/module'
 import bauModule from '@fmis/bau/module'
 import Dashboard from './pages/Dashboard'
 import ImportModal, { ImportRoute } from './ImportModal'
+import { PanelRouteWatcher } from '@fmis/core/SidePanel'
+import SyncStatusPanel from '@fmis/core/SyncStatusPanel'
+import NotificationBell, { NotificationsPanel } from '@fmis/core/NotificationBell'
+import ProfileMenu, { ProfilePanel } from '@fmis/core/ProfileMenu'
 import YearOverview from './pages/YearOverview'
 import { registerAnimalProviders, registerHerdLocator } from '@fmis/core/animals'
 import { syncPendingModules } from '@fmis/core/sync'
@@ -169,6 +173,11 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
     <PendingSync keys={enabledModules.map((m) => m.key)} />
     {enabledModules.map((m) => (m.globalOverlay ? <m.globalOverlay key={`overlay-${m.key}`} /> : null))}
     <ImportModal modules={enabledModules} />
+    {/* Seitenfenster der Kopfzeile, die überall gleich sind (core/SidePanel.tsx) */}
+    <PanelRouteWatcher />
+    <SyncStatusPanel />
+    <NotificationsPanel />
+    <ProfilePanel />
     <Routes>
       <Route path="/dashboard" element={<Dashboard modules={enabledModules} onLoggedOut={onLoggedOut} />} />
       <Route
@@ -228,6 +237,7 @@ function ModuleRoute({ mod, onLoggedOut }: { mod: ModuleDescriptor; onLoggedOut:
         historyPermission={mod.historyPermission}
         sync={mod.sync}
         onLoggedOut={onLoggedOut}
+        history={mod.routes.find((r) => r.path === 'verlauf')?.element}
       >
         <Routes>
           {mod.routes.map((r) => (
@@ -260,23 +270,17 @@ function PageShell({ title, children, onLoggedOut }: { title: string; children: 
   }, [title])
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Link to="/dashboard" className="rounded px-1 py-1 text-lg active:bg-gray-100" title="Zur Übersicht">
+      <header data-app-header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-2 py-1 sm:px-3">
+        <div className="flex items-center gap-1">
+          <Link to="/dashboard" className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" title="Zur Übersicht" aria-label="Zur Übersicht">
             🏠
           </Link>
           <span className="text-lg font-bold text-brand-800">{title}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            logout()
-            onLoggedOut()
-          }}
-          className="rounded px-2 py-1 text-xs text-gray-500 active:bg-gray-100"
-        >
-          Abmelden
-        </button>
+        <div className="flex items-center">
+          <NotificationBell />
+          <ProfileMenu onLoggedOut={onLoggedOut} />
+        </div>
       </header>
       <main className="flex-1">{children}</main>
     </div>

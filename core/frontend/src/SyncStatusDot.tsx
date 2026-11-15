@@ -1,7 +1,5 @@
-import { useState } from 'react'
 import type { SyncStatus } from './sync'
-import SyncStatusPanel from './SyncStatusPanel'
-import { cachedModules } from './modulesApi'
+import { togglePanel, useOpenPanel } from './headerPanel'
 
 const COLORS: Record<SyncStatus, string> = {
   synced: 'bg-green-500',
@@ -31,12 +29,12 @@ export default function SyncStatusDot({
   pending?: number
   onSync: () => void
 }) {
-  // Antippen gleicht ab (wie bisher) und öffnet die Status-Anzeige: Abgleich je Modul mit Fehlertext, Dienste,
-  // Speicher, Programmversion (SyncStatusPanel.tsx)
-  const [panel, setPanel] = useState(false)
+  // Antippen gleicht ab (wie bisher) und klappt das Seitenfenster «Status» auf bzw. zu: Abgleich je Modul mit
+  // Fehlertext, Dienste, Speicher, Programmversion (SyncStatusPanel.tsx)
+  const panelOpen = useOpenPanel() === 'status'
   function handleClick() {
-    onSync()
-    setPanel(true)
+    if (!panelOpen) onSync()
+    togglePanel('status')
   }
 
   const open = pending > 0
@@ -53,14 +51,14 @@ export default function SyncStatusDot({
       title={tooltip}
       aria-label={`${label}. Abgleichen und Status anzeigen.`}
       aria-haspopup="dialog"
-      className="flex min-h-12 min-w-12 items-center justify-center gap-2 rounded-full px-3 text-xs font-medium text-gray-700 active:bg-gray-100"
+      aria-expanded={panelOpen}
+      className={`flex min-h-12 min-w-10 items-center justify-center gap-2 rounded-full px-2 sm:min-w-12 sm:px-3 text-xs font-medium text-gray-700 active:bg-gray-100 ${panelOpen ? 'bg-gray-200' : ''}`}
     >
       <span className={`h-3 w-3 shrink-0 rounded-full ${COLORS[status]}`} />
       <span aria-live="polite" className={needsText ? '' : 'hidden sm:inline'}>
         {label}
       </span>
     </button>
-    {panel && <SyncStatusPanel onClose={() => setPanel(false)} titles={Object.fromEntries((cachedModules() ?? []).map((m) => [m.key, m.title]))} />}
     </>
   )
 }

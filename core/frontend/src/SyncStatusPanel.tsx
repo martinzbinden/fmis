@@ -1,5 +1,7 @@
 import { useEffect, useReducer, useState } from 'react'
-import Modal from './Modal'
+import SidePanel from './SidePanel'
+import { useOpenPanel } from './headerPanel'
+import { cachedModules } from './modulesApi'
 import { API_URL, getToken } from './auth'
 import { allSyncClients, type SyncClient, type SyncStatus } from './sync'
 
@@ -95,7 +97,15 @@ function ModuleRow({ client, title, now }: { client: SyncClient; title: string; 
   )
 }
 
-export default function SyncStatusPanel({ onClose, titles }: { onClose: () => void; titles?: Record<string, string> }) {
+/** Seitenfenster «Status» (Sync-Punkt oder Profil-Menü): wird nur aufgebaut, solange es offen ist. */
+export default function SyncStatusPanel() {
+  const open = useOpenPanel() === 'status'
+  if (!open) return null
+  return <StatusContent />
+}
+
+function StatusContent() {
+  const titles: Record<string, string> = Object.fromEntries((cachedModules() ?? []).map((m) => [m.key, m.title]))
   const clients = allSyncClients()
   const [, tick] = useReducer((x: number) => x + 1, 0)
   const [now, setNow] = useState(() => Date.now())
@@ -174,7 +184,7 @@ export default function SyncStatusPanel({ onClose, titles }: { onClose: () => vo
   const h = 'mb-1 mt-3 text-sm font-bold text-gray-800'
 
   return (
-    <Modal title="Status" onClose={onClose}>
+    <SidePanel panel="status" title="Status und Version">
       <p role="status" className={`rounded-lg p-2.5 font-semibold ${server.loading ? 'bg-gray-100 text-gray-800' : allGood ? 'bg-green-50 text-green-900' : 'bg-amber-50 text-amber-900'}`}>
         {server.loading
           ? 'Prüfe …'
@@ -262,10 +272,7 @@ export default function SyncStatusPanel({ onClose, titles }: { onClose: () => vo
         <button type="button" disabled={busy} onClick={() => void syncAll()} className="min-h-12 flex-1 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:bg-gray-400">
           {busy ? 'Gleiche ab …' : 'Jetzt abgleichen und prüfen'}
         </button>
-        <button type="button" onClick={onClose} className="min-h-12 rounded-lg border border-gray-300 px-4 font-medium text-gray-800">
-          Schliessen
-        </button>
       </div>
-    </Modal>
+    </SidePanel>
   )
 }

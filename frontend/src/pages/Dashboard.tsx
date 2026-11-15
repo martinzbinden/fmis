@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import AdminMenu from '@fmis/core/AdminMenu'
 import NotificationBell from '@fmis/core/NotificationBell'
-import { logout } from '@fmis/core/auth'
+import ProfileMenu from '@fmis/core/ProfileMenu'
 import type { ModuleDescriptor, ModuleGroup, QuickLink } from '@fmis/core/ModuleDescriptor'
 
 // Reihenfolge der Übersicht: Dienste (Kachel) → Tiere → Maschinen & Betrieb → Weitere → Flächen
@@ -42,7 +42,7 @@ export default function Dashboard({
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">
+      <header data-app-header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white py-1 pl-4 pr-2">
         <h1 className="text-lg font-bold text-brand-800">FMIS</h1>
         <div className="flex items-center gap-1">
           {modules.flatMap((m) => (m.quickLinks ?? []).map((l) => <QuickLinkIcon key={`${m.key}-${l.to}`} link={l} />))}
@@ -51,16 +51,7 @@ export default function Dashboard({
           )}
           <NotificationBell />
           <AdminMenu />
-          <button
-            type="button"
-            onClick={() => {
-              logout()
-              onLoggedOut()
-            }}
-            className="rounded px-2 py-1 text-xs text-gray-500 active:bg-gray-100"
-          >
-            Abmelden
-          </button>
+          <ProfileMenu onLoggedOut={onLoggedOut} />
         </div>
       </header>
 
