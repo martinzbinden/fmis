@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import Modal from '@fmis/core/Modal'
 import BoardCardView from './BoardCardView'
 import LactationSpark from './LactationSpark'
+import type { SccLevel } from '../lib/herdContext'
 import NursingLambs, { WeanedLambs } from './NursingLambs'
 import type { BoardCard } from '../lib/board'
 import type { CardFieldKey } from '../lib/cardFields'
@@ -16,6 +17,12 @@ const LEVELS: LactationLevel[] = [
   { lactation_number: 2, level: 0.96, running: false, tests: 8 },
   { lactation_number: 3, level: 0.62, running: false, tests: 7 },
   { lactation_number: 4, level: 0.9, running: true, tests: 4 },
+]
+const SCC_LEVELS: SccLevel[] = [
+  { lactation_number: 1, scc: 90, tests: 8 },
+  { lactation_number: 2, scc: 150, tests: 8 },
+  { lactation_number: 3, scc: 420, tests: 7 },
+  { lactation_number: 4, scc: 300, tests: 4 },
 ]
 
 const SAMPLE: BoardCard = {
@@ -48,6 +55,7 @@ const SAMPLE: BoardCard = {
   idxScc: 96,
   sccRelPeers: 128,
   levels: LEVELS,
+  sccLevels: SCC_LEVELS,
   trend: 'fallend',
   weighings: 4,
   intervalDays: 362,
@@ -143,14 +151,15 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
           <b>%</b>: Leistung in Prozent der gleichaltrigen Tiere. 100 % ist gleich, mehr ist besser.<br />
           <b>Pfeil</b>: Tendenz über die Laktationen, nur bei mindestens zwei bewerteten Laktationen: <span className="font-bold text-green-700">↗</span> steigend, <span className="font-bold text-gray-600">→</span> stabil, <span className="font-bold text-red-700">↘</span> fallend (ab 5 Punkten je Laktation).
         </Item>
-        <Item title="Zellzahl" sample={<span className="text-[11px] text-gray-700">Herde 96 · Gleichalt. 128 % · Ø 245</span>}>
-          <b>Herde</b>: Zellzahl-Index. 100 ist der Durchschnitt, <i>höher ist besser</i> (tiefe Zellzahl gibt einen hohen Index).<br />
-          <b>Gleichalt.</b>: Zellzahl in Prozent der Gleichaltrigen (Ø 12 Monate). 100 % ist gleich, <i>tiefer ist besser</i>, 128 % sind 28 % mehr Zellen als die Gleichaltrigen.<br />
-          <b>Ø</b>: Zellzahl im Mittel der letzten 12 Monate, in 1000 Zellen/ml.
+        <Item title="Zellzahl" sample={<span className="text-[11px] text-gray-700">245'000 · 96 Pt (128 %)</span>}>
+          <b>Zahl</b>: Zellzahl im Mittel der letzten 12 Monate (geometrisches Mittel), Zellen/ml.<br />
+          <b>Pt</b>: Zellzahl-Index im Vergleich mit der Herde. 100 ist der Durchschnitt, <i>höher ist besser</i> (tiefe Zellzahl gibt einen hohen Index).<br />
+          <b>(%)</b>: Zellzahl in Prozent der Gleichaltrigen. 100 % ist gleich, <i>tiefer ist besser</i>, 128 % sind 28 % mehr Zellen als die Gleichaltrigen.
         </Item>
-        <Item title="Laktationen (Minigrafik)" sample={<LactationSpark levels={LEVELS} />}>
+        <Item title="Laktationen (Minigrafik)" sample={<LactationSpark levels={LEVELS} scc={SCC_LEVELS} />}>
           Ein Balken je Laktation, die Zahl darunter ist die Laktationsnummer. Die Höhe zeigt das Leistungsniveau gegenüber der Herde, die gestrichelte Linie ist das Herdenmittel (100 %).<br />
-          <span className="font-semibold text-gray-900">Dunkel</span>: abgeschlossene Laktation ab 80 % der Herde. <span className="font-semibold text-red-700">Rot</span>: unter 80 % der Herde (hier die 3.). <span className="font-semibold text-gray-600">Hell mit gestricheltem Rand</span>: laufende Laktation, noch nicht abgeschlossen.
+          <span className="font-semibold text-gray-900">Dunkel</span>: abgeschlossene Laktation ab 80 % der Herde. <span className="font-semibold text-orange-600">Orange</span>: unter 80 % der Herde (hier die 3.). <span className="font-semibold text-gray-600">Hell mit gestricheltem Rand</span>: laufende Laktation, noch nicht abgeschlossen.<br />
+          <span className="font-semibold text-red-600">Rote Linie</span>: Zellzahl im Mittel je Laktation (eigene Skala von 50'000 unten bis 2 Mio. oben, logarithmisch). Steigt die Linie, hat das Tier mehr Zellen.
         </Item>
         {sheep && (
           <Item title="Milch der Lämmer" sample={<span className="text-[11px] text-gray-700">≈ 1.9 kg/Tag · 52 kg</span>}>

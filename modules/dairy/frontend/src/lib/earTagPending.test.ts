@@ -61,6 +61,11 @@ describe('loadPendingOffspring', () => {
     await birth('2026-10-30', 'manual', [{ sex: 'w' }, { ear_tag: 'CH3', sex: 'm' }, { stillborn: true }])
     const [p] = await loadPendingOffspring(pg)
     expect(p).toMatchObject({ litter: 3, dead: 1, siblings: ['CH3'] })
+    expect(p.members.map((m) => [m.sex, m.ear_tag, m.death, m.pending])).toEqual([
+      ['w', null, null, true],
+      ['m', 'CH3', null, false],
+      [null, null, 'tot geboren', false],
+    ])
   })
 })
 

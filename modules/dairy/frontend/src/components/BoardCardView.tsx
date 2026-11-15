@@ -8,6 +8,7 @@ import { speciesTerms } from '../lib/species'
 import { meatBarColor, meatBarPercent, MEAT_BAND_LABEL, type MeatLimit, type MeatValue, MEAT_BAR_MAX } from '../lib/meatValue'
 import type { CardFieldKey } from '../lib/cardFields'
 import LactationSpark from './LactationSpark'
+import { fmtCells } from '../lib/culling'
 import { MilkFeedChip } from './MilkFeedChip'
 import type { MilkFeed, MilkFeedSettings } from '../lib/milkFeed'
 import NursingLambs, { WeanedLambs } from './NursingLambs'
@@ -310,7 +311,16 @@ function CardProps({
       </div>,
     )
   }
-  if (has('scc')) rows.push(line('Zellzahl', `Herde ${f0(card.idxScc)} · Gleichalt. ${card.sccRelPeers == null ? '–' : `${card.sccRelPeers} %`} · Ø ${f0(card.scc12m)}`, 'scc'))
+  // Zellzahl: zuerst die effektive Zahl (Ø 12 Monate), dann der Herden-Index (Pt) und in Klammern % der Gleichaltrigen
+  if (has('scc'))
+    rows.push(
+      <div key="scc" className="flex justify-between gap-2" title="Zellzahl Ø 12 Monate (Zellen/ml) · Zellzahl-Index der Herde (Pt, Mittel 100, höher = weniger Zellen) · (in % der Gleichaltrigen, tiefer ist besser)">
+        <span className="text-gray-500">Zellzahl</span>
+        <span className="text-right font-medium text-gray-900">
+          {card.scc12m == null ? '–' : fmtCells(card.scc12m)} · {f0(card.idxScc)} Pt{card.sccRelPeers != null && <span className="font-normal text-gray-700"> ({card.sccRelPeers} %)</span>}
+        </span>
+      </div>,
+    )
   if (has('ltl')) rows.push(line('Lebenstagleistung', card.ltlMilk == null ? '–' : `${n1(card.ltlMilk, 2)} kg`, 'ltl'))
   if (has('zw')) {
     const e = card.breedingEstimate
@@ -380,15 +390,15 @@ function CardProps({
         'milkFeed',
       ),
     )
-  const spark = has('spark') && card.levels.length > 0
+  const spark = has('spark') && (card.levels.length > 0 || card.sccLevels.length > 0)
   if (rows.length === 0 && !spark) return null
   return (
     <span className="mt-1 block space-y-0.5 border-t border-gray-100 pt-1 text-[11px]">
       {rows}
       {spark && (
-        <span className="flex items-end justify-between gap-2" title="Leistungsniveau je Laktation gegen die Herde">
+        <span className="flex items-end justify-between gap-2" title="Leistungsniveau je Laktation gegen die Herde (Säulen) und Zellzahl Ø je Laktation (rote Linie)">
           <span className="text-gray-500">Laktationen</span>
-          <LactationSpark levels={card.levels} />
+          <LactationSpark levels={card.levels} scc={card.sccLevels} />
         </span>
       )}
     </span>

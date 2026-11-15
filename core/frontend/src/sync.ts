@@ -96,7 +96,12 @@ export function createSyncClient(
   ensureOutbox: (pg: PGlite) => Promise<void>,
   notifyDataChanged: () => void,
 ): SyncClient {
-  const sinceKey = `${moduleKey}_sync_since`
+  // Stand des letzten Pulls: steht IN der lokalen Datenbank (Tabelle sync_state) und wird in derselben
+  // Transaktion geschrieben wie die geholten Zeilen. Früher lag er im localStorage: Der ist sofort
+  // gespeichert, die Datenbank aber erst, wenn pglite sie nach IndexedDB zurückschreibt. Brach das ab
+  // (Neuladen, Handy beendet den Tab), war die Datenbank älter als der Stand, und die Zeilen dazwischen
+  // fehlten auf diesem Gerät für immer (gesehen 15.11.2026). Jetzt sind beide immer gleich alt.
+  const sinceKey = `${moduleKey}_sync_since` // nur noch zum Aufräumen des alten Eintrags
   // Signatur der Spaltenlisten: kommt mit einem App-Update eine neue Spalte
   // dazu (z.B. animals.lauf_nr), wären bereits gepullte Zeilen lokal ohne
   // diesen Wert und würden wegen `since` nie nachgeholt — deshalb bei
@@ -115,13 +120,30 @@ export function createSyncClient(
   // `since` verpasst wurden (K03-Import), holt dieser eine Voll-Pull nach.
   const schemaSignature =
     'shared-db-v1:synced-at-v2:' + JSON.stringify(Object.entries(syncTables).map(([t, cols]) => [t, [...cols]]))
+  let resetSince = false
   try {
     if (localStorage.getItem(schemaKey) !== schemaSignature) {
-      localStorage.removeItem(sinceKey)
+      resetSince = true
       localStorage.setItem(schemaKey, schemaSignature)
     }
+    localStorage.removeItem(sinceKey)
   } catch {
-    // ohne localStorage: jeder Start ist ohnehin ein Voll-Pull
+    // ohne localStorage: der Stand in der Datenbank genügt
+  }
+  let sinceTableReady = false
+
+  /** Stand des letzten Pulls aus der lokalen Datenbank (null = alles holen). */
+  async function readSince(pg: PGlite): Promise<string | null> {
+    if (!sinceTableReady) {
+      await pg.query('create table if not exists sync_state (key text primary key, value text not null)')
+      sinceTableReady = true
+    }
+    if (resetSince) {
+      await pg.query("delete from sync_state where key = 'since'")
+      resetSince = false
+    }
+    const { rows } = await pg.query<{ value: string }>("select value from sync_state where key = 'since'")
+    return rows[0]?.value ?? null
   }
   const base = `${API_URL}/${moduleKey}/sync`
 
@@ -230,7 +252,7 @@ export function createSyncClient(
   /** Holt alle serverseitigen Änderungen seit dem letzten Sync (GET /<module>/sync/pull) und wendet sie per Last-Write-Wins lokal an. */
   async function pull(): Promise<void> {
     const pg = await getDb()
-    const since = localStorage.getItem(sinceKey)
+    const since = await readSince(pg)
 
     // Zweiter Parameter (base) nötig: API_URL ist in Produktion bewusst leer
     // (same-origin), und new URL() akzeptiert relative Strings nur mit base.
@@ -296,9 +318,10 @@ export function createSyncClient(
           }
         }
       }
+      // gleiche Transaktion wie die Zeilen: entweder beides gespeichert oder keines
+      await tx.query("insert into sync_state (key, value) values ('since', $1) on conflict (key) do update set value = excluded.value", [data.server_time])
     })
 
-    localStorage.setItem(sinceKey, data.server_time)
     notifyDataChanged()
     if (merged.length)
       notifyInfo(`Doppelt erfasst und mit dem Stand des Servers zusammengeführt: ${merged.slice(0, 5).join(', ')}${merged.length > 5 ? ` und ${merged.length - 5} weitere` : ''}`)

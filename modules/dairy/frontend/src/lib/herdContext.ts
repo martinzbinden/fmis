@@ -6,7 +6,7 @@
 
 import type { PGlite } from '@electric-sql/pglite'
 import { computeFertility, type FertilityStatus, type MatingEvent, type Species } from './fertility'
-import { computeHerdPerformance, type PerformanceMetrics } from './herdPerformance'
+import { computeHerdPerformance, geoMean, type PerformanceMetrics } from './herdPerformance'
 import { isoDate, num } from './format'
 import { notSupersededSql } from './journal'
 import { lactationDayAt } from './lactationDay'
@@ -72,6 +72,29 @@ export interface AnimalContext {
   pregnancy: PregnancyStatus | null
   /** Alter in ganzen Monaten (null = Geburtsdatum unbekannt). */
   ageMonths: number | null
+  /** Zellzahl je Laktation: geometrisches Mittel der Proben (Tsd./ml), aufsteigend nach Laktation */
+  sccByLactation: SccLevel[]
+}
+
+export interface SccLevel {
+  lactation_number: number
+  /** geometrisches Mittel, Tsd./ml */
+  scc: number
+  tests: number
+}
+
+/** Zellzahl je Laktation aus den Proben mit Laktationsnummer (geometrisches Mittel, wie die Zellzahl Ø 12 Monate). */
+export function sccByLactation(tests: { lactation_number?: unknown; cell_count: unknown }[]): SccLevel[] {
+  const by = new Map<number, number[]>()
+  for (const t of tests) {
+    const nr = num(t.lactation_number)
+    const c = num(t.cell_count)
+    if (nr == null || nr <= 0 || c == null || c <= 0) continue
+    by.set(nr, [...(by.get(nr) ?? []), c])
+  }
+  return [...by.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([nr, cs]) => ({ lactation_number: nr, scc: Math.round(geoMean(cs) ?? 0), tests: cs.length }))
 }
 
 export async function loadHerdContext(pg: PGlite, species: Species, today: string): Promise<Map<string, AnimalContext>> {
@@ -251,6 +274,7 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
       trend: trends.get(a.id),
       pregnancy: latestPregnancy(checksByAnimal.get(a.id) ?? [], lastBirth),
       ageMonths: animal.birth_date ? monthsBetween(animal.birth_date, today) : null,
+      sccByLactation: sccByLactation(testsByAnimal.get(a.id) ?? []),
     })
   }
   return out

@@ -8,7 +8,7 @@ import { buildPlan, isValuable, valueScores, type Mark, type PlanEntry, type Pla
 import { clearCullingMarks, loadCullingMarks, setCullingMark } from '../lib/cullingMarks'
 import { useQuery } from '../hooks/useQuery'
 import { useJumpTarget, useJumpTo } from '../hooks/useJumpTo'
-import { cullingInput, litterSummary, loadHerdContext, latestValues, type LitterSummary } from '../lib/herdContext'
+import { cullingInput, litterSummary, loadHerdContext, latestValues, type LitterSummary, type SccLevel } from '../lib/herdContext'
 import TrendBadge from '../components/TrendBadge'
 import LactationSpark from '../components/LactationSpark'
 import type { LactationTrend } from '../lib/lactationTrend'
@@ -72,6 +72,8 @@ interface Row {
   milkFeed: MilkFeed
   /** Punkte daraus für den Vorschlag */
   milkFeedPoints: number
+  /** Zellzahl je Laktation (rote Linie in der Minigrafik) */
+  sccLevels: SccLevel[]
 }
 
 /** «2·1·3 (Ø 2.0)» – die letzten vier Würfe, Mittel über alle. */
@@ -156,6 +158,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           sex: c.animal.sex,
           birthDate: c.animal.birth_date ? String(c.animal.birth_date).slice(0, 10) : null,
           lastBirth: c.births.map((b) => b.birth_date).sort().at(-1) ?? null,
+          sccLevels: c.sccByLactation,
           milkFeed: milkFeed(
             {
               species,
@@ -505,7 +508,7 @@ function CullingPlanView({
                     </div>
                   )}
                 </div>
-                {species === 'sheep' && r.trend && r.trend.levels.length > 0 && <LactationSpark levels={r.trend.levels} />}
+                {species === 'sheep' && ((r.trend?.levels.length ?? 0) > 0 || r.sccLevels.length > 0) && <LactationSpark levels={r.trend?.levels ?? []} scc={r.sccLevels} />}
               </div>
               <div className="flex gap-2 border-t px-3 py-2 print:hidden">
                 <button

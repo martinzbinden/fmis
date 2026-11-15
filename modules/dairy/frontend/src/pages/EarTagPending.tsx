@@ -9,7 +9,9 @@ import { getCurrentUserEmail } from '@fmis/core/auth'
 import { upsertRow } from '../db/write'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
-import { assignEarTag, checkEarTag, daysSince, loadPendingOffspring, markDied, MARKING_DAYS, type PendingOffspring } from '../lib/earTagPending'
+import { addSibling, assignEarTag, checkEarTag, daysSince, loadPendingOffspring, markDied, MARKING_DAYS, setOffspringSex, type LitterMember, type PendingOffspring } from '../lib/earTagPending'
+import BirthFollowUp from '../components/BirthFollowUp'
+import { undoAction } from '@fmis/core/undo'
 import { loadTagStock } from '../lib/earTagStock'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
@@ -29,6 +31,14 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
   const [requestedId] = useState(() => new URLSearchParams(window.location.search).get('lamm'))
   const { data } = useQuery((pg) => loadData(pg, requestedId))
   const byId = useMemo(() => new Map((data?.animals ?? []).map((a) => [a.id, a])), [data])
+  const idByKey = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const a of data?.animals ?? []) {
+      const k = a.ear_tag ? animalKey(a.ear_tag) : null
+      if (k) m.set(k, a.id)
+    }
+    return m
+  }, [data])
   const [saved, setSaved] = useState<{ earTag: string; animalId: string; created: boolean }[]>([])
   const today = localTodayIso()
   const pending = data?.pending ?? []
@@ -99,6 +109,8 @@ export default function EarTagPending({ moduleKey }: { moduleKey: string }) {
           key={p.id}
           p={p}
           dam={byId.get(p.dam_id)}
+          idByKey={idByKey}
+          moduleKey={moduleKey}
           animals={data?.animals ?? []}
           today={today}
           deadline={MARKING_DAYS[species]}
@@ -120,6 +132,8 @@ function PendingCard({
   nr,
   p,
   dam,
+  idByKey,
+  moduleKey,
   animals,
   today,
   deadline,
@@ -135,6 +149,9 @@ function PendingCard({
   nr: number
   p: PendingOffspring
   dam: Animal | undefined
+  /** Tier-ID je Ohrmarken-Schlüssel (Link auf markierte Geschwister) */
+  idByKey: Map<string, string>
+  moduleKey: string
   animals: Animal[]
   today: string
   deadline: number
@@ -151,7 +168,13 @@ function PendingCard({
 }) {
   const db = useDb()
   const [earTag, setEarTag] = useState('')
-  const [sex, setSex] = useState<'w' | 'm' | null>(p.sex)
+  const [sex, setSexState] = useState<'w' | 'm' | null>(p.sex)
+  const [openBirth, setOpenBirth] = useState(false)
+  // Geschlecht gilt sofort (auch ohne Ohrmarke), damit Wurf und TVD-Meldung stimmen
+  const setSex = (next: 'w' | 'm') => {
+    setSexState(next)
+    void setOffspringSex(db, p.id, next).catch((err) => setError(errorText(err, 'Speichern fehlgeschlagen')))
+  }
   const [dying, setDying] = useState(false)
   const [diedOn, setDiedOn] = useState(today)
   // Gewicht beim Ohrmarkensetzen (optional): Startgewicht für die Milchschätzung (lib/lambMilk.ts)
@@ -207,17 +230,19 @@ function PendingCard({
   }
 
   return (
-    <div className={`space-y-2 rounded-lg border-2 bg-white p-3 shadow-sm ${tone} ${active ? 'ring-4 ring-green-600' : ''}`} onClickCapture={onActivate} onFocusCapture={onActivate}>
+    <div id={`lamm-${p.id}`} className={`scroll-mt-20 space-y-2 rounded-lg border-2 bg-white p-3 shadow-sm ${tone} ${active ? 'ring-4 ring-green-600' : ''}`} onClickCapture={onActivate} onFocusCapture={onActivate}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-semibold text-gray-900">
-          Mutter {dam ? (dam.lauf_nr ?? shortEarTag(dam.ear_tag)) : '?'}
-          {dam?.lauf_nr && <span className="ml-1 text-xs font-normal text-gray-600">{shortEarTag(dam.ear_tag)}</span>}
-        </span>
-        <span className="text-right text-xs text-gray-600">
-          {p.litter > 1 ? `${p.litter} ${youngPl} im Wurf${p.dead > 0 ? `, ${p.dead} tot` : ''}` : 'Einling'}
-          {p.siblings.length > 0 && <span className="block">Geschwister {p.siblings.map(shortEarTag).join(', ')}</span>}
-        </span>
+        {dam ? (
+          <Link to={`../tiere/${dam.id}`} relative="path" className="font-semibold text-brand-800" title="Tier-Info der Mutter">
+            Mutter {dam.lauf_nr ?? shortEarTag(dam.ear_tag)}
+            {dam.lauf_nr && <span className="ml-1 text-xs font-normal text-gray-600">{shortEarTag(dam.ear_tag)}</span>} ›
+          </Link>
+        ) : (
+          <span className="font-semibold text-gray-900">Mutter ?</span>
+        )}
+        <span className="text-right text-xs text-gray-600">{p.litter > 1 ? `${p.litter} ${youngPl} im Wurf${p.dead > 0 ? `, ${p.dead} tot` : ''}` : 'Einling'}</span>
       </div>
+      <LitterList p={p} self={p.id} sex={sex} idByKey={idByKey} youngPl={youngPl} onError={setError} />
       <p className={`text-sm ${age > deadline ? 'font-semibold text-red-700' : age > deadline - 7 ? 'text-amber-800' : 'text-gray-700'}`}>
         geboren {fmtDate(p.birth_date)} · {age} {age === 1 ? 'Tag' : 'Tage'} alt
         {age > deadline ? ` – Markierfrist (${deadline} T.) überschritten` : age > deadline - 7 ? ` – Frist in ${deadline - age} T.` : ''}
@@ -298,6 +323,68 @@ function PendingCard({
           † vor dem Markieren verendet
         </button>
       )}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-sm">
+        <button type="button" aria-expanded={openBirth} onClick={() => setOpenBirth((v) => !v)} className="link-btn font-medium text-brand-700">
+          {openBirth ? 'Wurf schliessen' : 'Wurf: Eltern, Verluste, Entscheid ›'}
+        </button>
+        <button
+          type="button"
+          onClick={() => void undoAction(`Geschwister zum Wurf von ${dam?.lauf_nr ?? shortEarTag(dam?.ear_tag)} nachgetragen`, () => addSibling(db, p.birth_id, null)).catch((err) => setError(errorText(err, 'Speichern fehlgeschlagen')))}
+          className="link-btn text-gray-700"
+          title={`Ein bei der Geburt vergessenes ${young} nachtragen: erscheint als eigene Karte`}
+        >
+          + Geschwister nachtragen
+        </button>
+      </div>
+      {openBirth && <BirthFollowUp birthId={p.birth_id} moduleKey={moduleKey} />}
     </div>
+  )
+}
+
+/** Der ganze Wurf: markierte Geschwister verlinkt (Tier-Info), offene springen zu ihrer Karte, bei toten lässt
+ * sich das Geschlecht antippen (♀ → ♂ → ?). Dieses Tier steht fett. */
+function LitterList({ p, self, sex, idByKey, youngPl, onError }: { p: PendingOffspring; self: string; sex: 'w' | 'm' | null; idByKey: Map<string, string>; youngPl: string; onError: (t: string) => void }) {
+  const db = useDb()
+  if (p.members.length <= 1) return null
+  const sym = (s: 'w' | 'm' | null) => (s === 'w' ? '♀' : s === 'm' ? '♂' : '?')
+  const cycle = (m: LitterMember) => {
+    const next = m.sex === 'w' ? 'm' : m.sex === 'm' ? null : 'w'
+    void setOffspringSex(db, m.id, next).catch((err) => onError(errorText(err, 'Speichern fehlgeschlagen')))
+  }
+  return (
+    <ul className="flex flex-wrap gap-1.5 text-xs" aria-label={`Wurf: ${p.members.length} ${youngPl}`}>
+      {p.members.map((m) => {
+        const isSelf = m.id === self
+        const s = isSelf ? sex : m.sex
+        const key = m.ear_tag ? animalKey(m.ear_tag) : null
+        const animalId = key ? idByKey.get(key) : undefined
+        const cls = `inline-flex min-h-9 items-center gap-1 rounded-full border px-2.5 ${isSelf ? 'border-brand-700 bg-brand-50 font-semibold text-brand-900' : m.death ? 'border-gray-300 bg-gray-50 text-gray-600' : 'border-gray-300 bg-white text-gray-800'}`
+        return (
+          <li key={m.id}>
+            {isSelf ? (
+              <span className={cls}>{sym(s)} dieses</span>
+            ) : m.ear_tag ? (
+              animalId ? (
+                <Link to={`../tiere/${animalId}`} relative="path" className={`${cls} text-brand-700`} title="Tier-Info">
+                  {sym(s)} {shortEarTag(m.ear_tag)} ›
+                </Link>
+              ) : (
+                <span className={cls}>
+                  {sym(s)} {shortEarTag(m.ear_tag)}
+                </span>
+              )
+            ) : m.pending ? (
+              <a href={`#lamm-${m.id}`} className={`${cls} text-amber-900`} title="Zur Karte dieses Geschwisters">
+                {sym(s)} 🏷️ offen ↓
+              </a>
+            ) : (
+              <button type="button" onClick={() => cycle(m)} className={cls} title={`${m.death}: Geschlecht antippen zum Ändern`}>
+                {sym(s)}† {m.death}
+              </button>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }

@@ -22,6 +22,23 @@ export interface PendingOffspring {
   litter: number
   dead: number
   siblings: string[]
+  /** der ganze Wurf (inkl. dieses Tiers) für die Querverweise */
+  members: LitterMember[]
+}
+
+export interface LitterMember {
+  id: string
+  ear_tag: string | null
+  sex: 'w' | 'm' | null
+  /** Verbleib, falls tot (sonst null) */
+  death: string | null
+  /** lebend, noch ohne Ohrmarke (hat eine eigene Karte) */
+  pending: boolean
+}
+
+function memberOf(o: Record<string, unknown>): LitterMember {
+  const death = o.stillborn ? 'tot geboren' : o.died_24h ? 'verendet < 24 h' : o.died_on ? `verendet ${fmtDate(isoDate(o.died_on))}` : null
+  return { id: String(o.id), ear_tag: (o.ear_tag as string | null) ?? null, sex: (o.sex as 'w' | 'm' | null) ?? null, death, pending: !o.ear_tag && !death }
 }
 
 /** Markierfrist nach der Geburt (TVD): Schafe 30 Tage, Rinder 20 Tage. */
@@ -57,6 +74,7 @@ export async function loadPendingOffspring(pg: PGlite, requestedId?: string | nu
         litter: litter.length,
         dead: litter.filter((o) => o.stillborn || o.died_24h || o.died_on).length,
         siblings: litter.filter((o) => o.ear_tag).map((o) => String(o.ear_tag)),
+        members: litter.map(memberOf),
       })
     }
   }
@@ -209,6 +227,40 @@ export async function markDied(pg: PGlite, p: Pick<PendingOffspring, 'id'>, date
   const { rows } = await pg.query<Record<string, unknown>>('select * from birth_offspring where id = $1', [p.id])
   if (!rows[0]) throw new Error('Nachkomme nicht gefunden.')
   await upsertRow(pg, 'birth_offspring', { ...rows[0], id: p.id, died_on: date })
+}
+
+/** Geschlecht eines Nachkommen sofort speichern (auch ohne Ohrmarke, z.B. für die TVD-Meldung). */
+export async function setOffspringSex(pg: PGlite, offspringId: string, sex: 'w' | 'm' | null): Promise<void> {
+  const { rows } = await pg.query<Record<string, unknown>>('select * from birth_offspring where id = $1', [offspringId])
+  if (!rows[0]) throw new Error('Nachkomme nicht gefunden.')
+  if ((rows[0].sex ?? null) === sex) return
+  await upsertRow(pg, 'birth_offspring', { ...rows[0], id: offspringId, sex })
+}
+
+/** Ein bei der Geburt vergessenes Geschwister nachtragen (lebend, ohne Ohrmarke → erscheint als eigene Karte). */
+export async function addSibling(pg: PGlite, birthId: string, sex: 'w' | 'm' | null): Promise<string> {
+  const [birth, litter] = await Promise.all([
+    pg.query<{ import_key: string | null }>('select import_key from births where id = $1', [birthId]),
+    pg.query<{ import_key: string | null }>('select import_key from birth_offspring where birth_id = $1', [birthId]),
+  ])
+  const base = birth.rows[0]?.import_key ?? birthId
+  const used = new Set(litter.rows.map((r) => r.import_key))
+  let i = litter.rows.length
+  while (used.has(`${base}|#${i}`)) i++
+  const id = crypto.randomUUID()
+  await upsertRow(pg, 'birth_offspring', {
+    id,
+    birth_id: birthId,
+    ear_tag: null,
+    animal_key: null,
+    sex,
+    stillborn: false,
+    died_24h: false,
+    birth_weight_kg: null,
+    import_key: `${base}|#${i}`,
+    died_on: null,
+  })
+  return id
 }
 
 /** Tage seit der Geburt (Ortszeit-Datum). */

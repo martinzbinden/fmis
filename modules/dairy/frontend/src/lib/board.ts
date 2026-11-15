@@ -7,7 +7,7 @@ import type { FieldDef, FilterDef } from '@fmis/core/filters/filterModel'
 import { presetFilter } from '@fmis/core/filters/useSavedFilters'
 import { cullingReasons, reasonScore, type CullingReason, type CullingThresholds } from './culling'
 import type { Species } from './fertility'
-import { cullingInput, type AnimalContext } from './herdContext'
+import { cullingInput, type AnimalContext, type SccLevel } from './herdContext'
 import type { LactationLevel, TrendDirection } from './lactationTrend'
 import type { DamMilk } from './lambMilk'
 import type { BreedingEstimate } from './breedingEstimate'
@@ -54,6 +54,8 @@ export interface BoardCard {
   sccRelPeers: number | null
   /** Leistungsniveau je Laktation gegen die Herde (1.0 = Herdenmittel), für die Minigrafik */
   levels: LactationLevel[]
+  /** Zellzahl je Laktation (geometrisches Mittel, Tsd./ml) für die rote Linie in der Minigrafik */
+  sccLevels: SccLevel[]
   /** Tendenz über die Laktationen (ab 2 bewerteten Laktationen, sonst null) */
   trend: TrendDirection | null
   /** Wägungen (Prüfungen) der laufenden Laktation */
@@ -143,6 +145,7 @@ export function buildCards(input: BoardInput): BoardCard[] {
         return p?.scc_geo_12m != null && mean ? Math.round((p.scc_geo_12m / mean) * 100) : null
       })(),
       levels: ctx.trend?.levels ?? [],
+      sccLevels: ctx.sccByLactation,
       trend: ctx.trend?.direction ?? null,
       weighings: ctx.currentLactationTests.length,
       intervalDays: birthInterval(ctx),
