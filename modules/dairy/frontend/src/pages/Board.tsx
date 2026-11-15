@@ -37,19 +37,19 @@ import { SIRE_TRAIT } from '../lib/breedingTraits'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadHerdContext } from '../lib/herdContext'
-import { loadNursingDams } from '../lib/lambs'
+import { bucketByDam, loadLambs, nursingByDam } from '../lib/lambs'
 import { estimateAll, loadParentLinks } from '../lib/breedingEstimate'
-import { DEFAULT_LAMB_MILK, loadDamMilk, loadLambMilkSettings, saveLambMilkSettings, type LambMilkSettings } from '../lib/lambMilk'
+import { DEFAULT_LAMB_MILK, loadLambMilkSettings, milkByDam, saveLambMilkSettings, type LambMilkSettings } from '../lib/lambMilk'
 import { speciesOf, speciesTerms } from '../lib/species'
-import { loadDryAnimalIds } from '../lib/dryOff'
-import { loadMilkSamples, milkFeed, useMilkFeedSettings, type MilkFeed } from '../lib/milkFeed'
+import { loadMilkFeedData, milkFeed, milkFeedInputFor, useMilkFeedSettings, type MilkFeed } from '../lib/milkFeed'
+import { loadRules } from '../lib/stallRules'
 import { MilkFeedSettingsPanel } from '../components/MilkFeedChip'
 import { addToWatchlist, loadWatchlists, removeEntry } from '../lib/watchlists'
 
 async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string, milk: LambMilkSettings) {
   const trait = SIRE_TRAIT[species].trait
-  const [context, lists, nursing, lambMilk, links] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadNursingDams(pg, today), loadDamMilk(pg, today, milk), loadParentLinks(pg, trait)])
-  return { context, nursing, lambMilk, breedingEstimates: estimateAll(context, links, trait), ...lists }
+  const [context, lists, lambs, links] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadLambs(pg, today), loadParentLinks(pg, trait)])
+  return { context, nursing: nursingByDam(lambs), bucket: bucketByDam(lambs), lambMilk: milkByDam(lambs, milk), breedingEstimates: estimateAll(context, links, trait), ...lists }
 }
 
 const hiddenKey = (moduleKey: string) => `${moduleKey}_board_hidden_columns`
@@ -125,6 +125,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             groupOf: new Map([...current].filter((e): e is [string, string] => e[1] != null)),
             entries: data.entries,
             nursing: data.nursing,
+            bucket: data.bucket,
             lambMilk: data.lambMilk,
             breedingEstimates: data.breedingEstimates,
             breedingTrait: SIRE_TRAIT[species].trait,
@@ -197,17 +198,18 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   // Milch gegen Futter bis zur nächsten Geburt: Kartenfeld und Formelsuche («Bilanz < 0», «Tagesmilch < 0.8»)
   const milkFeedSettings = useMilkFeedSettings(moduleKey, species)
   const milkFeedOn = cardFields.includes('milkFeed')
-  const milkData = useQuery((pg) => Promise.all([loadMilkSamples(pg), loadDryAnimalIds(pg)]), []).data
+  const milkData = useQuery((pg) => loadMilkFeedData(pg, today, lambMilkSettings), [today, lambMilkSettings]).data
+  const weanDay = loadRules(moduleKey, species).absetzenDay
   const milkFeedById = useMemo(() => {
     const m = new Map<string, MilkFeed>()
     if (!milkData) return m
     for (const c of cards)
       m.set(
         c.id,
-        milkFeed({ species, today, sample: milkData[0].get(c.id) ?? null, lastBirth: c.lastBirth, dry: c.dry || milkData[1].has(c.id), expectedBirth: c.expectedBirth, pregnancy: c.pregnancy }, milkFeedSettings),
+        milkFeed(milkFeedInputFor(milkData, { id: c.id, lastBirth: c.lastBirth, expectedBirth: c.expectedBirth, pregnancy: c.pregnancy, dry: c.dry }, species, today, weanDay), milkFeedSettings),
       )
     return m
-  }, [milkData, cards, species, today, milkFeedSettings])
+  }, [milkData, cards, species, today, milkFeedSettings, weanDay])
   const meatById = useMemo(() => (meatOn || cardFields.includes('meat') ? meatAll : new Map<string, ReturnType<typeof meatValue>>()), [meatAll, meatOn, cardFields])
 
   // Suchfeld: Freitext und Formeln wie «ZZ > 200» (lib/boardQuery.ts), Sortierung nach dem Filter vorschlagen (core/query)
@@ -453,7 +455,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                   groupChoices={col.kind === 'group' && canMove ? [...groups.filter((g) => g.id !== col.id).map((g) => ({ id: g.id as string | null, name: g.name })), ...(col.id ? [{ id: null, name: 'Ohne Gruppe' }] : [])] : undefined}
                   onMoveToGroup={col.kind === 'group' && canMove ? (id) => moveToDraft([c.id], id) : undefined}
                   meat={meatById.get(c.id) ?? null}
-                  milkFeed={milkFeedOn ? (milkFeedById.get(c.id) ?? null) : null}
+                  milkFeed={milkFeedOn || cardFields.includes('dailyMilk') ? (milkFeedById.get(c.id) ?? null) : null}
                   meatLimits={meatLimitList}
                   fields={cardFields}
                   pointerDown={pointerDown}
@@ -634,7 +636,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
-      {cardFields.includes('lambMilk') && species === 'sheep' && (
+      {(cardFields.includes('lambMilk') || cardFields.includes('dailyMilk') || cardFields.includes('milkFeed')) && species === 'sheep' && (
         <div className={toolsOpen ? '' : 'hidden sm:block'}>
         <SettingsEditor
           value={lambMilkSettings}
@@ -645,7 +647,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           onReset={() => DEFAULT_LAMB_MILK}
           label="Milch der Lämmer"
           className="rounded-lg bg-white p-3 shadow-sm"
-          title="Milch der Lämmer: Zuwachs zwischen erster Wägung (Geburt oder Ohrmarke) und Absetzen, Wegnehmen oder Altersgrenze mal Faktor. Eine Näherung."
+          title="Milch der Lämmer: Zuwachs zwischen erster Wägung (Geburt oder Ohrmarke) und Absetzen, Wegnehmen oder Altersgrenze mal Faktor. Ohne Wägung gelten die Vorgaben je Anzahl saugender Lämmer (zusammen, kg/Tag). Lämmer am Eimer zählen nicht. Eine Näherung."
         >
           {({ value, set, editing }) => {
             const f = (key: keyof LambMilkSettings, label: string, step = 1) => (
@@ -659,6 +661,9 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                 {f('factor', 'kg Milch je kg Zuwachs', 0.5)}
                 {f('maxDays', 'Rechnen bis Alter (Tage)')}
                 {f('minDays', 'Mindestens Tage zwischen Wägungen')}
+                {f('perDay1', 'Ohne Wägung: 1 Lamm trinkt kg/Tag', 0.1)}
+                {f('perDay2', 'Ohne Wägung: 2 Lämmer zusammen kg/Tag', 0.1)}
+                {f('perDay3', 'Ohne Wägung: 3+ Lämmer zusammen kg/Tag', 0.1)}
               </div>
             )
           }}

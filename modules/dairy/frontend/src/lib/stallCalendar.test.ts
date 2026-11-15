@@ -26,6 +26,8 @@ const lamb = (key: string, ageDays: number, over: Partial<Lamb> = {}): Lamb => (
   gainPerDay: null,
   weanDate: null,
   nursing: true,
+  bucketFrom: null,
+  suckling: true,
   ...over,
 })
 const decision = (key: string, d: StallDecision['decision'], over: Partial<StallDecision> = {}): StallDecision => ({

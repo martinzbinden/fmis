@@ -21,8 +21,9 @@ import { ReasonChips } from './AnimalDetail'
 import { animalLabel } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
-import { loadDryAnimalIds } from '../lib/dryOff'
-import { loadMilkSamples, milkFeed, milkFeedPoints, useMilkFeedSettings, type MilkFeed, type MilkFeedSettings } from '../lib/milkFeed'
+import { loadMilkFeedData, milkFeed, milkFeedInputFor, milkFeedPoints, useMilkFeedSettings, type MilkFeed, type MilkFeedSettings } from '../lib/milkFeed'
+import { loadLambMilkSettings } from '../lib/lambMilk'
+import { loadRules } from '../lib/stallRules'
 import { MilkFeedChip, MilkFeedSettingsPanel } from '../components/MilkFeedChip'
 
 const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: number }[] = [
@@ -108,7 +109,8 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   const [showSettings, setShowSettings] = useState(false)
   const [showMilkFeed, setShowMilkFeed] = useState(false)
   const milkFeedSettings = useMilkFeedSettings(moduleKey, species)
-  const milkData = useQuery((pg) => Promise.all([loadMilkSamples(pg), loadDryAnimalIds(pg)]), []).data
+  const milkData = useQuery((pg) => loadMilkFeedData(pg, todayIso(), loadLambMilkSettings(moduleKey)), [moduleKey]).data
+  const weanDay = loadRules(moduleKey, species).absetzenDay
   const [params, setParams] = useSearchParams()
   // Vorschlag für die nächste Schlachtung ist die Startansicht; der Sprung aus der Tier-Info zeigt die ganze Liste
   const view: 'vorschlag' | 'alle' = params.get('ansicht') === 'alle' || jumpTo ? 'alle' : 'vorschlag'
@@ -160,22 +162,16 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           lastBirth: c.births.map((b) => b.birth_date).sort().at(-1) ?? null,
           sccLevels: c.sccByLactation,
           milkFeed: milkFeed(
-            {
-              species,
-              today: todayIso(),
-              sample: milkData?.[0].get(c.animal.id) ?? null,
-              lastBirth: c.fertility.last_birth,
-              dry: milkData?.[1].has(c.animal.id) ?? false,
-              expectedBirth: c.fertility.expected_birth,
-              pregnancy: c.pregnancy,
-            },
+            milkData
+              ? milkFeedInputFor(milkData, { id: c.animal.id, lastBirth: c.fertility.last_birth, expectedBirth: c.fertility.expected_birth, pregnancy: c.pregnancy }, species, todayIso(), weanDay)
+              : { species, today: todayIso(), sample: null, lastBirth: c.fertility.last_birth, dry: false, expectedBirth: c.fertility.expected_birth, pregnancy: c.pregnancy },
             milkFeedSettings,
           ),
         }
       })
       .map((r) => ({ ...r, milkFeedPoints: milkFeedPoints(r.milkFeed.balance, milkFeedSettings.frPerPoint) }))
       .sort((a, b) => b.score - a.score || b.reasons.length - a.reasons.length || a.label.localeCompare(b.label))
-  }, [data, thresholds, species, milkData, milkFeedSettings])
+  }, [data, thresholds, species, milkData, milkFeedSettings, weanDay])
 
   const flagged = rows.filter((r) => r.reasons.some((x) => x.weight > 0))
   const visible = showAll || (jumpTo && !flagged.some((r) => r.id === jumpTo)) ? rows : flagged

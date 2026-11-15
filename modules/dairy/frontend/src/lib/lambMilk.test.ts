@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_LAMB_MILK as S, lambMilk, milkByDam } from './lambMilk'
+import { DEFAULT_LAMB_MILK as S, lambMilk, milkByDam, sucklingMilkByDam } from './lambMilk'
 import type { Lamb } from './lambs'
 
-const lamb = (p: Partial<Lamb>): Lamb => ({ key: 'a', offspringId: 'a', animalId: null, earTag: null, lauf_nr: null, name: null, sex: null, birthDate: '2026-01-01', ageDays: 20, damId: 'm1', litter: 1, litterIndex: 1, reportedAt: null, birthWeight: 4, weights: [], gainPerDay: null, weanDate: null, nursing: true, ...p })
+const lamb = (p: Partial<Lamb>): Lamb => ({ key: 'a', offspringId: 'a', animalId: null, earTag: null, lauf_nr: null, name: null, sex: null, birthDate: '2026-01-01', ageDays: 20, damId: 'm1', litter: 1, litterIndex: 1, reportedAt: null, birthWeight: 4, weights: [], gainPerDay: null, weanDate: null, nursing: true, bucketFrom: null, suckling: true, ...p })
 
 describe('lambMilk', () => {
   it('Zuwachs mal Faktor: 5 kg in 21 Tagen = 25 kg Milch', () => {
@@ -45,5 +45,34 @@ describe('milkByDam', () => {
     expect(m.lambs).toBe(2)
     expect(m.missing).toBe(1)
     expect(m.totalKg).toBeCloseTo(25 + 20, 5)
+  })
+})
+
+describe('sucklingMilkByDam', () => {
+  it('ohne Wägung nach Vorgabe je Anzahl: 1 → 1.5, 2 → 2.5, 3 → 3 kg/Tag', () => {
+    const one = sucklingMilkByDam([lamb({ key: 'a', birthWeight: null })], S).get('m1')!
+    expect(one).toMatchObject({ lambs: 1, perDay: 1.5, weighed: 0, bucket: 0 })
+    const two = sucklingMilkByDam([lamb({ key: 'a', birthWeight: null }), lamb({ key: 'b', birthWeight: null })], S).get('m1')!
+    expect(two.perDay).toBe(2.5)
+    const three = sucklingMilkByDam(['a', 'b', 'c'].map((k) => lamb({ key: k, birthWeight: null })), S).get('m1')!
+    expect(three.perDay).toBe(3)
+  })
+
+  it('Lamm am Eimer zählt nicht; nur Eimer-Lämmer = keine Korrektur', () => {
+    const m = sucklingMilkByDam([lamb({ key: 'a', birthWeight: null }), lamb({ key: 'b', birthWeight: null, bucketFrom: '2026-01-05', suckling: false })], S).get('m1')!
+    expect(m).toMatchObject({ lambs: 1, bucket: 1, perDay: 1.5 })
+    const only = sucklingMilkByDam([lamb({ birthWeight: null, bucketFrom: '2026-01-05', suckling: false })], S).get('m1')!
+    expect(only).toMatchObject({ lambs: 0, bucket: 1, perDay: 0 })
+  })
+
+  it('mit Wägung aus dem Zuwachs, das andere Lamm nach Vorgabe (Anteil am Wurf)', () => {
+    // 5 kg in 21 Tagen × 5 = 25 kg → 1.19 kg/Tag; Zwilling ohne Wägung 2.5 / 2
+    const m = sucklingMilkByDam([lamb({ key: 'a', weights: [{ date: '2026-01-22', kg: 9 }] }), lamb({ key: 'b', birthWeight: null })], S).get('m1')!
+    expect(m.weighed).toBe(1)
+    expect(m.perDay).toBeCloseTo(25 / 21 + 1.25, 2)
+  })
+
+  it('abgesetzte Lämmer gehören nicht mehr dazu', () => {
+    expect(sucklingMilkByDam([lamb({ nursing: false, suckling: false, weanDate: '2026-01-15' })], S).get('m1')).toBeUndefined()
   })
 })

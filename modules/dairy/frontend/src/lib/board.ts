@@ -29,8 +29,10 @@ export interface BoardCard {
   groupId: string | null
   listIds: string[]
   dry: boolean
-  /** Anzahl saugende Lämmer/Kälber */
+  /** Anzahl saugende Lämmer/Kälber (bei der Mutter, nicht am Eimer) */
   nursing: number
+  /** Lämmer am Eimer: bei der Mutter, nicht abgesetzt, saugen aber nicht */
+  bucketLambs?: number
   // Fortpflanzung
   pregnancy: PregnancyStatus | null
   expectedBirth: string | null
@@ -83,6 +85,8 @@ export interface BoardInput {
   groupOf: ReadonlyMap<string, string>
   entries: WatchlistEntry[]
   nursing: ReadonlyMap<string, number>
+  /** Mutter → Lämmer am Eimer */
+  bucket?: ReadonlyMap<string, number>
   lambMilk?: ReadonlyMap<string, DamMilk>
   breedingEstimates?: ReadonlyMap<string, BreedingEstimate>
   breedingTrait: string
@@ -124,6 +128,7 @@ export function buildCards(input: BoardInput): BoardCard[] {
       listIds: lists.get(ref.id) ?? [],
       dry: !!ref.dry,
       nursing: input.nursing.get(ref.id) ?? 0,
+      bucketLambs: input.bucket?.get(ref.id) ?? 0,
       pregnancy: ctx.pregnancy,
       expectedBirth: ctx.fertility.expected_birth,
       lastBirth: ctx.fertility.last_birth,
@@ -164,8 +169,8 @@ const isDead = (o: { stillborn: boolean; died_24h: boolean; died_on: string | nu
 
 /** Erfolgreich abgesetzte Lämmer des letzten Wurfs: lebend geboren und nicht (mehr) saugend. Verkaufte oder
  * geschlachtete zählen mit, sie haben die Aufzucht geschafft. */
-export function weanedOfLastLitter(c: Pick<BoardCard, 'litterAlive' | 'nursing'>): number {
-  return c.litterAlive == null ? 0 : Math.max(0, c.litterAlive - c.nursing)
+export function weanedOfLastLitter(c: Pick<BoardCard, 'litterAlive' | 'nursing' | 'bucketLambs'>): number {
+  return c.litterAlive == null ? 0 : Math.max(0, c.litterAlive - c.nursing - (c.bucketLambs ?? 0))
 }
 
 /** Mittlere Tage zwischen aufeinanderfolgenden Geburten; null unter 2 Geburten. */

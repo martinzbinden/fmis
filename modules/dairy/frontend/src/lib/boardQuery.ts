@@ -14,7 +14,7 @@ export interface QueryContext {
   /** geschätzter Fleischwert nach Abzügen (null = unbekannt) */
   meat?: (card: BoardCard) => number | null
   /** Milch gegen Futter bis zur nächsten Geburt (lib/milkFeed.ts): Bilanz in Fr. und Tagesmilch heute in kg */
-  milkFeed?: (card: BoardCard) => { balance: number | null; dailyKg: number | null } | null
+  milkFeed?: (card: BoardCard) => { balance: number | null; dailyKg: number | null; correctedKg: number | null } | null
 }
 
 const none = <T,>(v: T | null | undefined) => (v == null ? null : v)
@@ -61,6 +61,7 @@ export const QUERY_FIELDS: QueryField<BoardCard, QueryContext>[] = [
   { kind: 'num', key: 'fleisch', label: 'Geschätzter Fleischwert', unit: 'Fr.', aliases: ['fleischwert', 'fleisch', 'fw'], example: 'Fleischwert > 150', get: (c, ctx) => ctx.meat?.(c) ?? null },
   { kind: 'num', key: 'bilanz', label: 'Milch − Futter bis Geburt', unit: 'Fr.', aliases: ['bilanz', 'milchfutter', 'milchgegenfutter', 'mf'], example: 'Bilanz < 0', get: (c, ctx) => ctx.milkFeed?.(c)?.balance ?? null },
   { kind: 'num', key: 'tagesmilch', label: 'Tagesmilch heute (Schätzung aus letzter Wägung)', unit: 'kg', aliases: ['tagesmilch', 'milchheute', 'milchkg', 'tm'], example: 'Tagesmilch < 0.8', get: (c, ctx) => ctx.milkFeed?.(c)?.dailyKg ?? null },
+  { kind: 'num', key: 'tagesmilchkorr', label: 'Tagesmilch korrigiert (mit Milch der saugenden Lämmer)', unit: 'kg', aliases: ['tagesmilchkorrigiert', 'tagesmilchkorr', 'korrigiert', 'milchkorr', 'tmk'], example: 'Tagesmilch korrigiert < 2', get: (c, ctx) => ctx.milkFeed?.(c)?.correctedKg ?? null },
   { kind: 'flag', key: 'leer', label: 'leer (nicht trächtig)', aliases: ['leer', 'nichttraechtig'], test: (c) => c.pregnancy?.result === 'nein' },
   { kind: 'flag', key: 'traechtig', label: 'trächtig', aliases: ['traechtig', 'tragend'], test: (c) => c.pregnancy?.result === 'ja' },
   { kind: 'flag', key: 'unsicher', label: 'Trächtigkeit unsicher', aliases: ['unsicher'], test: (c) => c.pregnancy?.result === 'unsicher' },

@@ -15,9 +15,15 @@ export interface LambMilkSettings {
   maxDays: number
   /** mindestens so viele Tage zwischen erster und letzter Wägung */
   minDays: number
+  /** ohne Wägung der Lämmer: Milch, die 1 / 2 / 3 und mehr saugende Lämmer zusammen je Tag trinken (kg) */
+  perDay1: number
+  perDay2: number
+  perDay3: number
 }
 
-export const DEFAULT_LAMB_MILK: LambMilkSettings = { factor: 5, maxDays: 35, minDays: 7 }
+// Vorgaben ohne Wägung: Tageszunahme etwa 300 g (Einling), 250 g (Zwilling), 200 g (Drilling) je Lamm, mal 5 kg Milch
+// je kg Zuwachs → zusammen rund 1.5 / 2.5 / 3 kg Milch je Tag.
+export const DEFAULT_LAMB_MILK: LambMilkSettings = { factor: 5, maxDays: 35, minDays: 7, perDay1: 1.5, perDay2: 2.5, perDay3: 3 }
 
 export interface LambMilkEstimate {
   /** Beginn und Ende des gerechneten Zeitraums */
@@ -72,7 +78,7 @@ export interface DamMilk {
 }
 
 /** Je Mutter die Milch ihrer Lämmer des letzten Wurfs. */
-export function milkByDam(lambs: Lamb[], s: LambMilkSettings, bucketFromOf: (l: Lamb) => string | null = () => null): Map<string, DamMilk> {
+export function milkByDam(lambs: Lamb[], s: LambMilkSettings, bucketFromOf: (l: Lamb) => string | null = (l) => l.bucketFrom ?? null): Map<string, DamMilk> {
   const lastBirth = new Map<string, string>()
   for (const l of lambs) if (l.damId && (lastBirth.get(l.damId) ?? '') < l.birthDate) lastBirth.set(l.damId, l.birthDate)
   const out = new Map<string, DamMilk>()
@@ -91,19 +97,53 @@ export function milkByDam(lambs: Lamb[], s: LambMilkSettings, bucketFromOf: (l: 
 }
 
 export async function loadDamMilk(pg: PGlite, today: string, s: LambMilkSettings): Promise<Map<string, DamMilk>> {
-  const [lambs, decisions] = await Promise.all([
-    loadLambs(pg, today),
-    pg.query<{ offspring_id: string | null; animal_id: string | null; decided_on: unknown }>(
-      "select offspring_id, animal_id, decided_on from stall_decisions where deleted_at is null and step = 'eimer' and decision = 'eimer' order by decided_on",
-    ),
-  ])
-  const bucket = new Map<string, string>()
-  for (const d of decisions.rows) {
-    const day = isoDate(d.decided_on)
-    if (!day) continue
-    for (const k of [d.offspring_id, d.animal_id]) if (k && !bucket.has(k)) bucket.set(k, day)
+  // der Eimer-Entscheid steht schon an jedem Lamm (lib/lambs.ts bucketFrom)
+  return milkByDam(await loadLambs(pg, today), s)
+}
+
+/** Was die Lämmer heute bei der Mutter trinken — für die korrigierte Milchleistung der Mutter. */
+export interface SucklingMilk {
+  /** saugende Lämmer (bei der Mutter, nicht abgesetzt, nicht am Eimer) */
+  lambs: number
+  /** Lämmer am Eimer (bei der Mutter, saugen aber nicht): zählen nicht */
+  bucket: number
+  /** Milch aller saugenden Lämmer, kg/Tag */
+  perDay: number
+  /** davon so viele aus der Wägung der Lämmer (Zuwachs), die übrigen nach Vorgabe je Anzahl */
+  weighed: number
+  /** Alter des jüngsten saugenden Lamms (Tage), für das Absetzen */
+  youngestAgeDays: number | null
+}
+
+/** Je Mutter die Milch, die ihre saugenden Lämmer heute trinken. Mit Wägung (Geburt/Ohrmarke und später) aus dem
+ * Zuwachs, sonst nach Vorgabe: 1 / 2 / 3+ Lämmer trinken zusammen perDay1 / perDay2 / perDay3. Lämmer am Eimer zählen
+ * nicht; eine Mutter nur mit Eimer-Lämmern bekommt keine Korrektur. */
+export function sucklingMilkByDam(lambs: Lamb[], s: LambMilkSettings): Map<string, SucklingMilk> {
+  const byDam = new Map<string, Lamb[]>()
+  for (const l of lambs) if (l.damId && l.nursing) byDam.set(l.damId, [...(byDam.get(l.damId) ?? []), l])
+  const out = new Map<string, SucklingMilk>()
+  for (const [damId, list] of byDam) {
+    const suckling = list.filter((l) => l.suckling)
+    const n = suckling.length
+    const total = n === 0 ? 0 : n === 1 ? s.perDay1 : n === 2 ? s.perDay2 : s.perDay3
+    let perDay = 0
+    let weighed = 0
+    for (const l of suckling) {
+      const e = lambMilk(l, s, l.bucketFrom)
+      if (e) {
+        perDay += e.milkPerDay
+        weighed++
+      } else perDay += total / n
+    }
+    out.set(damId, {
+      lambs: n,
+      bucket: list.length - n,
+      perDay: Math.round(perDay * 100) / 100,
+      weighed,
+      youngestAgeDays: n > 0 ? Math.min(...suckling.map((l) => l.ageDays)) : null,
+    })
   }
-  return milkByDam(lambs, s, (l) => (l.offspringId && bucket.get(l.offspringId)) || (l.animalId && bucket.get(l.animalId)) || null)
+  return out
 }
 
 export function loadLambMilkSettings(moduleKey: string): LambMilkSettings {

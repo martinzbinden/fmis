@@ -32,6 +32,8 @@ export interface LambInput {
   animals: { id: string; ear_tag: string; lauf_nr: string | null; name: string | null; birth_date: string | null; sex: 'w' | 'm' | null; status: string }[]
   weanings: { offspring_id: string | null; animal_id: string | null; wean_date: string }[]
   weights: { offspring_id: string | null; animal_id: string | null; weigh_date: string; weight_kg: number }[]
+  /** Stall-Entscheide Schritt «eimer» (Eimer oder wieder bei der Mutter), der neueste gilt */
+  bucket?: { offspring_id: string | null; animal_id: string | null; decision: string; decided_on: string }[]
 }
 
 export interface Lamb {
@@ -58,7 +60,12 @@ export interface Lamb {
   /** Tageszunahme in g vom Geburts- (oder ersten) bis zum letzten Gewicht */
   gainPerDay: number | null
   weanDate: string | null
+  /** lebt bei der Mutter (noch nicht abgesetzt) */
   nursing: boolean
+  /** saugt nicht bei der Mutter (Stall-Entscheid «Eimer») seit … (null = saugt bei der Mutter) */
+  bucketFrom: string | null
+  /** saugt bei der Mutter: nicht abgesetzt und nicht auf Eimer */
+  suckling: boolean
 }
 
 export function buildLambs(input: LambInput, today: string): Lamb[] {
@@ -77,9 +84,22 @@ export function buildLambs(input: LambInput, today: string): Lamb[] {
       .map((w) => ({ date: w.weigh_date, kg: w.weight_kg }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
+  // neuester Eimer-Entscheid je Lamm: «eimer» → seit dann am Eimer, «mutter» → wieder bei der Mutter
+  const bucketDecisions = [...(input.bucket ?? [])].sort((a, b) => a.decided_on.localeCompare(b.decided_on))
+  const bucketFrom = (offspringId: string | null, animalId: string | null) => {
+    let from: string | null = null
+    for (const d of bucketDecisions) {
+      if (!((offspringId && d.offspring_id === offspringId) || (animalId && d.animal_id === animalId))) continue
+      if (d.decided_on > today) continue
+      if (d.decision === 'eimer') from ??= d.decided_on
+      else if (d.decision === 'mutter') from = null
+    }
+    return from
+  }
+
   const out: Lamb[] = []
   const seen = new Set<string>()
-  const add = (l: Omit<Lamb, 'ageDays' | 'weights' | 'gainPerDay' | 'weanDate' | 'nursing'>) => {
+  const add = (l: Omit<Lamb, 'ageDays' | 'weights' | 'gainPerDay' | 'weanDate' | 'nursing' | 'bucketFrom' | 'suckling'>) => {
     const ageDays = daysBetween(l.birthDate, today)
     if (ageDays < 0 || ageDays > LAMB_MAX_DAYS) return
     const weights = weighings(l.offspringId, l.animalId)
@@ -87,6 +107,8 @@ export function buildLambs(input: LambInput, today: string): Lamb[] {
     const last = weights[weights.length - 1]
     const days = first && last ? daysBetween(first.date, last.date) : 0
     const weanDate = wean(l.offspringId, l.animalId)
+    const nursing = !weanDate && ageDays <= NURSING_MAX_DAYS && l.damId != null
+    const bucket = bucketFrom(l.offspringId, l.animalId)
     out.push({
       ...l,
       ageDays,
@@ -94,7 +116,9 @@ export function buildLambs(input: LambInput, today: string): Lamb[] {
       gainPerDay: first && last && days > 0 ? Math.round(((last.kg - first.kg) * 1000) / days) : null,
       weanDate,
       // ohne bekannte Mutter (Zukauf) nicht saugend
-      nursing: !weanDate && ageDays <= NURSING_MAX_DAYS && l.damId != null,
+      nursing,
+      bucketFrom: bucket,
+      suckling: nursing && !bucket,
     })
   }
 
@@ -131,15 +155,23 @@ export function buildLambs(input: LambInput, today: string): Lamb[] {
   return out.sort((a, b) => a.birthDate.localeCompare(b.birthDate) || (a.lauf_nr ?? a.earTag ?? '').localeCompare(b.lauf_nr ?? b.earTag ?? '', 'de', { numeric: true }))
 }
 
+/** Mütter mit Lämmern am Eimer (bei der Mutter, nicht abgesetzt, saugen aber nicht) → Anzahl. */
+export function bucketByDam(lambs: Lamb[]): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const l of lambs) if (l.nursing && !l.suckling && l.damId) m.set(l.damId, (m.get(l.damId) ?? 0) + 1)
+  return m
+}
+
 /** Mütter mit saugenden Lämmern → Anzahl. */
 export function nursingByDam(lambs: Lamb[]): Map<string, number> {
   const m = new Map<string, number>()
-  for (const l of lambs) if (l.nursing && l.damId) m.set(l.damId, (m.get(l.damId) ?? 0) + 1)
+  // nur, wer bei der Mutter saugt (Eimer-Lämmer laufen nicht mehr an der Mutter)
+  for (const l of lambs) if (l.suckling && l.damId) m.set(l.damId, (m.get(l.damId) ?? 0) + 1)
   return m
 }
 
 export async function loadLambs(pg: PGlite, today: string): Promise<Lamb[]> {
-  const [births, offspring, animals, weanings, weights] = await Promise.all([
+  const [births, offspring, animals, weanings, weights, bucket] = await Promise.all([
     // Meldung = erste Erfassung im Verlauf, sonst letzte Änderung der Geburt
     pg.query<Record<string, unknown>>(
       `select b.id, b.dam_id, b.birth_date, coalesce(h.first_at, b.updated_at) as reported_at from births b
@@ -152,6 +184,7 @@ export async function loadLambs(pg: PGlite, today: string): Promise<Lamb[]> {
     pg.query<Record<string, unknown>>('select id, ear_tag, lauf_nr, name, birth_date, sex, status from animals where deleted_at is null'),
     pg.query<Record<string, unknown>>('select offspring_id, animal_id, wean_date from weanings where deleted_at is null'),
     pg.query<Record<string, unknown>>('select offspring_id, animal_id, weigh_date, weight_kg from animal_weights where deleted_at is null'),
+    pg.query<Record<string, unknown>>("select offspring_id, animal_id, decision, decided_on from stall_decisions where deleted_at is null and step = 'eimer' order by decided_on, updated_at"),
   ])
   const s = (v: unknown) => (v == null ? null : String(v))
   return buildLambs(
@@ -184,6 +217,7 @@ export async function loadLambs(pg: PGlite, today: string): Promise<Lamb[]> {
       })),
       weanings: weanings.rows.map((w) => ({ offspring_id: s(w.offspring_id), animal_id: s(w.animal_id), wean_date: isoDate(w.wean_date)! })),
       weights: weights.rows.map((w) => ({ offspring_id: s(w.offspring_id), animal_id: s(w.animal_id), weigh_date: isoDate(w.weigh_date)!, weight_kg: num(w.weight_kg)! })),
+      bucket: bucket.rows.map((d) => ({ offspring_id: s(d.offspring_id), animal_id: s(d.animal_id), decision: String(d.decision), decided_on: isoDate(d.decided_on)! })),
     },
     today,
   )

@@ -16,11 +16,13 @@ import JournalForm from '../components/JournalForm'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadLambs, unmarkedLabel, WEAN_FROM_DAYS, type Lamb } from '../lib/lambs'
 import { speciesOf } from '../lib/species'
+import { saveDecisions } from '../lib/stallData'
 import type { JournalCategory } from '../types'
 
-type Action = '' | 'absetzen' | 'waegen' | 'fuetterung' | 'behandlung' | 'beobachtung'
+type Action = '' | 'absetzen' | 'eimer' | 'waegen' | 'fuetterung' | 'behandlung' | 'beobachtung'
 const ACTIONS: { key: Exclude<Action, ''>; icon: string; label: string }[] = [
   { key: 'absetzen', icon: '✂️', label: 'Absetzen' },
+  { key: 'eimer', icon: '🪣', label: 'Eimer / bei der Mutter' },
   { key: 'waegen', icon: '⚖️', label: 'Wägen' },
   { key: 'fuetterung', icon: '🍼', label: 'Schoppen / Fütterung' },
   { key: 'behandlung', icon: '💉', label: 'Behandlung (Drenchen, Bolus …)' },
@@ -89,7 +91,7 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
     setPreselected(true)
   }, [data, lambs, params, preselected])
 
-  const eligible = (l: Lamb) => (action === 'absetzen' ? l.nursing : true)
+  const eligible = (l: Lamb) => (action === 'absetzen' || action === 'eimer' ? l.nursing : true)
   const visible = lambs.filter(
     (l) =>
       eligible(l) &&
@@ -201,7 +203,11 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
                         <b className={l.earTag ? 'text-gray-900' : 'font-semibold text-gray-700'}>{label(l)}</b>
                         <span className="text-gray-700">{l.sex === 'w' ? '♀' : l.sex === 'm' ? '♂' : ''}</span>
                         <span className="text-sm text-gray-700">{l.ageDays} T.</span>
-                        {l.nursing ? (
+                        {l.nursing && l.bucketFrom ? (
+                          <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900" title="bei der Mutter, saugt aber nicht: zählt nicht für die korrigierte Milchleistung der Mutter">
+                            🪣 Eimer seit {fmtDate(l.bucketFrom)}
+                          </span>
+                        ) : l.nursing ? (
                           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${l.ageDays >= WEAN_FROM_DAYS ? 'bg-amber-100 text-amber-900' : 'bg-sky-100 text-sky-900'}`}>
                             🍼 saugend{l.ageDays >= WEAN_FROM_DAYS ? ' · absetzen?' : ''}
                           </span>
@@ -238,6 +244,8 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
             <p className="text-sm text-gray-700">{word.many} oben antippen, dann hier {ACTIONS.find((a) => a.key === action)?.label}.</p>
           ) : action === 'absetzen' ? (
             <WeanPanel moduleKey={moduleKey} lambs={chosen} word={word} onDone={done} />
+          ) : action === 'eimer' ? (
+            <BucketPanel lambs={chosen} word={word} onDone={done} />
           ) : action === 'waegen' ? (
             <WeighPanel lambs={chosen} onDone={done} />
           ) : (
@@ -363,6 +371,42 @@ function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey:
       </div>
       {target && untagged > 0 && <p className="text-xs text-amber-800">{untagged} ohne Ohrmarke: in den Tiergruppen als Anzahl ohne Nummer von Hand anpassen.</p>}
       <HoldButton disabled={busy} label={busy ? 'speichert …' : `Gedrückt halten: ${chosenLambs.length} absetzen`} onDone={() => void run()} />
+    </div>
+  )
+}
+
+/** Lamm saugt nicht (mehr) bei der Mutter (Eimer) oder wieder bei ihr — Stall-Entscheid «eimer». Eimer-Lämmer zählen
+ * nicht für die korrigierte Milchleistung der Mutter (lib/lambMilk.ts sucklingMilkByDam). */
+function BucketPanel({ lambs: chosenLambs, word, onDone }: { lambs: Row[]; word: { one: string; many: string }; onDone: () => void }) {
+  const db = useDb()
+  const today = localTodayIso()
+  const [busy, setBusy] = useState(false)
+  async function run(decision: 'eimer' | 'mutter') {
+    setBusy(true)
+    try {
+      const names = chosenLambs.map(label).join(', ')
+      await undoAction(`${names}: ${decision === 'eimer' ? 'am Eimer' : 'wieder bei der Mutter'}`, () => saveDecisions(db, chosenLambs, 'eimer', decision, today))
+      notifySuccess(decision === 'eimer' ? 'Am Eimer: zählt nicht mehr für die Milch der Mutter' : 'Wieder bei der Mutter')
+      onDone()
+    } catch (err) {
+      notifyError(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium text-gray-800">
+        {chosenLambs.length} {chosenLambs.length === 1 ? word.one : word.many}: {chosenLambs.map(label).join(', ')}
+      </div>
+      <div className="flex gap-2">
+        <button type="button" disabled={busy} onClick={() => void run('eimer')} className="min-h-12 flex-1 rounded-lg bg-brand-700 px-3 font-semibold text-white disabled:opacity-50">
+          🪣 Saugt nicht bei der Mutter (Eimer)
+        </button>
+        <button type="button" disabled={busy} onClick={() => void run('mutter')} className="min-h-12 flex-1 rounded-lg border-2 border-brand-700 px-3 font-semibold text-brand-700 disabled:opacity-50">
+          🐑 Wieder bei der Mutter
+        </button>
+      </div>
     </div>
   )
 }

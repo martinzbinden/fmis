@@ -65,6 +65,21 @@ describe('milkFeed', () => {
     expect(milkFeedPoints(-500, 0)).toBe(0)
   })
 
+  it('saugende Lämmer: korrigierte Tagesmilch; bis zum Absetzen trinken sie ihren Teil, danach geht er in den Tank', () => {
+    const m = milkFeed({ ...base, sample: { date: '2026-11-15', kg: 0.5, perMilking: true }, lambs: { perDay: 2.5, weanInDays: 30 } }, S)
+    expect(m.dailyKg).toBe(1)
+    expect(m.lambKg).toBe(2.5)
+    expect(m.correctedKg).toBe(3.5)
+    // 120 Melktage ohne Rückgang: 30 × 1 kg + 90 × 3.5 kg
+    expect(m.milkKg).toBeCloseTo(30 * 1 + 90 * 3.5, 5)
+  })
+
+  it('nur Lämmer am Eimer (keine saugenden): keine Korrektur', () => {
+    const m = milkFeed({ ...base, sample: { date: '2026-11-15', kg: 0.5, perMilking: true }, lambs: null }, S)
+    expect(m.correctedKg).toBe(1)
+    expect(m.lambKg).toBe(0)
+  })
+
   it('Geburt überfällig: ab heute, kein Melken mehr', () => {
     const m = milkFeed({ ...base, expectedBirth: '2026-11-01', sample: { date: '2026-11-15', kg: 1, perMilking: false } }, S)
     expect(m.birth).toBe('2026-11-15')

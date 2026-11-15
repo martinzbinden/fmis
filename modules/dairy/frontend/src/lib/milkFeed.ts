@@ -3,6 +3,9 @@
 //
 //   Tagesmilch heute  = letzte Wägung (Milchwägung: je Melkung × Melkungen pro Tag; Milchprüfung: schon Tagesmilch),
 //                       seit der Wägung mit dem monatlichen Rückgang fortgeschrieben
+//   korrigiert        = Tagesmilch + Milch, die die saugenden Lämmer trinken (lib/lambMilk.ts sucklingMilkByDam;
+//                       Lämmer am Eimer zählen nicht). Bis zum Absetzen trinken sie diesen Teil, danach geht er in
+//                       den Tank: gerechnet wird mit der korrigierten Menge, abzüglich der Lämmer bis zum Absetzen
 //   Milch bis Trocken = Tag für Tag mit Rückgang, bis Trockenstellen vor der Geburt oder unter die Mindestmenge
 //   Nächste Geburt    = gemeldete Belegung + Tragzeit; trächtig mit Wochen = Untersuchung + Rest-Tragzeit;
 //                       sonst (keine Belegung oder danach leer) Annahme: Belegung in … Tagen + Tragzeit
@@ -16,6 +19,9 @@ import type { PGlite } from '@electric-sql/pglite'
 import { GESTATION_DAYS, type Species } from './fertility'
 import { addDays, daysBetween } from './format'
 import type { PregnancyStatus } from './pregnancy'
+import { loadDryAnimalIds } from './dryOff'
+import { loadLambs } from './lambs'
+import { sucklingMilkByDam, type LambMilkSettings } from './lambMilk'
 
 export interface MilkFeedSettings {
   /** Milchwägung: gewogene Melkung × so viele Melkungen = Tagesmilch */
@@ -64,6 +70,8 @@ export interface MilkFeedInput {
   /** aus der gemeldeten Belegung (lib/fertility.ts) */
   expectedBirth: string | null
   pregnancy: PregnancyStatus | null
+  /** saugende Lämmer: Milch je Tag und Tage bis zum Absetzen (null = keine saugenden Lämmer) */
+  lambs?: { perDay: number; weanInDays: number } | null
 }
 
 export type BirthBasis = 'belegung' | 'untersuchung' | 'annahme'
@@ -71,8 +79,12 @@ export type BirthBasis = 'belegung' | 'untersuchung' | 'annahme'
 export interface MilkFeed {
   birth: string
   birthBasis: BirthBasis
-  /** Tagesmilch heute (kg), null = keine aktuelle Wägung */
+  /** Tagesmilch heute (kg, gemolken), null = keine aktuelle Wägung */
   dailyKg: number | null
+  /** Milch der saugenden Lämmer heute (kg/Tag), 0 ohne */
+  lambKg: number
+  /** korrigierte Tagesmilch: gemolken + Lämmer (null ohne Wägung) */
+  correctedKg: number | null
   /** letzter Melktag (null = melkt nicht mehr / unbekannt) */
   milkUntil: string | null
   milkDays: number
@@ -126,13 +138,19 @@ export function milkFeed(i: MilkFeedInput, s: MilkFeedSettings): MilkFeed {
   let milkKg = 0
   let milkUntil: string | null = null
   const milking = !i.dry && kg0 != null
-  if (milking) {
+  const lamb = milking && i.lambs && i.lambs.perDay > 0 ? i.lambs : null
+  // die Lämmer trinken heute ihren Teil; die Mutter gibt also gemolken + Lämmer
+  const total0 = kg0 == null ? null : kg0 + (lamb ? lamb.perDay : 0)
+  if (milking && total0 != null) {
     const lastDay = daysBetween(i.today, dryOff) // Tage bis zum Trockenstellen (exklusiv)
     for (let d = 0; d < lastDay; d++) {
-      const kg = dailyAt(kg0, since + d, s)
-      if (kg < s.minDailyKg) break
+      const total = dailyAt(total0, since + d, s)
+      const drunk = lamb && d < lamb.weanInDays ? lamb.perDay : 0
+      // trockenstellen erst, wenn keine Lämmer mehr saugen und die Menge unter die Grenze fällt
+      if (!drunk && total < s.minDailyKg) break
+      const kg = Math.max(0, total - drunk)
       milkKg += kg
-      milkDays++
+      if (kg > 0 || drunk) milkDays++
     }
     milkUntil = milkDays > 0 ? addDays(i.today, milkDays - 1) : null
   }
@@ -143,6 +161,8 @@ export function milkFeed(i: MilkFeedInput, s: MilkFeedSettings): MilkFeed {
     birth,
     birthBasis: basis,
     dailyKg: kg0 == null || i.dry ? (i.dry ? 0 : null) : round2(dailyAt(kg0, since, s)),
+    lambKg: lamb ? round2(lamb.perDay) : 0,
+    correctedKg: total0 == null || i.dry ? (i.dry ? 0 : null) : round2(dailyAt(total0, since, s)),
     milkUntil,
     milkDays,
     milkKg: round2(milkKg),
@@ -189,6 +209,34 @@ export async function loadMilkSamples(pg: PGlite): Promise<Map<string, MilkSampl
     if (better) out.set(r.animal_id, { date: r.date, kg: Number(r.kg), perMilking: r.per_milking })
   }
   return out
+}
+
+/** Alles, was die Rechnung aus der Datenbank braucht: letzte Wägungen, trockene Tiere, saugende Lämmer je Mutter. */
+export async function loadMilkFeedData(pg: PGlite, today: string, lambSettings: LambMilkSettings) {
+  const [samples, dry, lambs] = await Promise.all([loadMilkSamples(pg), loadDryAnimalIds(pg), loadLambs(pg, today)])
+  return { samples, dry, suckling: sucklingMilkByDam(lambs, lambSettings) }
+}
+export type MilkFeedData = Awaited<ReturnType<typeof loadMilkFeedData>>
+
+/** Eingabe der Rechnung für ein Tier aus den geladenen Daten. `weanDay` = Absetzen ab Alter (Stall-Regeln). */
+export function milkFeedInputFor(
+  d: MilkFeedData,
+  a: { id: string; lastBirth: string | null; expectedBirth: string | null; pregnancy: PregnancyStatus | null; dry?: boolean },
+  species: Species,
+  today: string,
+  weanDay: number,
+): MilkFeedInput {
+  const s = d.suckling.get(a.id)
+  return {
+    species,
+    today,
+    sample: d.samples.get(a.id) ?? null,
+    lastBirth: a.lastBirth,
+    dry: (a.dry ?? false) || d.dry.has(a.id),
+    expectedBirth: a.expectedBirth,
+    pregnancy: a.pregnancy,
+    lambs: s && s.lambs > 0 ? { perDay: s.perDay, weanInDays: Math.max(0, weanDay - (s.youngestAgeDays ?? 0)) } : null,
+  }
 }
 
 // Einstellungen je Gerät (localStorage), gemeinsam für Ausmerzliste und Dashboard

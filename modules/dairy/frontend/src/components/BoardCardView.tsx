@@ -110,6 +110,11 @@ export default function BoardCardView({
             {pregnant === 'unsicher' && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">unsicher</span>}
             {card.dry && <span className="rounded bg-gray-200 px-1.5 py-0.5 text-gray-800">trocken</span>}
             <NursingLambs count={card.nursing} young={terms.singular === 'Aue' ? 'Lämmer' : 'Kälber'} />
+            {(card.bucketLambs ?? 0) > 0 && (
+              <span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-900" title={`${card.bucketLambs} ${terms.singular === 'Aue' ? 'Lamm/Lämmer' : 'Kalb/Kälber'} am Eimer: bei der Mutter, saugt aber nicht`}>
+                🪣 {card.bucketLambs}
+              </span>
+            )}
             {fields.includes('weaned') && card.litterAlive != null && (
               <WeanedLambs count={weanedOfLastLitter(card)} alive={card.litterAlive} dead={card.litterDead ?? 0} young={terms.singular === 'Aue' ? 'Lämmer' : 'Kälber'} />
             )}
@@ -379,6 +384,35 @@ function CardProps({
         {limits.map((l) => (
           <span key={l.key} aria-hidden className="absolute -top-0.5 h-3 w-px bg-gray-800/70" style={{ left: `${(l.net / MEAT_BAR_MAX) * 100}%` }} title={`${l.title}: ${Math.round(l.net)} Fr.`} />
         ))}
+      </div>,
+    )
+  }
+  if (has('dailyMilk')) {
+    const m = milkFeed
+    const kg = (v: number) => v.toFixed(1)
+    rows.push(
+      <div
+        key="dailyMilk"
+        className="flex justify-between gap-2"
+        title={`Gemolken: letzte Wägung dieser Laktation (Milchwägung × Melkungen pro Tag, oder Milchprüfung), mit Rückgang bis heute.\nLämmer: was die saugenden Lämmer trinken, aus ihrer Wägung (Zuwachs × Faktor), sonst Vorgabe je Anzahl (1: 1.5, 2: 2.5, 3+: 3 kg/Tag, Einstellungen «Milch der Lämmer»). Lämmer am Eimer zählen nicht.`}
+      >
+        <span className="text-gray-500">Tagesmilch</span>
+        <span className="text-right font-medium text-gray-900">
+          {!m || m.dailyKg == null ? (
+            '–'
+          ) : m.lambKg > 0 ? (
+            <>
+              <span className="font-normal text-gray-700">
+                {kg(m.dailyKg)} + {kg(m.lambKg)} 🐑 =
+              </span>{' '}
+              {kg(m.correctedKg ?? m.dailyKg)} kg
+            </>
+          ) : (
+            <>
+              {kg(m.dailyKg)} kg{(card.bucketLambs ?? 0) > 0 && <span className="font-normal text-gray-600"> (🪣 Eimer, ohne Korrektur)</span>}
+            </>
+          )}
+        </span>
       </div>,
     )
   }

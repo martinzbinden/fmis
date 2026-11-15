@@ -40,6 +40,17 @@ describe('buildLambs', () => {
     expect(nursingByDam(lambs)).toEqual(new Map([['aue2', 1]]))
   })
 
+  it('Eimer: der neueste Entscheid gilt; am Eimer saugt nicht und zählt nicht als saugend bei der Mutter', () => {
+    const input = base()
+    input.bucket = [{ offspring_id: 'o3', animal_id: null, decision: 'eimer', decided_on: '2026-11-03' }]
+    let lambs = buildLambs(input, TODAY)
+    expect(lambs.find((l) => l.key === 'o3')).toMatchObject({ nursing: true, suckling: false, bucketFrom: '2026-11-03' })
+    expect(nursingByDam(lambs).get('aue2')).toBeUndefined()
+    input.bucket.push({ offspring_id: 'o3', animal_id: null, decision: 'mutter', decided_on: '2026-11-05' })
+    lambs = buildLambs(input, TODAY)
+    expect(lambs.find((l) => l.key === 'o3')).toMatchObject({ suckling: true, bucketFrom: null })
+  })
+
   it('rechnet die Tageszunahme ab Geburtsgewicht', () => {
     const input = base()
     input.weights = [

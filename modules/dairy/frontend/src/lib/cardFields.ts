@@ -1,6 +1,6 @@
 // Wählbare Eigenschaften der Dashboard-Karten (pages/Board.tsx): die Auswahl gilt je Gerät (localStorage).
 
-export type CardFieldKey = 'milk' | 'scc' | 'spark' | 'ltl' | 'zw' | 'litter' | 'interval' | 'meat' | 'weaned' | 'lambMilk' | 'lambing' | 'weighings' | 'milkFeed'
+export type CardFieldKey = 'milk' | 'scc' | 'spark' | 'ltl' | 'zw' | 'litter' | 'interval' | 'meat' | 'weaned' | 'lambMilk' | 'lambing' | 'weighings' | 'milkFeed' | 'dailyMilk'
 
 export interface CardFieldDef {
   key: CardFieldKey
@@ -22,6 +22,7 @@ export const CARD_FIELDS: CardFieldDef[] = [
   { key: 'interval', label: 'Zwischenablammzeit', hint: 'Mittlere Tage zwischen zwei Geburten' },
   { key: 'lambing', label: 'Ablammung: Datum und Tage', hint: 'Letzte Geburt mit Datum und Tagen seit der Geburt' },
   { key: 'weighings', label: 'Anzahl Wägungen', hint: 'Milchwägungen (Prüfungen) der laufenden Laktation' },
+  { key: 'dailyMilk', label: 'Tagesmilch, korrigiert um die Lämmer', hint: 'Gemolken (letzte Wägung) plus Milch der saugenden Lämmer; Lämmer am Eimer zählen nicht' },
   { key: 'milkFeed', label: 'Milch gegen Futter bis Geburt', hint: 'Milchgeld bis zum Trockenstellen minus Futterkosten bis zur nächsten Geburt (Einstellungen erscheinen oben, wenn gewählt)' },
   { key: 'meat', label: 'Geschätzter Fleischwert', hint: 'Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen (Einstellungen: Knopf «Fleischwert»)', species: 'sheep' },
 ]

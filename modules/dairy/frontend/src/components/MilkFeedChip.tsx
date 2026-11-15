@@ -15,6 +15,7 @@ export function milkFeedTitle(m: MilkFeed, s: MilkFeedSettings): string {
       : m.milkDays > 0
         ? `Tagesmilch heute ≈ ${m.dailyKg.toFixed(2)} kg, ${s.declinePerMonth} % Rückgang je Monat, gemolken bis ${fmtDate(m.milkUntil!)} (${m.milkDays} Tage): ${m.milkKg.toFixed(0)} kg × ${s.milkPrice.toFixed(2)} Fr. = ${fr(m.milkValue)} Fr.`
         : 'melkt nicht mehr bis zur Geburt',
+    ...(m.lambKg > 0 ? [`Saugende Lämmer trinken ≈ ${m.lambKg.toFixed(1)} kg/Tag bis zum Absetzen (korrigiert ≈ ${(m.correctedKg ?? 0).toFixed(1)} kg/Tag); danach geht dieser Teil in den Tank`] : []),
     `Futter: ${m.feedDays} Tage × ${s.feedPerDay.toFixed(2)} Fr. + ${m.milkKg.toFixed(0)} kg Milch × ${s.feedPerKgMilk.toFixed(2)} Fr. = ${fr(m.feedCost)} Fr.`,
   ]
   if (m.balance != null) lines.push(`Bilanz bis zur Geburt: ${m.balance >= 0 ? '+' : '−'}${fr(Math.abs(m.balance))} Fr.`)
