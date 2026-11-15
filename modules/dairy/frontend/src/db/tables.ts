@@ -24,7 +24,7 @@ export const SYNC_TABLES = {
   ],
   milking_slots: [
     'id', 'bank_id', 'position', 'original_position', 'transponder', 'ear_tag',
-    'animal_id', 'weighed', 'notes', 'read_at', 'updated_at', 'deleted_at',
+    'animal_id', 'weighed', 'notes', 'read_at', 'updated_at', 'deleted_at', 'milk_kg',
   ],
   treatment_templates: [
     'id', 'title', 'body_system', 'diagnosis', 'diagnosis_code', 'items', 'supplier', 'notes', 'sort_order',

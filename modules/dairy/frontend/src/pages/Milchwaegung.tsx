@@ -1,5 +1,5 @@
 import { isDrySql } from '../lib/dryOff'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { API_URL, getToken } from '@fmis/core/auth'
 import AnimalOption from '@fmis/core/AnimalOption'
@@ -79,6 +79,8 @@ interface SlotRow extends MilkingSlot {
   animal: Animal | null
   /** Letzter Tag einer offenen Milch-Absetzfrist (Tierjournal, Behandlung). */
   withdrawalUntil: string | null
+  /** letzte Geburt des Tiers (für die Tage in Laktation) */
+  lastBirth: string | null
 }
 
 interface BankWithSlots {
@@ -93,11 +95,12 @@ async function loadBanks(pg: PGlite, date: string): Promise<BankWithSlots[]> {
   )
   if (banks.length === 0) return []
   const { rows: slots } = await pg.query<
-    MilkingSlot & { a_id: string | null; a_name: string | null; a_lauf_nr: string | null; a_ear_tag: string | null; withdrawal_until: unknown }
+    MilkingSlot & { a_id: string | null; a_name: string | null; a_lauf_nr: string | null; a_ear_tag: string | null; withdrawal_until: unknown; last_birth: unknown }
   >(
     `select s.*, a.id as a_id, a.name as a_name, a.lauf_nr as a_lauf_nr, a.ear_tag as a_ear_tag,
        (select max(${MILK_UNTIL_SQL}) from animal_journal j
-         where j.animal_id = s.animal_id and j.deleted_at is null and ${notSupersededSql('j')}) as withdrawal_until
+         where j.animal_id = s.animal_id and j.deleted_at is null and ${notSupersededSql('j')}) as withdrawal_until,
+       (select max(b.birth_date) from births b where b.dam_id = s.animal_id and b.deleted_at is null) as last_birth
      from milking_slots s left join animals a on a.id = s.animal_id
      where s.bank_id = any($1) and s.deleted_at is null order by s.position`,
     [banks.map((b) => b.id)],
@@ -110,6 +113,7 @@ async function loadBanks(pg: PGlite, date: string): Promise<BankWithSlots[]> {
         ...s,
         animal: s.a_id ? ({ id: s.a_id, name: s.a_name, lauf_nr: s.a_lauf_nr, ear_tag: s.a_ear_tag } as Animal) : null,
         withdrawalUntil: isoDate(s.withdrawal_until),
+        lastBirth: isoDate(s.last_birth),
       })),
   }))
 }
@@ -152,6 +156,8 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   const [error, setError] = useState<string | null>(null)
   const [capacity, setCapacity] = useState(12)
   const [manualInput, setManualInput] = useState('')
+  // Platz in der offenen Bank für die manuelle Aufnahme (leer = nächster freier): für Tiere, deren Ohrmarke nicht gelesen wurde
+  const [manualPlace, setManualPlace] = useState('')
   // Zahlentastatur (Laufnummer, Ohrmarke); «ABC» für Namen
   const [abc, setAbc] = useState(false)
   const [suggestIdx, setSuggestIdx] = useState(0)
@@ -167,7 +173,9 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         .then((r) => r.rows),
     [],
   )
-  const [openArchived, setOpenArchived] = useState<Record<string, boolean>>({})
+  // Seitenwähler: gewählte Bank des Tages; null = der jeweils neuesten folgen (offene Bank)
+  const [pickedBankId, setPickedBankId] = useState<string | null>(null)
+  const [fetchNote, setFetchNote] = useState<string | null>(null)
   const [showDetails, setShowDetails] = useState(false)
   // «Leser verbinden» braucht einen zweiten Tipp (steht neben dem Eingabefeld)
   const [confirmStart, setConfirmStart] = useState(false)
@@ -180,7 +188,12 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
 
   const banks = data ?? []
   const openBank = useMemo(() => [...banks].reverse().find((b) => !b.bank.closed_at) ?? null, [banks])
-  const archived = banks.filter((b) => b.bank.closed_at)
+  const latestBank = banks.length > 0 ? banks[banks.length - 1] : null
+  const currentBank = openBank ?? latestBank
+  const shownBank = (pickedBankId && banks.find((b) => b.bank.id === pickedBankId)) || currentBank
+
+  // anderer Tag: wieder der neuesten Bank folgen
+  useEffect(() => setPickedBankId(null), [date])
 
   useEffect(() => {
     api<{ enabled: boolean }>(`/${moduleKey}/reader/status`)
@@ -265,6 +278,20 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       }
     })
 
+  const fetchRecent = () =>
+    run(async () => {
+      setFetchNote(null)
+      const r = await api<{ added: number; already_there: number; group: string | null; found: number }>(`/${moduleKey}/reader/session/fetch-recent`, 'POST', { session_date: date, capacity })
+      await syncClient.syncNow()
+      refresh()
+      setFetchNote(
+        r.found === 0
+          ? 'Im Gerät ist keine Gruppe mit Lesungen.'
+          : `${r.added} neu aufgenommen, ${r.already_there} schon vorhanden (aus Gruppe «${r.group ?? '?'}», letzte ${r.found} Lesungen).`,
+      )
+      if (r.added > 0) setPickedBankId(null)
+    })
+
   // Vorschläge: Laufnummer beginnt mit / Ohrmarke enthält / Name beginnt mit
   const suggestions = useMemo(() => {
     const q = manualInput.trim().toLowerCase()
@@ -313,6 +340,13 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       }
       let bank = openBank?.bank ?? null
       let count = openBank?.slots.length ?? 0
+      // Gewünschter Platz (1 bis Plätze der Bank): dort einfügen, die folgenden rücken nach
+      const wanted = manualPlace.trim() === '' ? null : Number(manualPlace)
+      if (wanted != null) {
+        if (!Number.isInteger(wanted) || wanted < 1 || wanted > (bank?.capacity ?? capacity)) throw new Error(`Platz muss zwischen 1 und ${bank?.capacity ?? capacity} liegen.`)
+        if (bank && count >= bank.capacity) throw new Error('Die Bank ist voll. Zuerst «Nächste Bank», dann den Platz wählen.')
+        if (wanted > count + 1) throw new Error(`Der nächste freie Platz ist ${count + 1}: Plätze dürfen keine Lücke haben.`)
+      }
       // neue Bank und Platz zusammen: ganz oder gar nicht
       await inTransaction(pg, async (tx) => {
       if (!bank || count >= bank.capacity) {
@@ -329,10 +363,18 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         await upsertRow(tx, 'milking_banks', bank)
         count = 0
       }
+      // neue Bank: Platz gilt dort; sonst folgende Tiere um eins nach hinten
+      const place = wanted != null && wanted <= count + 1 ? wanted : count + 1
+      if (place <= count && openBank && bank && bank.id === openBank.bank.id) {
+        for (const other of [...openBank.slots].filter((x) => x.position >= place).sort((a, b) => b.position - a.position)) {
+          const { animal: _a, ...row } = other
+          await upsertRow(tx, 'milking_slots', { ...row, position: other.position + 1 })
+        }
+      }
       await upsertRow(tx, 'milking_slots', {
         id: crypto.randomUUID(),
         bank_id: bank!.id,
-        position: count + 1,
+        position: place,
         original_position: count + 1,
         transponder: null,
         ear_tag: animal?.ear_tag ?? q,
@@ -343,6 +385,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       })
       })
       setManualInput('')
+      setManualPlace('')
       setSuggestOpen(false)
       setSuggestIdx(0)
       refresh()
@@ -350,27 +393,6 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   }
 
   const onChanged = useCallback(() => refresh(), [refresh])
-
-  // Einrasten nur auf dieser Seite: die Bank-Tabelle soll beim Scrollen bündig
-  // unter dem Kopf stehenbleiben, statt irgendwo angeschnitten. Das Scrollen
-  // macht das Fenster (siehe Layout.tsx), also hängt die Eigenschaft am
-  // Wurzelelement — und muss beim Verlassen wieder weg, sonst rasten auch
-  // Seiten ein, die gar keine Abschnitte dafür haben. "proximity" statt
-  // "mandatory": wer zur manuellen Aufnahme oder ins Archiv scrollt, soll
-  // nicht zurückgezogen werden.
-  //
-  // MUSS vor jedem bedingten return stehen (siehe unten "Lädt…") — Hooks
-  // dürfen sich zwischen zwei Renderings eines Bauteils nie in ihrer Zahl
-  // oder Reihenfolge unterscheiden, sonst wirft React "Rendered fewer hooks
-  // than expected" und die Seite bleibt weiss (so am 2026-09-24 gefunden).
-  useEffect(() => {
-    const root = document.documentElement
-    const previous = root.style.scrollSnapType
-    root.style.scrollSnapType = 'y proximity'
-    return () => {
-      root.style.scrollSnapType = previous
-    }
-  }, [])
 
   if (readerEnabled === null) return <div className="p-4 text-center text-gray-500">Lädt…</div>
 
@@ -386,7 +408,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         />
       </div>
       <p className="text-sm text-gray-700">
-        Hier entsteht die Melkreihenfolge für die Probenahme: je Bank die {terms.plural} in der Reihenfolge, wie sie stehen, und das Häkchen «gewogen». Die Milchmengen kommen später aus dem Prüfbericht.
+        Hier entsteht die Melkreihenfolge für die Probenahme: je Bank die {terms.plural} in der Reihenfolge, wie sie stehen, mit der gewogenen Milchmenge in kg.
       </p>
 
       {/* Leser-Sitzung */}
@@ -447,10 +469,16 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
                   </button>
                 )
               ))}
+            {canWrite && (
+              <button type="button" onClick={fetchRecent} disabled={busy} title="Holt die letzten Lesungen (höchstens 12) der letzten Gruppe aus dem Gerät, die hier noch fehlen. Eine laufende Verbindung wird dafür kurz unterbrochen." className="min-h-11 rounded-lg border-2 border-brand-700 px-3 text-sm font-semibold text-brand-700 disabled:opacity-50">
+                ⬇ Letzte Lesungen holen
+              </button>
+            )}
           </div>
         ) : (
           <p className="text-sm text-gray-500">Ohrmarkenleser für diese Instanz nicht aktiviert (Verwaltung → Module) — manuelle Aufnahme unten.</p>
         )}
+        {fetchNote && <p className="mt-2 text-sm text-gray-700">{fetchNote}</p>}
         {session?.last_error && (
           <div className="mt-2 text-sm text-red-700">
             {/nicht erreichbar|unreachable|route to host|refused|timed out/i.test(session.last_error)
@@ -521,26 +549,35 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       </div>
       {error && <p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
-      {/* Aktuelle Bank — eigener Abschnitt, damit er beim Scrollen bündig
-          unter dem klebenden Kopf einrastet (scroll-mt = dessen Höhe). */}
-      <section className="scroll-mt-14 snap-start space-y-2">
+      {/* Gewählte Bank (Vorgabe: die offene bzw. letzte) mit Seitenwähler für die Bänke des Tages */}
+      <section className="space-y-2">
+      {banks.length > 1 && (
+        <BankPager
+          banks={banks.map((b) => ({ id: b.bank.id, number: b.bank.bank_number }))}
+          selectedId={shownBank?.bank.id ?? null}
+          onSelect={(id) => setPickedBankId(id === currentBank?.bank.id ? null : id)}
+        />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold text-gray-800">
-          {openBank ? `Bank ${openBank.bank.bank_number}` : 'Keine offene Bank'}
-          {openBank && (
+          {shownBank ? `Bank ${shownBank.bank.bank_number}` : 'Keine offene Bank'}
+          {shownBank && !shownBank.bank.closed_at && (
+            <span className="ml-1 rounded bg-green-100 px-1.5 py-0.5 text-xs font-semibold text-green-800">offen</span>
+          )}
+          {shownBank && (
             <span className="ml-2 text-sm font-normal text-gray-500">
-              {openBank.slots.length} von {openBank.bank.capacity} Plätzen · {openBank.slots.filter((s) => s.weighed).length} gewogen
+              {shownBank.slots.length} von {shownBank.bank.capacity} Plätzen · {shownBank.slots.filter((s) => s.milk_kg != null && Number(s.milk_kg) > 0).length} gewogen
             </span>
           )}
         </h2>
-        {canWrite && openBank && openBank.slots.length > 0 && (
+        {canWrite && openBank && shownBank?.bank.id === openBank.bank.id && openBank.slots.length > 0 && (
           <button type="button" onClick={nextBank} disabled={busy} className="link-btn rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-semibold text-white">
             Nächste Bank →
           </button>
         )}
       </div>
-      {openBank ? (
-        <BankTable bank={openBank} terms={terms} canWrite={canWrite} onChanged={onChanged} />
+      {shownBank ? (
+        <BankTable key={shownBank.bank.id} bank={shownBank} terms={terms} canWrite={canWrite} onChanged={onChanged} />
       ) : (
         <p className="text-center text-sm text-gray-500">
           {session?.active ? 'Warte auf die erste Lesung…' : 'Leser verbinden oder unten manuell aufnehmen.'}
@@ -585,6 +622,16 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
                 }
               }}
               className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base"
+            />
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Platz"
+              value={manualPlace}
+              onChange={(e) => setManualPlace(e.target.value.replace(/\D/g, '').slice(0, 2))}
+              aria-label="Platz in der Bank (1 bis 12, leer = nächster freier)"
+              title="Platz in der Bank, z.B. für ein Tier, dessen Ohrmarke nicht gelesen wurde. Leer = nächster freier Platz."
+              className="min-h-11 w-16 shrink-0 rounded-lg border border-gray-300 px-2 text-center text-base"
             />
             <button
               type="button"
@@ -636,34 +683,79 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         </form>
       )}
 
-      {/* Archiv */}
-      {archived.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="pt-2 text-lg font-bold text-gray-800">Abgeschlossene Bänke</h2>
-          {[...archived].reverse().map((b) => (
-            <div key={b.bank.id} className="rounded-lg bg-white shadow-sm">
-              <button
-                type="button"
-                onClick={() => setOpenArchived((o) => ({ ...o, [b.bank.id]: !o[b.bank.id] }))}
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
-              >
-                <span className="font-semibold text-gray-800">Bank {b.bank.bank_number}</span>
-                <span className="text-xs text-gray-500">
-                  {b.slots.length} {terms.plural} · {b.slots.filter((s) => s.weighed).length} gewogen ·{' '}
-                  {fmtDateTime(b.bank.opened_at)}
-                  {openArchived[b.bank.id] ? ' ▴' : ' ▾'}
-                </span>
-              </button>
-              {openArchived[b.bank.id] && (
-                <div className="border-t p-2">
-                  <BankTable bank={b} terms={terms} canWrite={canWrite} onChanged={onChanged} />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
+  )
+}
+
+/** Seitenwähler für die Bänke des Tages («« 1 2 3 »»): die gewählte Seite ist grau, die übrigen sind antippbar. */
+function BankPager({ banks, selectedId, onSelect }: { banks: { id: string; number: number }[]; selectedId: string | null; onSelect: (id: string) => void }) {
+  const idx = Math.max(0, banks.findIndex((b) => b.id === selectedId))
+  const show = (i: number) => banks.length <= 7 || i === 0 || i === banks.length - 1 || Math.abs(i - idx) <= 1
+  const items: (number | 'gap')[] = []
+  banks.forEach((_, i) => {
+    if (show(i)) items.push(i)
+    else if (items[items.length - 1] !== 'gap') items.push('gap')
+  })
+  const cell = 'grid min-h-12 min-w-12 place-items-center border-r border-gray-300 px-3 text-xl last:border-r-0'
+  return (
+    <nav aria-label="Bänke des Tages" className="flex justify-center">
+      <div className="inline-flex overflow-hidden rounded-lg border border-gray-300 bg-white">
+        <button type="button" onClick={() => onSelect(banks[idx - 1].id)} disabled={idx <= 0} aria-label="vorherige Bank" className={`${cell} ${idx <= 0 ? 'text-gray-400' : 'text-brand-700 active:bg-gray-50'}`}>
+          «
+        </button>
+        {items.map((it, k) =>
+          it === 'gap' ? (
+            <span key={`g${k}`} className={`${cell} text-gray-500`}>
+              …
+            </span>
+          ) : (
+            <button
+              key={banks[it].id}
+              type="button"
+              onClick={() => onSelect(banks[it].id)}
+              disabled={it === idx}
+              aria-current={it === idx ? 'page' : undefined}
+              aria-label={`Bank ${banks[it].number}`}
+              className={`${cell} ${it === idx ? 'bg-gray-100 font-semibold text-gray-500' : 'text-brand-700 active:bg-gray-50'}`}
+            >
+              {banks[it].number}
+            </button>
+          ),
+        )}
+        <button type="button" onClick={() => onSelect(banks[idx + 1].id)} disabled={idx >= banks.length - 1} aria-label="nächste Bank" className={`${cell} ${idx >= banks.length - 1 ? 'text-gray-400' : 'text-brand-700 active:bg-gray-50'}`}>
+          »
+        </button>
+      </div>
+    </nav>
+  )
+}
+
+/** Milchmenge in kg: grosses Feld für Handschuhe, gespeichert beim Verlassen des Felds oder mit Enter. */
+function MilkInput({ value, disabled, onSave, label }: { value: number | string | null | undefined; disabled: boolean; onSave: (kg: number | null) => void; label: string }) {
+  const initial = value == null || value === '' ? '' : String(Number(value))
+  const [text, setText] = useState(initial)
+  useEffect(() => setText(initial), [initial])
+  function commit() {
+    const t = text.trim().replace(',', '.')
+    if (t === '') return initial === '' ? undefined : onSave(null)
+    const v = Number(t)
+    if (!Number.isFinite(v) || v < 0 || v > 99) return setText(initial)
+    if (String(v) !== initial) onSave(Math.round(v * 100) / 100)
+  }
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      enterKeyHint="next"
+      value={text}
+      disabled={disabled}
+      placeholder="kg"
+      aria-label={`Milch kg ${label}`}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+      className={`h-14 w-full min-w-[5.5rem] rounded-xl border-2 px-2 text-right text-2xl font-bold tabular-nums ${Number(initial) > 0 ? 'border-green-600 bg-green-50 text-green-900' : 'border-gray-300 bg-white text-gray-900'}`}
+    />
   )
 }
 
@@ -764,6 +856,12 @@ function BankTable({
     onChanged()
   }
 
+  async function saveMilk(s: SlotRow, kg: number | null) {
+    const { animal: _a, ...row } = s
+    await upsertRow(pg, 'milking_slots', { ...row, milk_kg: kg, weighed: kg != null && kg > 0 })
+    onChanged()
+  }
+
   async function toggleWeighed(s: SlotRow) {
     const { animal: _a, ...row } = s
     await upsertRow(pg, 'milking_slots', { ...row, weighed: !s.weighed })
@@ -855,18 +953,74 @@ function BankTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-gray-500">
-              {/* Umsortieren: ohne Häkchen und Notiz, damit die Tabelle aufs Handy passt */}
+              {/* Umsortieren: ohne Milchmenge und Notiz, damit die Tabelle aufs Handy passt */}
               {editing && <th className="w-8 px-1 py-1" />}
               {editing && <th className="px-1 py-1">Gelesen</th>}
-              {!editing && <th className="w-11 px-1 py-1" />}
-              <th className="px-2 py-1">Nr.</th>
-              <th className="px-2 py-1">{terms.singular}</th>
-              {!editing && <th className="px-2 py-1">Notiz</th>}
+              <th className="px-2 py-1">{editing ? 'Nr.' : 'Laufnr.'}</th>
+              {editing ? <th className="px-2 py-1">{terms.singular}</th> : <th className="px-1 py-1 text-center">TVD</th>}
+              {!editing && <th className="px-1 py-1 text-center">Tage</th>}
+              {!editing && <th className="px-1 py-1 text-right">Milch kg</th>}
               <th className="px-1 py-2" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((s, idx) => (
+            {!editing &&
+              rows.map((s) => {
+                const tvd = shortEarTag(s.ear_tag ?? s.animal?.ear_tag ?? '').replace(/\D/g, '').slice(-4)
+                const dim = s.lastBirth ? Math.round((Date.parse(`${isoDate(bank.bank.session_date)}T00:00:00Z`) - Date.parse(`${s.lastBirth}T00:00:00Z`)) / 86_400_000) : null
+                const done = s.milk_kg != null && Number(s.milk_kg) > 0
+                return (
+                  <Fragment key={s.id}>
+                    <tr className={`border-b ${done ? 'bg-green-50/60' : ''}`}>
+                      <td className="px-2 py-1 align-middle">
+                        <div className="text-3xl font-bold leading-none text-gray-900">{s.animal?.lauf_nr ?? '–'}</div>
+                        <div className="mt-0.5 truncate text-xs text-gray-500">
+                          {s.position}. {s.animal?.name ?? (s.animal ? '' : <span className="text-amber-700">unbekannt</span>)}
+                        </div>
+                        {s.withdrawalUntil && s.withdrawalUntil >= (isoDate(bank.bank.session_date) ?? '') && (
+                          <div className="text-xs font-semibold text-red-700">⚠ Absetzfrist bis {fmtDate(s.withdrawalUntil)}</div>
+                        )}
+                      </td>
+                      <td className="px-1 py-1 text-center align-middle text-2xl font-semibold tabular-nums text-gray-800">{tvd || '–'}</td>
+                      <td className="px-1 py-1 text-center align-middle text-xl tabular-nums text-gray-700">{dim != null && dim >= 0 ? dim : '–'}</td>
+                      <td className="px-1 py-1 align-middle">
+                        <MilkInput value={s.milk_kg} disabled={!canWrite} onSave={(kg) => void saveMilk(s, kg)} label={s.animal?.lauf_nr ?? tvd} />
+                      </td>
+                      <td className="whitespace-nowrap px-0 py-1 align-middle">
+                        {canWrite && (
+                          <div className="flex">
+                            <button type="button" onClick={() => (noteFor === s.id ? setNoteFor(null) : openNote(s))} title={s.notes ? `Notiz: ${s.notes}` : 'Notiz zur Wägung (wird ins Journal des Tiers kopiert)'} aria-label="Notiz" className={`grid h-11 w-9 place-items-center rounded text-lg ${s.notes ? 'text-brand-700' : 'text-gray-400'}`}>
+                              ✎
+                            </button>
+                            <button type="button" onClick={() => removeSlot(s)} className="grid h-11 w-9 place-items-center rounded text-xl leading-none text-red-700" title="Zeile löschen (falsch eingegeben)" aria-label="Zeile löschen">
+                              ×
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                    {noteFor === s.id && (
+                      <tr className="border-b bg-gray-50">
+                        <td colSpan={5} className="px-2 py-2">
+                          <form
+                            className="flex gap-2"
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              void saveNote(s)
+                            }}
+                          >
+                            <input type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)} autoFocus placeholder="Notiz" className="min-h-11 min-w-0 flex-1 rounded-lg border-2 border-gray-300 px-3 text-base" />
+                            <button type="submit" className="min-h-11 rounded-lg bg-brand-700 px-4 font-semibold text-white">
+                              OK
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            {editing && rows.map((s, idx) => (
               <tr
                 key={s.id}
                 ref={(el) => {

@@ -3,7 +3,7 @@ des APR600 (12.11.2026); Ohrmarken sind unverändert aus dem Mitschnitt von Test
 
 import unittest
 
-from core.backend.fmis_core.agrident import normalize_pool_tag, parse_device_time, parse_pool_list, parse_pool_tags
+from core.backend.fmis_core.agrident import normalize_pool_tag, parse_device_time, parse_pool_list, parse_pool_records, parse_pool_tags
 
 GROUPS = "[0|1|ML|0]\r\n[1|2|Mw 1|0]\r\n[2|3|Mw .1|3]\r\n[7|8|mwneu|42]\r\n[37|38|m5|257]"
 GROUP_3 = (
@@ -68,6 +68,19 @@ class DeviceTimeTest(unittest.TestCase):
         self.assertEqual(parse_device_time("18042026", "003014"), "2026-04-18T00:30:14")
         self.assertIsNone(parse_device_time("1804", "003014"))
         self.assertIsNone(parse_device_time("18042026", "xx"))
+
+
+class PoolRecordsTest(unittest.TestCase):
+    def test_order_and_times_and_repeats(self) -> None:
+        raw = GROUP_3 + "\r\n[3|18042026|004300|0|0|FDX|0756000021727967||]"
+        recs = parse_pool_records(raw)
+        self.assertEqual([t for t, _ in recs], ["CH000021727967", "CH000021727968", "CH000021727969", "CH000021727967"])
+        self.assertEqual(recs[0][1], "2026-04-18T00:30:14")
+        self.assertEqual(recs[3][1], "2026-04-18T00:43:00")
+
+    def test_noise_is_skipped(self) -> None:
+        self.assertEqual(parse_pool_records("[XGGROUP|3]\r\n[0|18042026|003014|0|0|FDX|keine nummer||]"), [])
+        self.assertEqual(parse_pool_records(""), [])
 
 
 if __name__ == "__main__":

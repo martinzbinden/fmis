@@ -46,6 +46,8 @@ export interface MilkingSlot {
   read_at: string | null
   updated_at: string
   deleted_at: string | null
+  /** gewogene Milchmenge in kg (Milchwägung) */
+  milk_kg?: number | string | null
 }
 
 export type JournalCategory = 'notiz' | 'beobachtung' | 'krankheit' | 'behandlung' | 'brunst' | 'klauen' | 'trocken' | 'fuetterung'

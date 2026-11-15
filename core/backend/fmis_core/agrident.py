@@ -165,6 +165,21 @@ def parse_pool_tags(raw: str) -> tuple[list[str], list[str], str | None]:
     return tags, unknown, latest
 
 
+def parse_pool_records(raw: str) -> list[tuple[str, str | None]]:
+    """Antwort von XGGROUP → [(Ohrmarke in langer Form, Zeit «JJJJ-MM-TTThh:mm:ss» oder None)] in der Reihenfolge des
+    Geräts, auch mit Wiederholungen (dasselbe Tier zweimal gelesen). Nicht Verstandenes wird übergangen."""
+    out: list[tuple[str, str | None]] = []
+    for line in _lines(raw):
+        f = _fields(line)
+        if not f or not f[0].isdigit() or len(f) <= 5:
+            continue
+        tag = next((normalize_pool_tag(x) for x in f[1:] if x and normalize_pool_tag(x)), None)
+        if tag is None:
+            continue
+        out.append((tag, parse_device_time(f[1], f[2]) if len(f) > 2 else None))
+    return out
+
+
 def sheep_short_tag(long_tag: str) -> str | None:
     """Wandelt die lange Ohrmarke (RFID-Chip-Format, z.B. "CH113900001305")
     in die kurze, offizielle TVD-Ohrmarke ("CH90000130") um.

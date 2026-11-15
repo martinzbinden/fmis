@@ -25,13 +25,14 @@ import asyncio
 import json
 import time
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from core.backend.fmis_core.agrident import ReaderBusyError, ReaderError, acquire_reader, reader_tag_candidates
+from core.backend.fmis_core.agrident import ReaderBusyError, ReaderError, acquire_reader, parse_pool_list, parse_pool_records, reader_tag_candidates
 from core.backend.fmis_core.auth import CurrentUser, require_auth, require_permission
 from core.backend.fmis_core.db import get_pool
 from core.backend.fmis_core.modules_admin import get_reader_settings, is_reader_enabled, require_reader_enabled
@@ -39,6 +40,10 @@ from core.backend.fmis_core.reader_scan import scan_response
 
 
 DUPLICATE_WINDOW_S = 60.0
+# «Letzte Lesungen holen»: höchstens so viele Lesungen der letzten Gruppe des Geräts; eine Lesung gilt als schon da, wenn dasselbe
+# Tier in den Bänken des Tages innerhalb dieser Minuten gelesen wurde (Gerät und Server gehen nicht auf die Sekunde gleich).
+FETCH_RECENT_MAX = 12
+FETCH_SAME_READ_MINUTES = 10
 
 
 class SessionState(BaseModel):
@@ -71,6 +76,18 @@ class SessionState(BaseModel):
 class StartBody(BaseModel):
     session_date: str | None = None
     capacity: int = 12
+
+
+class FetchBody(BaseModel):
+    session_date: str | None = None
+    capacity: int = 12
+
+
+class FetchResult(BaseModel):
+    added: int
+    already_there: int
+    group: str | None = None
+    found: int = 0
 
 
 class _Session:
@@ -209,7 +226,7 @@ def build_reader_router(key: str) -> APIRouter:
         sess.bank_id = None
         sess.bump()
 
-    async def _record_read(sess: _Session, long_tag: str) -> None:
+    async def _record_read(sess: _Session, long_tag: str, read_at: datetime | None = None) -> None:
         # Zuordnung: Kurzform (CH + 8 Ziffern) oder Langform (CH113 + 8 Ziffern + Prüfziffer)
         candidate, core = reader_tag_candidates(long_tag)
         async with pool.connection() as conn:
@@ -221,7 +238,7 @@ def build_reader_router(key: str) -> APIRouter:
             )).fetchone()
         if sess.bank_id is None or sess.slots_in_bank >= sess.capacity:
             await _open_bank(sess)
-        now = datetime.now(timezone.utc)
+        now = read_at or datetime.now(timezone.utc)
         sess.bank_tags.add(long_tag)
         sess.slots_in_bank += 1
         sess.reads += 1
@@ -281,6 +298,28 @@ def build_reader_router(key: str) -> APIRouter:
         finally:
             sess.conn = None
 
+    async def _prepare(session_date_text: str | None, capacity_in: int, started_by: str) -> _Session:
+        """Sitzung für den Tag anlegen und die offene Bank des Tages weiterverwenden (z.B. nach Neustart)."""
+        session_date = date.fromisoformat(session_date_text) if session_date_text else date.today()
+        capacity = max(1, min(capacity_in, 60))
+        sess = _Session(key, session_date, capacity, started_by)
+        async with pool.connection() as conn:
+            row = await (await conn.execute(
+                "select b.id, b.bank_number, (select count(*) from milking_slots s where s.bank_id = b.id and s.deleted_at is null) "
+                "from milking_banks b where b.session_date = %s and b.deleted_at is null and b.closed_at is null "
+                "order by b.bank_number desc limit 1",
+                (session_date,),
+            )).fetchone()
+            if row:
+                sess.bank_id, sess.bank_number, sess.slots_in_bank = row[0], int(row[1]), int(row[2])
+                # Transponder der weitergeführten offenen Bank (Duplikatschutz)
+                rows = await (await conn.execute(
+                    "select transponder from milking_slots where bank_id = %s and deleted_at is null and transponder is not null",
+                    (sess.bank_id,),
+                )).fetchall()
+                sess.bank_tags = {r[0] for r in rows}
+        return sess
+
     @router.get("/reader/session", response_model=SessionState)
     async def session_state(user: CurrentUser = Depends(require_auth)) -> SessionState:
         sess = _sessions.get(key)
@@ -297,29 +336,71 @@ def build_reader_router(key: str) -> APIRouter:
         sess = _sessions.get(key)
         if sess and sess.task and not sess.task.done():
             return sess.state(active=True)
-        session_date = date.fromisoformat(body.session_date) if body.session_date else date.today()
-        capacity = max(1, min(body.capacity, 60))
-        sess = _Session(key, session_date, capacity, user.email)
-        # Bestehende offene Bank des Tages weiterverwenden (z.B. nach Neustart)
-        async with pool.connection() as conn:
-            row = await (await conn.execute(
-                "select b.id, b.bank_number, (select count(*) from milking_slots s where s.bank_id = b.id and s.deleted_at is null) "
-                "from milking_banks b where b.session_date = %s and b.deleted_at is null and b.closed_at is null "
-                "order by b.bank_number desc limit 1",
-                (session_date,),
-            )).fetchone()
-            if row:
-                sess.bank_id, sess.bank_number, sess.slots_in_bank = row[0], int(row[1]), int(row[2])
-                # Transponder der weitergeführten offenen Bank (Duplikatschutz)
-                rows = await (await conn.execute(
-                    "select transponder from milking_slots where bank_id = %s and deleted_at is null and transponder is not null",
-                    (sess.bank_id,),
-                )).fetchall()
-                sess.bank_tags = {r[0] for r in rows}
+        sess = await _prepare(body.session_date, body.capacity, user.email)
         sess.task = asyncio.create_task(_run(sess))
         _sessions[key] = sess
         await asyncio.sleep(0.3)  # kurze Chance, einen sofortigen Verbindungsfehler mitzugeben
         return sess.state(active=not sess.task.done())
+
+    @router.post("/reader/session/fetch-recent", response_model=FetchResult)
+    async def fetch_recent(
+        body: FetchBody,
+        user: CurrentUser = Depends(require_permission(f"{key}:milk:write")),
+        _reader_ok: CurrentUser = Depends(require_reader_enabled(key)),
+    ) -> FetchResult:
+        """Die letzten (höchstens 12) Lesungen der letzten Gruppe im Gerätespeicher holen, die in den Bänken des Tages noch
+        fehlen, und in der Reihenfolge des Geräts aufnehmen — als Ergänzung zur Live-Lesung (z.B. nach einem Funkloch).
+        Das Gerät lässt nur eine Verbindung zu: eine laufende Sitzung wird dafür kurz unterbrochen und danach weitergeführt."""
+        sess = _sessions.get(key)
+        was_active = bool(sess and sess.task and not sess.task.done())
+        if was_active and sess:
+            sess.task.cancel()  # type: ignore[union-attr]
+            try:
+                await sess.task  # type: ignore[misc]
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        else:
+            sess = await _prepare(body.session_date, body.capacity, user.email)
+            _sessions[key] = sess
+        host, port = await get_reader_settings(key)
+        sess.host, sess.port = host, port
+        try:
+            async with acquire_reader(host, port) as conn:
+                groups = [g for g in parse_pool_list(await conn.send_command("XGGROUPS")) if g["count"]]
+                if not groups:
+                    return FetchResult(added=0, already_there=0)
+                last = groups[-1]
+                raw = await conn.send_command("XGGROUP", last["group_id"], timeout=30.0)
+        except ReaderBusyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (ReaderError, OSError) as exc:
+            raise HTTPException(status_code=502, detail=f"Leser nicht erreichbar oder antwortet nicht ({exc})") from exc
+        finally:
+            if was_active and sess and not (sess.task and not sess.task.done()):
+                sess.task = asyncio.create_task(_run(sess))
+
+        records = parse_pool_records(raw)[-FETCH_RECENT_MAX:]
+        zone = ZoneInfo("Europe/Zurich")
+        async with pool.connection() as conn:
+            existing = await (await conn.execute(
+                "select s.transponder, s.read_at from milking_slots s join milking_banks b on b.id = s.bank_id "
+                "where b.session_date = %s and b.deleted_at is null and s.deleted_at is null and s.transponder is not null",
+                (sess.session_date,),
+            )).fetchall()
+        window = timedelta(minutes=FETCH_SAME_READ_MINUTES)
+        added = already = 0
+        for tag, local in records:
+            when = datetime.fromisoformat(local).replace(tzinfo=zone) if local else None
+            if when and any(r[0] == tag and r[1] and abs(r[1] - when) <= window for r in existing):
+                already += 1
+                continue
+            if when is None and any(r[0] == tag for r in existing):
+                already += 1
+                continue
+            await _record_read(sess, tag, when.astimezone(timezone.utc) if when else None)
+            existing.append((tag, when))
+            added += 1
+        return FetchResult(added=added, already_there=already, group=last["name"], found=len(records))
 
     @router.post("/reader/session/stop", response_model=SessionState)
     async def session_stop(user: CurrentUser = Depends(require_permission(f"{key}:milk:write"))) -> SessionState:
