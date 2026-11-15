@@ -1,4 +1,4 @@
-import { useEffect, useReducer, type ReactNode } from 'react'
+import { useEffect, useReducer, useState, type ReactNode } from 'react'
 import { Link, NavLink, matchPath, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import SyncStatusDot from './SyncStatusDot'
 import { logout } from './auth'
@@ -46,12 +46,28 @@ export default function Layout({
   const navigate = useNavigate()
   const rest = pathname.slice(moduleKey.length + 1).replace(/^\/|\/$/g, '')
   const shownNav = resolveNav(navItems)
+  // Seiten mit wenig Platz (z.B. Milchwägung) blenden die Kopfzeile beim Hinunterscrollen aus und beim Hinaufscrollen
+  // wieder ein: sie setzen dafür document.body.dataset.autohideHeader = 'on'
+  const [headerHidden, setHeaderHidden] = useState(false)
+  useEffect(() => {
+    let last = window.scrollY
+    const onScroll = () => {
+      const y = window.scrollY
+      if (document.body.dataset.autohideHeader !== 'on' || y < 40) setHeaderHidden(false)
+      else if (y > last + 4) setHeaderHidden(true)
+      else if (y < last - 4) setHeaderHidden(false)
+      last = y
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  useEffect(() => setHeaderHidden(false), [pathname])
 
   return (
     <div data-module={moduleKey} className="flex min-h-screen flex-col bg-gray-50">
       {/* Am Handy (375 px) muss alles in eine Zeile passen: Titel kürzt sich, Abmelden
           gibt es dort auf der Übersicht (🏠) statt hier. */}
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-1 border-b bg-white px-2 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))] sm:px-3">
+      <header className={`sticky top-0 z-20 flex items-center transition-transform duration-200 ${headerHidden ? '-translate-y-full' : ''} justify-between gap-1 border-b bg-white px-2 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))] sm:px-3`}>
         <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           <NavLink to="/dashboard" className="grid min-h-12 min-w-12 shrink-0 place-items-center rounded-full text-xl active:bg-gray-100" title="Zur Übersicht" aria-label="Zur Übersicht">
             🏠

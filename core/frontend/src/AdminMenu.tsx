@@ -4,6 +4,7 @@ import { fetchUserView, listUsers, type AdminUser } from './admin'
 import { useAuthUser, useRealPermission, useRealUser } from './AuthContext'
 import { notifyError, errorText } from './toast'
 import { startViewAs, useViewAs } from './viewAs'
+import { usePageSettingsEntry } from './pageSettings'
 
 /** Zahnrad-Menü für Admins: Verwaltung (Module, Benutzer) und schneller
  * Wechsel in die Ansicht eines anderen Nutzers. */
@@ -19,6 +20,7 @@ export default function AdminMenu() {
   const [users, setUsers] = useState<AdminUser[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const box = useRef<HTMLDivElement>(null)
+  const pageSettings = usePageSettingsEntry()
 
   useEffect(() => {
     if (!open) return
@@ -45,7 +47,7 @@ export default function AdminMenu() {
     }
   }, [open, canViewAs])
 
-  if (!canUsers && !canModules) return null
+  if (!canUsers && !canModules && !pageSettings) return null
 
   const go = (to: string) => {
     setOpen(false)
@@ -75,14 +77,20 @@ export default function AdminMenu() {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Verwaltung"
-        aria-label="Verwaltung"
+        title={pageSettings ? `Einstellungen ${pageSettings.title}` : 'Verwaltung'}
+        aria-label={pageSettings ? `Einstellungen ${pageSettings.title} und Verwaltung` : 'Verwaltung'}
         className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100"
       >
         ⚙️
       </button>
       {open && (
-        <div role="menu" className="absolute right-2 top-full z-[2300] mt-1 max-h-[75vh] w-72 max-w-[calc(100vw-1rem)] sm:right-0 overflow-y-auto rounded-xl bg-white py-1 shadow-2xl ring-1 ring-black/10">
+        <div role="menu" className="absolute right-2 top-full z-[2300] mt-1 max-h-[75vh] w-80 max-w-[calc(100vw-1rem)] sm:right-0 overflow-y-auto rounded-xl bg-white py-1 shadow-2xl ring-1 ring-black/10">
+          {pageSettings && (
+            <div className="border-b px-3 pb-3 pt-2">
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Einstellungen {pageSettings.title}</div>
+              {pageSettings.render()}
+            </div>
+          )}
           {canModules && (
             <button type="button" role="menuitem" className={item} onClick={() => go('/verwaltung/module')}>
               🧩 Module

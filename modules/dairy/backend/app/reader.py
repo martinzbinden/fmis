@@ -26,7 +26,6 @@ import json
 import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -40,10 +39,11 @@ from core.backend.fmis_core.reader_scan import scan_response
 
 
 DUPLICATE_WINDOW_S = 60.0
-# «Letzte Lesungen holen»: höchstens so viele Lesungen der letzten Gruppe des Geräts; eine Lesung gilt als schon da, wenn dasselbe
-# Tier in den Bänken des Tages innerhalb dieser Minuten gelesen wurde (Gerät und Server gehen nicht auf die Sekunde gleich).
+# «Letzte Lesungen holen»: höchstens so viele Lesungen der letzten Gruppe des Geräts.
 FETCH_RECENT_MAX = 12
-FETCH_SAME_READ_MINUTES = 10
+# Schon da: dasselbe Tier wurde in den letzten Stunden (Serverzeit) schon in eine Bank aufgenommen. Die Uhr des Geräts
+# taugt dafür nicht (sie geht oft falsch); Morgen- und Abendmelken liegen weiter auseinander.
+FETCH_SAME_READ_HOURS = 3
 
 
 class SessionState(BaseModel):
@@ -88,6 +88,8 @@ class FetchResult(BaseModel):
     already_there: int
     group: str | None = None
     found: int = 0
+    # neue Lesungen, die keinen Platz mehr hatten (Bank voll): sie kommen in die nächste Bank, sobald sie offen ist
+    waiting: int = 0
 
 
 class _Session:
@@ -226,7 +228,7 @@ def build_reader_router(key: str) -> APIRouter:
         sess.bank_id = None
         sess.bump()
 
-    async def _record_read(sess: _Session, long_tag: str, read_at: datetime | None = None) -> None:
+    async def _record_read(sess: _Session, long_tag: str) -> None:
         # Zuordnung: Kurzform (CH + 8 Ziffern) oder Langform (CH113 + 8 Ziffern + Prüfziffer)
         candidate, core = reader_tag_candidates(long_tag)
         async with pool.connection() as conn:
@@ -238,7 +240,9 @@ def build_reader_router(key: str) -> APIRouter:
             )).fetchone()
         if sess.bank_id is None or sess.slots_in_bank >= sess.capacity:
             await _open_bank(sess)
-        now = read_at or datetime.now(timezone.utc)
+        # Immer die Serverzeit: die Uhr des Lesegeräts geht oft falsch (am 15.11.2026 rund 1 h vor). Mit ihr als
+        # updated_at galten geholte Zeilen als «neuer» als jede Eingabe, und der Abgleich verwarf die Milchmengen.
+        now = datetime.now(timezone.utc)
         sess.bank_tags.add(long_tag)
         sess.slots_in_bank += 1
         sess.reads += 1
@@ -380,27 +384,37 @@ def build_reader_router(key: str) -> APIRouter:
                 sess.task = asyncio.create_task(_run(sess))
 
         records = parse_pool_records(raw)[-FETCH_RECENT_MAX:]
-        zone = ZoneInfo("Europe/Zurich")
+        since = datetime.now(timezone.utc) - timedelta(hours=FETCH_SAME_READ_HOURS)
         async with pool.connection() as conn:
-            existing = await (await conn.execute(
-                "select s.transponder, s.read_at from milking_slots s join milking_banks b on b.id = s.bank_id "
-                "where b.session_date = %s and b.deleted_at is null and s.deleted_at is null and s.transponder is not null",
-                (sess.session_date,),
+            rows = await (await conn.execute(
+                "select distinct s.transponder from milking_slots s join milking_banks b on b.id = s.bank_id "
+                "where b.deleted_at is null and s.deleted_at is null and s.transponder is not null and s.read_at >= %s",
+                (since,),
             )).fetchall()
-        window = timedelta(minutes=FETCH_SAME_READ_MINUTES)
-        added = already = 0
-        for tag, local in records:
-            when = datetime.fromisoformat(local).replace(tzinfo=zone) if local else None
-            if when and any(r[0] == tag and r[1] and abs(r[1] - when) <= window for r in existing):
+            # Plätze der offenen Bank aus der Datenbank (auch manuell aufgenommene zählen)
+            if sess.bank_id is not None:
+                row = await (await conn.execute(
+                    "select b.closed_at is null, (select count(*) from milking_slots s where s.bank_id = b.id and s.deleted_at is null) "
+                    "from milking_banks b where b.id = %s", (sess.bank_id,))).fetchone()
+                if row and row[0]:
+                    sess.slots_in_bank = int(row[1])
+                else:
+                    sess.bank_id, sess.slots_in_bank = None, 0
+        seen = {r[0] for r in rows}
+        # nur so viele, wie Plätze frei sind: die nächste Bank öffnet die Seite (Knopf «+»), nicht der Abruf
+        free = sess.capacity - sess.slots_in_bank if sess.bank_id is not None else sess.capacity
+        added = already = waiting = 0
+        for tag, _device_time in records:
+            if tag in seen:
                 already += 1
                 continue
-            if when is None and any(r[0] == tag for r in existing):
-                already += 1
+            if added >= free:
+                waiting += 1
                 continue
-            await _record_read(sess, tag, when.astimezone(timezone.utc) if when else None)
-            existing.append((tag, when))
+            await _record_read(sess, tag)
+            seen.add(tag)
             added += 1
-        return FetchResult(added=added, already_there=already, group=last["name"], found=len(records))
+        return FetchResult(added=added, already_there=already, group=last["name"], found=len(records), waiting=waiting)
 
     @router.post("/reader/session/stop", response_model=SessionState)
     async def session_stop(user: CurrentUser = Depends(require_permission(f"{key}:milk:write"))) -> SessionState:
@@ -420,12 +434,12 @@ def build_reader_router(key: str) -> APIRouter:
 
     @router.post("/reader/session/next-bank", response_model=SessionState)
     async def session_next_bank(user: CurrentUser = Depends(require_permission(f"{key}:milk:write"))) -> SessionState:
-        """Aktuelle Bank abschliessen (archivieren) — die nächsten Lesungen
-        landen in einer neuen Bank."""
+        """Aktuelle Bank abschliessen und gleich eine neue, leere Bank öffnen: die Seite zeigt sie sofort (mit dem Knopf
+        «Neu gelesene Ohrmarken holen»), die nächsten Lesungen landen dort."""
         sess = _sessions.get(key)
         if sess is None or not sess.task or sess.task.done():
             raise HTTPException(status_code=409, detail="Keine aktive Wägungssitzung")
-        await _close_bank(sess)
+        await _open_bank(sess)
         return sess.state(active=True)
 
     @router.get("/reader/scan")
