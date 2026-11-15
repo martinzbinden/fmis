@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { alertText, buildReaderLists, deviceText, MAX_ALERTS, vidText, type ReaderEntry } from './readerLists'
+import { alertText, buildReaderLists, deviceText, lactationText, MAX_ALERTS, vidText, type ReaderEntry } from './readerLists'
 
 const today = '2026-11-12'
 const entry = (p: Partial<ReaderEntry> = {}): ReaderEntry => ({
   earTag: 'CH113900000103',
   laufNr: '101',
   group: 'Ablammgruppe',
-  facts: { lastBirth: '2026-03-12', pregnancy: { date: '2026-10-10', result: 'ja' } },
+  facts: { lastBirth: '2026-03-12', pregnancy: { date: '2026-10-10', result: 'ja' }, lastService: '2026-09-20' },
   ...p,
 })
 
@@ -18,13 +18,18 @@ describe('deviceText', () => {
 })
 
 describe('Gruppenwechsel', () => {
-  it('VID: Nummer und Gruppe; Alarm: Ablammung mit Tagen', () => {
-    expect(vidText(entry(), 'gruppe', today)).toBe('101 Ablammgruppe')
+  it('VID: Nummer, Tage in Laktation und Gruppe; Alarm: Ablammung mit Tagen', () => {
+    expect(vidText(entry(), 'gruppe', today)).toBe('101 L245 Ablammgrupp')
     expect(alertText(entry(), 'gruppe', today)).toBe('Abl 12.03.26 245 T')
   })
-  it('lange Namen werden auf 20 Zeichen gekürzt, ohne Gruppe nur die Nummer', () => {
-    expect(vidText(entry({ group: 'Schlachten 2.11.26 Sonder' }), 'gruppe', today)).toBe('101 Schlachten 2.11.')
-    expect(vidText(entry({ group: null }), 'gruppe', today)).toBe('101')
+  it('lange Namen werden auf 20 Zeichen gekürzt (die Gruppe zuerst), ohne Gruppe Nummer und Laktation', () => {
+    expect(vidText(entry({ group: 'Schlachten 2.11.26 Sonder' }), 'gruppe', today)).toBe('101 L245 Schlachten')
+    expect(vidText(entry({ group: null }), 'gruppe', today)).toBe('101 L245')
+  })
+  it('trockengestellte Tiere zeigen «trocken», ohne Geburt nur die Nummer', () => {
+    expect(lactationText(entry({ dry: true }), today)).toBe('trocken')
+    expect(vidText(entry({ dry: true, group: 'Stall' }), 'gruppe', today)).toBe('101 trocken Stall')
+    expect(vidText(entry({ facts: { lastBirth: null, pregnancy: null }, group: null }), 'gruppe', today)).toBe('101')
   })
   it('ohne Laufnummer die kurze Ohrmarke', () => {
     expect(vidText(entry({ laufNr: null }), 'gruppe', today)).toMatch(/^9000\.0010 /)
@@ -36,12 +41,17 @@ describe('Gruppenwechsel', () => {
 })
 
 describe('Trächtigkeitsuntersuchung', () => {
-  it('VID: Nummer, Ablammung und Tage; Alarm: letzte Untersuchung', () => {
-    expect(vidText(entry(), 'traechtigkeit', today)).toBe('101 Abl 12.03. 245T')
-    expect(alertText(entry(), 'traechtigkeit', today)).toBe('US 10.10. ja 33T')
+  it('VID: Nummer, Tage in Laktation und Ablammung; Alarm: Belegung und letzte Untersuchung', () => {
+    expect(vidText(entry(), 'traechtigkeit', today)).toBe('101 L245 Abl 12.03.')
+    expect(alertText(entry(), 'traechtigkeit', today)).toBe('Bel 20.09. US ja 33T')
+  })
+  it('ohne Belegung nur die Untersuchung, ohne Untersuchung die Belegung', () => {
+    const f = (over: object) => entry({ facts: { lastBirth: '2026-03-12', pregnancy: null, lastService: null, ...over } })
+    expect(alertText(f({ pregnancy: { date: '2026-10-10', result: 'ja' } }), 'traechtigkeit', today)).toBe('US 10.10. ja 33T')
+    expect(alertText(f({ lastService: '2026-09-20' }), 'traechtigkeit', today)).toBe('Bel 20.09. 53T US?')
   })
   it('Ergebnisse: leer und unsicher', () => {
-    const e = (result: 'nein' | 'unsicher') => entry({ facts: { lastBirth: '2026-03-12', pregnancy: { date: '2026-10-10', result } } })
+    const e = (result: 'nein' | 'unsicher') => entry({ facts: { lastBirth: '2026-03-12', pregnancy: { date: '2026-10-10', result }, lastService: null } })
     expect(alertText(e('nein'), 'traechtigkeit', today)).toBe('US 10.10. leer 33T')
     expect(alertText(e('unsicher'), 'traechtigkeit', today)).toBe('US 10.10. ? 33T')
   })
@@ -64,7 +74,7 @@ describe('buildReaderLists', () => {
     expect(lines[0]).toBe('[FileType]')
     expect(lines[1]).toBe('FileType=AgriLink Linklist File, File Version 1.00')
     expect(lines).toContain('[LinkList]')
-    expect(lines).toContain('756000090000010,101 Ablammgruppe,1')
+    expect(lines).toContain('756000090000010,101 L245 Ablammgrupp,1')
     const alerts = out.alertList.split('\r\n')
     expect(alerts[1]).toBe('FileType=AgriLink Alertlist File, File Version 1.00')
     expect(alerts).toContain('[AlertList]')
@@ -77,7 +87,7 @@ describe('buildReaderLists', () => {
     const c = entry({ earTag: 'CH113900000125', laufNr: '103', facts: null })
     const out = buildReaderLists([a, b, c], 'gruppe', today)
     expect(out.stats).toEqual({ animals: 3, withAlert: 2, noTag: 0, alertOverflow: 0, alerts: 1 })
-    expect(out.linkList).toContain('756000090000011,102 Ablammgruppe,1')
+    expect(out.linkList).toContain('756000090000011,102 L245 Ablammgrupp,1')
     expect(out.linkList).toContain('756000090000012,103 Ablammgruppe,0')
   })
 

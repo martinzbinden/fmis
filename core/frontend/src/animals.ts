@@ -33,6 +33,8 @@ export interface ReaderFacts {
   lastBirth: string | null
   /** Ergebnis der letzten Untersuchung seit dieser Geburt */
   pregnancy: { date: string; result: 'ja' | 'nein' | 'unsicher' } | null
+  /** letzte Belegung seit dieser Geburt, ISO-Datum */
+  lastService?: string | null
 }
 
 export interface AnimalProvider {

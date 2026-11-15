@@ -69,6 +69,7 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
         out.set(id, {
           lastBirth: c.fertility.last_birth,
           pregnancy: c.pregnancy ? { date: c.pregnancy.date, result: c.pregnancy.result } : null,
+          lastService: c.fertility.services_since_birth > 0 ? (c.fertility.last_service?.service_date ?? null) : null,
         })
       }
       return out

@@ -34,7 +34,7 @@ export default function ReaderListsDialog({ data, onClose }: { data: HerdData; o
           const [animals, facts] = await Promise.all([provider.listAnimals(), provider.readerFacts?.() ?? Promise.resolve(new Map<string, ReaderFacts>())])
           for (const a of animals) {
             const m = memberAt(data, a.id, today)
-            out.push({ earTag: a.ear_tag, laufNr: a.lauf_nr, group: m ? (data.groups.find((g) => g.id === m.group_id)?.name ?? null) : null, facts: facts.get(a.id) ?? null })
+            out.push({ earTag: a.ear_tag, laufNr: a.lauf_nr, dry: !!a.dry, group: m ? (data.groups.find((g) => g.id === m.group_id)?.name ?? null) : null, facts: facts.get(a.id) ?? null })
           }
         }
         if (live) setEntries(out)

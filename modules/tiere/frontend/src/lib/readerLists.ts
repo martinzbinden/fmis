@@ -4,8 +4,9 @@
 // (CLinkList, CAlertList, CTag); AgriLink prüft sie beim Laden.
 //
 // Auf dem Gerät liegt nur eine Link-Liste: je nach Aufgabe die passende Variante laden.
-//   gruppe:        VID «Nummer Gruppe», Alarm «Abl 12.03.26 240 T»       (Gruppenwechsel)
-//   traechtigkeit: VID «Nummer Abl 12.03. 240T», Alarm «US 10.10. ja 31T» (Trächtigkeitsuntersuchung)
+//   gruppe:        VID «Nummer L240 Gruppe», Alarm «Abl 12.03.26 240 T»       (Gruppenwechsel)
+//   traechtigkeit: VID «Nummer L240 Abl 12.03.», Alarm «Bel 20.09. US ja 31T» (Trächtigkeitsuntersuchung)
+// L240 = Tage in Laktation (Tage seit der letzten Geburt); trockengestellte Tiere zeigen «trocken».
 
 import type { ReaderFacts } from '@fmis/core/animals'
 import { earTagToReaderIso } from '@fmis/core/tagReader'
@@ -14,8 +15,8 @@ import { shortEarTag } from '@fmis/core/earTag'
 export type ListVariant = 'gruppe' | 'traechtigkeit'
 
 export const VARIANTS: { key: ListVariant; label: string; example: string }[] = [
-  { key: 'gruppe', label: 'Gruppenwechsel', example: 'Nummer und Gruppe; Alarm: letzte Ablammung' },
-  { key: 'traechtigkeit', label: 'Trächtigkeitsuntersuchung', example: 'Nummer und Ablammung; Alarm: letzte Untersuchung' },
+  { key: 'gruppe', label: 'Gruppenwechsel', example: 'Nummer, Tage in Laktation und Gruppe; Alarm: letzte Ablammung' },
+  { key: 'traechtigkeit', label: 'Trächtigkeitsuntersuchung', example: 'Nummer, Tage in Laktation und Ablammung; Alarm: Belegung und letzte Untersuchung' },
 ]
 
 export interface ReaderEntry {
@@ -23,6 +24,8 @@ export interface ReaderEntry {
   laufNr: string | null
   /** Name der heutigen Tiergruppe */
   group: string | null
+  /** trockengestellt: statt der Laktationstage steht «trocken» */
+  dry?: boolean
   facts: ReaderFacts | null
 }
 
@@ -49,10 +52,18 @@ const RESULT: Record<string, string> = { ja: 'ja', nein: 'leer', unsicher: '?' }
 /** Nummer, die am Gerät erscheint: Laufnummer, sonst die kurze Ohrmarke. */
 const nameOf = (e: ReaderEntry) => e.laufNr || shortEarTag(e.earTag)
 
-export function vidText(e: ReaderEntry, variant: ListVariant, today: string): string {
-  if (variant === 'gruppe') return clip(`${nameOf(e)} ${e.group ?? ''}`)
+/** Tage in Laktation: «L245» (Tage seit der letzten Geburt), «trocken» bei trockengestellten Tieren, sonst nichts. */
+export function lactationText(e: ReaderEntry, today: string): string {
+  if (e.dry) return 'trocken'
   const b = e.facts?.lastBirth
-  return clip(b ? `${nameOf(e)} Abl ${ddmm(b)} ${days(b, today)}T` : nameOf(e))
+  return b ? `L${days(b, today)}` : ''
+}
+
+export function vidText(e: ReaderEntry, variant: ListVariant, today: string): string {
+  const lact = lactationText(e, today)
+  if (variant === 'gruppe') return clip(`${nameOf(e)} ${lact} ${e.group ?? ''}`)
+  const b = e.facts?.lastBirth
+  return clip(b ? `${nameOf(e)} ${lact} Abl ${ddmm(b)}` : nameOf(e))
 }
 
 /** Alarmtext (leer = kein Alarm). */
@@ -60,8 +71,11 @@ export function alertText(e: ReaderEntry, variant: ListVariant, today: string): 
   const f = e.facts
   if (!f?.lastBirth) return ''
   if (variant === 'gruppe') return clip(`Abl ${ddmmyy(f.lastBirth)} ${days(f.lastBirth, today)} T`)
-  if (!f.pregnancy) return 'keine US seit Abl.'
-  return clip(`US ${ddmm(f.pregnancy.date)} ${RESULT[f.pregnancy.result]} ${days(f.pregnancy.date, today)}T`)
+  const bel = f.lastService ? `Bel ${ddmm(f.lastService)}` : ''
+  if (!f.pregnancy) return f.lastService ? clip(`${bel} ${days(f.lastService, today)}T US?`) : 'keine US seit Abl.'
+  // mit Belegung ohne Datum der Untersuchung (20 Zeichen), sonst mit Datum
+  const us = bel ? `US ${RESULT[f.pregnancy.result]}` : `US ${ddmm(f.pregnancy.date)} ${RESULT[f.pregnancy.result]}`
+  return clip(`${bel} ${us} ${days(f.pregnancy.date, today)}T`)
 }
 
 export interface ReaderLists {
