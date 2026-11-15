@@ -174,6 +174,8 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   const [manualInput, setManualInput] = useState('')
   // Platz in der offenen Bank für die manuelle Aufnahme (leer = nächster freier): für Tiere, deren Ohrmarke nicht gelesen wurde
   const [manualPlace, setManualPlace] = useState('')
+  // nach dem Aufnehmen bleibt der Cursor im Feld für das nächste Tier
+  const manualRef = useRef<HTMLInputElement>(null)
   // Zahlentastatur (Laufnummer, Ohrmarke); «ABC» für Namen
   const [abc, setAbc] = useState(false)
   const [suggestIdx, setSuggestIdx] = useState(0)
@@ -450,6 +452,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       })
       setManualInput('')
       setManualPlace('')
+      requestAnimationFrame(() => manualRef.current?.focus())
       setSuggestOpen(false)
       setSuggestIdx(0)
       refresh()
@@ -672,6 +675,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         >
           <div className="flex gap-2">
             <input
+              ref={manualRef}
               type="text"
               placeholder="Manuell: Laufnummer, Ohrmarke oder Name"
               value={manualInput}
@@ -720,6 +724,8 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
             </button>
             <button
               type="submit"
+              // Fokus bleibt im Feld (auch wenn die Aufnahme scheitert)
+              onMouseDown={(e) => e.preventDefault()}
               disabled={busy || !manualInput.trim()}
               className="link-btn rounded-lg border border-brand-600 px-3 py-1.5 text-sm font-medium text-brand-700 disabled:opacity-50"
             >
