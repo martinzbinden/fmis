@@ -8,6 +8,8 @@ import { speciesTerms } from '../lib/species'
 import { meatBarColor, meatBarPercent, MEAT_BAND_LABEL, type MeatLimit, type MeatValue, MEAT_BAR_MAX } from '../lib/meatValue'
 import type { CardFieldKey } from '../lib/cardFields'
 import LactationSpark from './LactationSpark'
+import { MilkFeedChip } from './MilkFeedChip'
+import type { MilkFeed, MilkFeedSettings } from '../lib/milkFeed'
 import NursingLambs, { WeanedLambs } from './NursingLambs'
 
 const SEX_ICON: Record<string, string> = { w: '♀', m: '♂', k: '⚲' }
@@ -34,6 +36,8 @@ export default function BoardCardView({
   groupChoices,
   onMoveToGroup,
   meat,
+  milkFeed,
+  milkFeedSettings,
   meatLimits,
   fields = [],
   onDragCard,
@@ -60,6 +64,9 @@ export default function BoardCardView({
   onMoveToGroup?: (groupId: string | null) => void
   /** geschätzter Fleischwert (nur Schafe, wenn aktiv) */
   meat?: MeatValue | null
+  /** Milch gegen Futter bis zur nächsten Geburt (Kartenfeld «milkFeed») */
+  milkFeed?: MilkFeed | null
+  milkFeedSettings?: MilkFeedSettings
   /** auf der Karte gewählte Eigenschaften (Menü «Karte») */
   /** Grenzen im Fleischwert-Balken (schwere Aue, schweres Lamm T3/H3/C3); die Skala ist fest */
   meatLimits?: MeatLimit[]
@@ -149,7 +156,7 @@ export default function BoardCardView({
       {/* Werte über die ganze Kartenbreite (nicht nur neben Griff und ⇄) */}
       {fields.length > 0 && (
         <button type="button" onClick={onToggle} tabIndex={-1} className="block w-full text-left">
-          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} />
+          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} milkFeed={milkFeed ?? null} milkFeedSettings={milkFeedSettings} />
         </button>
       )}
 
@@ -264,7 +271,21 @@ const TREND_ARROW = { steigend: { arrow: '↗', tone: 'text-green-700' }, stabil
 const f0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleString('de-CH'))
 
 /** Die gewählten Eigenschaften als kompakte Zeilen unter dem Kopf der Karte. */
-function CardProps({ card, fields, meat, meatLimits }: { card: BoardCard; fields: CardFieldKey[]; meat: MeatValue | null; meatLimits?: MeatLimit[] }) {
+function CardProps({
+  card,
+  fields,
+  meat,
+  meatLimits,
+  milkFeed,
+  milkFeedSettings,
+}: {
+  card: BoardCard
+  fields: CardFieldKey[]
+  meat: MeatValue | null
+  meatLimits?: MeatLimit[]
+  milkFeed: MilkFeed | null
+  milkFeedSettings?: MilkFeedSettings
+}) {
   const has = (k: CardFieldKey) => fields.includes(k)
   const line = (label: string, value: ReactNode, key: string) => (
     <div key={key} className="flex justify-between gap-2">
@@ -351,6 +372,14 @@ function CardProps({ card, fields, meat, meatLimits }: { card: BoardCard; fields
       </div>,
     )
   }
+  if (has('milkFeed') && milkFeed && milkFeedSettings)
+    rows.push(
+      line(
+        'Milch − Futter',
+        <MilkFeedChip m={milkFeed} s={milkFeedSettings} short />,
+        'milkFeed',
+      ),
+    )
   const spark = has('spark') && card.levels.length > 0
   if (rows.length === 0 && !spark) return null
   return (

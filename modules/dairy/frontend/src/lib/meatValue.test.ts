@@ -6,7 +6,7 @@ describe('meatValue', () => {
     const v = meatValue('2026-01-31', '2026-11-26', S, P)! // 299 Tage
     expect(v.kind).toBe('Lamm')
     expect(v.kg).toBe(S.lambKgOld)
-    expect(v.gross).toBeCloseTo(13.2 * 13.4 * 0.95, 5)
+    expect(v.gross).toBeCloseTo(20 * 13.4 * 0.95, 5)
     expect(v.net).toBeCloseTo(v.gross - 3.68 - 7.5, 5)
   })
   it('420 Tage: ab dann Schafpreis (Lamm-Grenze)', () => {

@@ -41,6 +41,9 @@ import { loadNursingDams } from '../lib/lambs'
 import { estimateAll, loadParentLinks } from '../lib/breedingEstimate'
 import { DEFAULT_LAMB_MILK, loadDamMilk, loadLambMilkSettings, saveLambMilkSettings, type LambMilkSettings } from '../lib/lambMilk'
 import { speciesOf, speciesTerms } from '../lib/species'
+import { loadDryAnimalIds } from '../lib/dryOff'
+import { loadMilkSamples, milkFeed, useMilkFeedSettings, type MilkFeed } from '../lib/milkFeed'
+import { MilkFeedSettingsPanel } from '../components/MilkFeedChip'
 import { addToWatchlist, loadWatchlists, removeEntry } from '../lib/watchlists'
 
 async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string, milk: LambMilkSettings) {
@@ -191,6 +194,20 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     if (species === 'sheep') for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices))
     return m
   }, [cards, species, meatDate, meatSettings, meatPrices])
+  // Milch gegen Futter bis zur nächsten Geburt (nur wenn als Kartenfeld gewählt)
+  const milkFeedSettings = useMilkFeedSettings(moduleKey, species)
+  const milkFeedOn = cardFields.includes('milkFeed')
+  const milkData = useQuery((pg) => (milkFeedOn ? Promise.all([loadMilkSamples(pg), loadDryAnimalIds(pg)]) : Promise.resolve(null)), [milkFeedOn]).data
+  const milkFeedById = useMemo(() => {
+    const m = new Map<string, MilkFeed>()
+    if (!milkFeedOn || !milkData) return m
+    for (const c of cards)
+      m.set(
+        c.id,
+        milkFeed({ species, today, sample: milkData[0].get(c.id) ?? null, lastBirth: c.lastBirth, dry: c.dry || milkData[1].has(c.id), expectedBirth: c.expectedBirth, pregnancy: c.pregnancy }, milkFeedSettings),
+      )
+    return m
+  }, [milkFeedOn, milkData, cards, species, today, milkFeedSettings])
   const meatById = useMemo(() => (meatOn || cardFields.includes('meat') ? meatAll : new Map<string, ReturnType<typeof meatValue>>()), [meatAll, meatOn, cardFields])
 
   // Suchfeld: Freitext und Formeln wie «ZZ > 200» (lib/boardQuery.ts), Sortierung nach dem Filter vorschlagen (core/query)
@@ -435,6 +452,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                   groupChoices={col.kind === 'group' && canMove ? [...groups.filter((g) => g.id !== col.id).map((g) => ({ id: g.id as string | null, name: g.name })), ...(col.id ? [{ id: null, name: 'Ohne Gruppe' }] : [])] : undefined}
                   onMoveToGroup={col.kind === 'group' && canMove ? (id) => moveToDraft([c.id], id) : undefined}
                   meat={meatById.get(c.id) ?? null}
+                  milkFeed={milkFeedById.get(c.id) ?? null}
                   meatLimits={meatLimitList}
                   fields={cardFields}
                   pointerDown={pointerDown}
@@ -606,6 +624,12 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             )
           }}
         </SettingsEditor>
+        </div>
+      )}
+
+      {milkFeedOn && (
+        <div className={toolsOpen ? '' : 'hidden sm:block'}>
+          <MilkFeedSettingsPanel moduleKey={moduleKey} species={species} value={milkFeedSettings} />
         </div>
       )}
 
@@ -842,6 +866,7 @@ function ColumnCard({
   groupChoices,
   onMoveToGroup,
   meat,
+  milkFeed,
   meatLimits,
   fields,
   pointerDown,
@@ -862,12 +887,14 @@ function ColumnCard({
   groupChoices?: { id: string | null; name: string }[]
   onMoveToGroup?: (groupId: string | null) => void
   meat?: MeatValue | null
+  milkFeed?: MilkFeed | null
   /** Grenzen im Balken (feste Skala) */
   meatLimits?: MeatLimit[]
   fields?: CardFieldKey[]
   pointerDown: (cardId: string, handle: boolean) => (e: React.PointerEvent) => void
 }) {
   void col
+  const milkFeedSettings = useMilkFeedSettings(moduleKey, speciesOf(moduleKey))
   return (
     <BoardCardView
       card={card}
@@ -886,6 +913,8 @@ function ColumnCard({
       groupChoices={groupChoices}
       onMoveToGroup={onMoveToGroup}
       meat={meat}
+      milkFeed={milkFeed}
+      milkFeedSettings={milkFeedSettings}
       meatLimits={meatLimits}
       fields={fields}
       onDragCard={pointerDown(card.id, false)}

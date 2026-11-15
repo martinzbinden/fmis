@@ -21,6 +21,9 @@ import { ReasonChips } from './AnimalDetail'
 import { animalLabel } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
+import { loadDryAnimalIds } from '../lib/dryOff'
+import { loadMilkSamples, milkFeed, useMilkFeedSettings, type MilkFeed, type MilkFeedSettings } from '../lib/milkFeed'
+import { MilkFeedChip, MilkFeedSettingsPanel } from '../components/MilkFeedChip'
 
 const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: number }[] = [
   { key: 'intervalDays', label: 'Zwischengeburtszeit über (Tage)' },
@@ -65,6 +68,8 @@ interface Row {
   birthDate: string | null
   /** letzte Geburt/Ablammung (Datum) */
   lastBirth: string | null
+  /** Milch gegen Futter bis zur nächsten Geburt (lib/milkFeed.ts) */
+  milkFeed: MilkFeed
 }
 
 /** «2·1·3 (Ø 2.0)» – die letzten vier Würfe, Mittel über alle. */
@@ -97,6 +102,9 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   // Sprung aus der Tier-Info: auch ein Tier ohne Hinweis muss sichtbar sein
   const [showAll, setShowAll] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showMilkFeed, setShowMilkFeed] = useState(false)
+  const milkFeedSettings = useMilkFeedSettings(moduleKey, species)
+  const milkData = useQuery((pg) => Promise.all([loadMilkSamples(pg), loadDryAnimalIds(pg)]), []).data
   const [params, setParams] = useSearchParams()
   // Vorschlag für die nächste Schlachtung ist die Startansicht; der Sprung aus der Tier-Info zeigt die ganze Liste
   const view: 'vorschlag' | 'alle' = params.get('ansicht') === 'alle' || jumpTo ? 'alle' : 'vorschlag'
@@ -146,17 +154,29 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           sex: c.animal.sex,
           birthDate: c.animal.birth_date ? String(c.animal.birth_date).slice(0, 10) : null,
           lastBirth: c.births.map((b) => b.birth_date).sort().at(-1) ?? null,
+          milkFeed: milkFeed(
+            {
+              species,
+              today: todayIso(),
+              sample: milkData?.[0].get(c.animal.id) ?? null,
+              lastBirth: c.fertility.last_birth,
+              dry: milkData?.[1].has(c.animal.id) ?? false,
+              expectedBirth: c.fertility.expected_birth,
+              pregnancy: c.pregnancy,
+            },
+            milkFeedSettings,
+          ),
         }
       })
       .sort((a, b) => b.score - a.score || b.reasons.length - a.reasons.length || a.label.localeCompare(b.label))
-  }, [data, thresholds, species])
+  }, [data, thresholds, species, milkData, milkFeedSettings])
 
   const flagged = rows.filter((r) => r.reasons.some((x) => x.weight > 0))
   const visible = showAll || (jumpTo && !flagged.some((r) => r.id === jumpTo)) ? rows : flagged
   useJumpTo(!!data, jumpTo ? `tier-${jumpTo}` : null)
 
   function exportCsv() {
-    const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Tendenz je Lakt.', 'Trächtigkeit', ...(species === 'sheep' ? ['Würfe', 'Wurfgrösse Ø', 'lebend geboren Ø'] : []), 'Gründe']
+    const header = ['Nr', 'Name/Ohrmarke', 'Ohrmarke', 'Laktation', 'Punkte', 'Zellzahl 12Mt', 'Leistung rel', 'Gesamtzuchtwert', 'Tendenz je Lakt.', 'Trächtigkeit', 'Geburt erwartet', 'Milch bis Geburt kg', 'Milch Fr.', 'Futter Fr.', 'Milch − Futter Fr.', ...(species === 'sheep' ? ['Würfe', 'Wurfgrösse Ø', 'lebend geboren Ø'] : []), 'Gründe']
     const lines = visible.map((r) =>
       [
         r.laufNr,
@@ -169,6 +189,11 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
         r.totalBv,
         r.trend?.slope != null ? Math.round(r.trend.slope * 100) : null,
         r.pregnancy ? `${RESULT_LABEL[r.pregnancy.result]} ${r.pregnancy.date}` : null,
+        r.milkFeed.birth,
+        r.milkFeed.balance == null ? null : Math.round(r.milkFeed.milkKg),
+        r.milkFeed.balance == null ? null : Math.round(r.milkFeed.milkValue),
+        Math.round(r.milkFeed.feedCost),
+        r.milkFeed.balance == null ? null : Math.round(r.milkFeed.balance),
         ...(species === 'sheep'
           ? [r.litter.sizes.join('-') || null, round2(r.litter.mean), round2(r.litter.aliveMean)]
           : []),
@@ -202,6 +227,9 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           <button type="button" onClick={() => setShowSettings((v) => !v)} className="link-btn rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
             ⚙️ Schwellen
           </button>
+          <button type="button" onClick={() => setShowMilkFeed((v) => !v)} aria-expanded={showMilkFeed} className="link-btn rounded border border-gray-300 px-2 py-1 text-xs text-gray-600">
+            🥛−🌾 Milch/Futter
+          </button>
           <button type="button" onClick={exportCsv} className="link-btn hidden rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 sm:inline-flex">
             CSV
           </button>
@@ -220,6 +248,13 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           nicht, ab dem eingestellten Tag gilt eine höhere Grenze, ⚙️ Schwellen). Tendenz: Niveau je Laktation im Vergleich mit den Herdengenossinnen am gleichen Wägungstag (wie unter
           Leistung → Laktationsleistung), ↘ = fällt über die letzten Laktationen. Die Liste entscheidet nichts; sie zeigt,
           wo sich ein genauer Blick lohnt.
+        </p>
+        <p className="mt-1">
+          🥛−🌾 Milch gegen Futter bis zur nächsten {terms.calving}: letzte Wägung dieser Laktation (Milchwägung mal
+          Melkungen pro Tag, oder Milchprüfung) mit monatlichem Rückgang fortgeschrieben bis zum Trockenstellen, mal
+          Milchpreis; davon ab Grundfutter je Tag bis zur Geburt und Kraftfutter je kg Milch. Die Geburt kommt aus der
+          gemeldeten Belegung, sonst aus der Trächtigkeitsuntersuchung (Wochen), sonst aus der Annahme «Belegung in …
+          Tagen». Grün = die Milch deckt das Futter, rot = nicht. Werte unter 🥛−🌾 Milch/Futter.
         </p>
       </details>
 
@@ -257,10 +292,12 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
         </SettingsEditor>
       )}
 
+      {showMilkFeed && <MilkFeedSettingsPanel moduleKey={moduleKey} species={species} value={milkFeedSettings} className="print:hidden" />}
+
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
 
       {view === 'vorschlag' && data && marks && (
-        <CullingPlanView rows={rows} marks={marks} n={planN} onN={setPlanN} valueThreshold={valueThreshold} onValueThreshold={setValueThreshold} species={species} />
+        <CullingPlanView rows={rows} marks={marks} n={planN} onN={setPlanN} valueThreshold={valueThreshold} onValueThreshold={setValueThreshold} species={species} milkFeedSettings={milkFeedSettings} />
       )}
 
       {view === 'alle' && data && (
@@ -291,6 +328,9 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
               {r.performanceRel != null ? ` · Leistung ${Math.round(r.performanceRel * 100)} %` : ''}
               {r.totalBv != null ? ` · ${species === 'sheep' ? 'GZW' : 'ISET'} ${r.totalBv}` : ''}{' '}
               <TrendBadge trend={r.trend} />
+            </div>
+            <div className="mt-1 text-xs">
+              <MilkFeedChip m={r.milkFeed} s={milkFeedSettings} />
             </div>
             {r.reasons.length > 0 && (
               <div className="mt-2">
@@ -355,7 +395,9 @@ function CullingPlanView({
   valueThreshold,
   onValueThreshold,
   species,
+  milkFeedSettings,
 }: {
+  milkFeedSettings: MilkFeedSettings
   rows: Row[]
   marks: Map<string, Mark>
   n: number
@@ -445,6 +487,7 @@ function CullingPlanView({
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
                     <span className={`rounded px-1.5 py-0.5 ${pc.cls}`}>{pc.text}</span>
+                    <MilkFeedChip m={r.milkFeed} s={milkFeedSettings} />
                     <span className="text-gray-500">
                       {r.lactation ? `${r.lactation}. Laktation` : 'noch nicht gemolken'}
                       {r.performanceRel != null ? ` · Leistung ${Math.round(r.performanceRel * 100)} %` : ''}

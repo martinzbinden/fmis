@@ -30,7 +30,8 @@ export const DEFAULT_MEAT_SETTINGS: MeatSettings = {
   lambMaxDays: 420,
   lambKgYoung: 14.5,
   lambKgMid: 14.8,
-  lambKgOld: 13.2,
+  // in den Abrechnungen 2025 kaum ältere Lämmer (13.2 kg); Annahme des Betriebs ab 15.11.2026: 20 kg
+  lambKgOld: 20,
   sheepKgYoung: 19,
   sheepKgOld: 27,
   lambFactor: 0.95,
@@ -126,6 +127,8 @@ export function loadMeatSettings(moduleKey: string): MeatSettings {
         if (raw[k] != null && Number.isFinite(v) && v >= 0) (out as Record<string, unknown>)[k] = v
       }
     }
+    // alte Vorgabe 13.2 kg (aus zu wenigen Abrechnungen) auf die neue heben
+    if (out.lambKgOld === 13.2) out.lambKgOld = DEFAULT_MEAT_SETTINGS.lambKgOld
     return out
   } catch {
     return DEFAULT_MEAT_SETTINGS
