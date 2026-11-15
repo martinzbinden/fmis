@@ -1,4 +1,4 @@
-import { useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { colorOf } from '@fmis/core/filters/filterModel'
 import { areaLabel, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib/board'
@@ -78,7 +78,7 @@ export default function BoardCardView({
       data-card={card.id}
       onPointerDown={onDragCard}
       title={filterNames.length ? filterNames.join(', ') : undefined}
-      className={`rounded-lg border-2 p-2 shadow-sm ${pendingTo ? 'border-dashed border-amber-500 bg-amber-50' : main ? main.card : 'border-gray-200 bg-white'} ${selected ? 'ring-2 ring-brand-700' : ''} ${canDrag ? 'cursor-grab' : ''}`}
+      className={`rounded-lg border-2 p-1.5 shadow-sm sm:p-2 ${pendingTo ? 'border-dashed border-amber-500 bg-amber-50' : main ? main.card : 'border-gray-200 bg-white'} ${selected ? 'ring-2 ring-brand-700' : ''} ${canDrag ? 'cursor-grab' : ''}`}
     >
       <div className="flex items-start gap-1">
         <label className="-m-1 grid h-11 w-9 shrink-0 cursor-pointer place-items-center" data-no-drag>
@@ -89,12 +89,14 @@ export default function BoardCardView({
             <span className="text-lg font-bold leading-tight text-gray-900">{card.laufNr ?? '–'}</span>
             <span className="truncate text-xs text-gray-600">{card.shortTag}</span>
             {card.sex && <span className="text-sm text-gray-700" title={SEX_LABEL[card.sex]}>{SEX_ICON[card.sex]}</span>}
+            {/* am Handy: Alter gleich in der ersten Zeile, die Zeile mit Geschlecht und Geburtsdatum entfällt */}
+            {age && <span className="shrink-0 text-xs text-gray-600 sm:hidden">{age}</span>}
           </span>
-          <span className="block text-xs text-gray-600">
+          <span className="hidden text-xs text-gray-600 sm:block">
             {card.sex ? `${SEX_LABEL[card.sex]} · ` : ''}
             {card.birthDate ? `geb. ${fmtDate(card.birthDate)}${age ? ` (${age})` : ''}` : 'Geburtsdatum unbekannt'}
           </span>
-          <span className="mt-1 flex flex-wrap gap-1 text-[11px] font-medium">
+          <span className="mt-0.5 flex flex-wrap gap-1 text-[11px] font-medium sm:mt-1">
             {pregnant === 'ja' && <span className="rounded bg-sky-100 px-1.5 py-0.5 text-sky-900">trächtig</span>}
             {pregnant === 'nein' && <span className="rounded bg-orange-100 px-1.5 py-0.5 text-orange-900">leer</span>}
             {pregnant === 'unsicher' && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">unsicher</span>}
@@ -111,7 +113,6 @@ export default function BoardCardView({
               </span>
             )}
           </span>
-          {fields.length > 0 && <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} />}
         </button>
         {canDrag && (
           <span
@@ -144,6 +145,13 @@ export default function BoardCardView({
           </button>
         )}
       </div>
+
+      {/* Werte über die ganze Kartenbreite (nicht nur neben Griff und ⇄) */}
+      {fields.length > 0 && (
+        <button type="button" onClick={onToggle} tabIndex={-1} className="block w-full text-left">
+          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} />
+        </button>
+      )}
 
       {picking && onMoveToGroup && groupChoices && (
         <div className="mt-1 flex items-center gap-1" data-no-drag>
@@ -258,7 +266,7 @@ const f0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleStri
 /** Die gewählten Eigenschaften als kompakte Zeilen unter dem Kopf der Karte. */
 function CardProps({ card, fields, meat, meatLimits }: { card: BoardCard; fields: CardFieldKey[]; meat: MeatValue | null; meatLimits?: MeatLimit[] }) {
   const has = (k: CardFieldKey) => fields.includes(k)
-  const line = (label: string, value: string, key: string) => (
+  const line = (label: string, value: ReactNode, key: string) => (
     <div key={key} className="flex justify-between gap-2">
       <span className="text-gray-500">{label}</span>
       <span className="text-right font-medium text-gray-900">{value}</span>
@@ -295,7 +303,23 @@ function CardProps({ card, fields, meat, meatLimits }: { card: BoardCard; fields
     } else rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
   }
   if (has('litter')) rows.push(line('Wurf', card.lastLitterSize == null ? '–' : `letzter ${card.lastLitterSize}${card.litterMean != null ? ` · Ø ${n1(card.litterMean)}` : ''}`, 'litter'))
-  if (has('lambing')) rows.push(line('Ablammung', card.lastBirth ? `${fmtDate(card.lastBirth)}${card.daysSinceBirth != null ? ` (${card.daysSinceBirth} Tage)` : ''}` : '–', 'lambing'))
+  if (has('lambing')) {
+    const b = card.lastBirth
+    const days = card.daysSinceBirth
+    // am Handy kürzer: ohne Jahr im laufenden Jahr, «T.» statt «Tage»
+    const short = b ? `${b.slice(0, 4) === String(new Date().getFullYear()) ? `${b.slice(8, 10)}.${b.slice(5, 7)}.` : fmtDate(b)}${days != null ? ` · ${days} T.` : ''}` : '–'
+    const long = b ? `${fmtDate(b)}${days != null ? ` (${days} Tage)` : ''}` : '–'
+    rows.push(
+      line(
+        'Ablammung',
+        <>
+          <span className="sm:hidden">{short}</span>
+          <span className="hidden sm:inline">{long}</span>
+        </>,
+        'lambing',
+      ),
+    )
+  }
   if (has('weighings')) rows.push(line('Wägungen', card.lastBirth || card.weighings > 0 ? String(card.weighings) : '–', 'weighings'))
   if (has('interval')) rows.push(line('Zwischenablammzeit', card.intervalDays == null ? '–' : `Ø ${card.intervalDays} Tage`, 'interval'))
   if (has('lambMilk')) {

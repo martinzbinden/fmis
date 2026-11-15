@@ -170,6 +170,8 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
 
   // Fleischwert (nur Schafe): geschätzter Schlachterlös je Tier und Summe je Spalte, mit Proviande-Preisen
   const [showLegend, setShowLegend] = useState(false)
+  // Handy: Werkzeuge (Sortieren, Spalten, Einstellungen) aufgeklappt
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [editGroup, setEditGroup] = useState<string | null>(null)
   const [cardFields, setCardFields] = useState<CardFieldKey[]>(() => loadCardFields(moduleKey))
   const [meatOn, setMeatOn] = useState(() => {
@@ -356,7 +358,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         data-col-key={col.key}
         data-stacked={stacked ? '1' : undefined}
         aria-label={col.title}
-        className={`relative shrink-0 snap-start rounded-xl p-2 ${stacked ? 'w-full' : 'w-72'} ${hover === col.key ? 'bg-brand-50 ring-2 ring-brand-700' : 'bg-gray-100'} ${colDrag.drag?.key === col.key ? 'opacity-50' : ''}`}
+        className={`relative shrink-0 snap-start rounded-xl p-2 ${stacked ? 'w-full' : 'w-[calc(100vw-1.5rem)] sm:w-72'} ${hover === col.key ? 'bg-brand-50 ring-2 ring-brand-700' : 'bg-gray-100'} ${colDrag.drag?.key === col.key ? 'opacity-50' : ''}`}
       >
         {dropTarget && <span aria-hidden className={`absolute z-10 rounded bg-brand-700 ${stacked ? 'inset-x-0 h-1' : 'inset-y-0 w-1'} ${dropTarget.after ? (stacked ? '-bottom-1.5' : '-right-2') : stacked ? '-top-1.5' : '-left-2'}`} />}
         <header className={`flex items-center gap-1 ${isCollapsed ? '' : 'mb-2'}`}>
@@ -413,7 +415,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         ) : (
           <>
             {meatOn && species === 'sheep' && list.length > 0 && <ColumnMeatSum values={list.map((c) => meatById.get(c.id) ?? null)} />}
-            <div className="max-h-[calc(100vh-20rem)] min-h-20 space-y-2 overflow-y-auto pr-0.5">
+            <div className="max-h-[calc(100dvh-8rem)] min-h-20 space-y-1.5 overflow-y-auto pr-0.5 sm:max-h-[calc(100vh-20rem)] sm:space-y-2">
               {list.map((c) => (
                 <ColumnCard
                   key={c.id}
@@ -446,17 +448,32 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     )
   }
 
+  // Handy: Kopfzeile beim Hinunterscrollen ausblenden und beim Öffnen gleich zu den Karten (Werkzeuge darüber)
+  useEffect(() => {
+    document.body.dataset.autohideHeader = 'on'
+    return () => {
+      delete document.body.dataset.autohideHeader
+    }
+  }, [])
+  const scrolledToCards = useRef(false)
+  useEffect(() => {
+    if (loading || scrolledToCards.current || window.innerWidth >= 640 || jumpKey) return
+    scrolledToCards.current = true
+    requestAnimationFrame(() => scroller.current?.scrollIntoView({ block: 'start' }))
+  }, [loading, jumpKey])
+
   if (loading) return <p className="p-6 text-center text-gray-500">Lädt…</p>
   if (cards.length === 0) return <p className="p-6 text-center text-gray-600">Keine aktiven {terms.plural}. {terms.importHint}</p>
 
   return (
-    <div className="space-y-3 p-3 pb-40">
+    <div className="space-y-2 p-1.5 pb-40 sm:space-y-3 sm:p-3">
       {/* links: Suchen, Sortieren, Gruppen/Merklisten; rechts oben nur die Einstellungen */}
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="sr-only">Karten</h1>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <QueryInput
-            inputClassName="w-96 max-w-[70vw]"
+            className={`min-w-0 flex-1 sm:flex-none ${toolsOpen ? "basis-full sm:basis-auto" : ""} [&>div:first-child]:min-w-0 [&>div:first-child]:flex-1`}
+            inputClassName="w-full sm:w-96 sm:max-w-[70vw]"
             fields={QUERY_FIELDS}
             value={q.text}
             onChange={q.setText}
@@ -474,6 +491,11 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
               </section>
             }
           />
+          {/* am Handy: Sortieren, Spaltenwahl und Einstellungen hinter «Ansicht», damit die Karten Platz haben */}
+          <button type="button" onClick={() => setToolsOpen((o) => !o)} aria-expanded={toolsOpen} className={`min-h-11 shrink-0 rounded-lg border-2 px-3 text-sm font-semibold sm:hidden ${toolsOpen ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}>
+            ☰ Ansicht
+          </button>
+          <span className={`${toolsOpen ? 'contents' : 'hidden'} sm:contents`}>
           <SortMenu options={SORTS} value={sort} onChange={q.setSort} autoLabel={q.suggestion?.label ?? null} autoOn={q.autoOn} onAutoChange={q.setAutoOn} flash={q.flash} />
           <div role="radiogroup" aria-label="Spalten zeigen" className="flex overflow-hidden rounded-lg border-2 border-gray-300 bg-white text-sm">
             {(
@@ -488,8 +510,9 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
               </button>
             ))}
         </div>
+          </span>
         </div>
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <div className={`ml-auto flex-wrap items-center justify-end gap-2 ${toolsOpen ? 'flex' : 'hidden'} sm:flex`}>
           {species === 'sheep' && (
             <button type="button" onClick={toggleMeat} aria-pressed={meatOn} className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${meatOn ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-300 bg-white'}`}>
               🥩 Fleischwert
@@ -529,6 +552,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
       <QueryChips parsed={q.parsed} />
 
       {meatOn && species === 'sheep' && (
+        <div className={toolsOpen ? '' : 'hidden sm:block'}>
         <SettingsEditor
           value={meatSettings}
           onSave={(v) => {
@@ -582,9 +606,11 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             )
           }}
         </SettingsEditor>
+        </div>
       )}
 
       {cardFields.includes('lambMilk') && species === 'sheep' && (
+        <div className={toolsOpen ? '' : 'hidden sm:block'}>
         <SettingsEditor
           value={lambMilkSettings}
           onSave={(v) => {
@@ -612,9 +638,13 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             )
           }}
         </SettingsEditor>
+        </div>
       )}
 
-      <p className="text-xs text-gray-600">
+      <p className="text-xs text-gray-600 sm:hidden">
+        {shown.length} von {cards.length} {terms.plural}
+      </p>
+      <p className="hidden text-xs text-gray-600 sm:block">
         {shown.length} von {cards.length} {terms.plural} sichtbar. Antippen klappt eine Karte auf, am Griff ⠿ ziehen verschiebt. Spalten: Griff ⠿ im Kopf ordnet um, ▾ klappt ein (gestapelt).
       </p>
 
@@ -636,12 +666,12 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         />
       )}
 
-      <div ref={scroller} className="flex snap-x items-start gap-3 overflow-x-auto pb-4">
+      <div ref={scroller} className="flex snap-x snap-mandatory items-start gap-2 overflow-x-auto pb-4 sm:snap-proximity sm:gap-3">
         {buildLanes(visibleColumns, collapsed).map((lane) =>
           lane.kind === 'column' ? (
             renderColumn(lane.col, false)
           ) : (
-            <div key={`stack:${lane.cols.map((c) => c.key).join('+')}`} className="w-64 shrink-0 snap-start space-y-2">
+            <div key={`stack:${lane.cols.map((c) => c.key).join('+')}`} className="w-[calc(100vw-1.5rem)] shrink-0 snap-start space-y-2 sm:w-64">
               {lane.cols.map((c) => renderColumn(c, true))}
             </div>
           ),
@@ -758,20 +788,26 @@ function ColumnMeatSum({ values }: { values: (MeatValue | null)[] }) {
   const fr = (v: number) => Math.round(v).toLocaleString('de-CH')
   const total = MEAT_BANDS.reduce((t, b) => t + Math.max(0, sum.byBand[b].net), 0)
   const used = MEAT_BANDS.filter((b) => sum.byBand[b].n > 0)
+  // am Handy nur Summe und Balken in einer Zeile; die Aufteilung klappt per Tipp auf
+  const [open, setOpen] = useState(false)
   return (
-    <div className="mb-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-950" aria-label="Fleischwert der Spalte">
-      <div className="text-sm font-bold">≈ {fr(sum.net)} Fr.</div>
+    <div className="mb-1.5 rounded-lg bg-emerald-50 px-2 py-1 text-xs text-emerald-950 sm:mb-2 sm:py-1.5" aria-label="Fleischwert der Spalte">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-2 text-left sm:pointer-events-none sm:block">
+      <span className="shrink-0 text-sm font-bold sm:block">≈ {fr(sum.net)} Fr.</span>
       {total > 0 && (
-        <div
+        <span
           role="img"
           aria-label={`Fleischwert nach Bereich: ${used.map((b) => `${MEAT_BAND_LABEL[b]} ${sum.byBand[b].n} Tiere, ${fr(sum.byBand[b].net)} Fr.`).join('; ')}`}
-          className="my-1 flex h-3 w-full overflow-hidden rounded-full bg-white ring-1 ring-emerald-200"
+          className="flex h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-white ring-1 ring-emerald-200 sm:my-1 sm:w-full"
         >
           {used.map((b) => (
             <span key={b} className={`${MEAT_BAND_BAR[b]} h-full`} style={{ width: `${(Math.max(0, sum.byBand[b].net) / total) * 100}%` }} title={`${MEAT_BAND_LABEL[b]}: ${sum.byBand[b].n} Tiere, ${fr(sum.byBand[b].net)} Fr.`} />
           ))}
-        </div>
+        </span>
       )}
+      <span className="shrink-0 text-emerald-800 sm:hidden" aria-hidden>{open ? '▴' : '▾'}</span>
+      </button>
+      <div className={open ? 'mt-1' : 'hidden sm:block'}>
       <ul className="space-y-0.5">
         {used.map((b) => (
           <li key={b} className="flex items-center gap-1.5">
@@ -783,6 +819,7 @@ function ColumnMeatSum({ values }: { values: (MeatValue | null)[] }) {
       </ul>
       <div className="mt-0.5 text-[11px] text-emerald-900">
         {sum.unknown > 0 ? `${sum.unknown} ohne Geburtsdatum · ` : ''}vor Abzügen {fr(sum.gross)} Fr.
+      </div>
       </div>
     </div>
   )
