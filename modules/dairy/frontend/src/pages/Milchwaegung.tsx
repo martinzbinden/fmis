@@ -727,6 +727,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
               ref={manualRef}
               type="text"
               placeholder="Manuell: Laufnummer, Ohrmarke oder Name"
+              aria-label="Tier von Hand aufnehmen: Laufnummer, Ohrmarke oder Name"
               value={manualInput}
               inputMode={abc ? 'text' : 'numeric'}
               autoComplete="off"

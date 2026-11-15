@@ -38,6 +38,24 @@ export interface SyncClient {
   getPendingCount(): number
   /** Zähler neu aus der Outbox lesen (meldet sich nur bei Änderung). */
   refreshPending(): Promise<void>
+  /** Kennzahlen seit dem Öffnen der App, für die Status-Anzeige (core SyncStatusPanel.tsx). */
+  getStats(): SyncStats
+}
+
+export interface SyncStats {
+  moduleKey: string
+  /** letzter erfolgreicher Abgleich (ms seit 1970), null = seit dem Öffnen noch keiner */
+  lastOkAt: number | null
+  /** Dauer des letzten Abgleichs */
+  lastDurationMs: number | null
+  /** Abgleiche und Fehlschläge seit dem Öffnen */
+  runs: number
+  failures: number
+  /** übertragene Zeichen (unkomprimiert) und Zeilen seit dem Öffnen */
+  bytesDown: number
+  bytesUp: number
+  rowsDown: number
+  rowsUp: number
 }
 
 function authHeaders(): Record<string, string> {
@@ -150,6 +168,7 @@ export function createSyncClient(
   let status: SyncStatus = navigator.onLine ? 'synced' : 'offline'
   let lastError: string | null = null
   let pending = 0
+  const stats: SyncStats = { moduleKey, lastOkAt: null, lastDurationMs: null, runs: 0, failures: 0, bytesDown: 0, bytesUp: 0, rowsDown: 0, rowsUp: 0 }
   const listeners = new Set<() => void>()
 
   function setStatus(next: SyncStatus, error?: string) {
@@ -219,10 +238,11 @@ export function createSyncClient(
       })
     }
 
+    const pushBody = JSON.stringify({ tables: payload })
     const res = await fetchWithin(PUSH_TIMEOUT_MS, `${base}/push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ tables: payload }),
+      body: pushBody,
     })
     if (!res.ok) {
       handleUnauthorized(res)
@@ -239,6 +259,8 @@ export function createSyncClient(
     // Nur genau die gesendeten Stände quittieren (siehe outbox.ts)
     // (Zeilen unbekannter Tabellen wurden nicht gesendet und bleiben stehen.)
     await clearSent(pg, outbox.filter((e) => syncTables[e.table]), rejected)
+    stats.bytesUp += pushBody.length
+    stats.rowsUp += Object.values(payload).reduce((n, rows) => n + rows.length, 0)
     // Nach Ablauf der Korrekturfrist oder ohne Recht abgelehnt: Änderung auf dem Gerät zurücknehmen
     const reverted = await revertRejected(pg, rejected, syncTables)
     if (reverted.length > 0) {
@@ -264,11 +286,16 @@ export function createSyncClient(
       handleUnauthorized(res)
       throw new Error(failureText('Pull', res.status))
     }
-    const data = (await res.json().catch(() => null)) as {
-      server_time: string
-      tables: Record<string, Record<string, unknown>[]>
-    } | null
+    const pullText = await res.text().catch(() => '')
+    let data: { server_time: string; tables: Record<string, Record<string, unknown>[]> } | null = null
+    try {
+      data = JSON.parse(pullText)
+    } catch {
+      data = null
+    }
     if (!data || typeof data.server_time !== 'string' || !data.tables) throw new Error(UNREACHABLE)
+    stats.bytesDown += pullText.length
+    stats.rowsDown += Object.values(data.tables).reduce((n, rows) => n + (rows?.length ?? 0), 0)
 
     // Alles in EINER Transaktion: ausserhalb einer Transaktion committet
     // pglite jede Query einzeln nach IndexedDB — bei einem Erst-Pull mit
@@ -353,13 +380,18 @@ export function createSyncClient(
       return []
     }
     setStatus('syncing')
+    const startedAt = Date.now()
+    stats.runs++
     try {
       const rejected = await push()
       await pull()
+      stats.lastOkAt = Date.now()
+      stats.lastDurationMs = stats.lastOkAt - startedAt
       if (rejected.length > 0) setStatus('error', describeRejected(rejected))
       else setStatus('synced')
       return rejected
     } catch (err) {
+      stats.failures++
       console.error(`Sync fehlgeschlagen (${moduleKey})`, err)
       setStatus('error', errorText(err))
       return []
@@ -395,6 +427,7 @@ export function createSyncClient(
     getSyncError: () => lastError,
     getPendingCount: () => pending,
     refreshPending,
+    getStats: () => ({ ...stats }),
   }
   registry.set(moduleKey, client)
   return client
@@ -402,6 +435,9 @@ export function createSyncClient(
 
 /** Alle Sync-Clients nach Modul-Instanz (= Schema, siehe core db.ts schemaOf). */
 const registry = new Map<string, SyncClient>()
+
+/** Alle Sync-Clients, die in dieser Sitzung angelegt wurden (Module, die geöffnet oder gestartet sind). */
+export const allSyncClients = (): SyncClient[] => [...registry.values()]
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
 /** Nach dem Speichern: kurz danach senden, statt bis zu 60 s auf den Takt zu

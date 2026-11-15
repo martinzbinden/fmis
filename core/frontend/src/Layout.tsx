@@ -68,6 +68,10 @@ export default function Layout({
     <div data-module={moduleKey} className="flex min-h-screen flex-col bg-gray-50">
       {/* Am Handy (375 px) muss alles in eine Zeile passen: Titel kürzt sich, Abmelden
           gibt es dort auf der Übersicht (🏠) statt hier. */}
+      {/* Tastatur: über Kopfzeile und Menü direkt zum Inhalt (erscheint erst beim ersten Tab) */}
+      <a href="#inhalt" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-3 focus:font-semibold focus:text-brand-800 focus:shadow-lg">
+        Zum Inhalt springen
+      </a>
       <header className={`sticky top-0 z-20 flex items-center transition-transform duration-200 ${headerHidden ? '-translate-y-full' : ''} justify-between gap-1 border-b bg-white px-2 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))] sm:px-3`}>
         <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           <NavLink to="/dashboard" className="grid min-h-12 min-w-12 shrink-0 place-items-center rounded-full text-xl active:bg-gray-100" title="Zur Übersicht" aria-label="Zur Übersicht">
@@ -76,7 +80,7 @@ export default function Layout({
           {/* Modul klein (führt zu dessen Startseite), darunter die Seite — auch
               nach einem Link aus einer anderen Seite sieht man, wo man ist */}
           <div className="min-w-0 leading-tight">
-            <NavLink to={`/${moduleKey}`} end className="block truncate text-xs font-semibold text-brand-700">
+            <NavLink to={`/${moduleKey}`} end className="-my-1.5 block truncate py-1.5 text-xs font-semibold text-brand-700">
               {title}
             </NavLink>
             <span className="block truncate text-base font-bold text-gray-800">{page ?? title}</span>
@@ -121,7 +125,9 @@ export default function Layout({
       </header>
 
       {/* Ab Desktop-Breite (lg) steht das Menü links statt unten, unter der Kopfzeile (57 px) */}
-      <main className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] lg:pl-52">{children}</main>
+      <main id="inhalt" tabIndex={-1} className="flex-1 pb-[calc(5rem+env(safe-area-inset-bottom,0px))] outline-none lg:pl-52">
+        {children}
+      </main>
 
       <div className="fixed bottom-0 left-0 right-0 z-20 lg:left-52">
         {/* «Gespeichert · Rückgängig» nach jeder Eingabe (core/undo.ts) */}

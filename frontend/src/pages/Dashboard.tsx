@@ -43,7 +43,7 @@ export default function Dashboard({
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white px-4 py-3">
-        <span className="text-lg font-bold text-brand-800">FMIS</span>
+        <h1 className="text-lg font-bold text-brand-800">FMIS</h1>
         <div className="flex items-center gap-1">
           {modules.flatMap((m) => (m.quickLinks ?? []).map((l) => <QuickLinkIcon key={`${m.key}-${l.to}`} link={l} />))}
           {canImport && (

@@ -130,6 +130,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
 
   return (
     <div className={`mx-auto flex max-w-lg flex-col gap-2 p-3 ${embedded ? '' : 'pb-24'}`}>
+      {!embedded && !ctx && <h1 className="sr-only">Tier-Info</h1>}
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <input

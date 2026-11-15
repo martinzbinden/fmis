@@ -1,5 +1,7 @@
-import { notifyError } from './toast'
+import { useState } from 'react'
 import type { SyncStatus } from './sync'
+import SyncStatusPanel from './SyncStatusPanel'
+import { cachedModules } from './modulesApi'
 
 const COLORS: Record<SyncStatus, string> = {
   synced: 'bg-green-500',
@@ -29,11 +31,12 @@ export default function SyncStatusDot({
   pending?: number
   onSync: () => void
 }) {
+  // Antippen gleicht ab (wie bisher) und öffnet die Status-Anzeige: Abgleich je Modul mit Fehlertext, Dienste,
+  // Speicher, Programmversion (SyncStatusPanel.tsx)
+  const [panel, setPanel] = useState(false)
   function handleClick() {
-    // Auf dem Handy gibt es keinen Hover für den title-Tooltip — bei Fehler
-    // also zusätzlich direkt anzeigen, bevor erneut synchronisiert wird.
-    if (status === 'error' && error) notifyError(error)
     onSync()
+    setPanel(true)
   }
 
   const open = pending > 0
@@ -43,11 +46,13 @@ export default function SyncStatusDot({
   const tooltip = error ?? (open ? `${pending} Änderung${pending === 1 ? '' : 'en'} noch nicht auf dem Server` : label)
 
   return (
+    <>
     <button
       type="button"
       onClick={handleClick}
       title={tooltip}
-      aria-label={`${label}. Tippen zum Synchronisieren.`}
+      aria-label={`${label}. Abgleichen und Status anzeigen.`}
+      aria-haspopup="dialog"
       className="flex min-h-12 min-w-12 items-center justify-center gap-2 rounded-full px-3 text-xs font-medium text-gray-700 active:bg-gray-100"
     >
       <span className={`h-3 w-3 shrink-0 rounded-full ${COLORS[status]}`} />
@@ -55,5 +60,7 @@ export default function SyncStatusDot({
         {label}
       </span>
     </button>
+    {panel && <SyncStatusPanel onClose={() => setPanel(false)} titles={Object.fromEntries((cachedModules() ?? []).map((m) => [m.key, m.title]))} />}
+    </>
   )
 }

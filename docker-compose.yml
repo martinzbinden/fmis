@@ -120,6 +120,9 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_API_URL: ""
+        # Programmversion für die Status-Anzeige (setzt tools/deploy/fmis-deploy.sh; lokal leer)
+        VITE_FMIS_COMMIT: ${FMIS_COMMIT:-}
+        VITE_FMIS_COMMIT_DATE: ${FMIS_COMMIT_DATE:-}
     networks:
       - web-netzwerk
     labels:

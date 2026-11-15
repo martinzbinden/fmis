@@ -160,13 +160,13 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
             ab {WEAN_FROM_DAYS} Tagen
           </button>
           {(['', 'w', 'm'] as const).map((s) => (
-            <button key={s || 'x'} type="button" onClick={() => setSex(s)} className={chip(sex === s)}>
+            <button key={s || 'x'} type="button" onClick={() => setSex(s)} aria-pressed={sex === s} aria-label={s === '' ? 'beide Geschlechter' : s === 'w' ? 'nur weibliche' : 'nur männliche'} className={chip(sex === s)}>
               {s === '' ? '♀♂' : s === 'w' ? '♀' : '♂'}
             </button>
           ))}
         </div>
         <div className="flex flex-wrap gap-2">
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Suche: Nummer, Ohrmarke, Mutter" className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base" />
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Suche: Nummer, Ohrmarke, Mutter" aria-label="Lämmer suchen: Nummer, Ohrmarke, Mutter" className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base" />
           {groupNames.length > 0 && (
             <select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Tiergruppe" className="min-h-11 rounded-lg border border-gray-300 bg-white px-2 text-sm">
               <option value="">alle Tiergruppen</option>
@@ -226,7 +226,7 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
                       </span>
                     </span>
                     {l.animalId && (
-                      <Link to={`../tiere/${l.animalId}`} relative="path" onClick={(e) => e.stopPropagation()} className="flex min-h-11 items-center px-1 text-brand-700" aria-label="Zum Tier">
+                      <Link to={`../tiere/${l.animalId}`} relative="path" onClick={(e) => e.stopPropagation()} className="flex min-h-11 min-w-11 items-center justify-center text-xl text-brand-700" aria-label="Zum Tier">
                         ›
                       </Link>
                     )}

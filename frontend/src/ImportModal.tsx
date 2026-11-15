@@ -19,7 +19,27 @@ export default function ImportModal({ modules }: { modules: ModuleDescriptor[] }
 
   useEffect(() => {
     if (!open) return
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && closeImport()
+    // Fokus: beim Schliessen zurück zum Knopf, der geöffnet hat; Tab bleibt im Fenster
+    const previous = document.activeElement as HTMLElement | null
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') return closeImport()
+      if (e.key !== 'Tab' || !panel.current) return
+      const items = [...panel.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select, textarea, summary')].filter((x) => x.offsetParent !== null)
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (!panel.current.contains(active)) {
+        e.preventDefault()
+        first.focus()
+      } else if (e.shiftKey && (active === first || active === panel.current)) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
     window.addEventListener('keydown', key)
     // Seite dahinter nicht mitscrollen
     const overflow = document.body.style.overflow
@@ -28,6 +48,7 @@ export default function ImportModal({ modules }: { modules: ModuleDescriptor[] }
     return () => {
       window.removeEventListener('keydown', key)
       document.body.style.overflow = overflow
+      if (previous && document.contains(previous)) previous.focus({ preventScroll: true })
     }
   }, [open])
 

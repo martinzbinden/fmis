@@ -34,6 +34,10 @@ COPY modules/bau/schema ./modules/bau/schema
 # Leer = same-origin (Frontend+Backend hinter Traefik unter derselben Domain).
 ARG VITE_API_URL=
 ENV VITE_API_URL=$VITE_API_URL
+# Programmversion (Commit, Commit-Zeit) für die Status-Anzeige; die Bauzeit setzt vite.config.ts
+ARG VITE_FMIS_COMMIT=
+ARG VITE_FMIS_COMMIT_DATE=
+ENV VITE_FMIS_COMMIT=$VITE_FMIS_COMMIT VITE_FMIS_COMMIT_DATE=$VITE_FMIS_COMMIT_DATE
 WORKDIR /app/frontend
 RUN npm run build
 

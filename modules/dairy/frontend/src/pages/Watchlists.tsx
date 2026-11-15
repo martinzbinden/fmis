@@ -78,7 +78,7 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
           void create()
         }}
       >
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Neue Merkliste, z.B. Klauen schneiden" className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Neue Merkliste, z.B. Klauen schneiden" aria-label="Name der neuen Merkliste" className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 text-base" />
         <button type="submit" disabled={!name.trim()} className="min-h-11 shrink-0 rounded-lg bg-brand-700 px-4 font-semibold text-white disabled:opacity-40">
           Anlegen
         </button>

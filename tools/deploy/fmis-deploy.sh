@@ -37,7 +37,13 @@ main() {
     exit 1
   }
   # im Projektverzeichnis: dort liegen .env (Projektname, COMPOSE_FILE) und die Compose-Dateien
-  dc_in() { (cd "$1" && shift && docker compose "$@"); }
+  # Commit und Commit-Zeit des Projektverzeichnisses gehen in den Build (Status-Anzeige beim Sync-Punkt)
+  dc_in() {
+    (cd "$1" && shift &&
+      FMIS_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)" \
+        FMIS_COMMIT_DATE="$(git log -1 --format=%cI 2>/dev/null || true)" \
+        docker compose "$@")
+  }
   dc_prod() { dc_in "$PROD_DIR" "$@"; }
   dc_dev() { dc_in "$DEV_DIR" "$@"; }
   now_iso() { date -Iseconds; }

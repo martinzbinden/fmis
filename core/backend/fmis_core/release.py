@@ -17,6 +17,7 @@ Dateien im Briefkasten (schreibt das Skript auf dem Host, ausser angefordert.jso
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .auth import CurrentUser, require_permission
+from .auth import CurrentUser, require_auth, require_permission
+from .db import get_pool
 
 router = APIRouter()
 INSTANZ = os.environ.get("FMIS_INSTANZ", "").strip() or None
@@ -53,6 +55,33 @@ def datenstand() -> str | None:
 async def instance() -> dict[str, Any]:
     """Ohne Anmeldung: welche Instanz, welcher Datenstand. Prod: beides leer."""
     return {"instanz": INSTANZ, "datenstand": datenstand()}
+
+
+# Die Programmversion steht bewusst NICHT hier: als Umgebungswert würde sie den Server bei jedem Deploy neu
+# starten (auch bei reinen Frontend-Änderungen, mitten in einer Milchwägung). Sie steckt im Frontend-Build
+# (version.json, frontend/vite.config.ts).
+STARTED_AT = datetime.now(timezone.utc)
+_pool = get_pool("public")
+
+
+@router.get("/core/status")
+async def status(user: CurrentUser = Depends(require_auth)) -> dict[str, Any]:
+    """Zustand der Dienste für die Status-Anzeige beim Sync-Punkt: Server (läuft seit),
+    Datenbank (erreichbar, Antwortzeit, Grösse). Keine Betriebsdaten."""
+    t0 = time.perf_counter()
+    db: dict[str, Any]
+    try:
+        async with _pool.connection() as conn:
+            row = await (await conn.execute("select pg_database_size(current_database())")).fetchone()
+        db = {"ok": True, "ms": round((time.perf_counter() - t0) * 1000), "size_bytes": int(row[0]) if row else None}
+    except Exception as exc:  # die Anzeige soll auch dann antworten
+        db = {"ok": False, "fehler": type(exc).__name__}
+    return {
+        "server_time": datetime.now(timezone.utc).isoformat(),
+        "started_at": STARTED_AT.isoformat(),
+        "instanz": INSTANZ or None,
+        "db": db,
+    }
 
 
 @router.get("/admin/release")

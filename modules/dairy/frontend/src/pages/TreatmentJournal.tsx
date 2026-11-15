@@ -392,7 +392,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <select value={period} onChange={(e) => setPeriod(e.target.value)} className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
+        <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Zeitraum" className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
           <option value="12m">letzte 12 Monate</option>
           {years.map((y) => (
             <option key={y} value={y}>
@@ -401,7 +401,7 @@ export default function TreatmentJournal({ moduleKey }: { moduleKey: string }) {
           ))}
           <option value="alle">alle</option>
         </select>
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tier, Befund, Präparat" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Tier, Befund, Präparat" aria-label="Suchen: Tier, Befund, Präparat" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
         <span className="text-xs text-gray-500">{shown.length} Fälle</span>
       </div>
 

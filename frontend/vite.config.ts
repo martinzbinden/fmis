@@ -3,6 +3,14 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Bauzeit für die Status-Anzeige (core/frontend/src/SyncStatusPanel.tsx); Commit kommt vom Deploy
+process.env.VITE_BUILD_TIME ??= new Date().toISOString()
+const VERSION = {
+  commit: process.env.VITE_FMIS_COMMIT || null,
+  commit_date: process.env.VITE_FMIS_COMMIT_DATE || null,
+  build_time: process.env.VITE_BUILD_TIME,
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   resolve: {
@@ -22,6 +30,14 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    // version.json neben der App: die Status-Anzeige vergleicht damit, ob auf dem Server schon eine neuere
+    // Fassung liegt als die, die im Browser läuft (nicht im Service-Worker-Cache, siehe globPatterns)
+    {
+      name: 'fmis-version',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify(VERSION) })
+      },
+    },
     VitePWA({
       registerType: 'autoUpdate',
       // Eigene Registrierung (src/UpdatePrompt.tsx) statt des injizierten
