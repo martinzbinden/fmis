@@ -9,6 +9,7 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey } from '@fmis/core/earTag'
 import { writeImportRow } from './importMerge'
+import { isoDate } from './format'
 
 export interface ParentRef {
   key: string
@@ -24,6 +25,16 @@ export interface ParentageRow {
   sex: 'w' | 'm' | null
   sire: ParentRef | null
   dam: ParentRef | null
+  /** Laufnummer in der Herde (SMG-Tierliste Spalte «Nr.»), null = keine */
+  lauf_nr?: string | null
+}
+
+/** «417», 417 oder 417.0 → "417"; leer → null. */
+export function laufNrOf(v: unknown): string | null {
+  if (v == null) return null
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? String(v) : null
+  const t = String(v).trim().replace(/\.0+$/, '')
+  return t || null
 }
 
 /** "9000.0050 EUGEN" → Ohrmarke + Name; "9000.0100 " → nur Ohrmarke. */
@@ -62,10 +73,11 @@ export function parseSmgAnimalList(rows: Record<string, unknown>[]): ParentageRo
       key,
       ear_tag: key,
       name: String(r['Name'] ?? '').trim() || null,
-      birth_date: isoFromSwiss(r['Geb.-Dat']),
+      birth_date: isoFromSwiss(r['Geb.-Dat.'] ?? r['Geb.-Dat']),
       sex: sex === 'F' || sex === 'W' ? 'w' : sex === 'M' ? 'm' : null,
       sire: parseParentCell(r['Vater']),
       dam: parseParentCell(r['Mutter']),
+      lauf_nr: laufNrOf(r['Nr.']),
     })
   }
   return out
@@ -112,4 +124,40 @@ export async function importParentage(pg: PGlite, rows: ParentageRow[]): Promise
     }
   }
   return { filled, withParents: rows.filter((r) => r.dam || r.sire).length }
+}
+
+/** Laufnummern aus der SMG-Tierliste übernehmen (Spalte «Nr.»). Nur für Tiere, die es schon gibt; eine leere Nummer
+ * überschreibt nie eine bestehende. Hält ein anderes Tier die Nummer (und bekommt nicht selbst eine neue), wird sie
+ * nicht vergeben: Rückmeldung in `conflicts`. */
+export async function importLaufNr(pg: PGlite, rows: ParentageRow[]): Promise<{ changed: number; conflicts: string[] }> {
+  const { rows: animals } = await pg.query<Record<string, unknown> & { id: string; ear_tag: string; lauf_nr: string | null }>(
+    'select * from animals where deleted_at is null',
+  )
+  const byKey = new Map(animals.flatMap((a) => (animalKey(a.ear_tag) ? [[animalKey(a.ear_tag)!, a] as const] : [])))
+  const wanted = new Map<string, string>() // Tier-ID → neue Nummer
+  for (const r of rows) {
+    const a = r.lauf_nr ? byKey.get(r.key) : undefined
+    if (a && r.lauf_nr) wanted.set(a.id, r.lauf_nr)
+  }
+  // Nummer nach dem Import: neue, sonst die bisherige
+  const finalNr = (a: { id: string; lauf_nr: string | null }) => wanted.get(a.id) ?? a.lauf_nr ?? null
+  const holders = new Map<string, string[]>()
+  for (const a of animals) {
+    if (a.status !== 'aktiv') continue
+    const n = finalNr(a)
+    if (n) holders.set(n, [...(holders.get(n) ?? []), a.id])
+  }
+  let changed = 0
+  const conflicts: string[] = []
+  for (const a of animals) {
+    const n = wanted.get(a.id)
+    if (!n || n === a.lauf_nr) continue
+    if ((holders.get(n) ?? []).some((id) => id !== a.id)) {
+      conflicts.push(`Laufnummer ${n} für ${a.ear_tag} nicht übernommen: schon bei einem anderen Tier`)
+      continue
+    }
+    const row = { ...a, id: a.id, lauf_nr: n, birth_date: isoDate(a.birth_date), entry_date: isoDate(a.entry_date), exit_date: isoDate(a.exit_date) }
+    if (await writeImportRow(pg, 'animals', row as never, a)) changed++
+  }
+  return { changed, conflicts }
 }
