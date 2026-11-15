@@ -220,6 +220,17 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
 
   // anderer Tag: wieder der neuesten Bank folgen
   useEffect(() => setPickedBankId(null), [date])
+  // Abgeschlossene Bänke sind gesperrt (nur ansehen); «Korrigieren» schaltet eine frei, bis zum Wechsel der Bank
+  const [unlockedBankId, setUnlockedBankId] = useState<string | null>(null)
+  useEffect(() => setUnlockedBankId(null), [date, shownBank?.bank.id])
+  const locked = !!shownBank?.bank.closed_at && unlockedBankId !== shownBank.bank.id
+  // ganzer Tag abgeschlossen: es gibt Bänke, aber keine offene mehr
+  const dayClosed = banks.length > 0 && !openBank
+  const [confirmClose, setConfirmClose] = useState(false)
+  const daySlots = banks.flatMap((b) => b.slots.map((sl) => ({ bank: b.bank.bank_number, slot: sl })))
+  const dayWeighed = daySlots.filter((x) => x.slot.milk_kg != null && Number(x.slot.milk_kg) > 0)
+  const dayMissing = daySlots.filter((x) => !(x.slot.milk_kg != null && Number(x.slot.milk_kg) > 0))
+  const dayTotal = Math.round(dayWeighed.reduce((t, x) => t + Number(x.slot.milk_kg), 0) * 10) / 10
 
   useEffect(() => {
     api<{ enabled: boolean }>(`/${moduleKey}/reader/status`)
@@ -316,6 +327,25 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
         await syncClient.syncNow()
       }
       setPickedBankId(null)
+    })
+
+  /** Wägung des Tages abschliessen: offene Bank schliessen, Leser trennen. Danach ist alles gesperrt. */
+  const closeDay = () =>
+    run(async () => {
+      if (session?.active) setSession(await api<SessionState>(`/${moduleKey}/reader/session/stop`, 'POST'))
+      if (openBank) await upsertRow(pg, 'milking_banks', { ...openBank.bank, closed_at: new Date().toISOString() })
+      setConfirmClose(false)
+      setPickedBankId(null)
+      refresh()
+      await syncClient.syncNow()
+    })
+  /** Abgeschlossene Wägung wieder öffnen: die letzte Bank wird wieder offen. */
+  const reopenDay = () =>
+    run(async () => {
+      if (latestBank) await upsertRow(pg, 'milking_banks', { ...latestBank.bank, closed_at: null })
+      setPickedBankId(null)
+      refresh()
+      await syncClient.syncNow()
     })
 
   const fetchRecent = () =>
@@ -644,10 +674,21 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       <div className="flex items-baseline gap-2">
         <h2 className="text-lg font-bold text-gray-800">{shownBank ? `Bank ${shownBank.bank.bank_number}` : 'Keine Bank'}</h2>
         {shownBank && !shownBank.bank.closed_at && <span className="rounded bg-green-100 px-1.5 py-0.5 text-xs font-semibold text-green-800">offen</span>}
+        {shownBank?.bank.closed_at && (locked ? <span className="rounded bg-gray-200 px-1.5 py-0.5 text-xs font-semibold text-gray-700">🔒 abgeschlossen</span> : <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900">✏️ Korrektur</span>)}
         {shownBank && (
           <span className="text-sm text-gray-600">
             {shownBank.slots.filter((s) => s.milk_kg != null && Number(s.milk_kg) > 0).length}/{shownBank.slots.length} gewogen · {shownBank.bank.capacity} Plätze
           </span>
+        )}
+        {shownBank?.bank.closed_at && canWrite && (
+          <button
+            type="button"
+            onClick={() => setUnlockedBankId(locked ? shownBank.bank.id : null)}
+            className={`ml-auto min-h-9 rounded-lg border px-2.5 text-sm font-medium ${locked ? 'border-gray-300 bg-white text-gray-700' : 'border-amber-500 bg-amber-50 text-amber-900'}`}
+            title={locked ? 'Abgeschlossene Bank zum Korrigieren freigeben' : 'Wieder sperren'}
+          >
+            {locked ? '✏️ Korrigieren' : '🔒 Sperren'}
+          </button>
         )}
       </div>
       {shownBank && shownBank.slots.length === 0 && !shownBank.bank.closed_at && canWrite && readerEnabled && (
@@ -664,7 +705,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       )}
       {!autoFetch && autoNote && <p className="text-xs text-gray-600">{autoNote}</p>}
       {shownBank ? (
-        <BankTable key={shownBank.bank.id} bank={shownBank} terms={terms} canWrite={canWrite} onChanged={onChanged} milking={milking} />
+        <BankTable key={shownBank.bank.id} bank={shownBank} terms={terms} canWrite={canWrite && !locked} onChanged={onChanged} milking={milking} />
       ) : (
         <p className="text-center text-sm text-gray-500">
           {session?.active ? 'Warte auf die erste Lesung…' : 'Leser verbinden, Ohrmarken holen oder unten manuell aufnehmen.'}
@@ -672,7 +713,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
       )}
       </section>
 
-      {canWrite && (
+      {canWrite && !dayClosed && (
         <form
           className="relative"
           onSubmit={(e) => {
@@ -778,9 +819,57 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           banks={banks.map((b) => ({ id: b.bank.id, number: b.bank.bank_number }))}
           selectedId={shownBank?.bank.id ?? null}
           onSelect={(id) => setPickedBankId(id === currentBank?.bank.id ? null : id)}
-          onNew={canWrite ? () => void nextBank() : undefined}
+          onNew={canWrite && !dayClosed ? () => void nextBank() : undefined}
           busy={busy}
         />
+      )}
+
+      {/* Abschluss der Wägung: Übersicht, fehlende kg, danach alles gesperrt */}
+      {dayClosed ? (
+        <section className="space-y-2 rounded-xl border-2 border-green-600 bg-green-50 p-3">
+          <p className="font-semibold text-green-900">✓ Milchwägung vom {fmtDate(date)} abgeschlossen</p>
+          <p className="text-sm text-green-900">
+            {dayWeighed.length} von {daySlots.length} Tieren gewogen, zusammen {dayTotal.toLocaleString('de-CH')} kg
+            {dayWeighed.length > 0 ? ` (Ø ${(dayTotal / dayWeighed.length).toFixed(2)} kg)` : ''}. Alle Bänke sind gesperrt; einzelne lassen sich mit «✏️ Korrigieren» freigeben.
+          </p>
+          {canWrite && (
+            <button type="button" disabled={busy} onClick={() => void reopenDay()} className="min-h-11 rounded-lg border border-gray-400 bg-white px-3 text-sm font-medium text-gray-800 disabled:opacity-50">
+              Wägung wieder öffnen
+            </button>
+          )}
+        </section>
+      ) : (
+        canWrite &&
+        openBank && (
+          <section className="space-y-2">
+            {!confirmClose ? (
+              <button type="button" disabled={busy} onClick={() => setConfirmClose(true)} className="min-h-14 w-full rounded-xl border-2 border-green-700 bg-white text-lg font-bold text-green-800 active:bg-green-50 disabled:opacity-50">
+                ✓ Wägung abschliessen
+              </button>
+            ) : (
+              <div className="space-y-2 rounded-xl border-2 border-green-700 bg-white p-3">
+                <p className="font-semibold text-gray-900">Wägung vom {fmtDate(date)} abschliessen?</p>
+                <p className="text-sm text-gray-700">
+                  {dayWeighed.length} von {daySlots.length} Tieren gewogen, zusammen {dayTotal.toLocaleString('de-CH')} kg.
+                  {session?.active ? ' Der Leser wird getrennt.' : ''} Danach sind alle Bänke gesperrt.
+                </p>
+                {dayMissing.length > 0 && (
+                  <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">
+                    Ohne kg: {dayMissing.map((x) => `Bank ${x.bank} Platz ${x.slot.position} (${x.slot.animal?.lauf_nr ?? x.slot.ear_tag ?? '?'})`).join(', ')}
+                  </p>
+                )}
+                <div className="flex gap-2">
+                  <button type="button" disabled={busy} onClick={() => void closeDay()} className="min-h-12 flex-1 rounded-lg bg-green-700 font-semibold text-white disabled:opacity-50">
+                    {dayMissing.length > 0 ? 'Trotzdem abschliessen' : 'Abschliessen'}
+                  </button>
+                  <button type="button" onClick={() => setConfirmClose(false)} className="min-h-12 rounded-lg border border-gray-300 px-4 text-gray-700">
+                    Zurück
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )
       )}
     </div>
   )
@@ -957,9 +1046,11 @@ function MilkStepper({ value, disabled, onSave, label, step, holdStep }: { value
   const done = kg != null && kg > 0
   return (
     <div className="flex items-center justify-end gap-1">
+{!disabled && (
       <button type="button" disabled={disabled} aria-label={`${label}: weniger`} onPointerDown={() => press(-1)} onPointerUp={() => release(-1)} onPointerLeave={() => release(-1, true)} onPointerCancel={() => release(-1, true)} onContextMenu={(e) => e.preventDefault()} className={`${btn} border-gray-400 bg-white text-gray-800 active:bg-gray-100`}>
         −
       </button>
+      )}
       <input
         type="text"
         inputMode="decimal"
@@ -984,9 +1075,11 @@ function MilkStepper({ value, disabled, onSave, label, step, holdStep }: { value
         onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         className={`h-11 w-16 rounded-xl border-2 px-1 text-center text-xl font-bold tabular-nums ${done ? 'border-green-600 bg-green-50 text-green-900' : 'border-gray-300 bg-white text-gray-900'}`}
       />
+{!disabled && (
       <button type="button" disabled={disabled} aria-label={`${label}: mehr`} onPointerDown={() => press(1)} onPointerUp={() => release(1)} onPointerLeave={() => release(1, true)} onPointerCancel={() => release(1, true)} onContextMenu={(e) => e.preventDefault()} className={`${btn} border-brand-700 bg-brand-700 text-white active:bg-brand-800`}>
         +
       </button>
+      )}
     </div>
   )
 }
