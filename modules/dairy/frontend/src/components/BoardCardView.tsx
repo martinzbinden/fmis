@@ -8,10 +8,26 @@ import { speciesTerms } from '../lib/species'
 import { meatBarColor, meatBarPercent, MEAT_BAND_LABEL, type MeatLimit, type MeatValue, MEAT_BAR_MAX } from '../lib/meatValue'
 import type { CardFieldKey } from '../lib/cardFields'
 import LactationSpark from './LactationSpark'
+import SearchPick from '@fmis/core/SearchPick'
 import { fmtCells } from '../lib/culling'
 import { MilkFeedChip } from './MilkFeedChip'
 import type { MilkFeed, MilkFeedSettings } from '../lib/milkFeed'
 import NursingLambs, { WeanedLambs } from './NursingLambs'
+import { VERDICT_LABEL, type Verdict, type VerdictResult } from '../lib/cardVerdict'
+
+/** Ampel-Kante links und Empfehlung (lib/cardVerdict.ts) */
+const VERDICT_EDGE: Record<Verdict, string> = {
+  ausmerzen: 'border-l-red-600',
+  beobachten: 'border-l-amber-500',
+  behalten: 'border-l-emerald-600',
+  jung: 'border-l-gray-300',
+}
+const VERDICT_PILL: Record<Verdict, string> = {
+  ausmerzen: 'bg-red-100 text-red-900',
+  beobachten: 'bg-amber-100 text-amber-900',
+  behalten: 'bg-emerald-100 text-emerald-900',
+  jung: 'bg-gray-100 text-gray-700',
+}
 
 const SEX_ICON: Record<string, string> = { w: '♀', m: '♂', k: '⚲' }
 
@@ -41,6 +57,8 @@ export default function BoardCardView({
   milkFeedSettings,
   meatLimits,
   fields = [],
+  verdict = null,
+  money = null,
   onDragCard,
   onDragHandle,
 }: {
@@ -72,6 +90,10 @@ export default function BoardCardView({
   /** Grenzen im Fleischwert-Balken (schwere Aue, schweres Lamm T3/H3/C3); die Skala ist fest */
   meatLimits?: MeatLimit[]
   fields?: CardFieldKey[]
+  /** Empfehlung (Ampel-Kante); null = keine */
+  verdict?: VerdictResult | null
+  /** Geldbilanz zum Aufklappen: Schlachtwert jetzt gegen Milch − Futter bis zur Geburt */
+  money?: { slaughter: number; keep: number; diff: number } | null
   onDragCard: (e: ReactPointerEvent) => void
   onDragHandle: (e: ReactPointerEvent) => void
 }) {
@@ -86,7 +108,7 @@ export default function BoardCardView({
       data-card={card.id}
       onPointerDown={onDragCard}
       title={filterNames.length ? filterNames.join(', ') : undefined}
-      className={`rounded-lg border-2 p-1.5 shadow-sm transition-colors sm:p-2 ${pendingTo ? 'border-dashed border-amber-500 bg-amber-50' : selected ? 'border-brand-700 bg-brand-50 shadow-md' : main ? main.card : 'border-gray-200 bg-white'} ${selected && pendingTo ? 'ring-2 ring-brand-700' : ''} ${canDrag ? 'cursor-grab' : ''}`}
+      className={`rounded-lg border-2 p-1.5 shadow-sm transition-colors sm:p-2 ${pendingTo ? 'border-dashed border-amber-500 bg-amber-50' : selected ? 'border-brand-700 bg-brand-50 shadow-md' : main ? main.card : 'border-gray-200 bg-white'} ${selected && pendingTo ? 'ring-2 ring-brand-700' : ''} ${verdict && !pendingTo ? `border-l-[6px] ${VERDICT_EDGE[verdict.verdict]}` : ''} ${canDrag ? 'cursor-grab' : ''}`}
     >
       <div className="flex items-start gap-1">
         {/* Auswahl: runder Haken, gewählt gefüllt; die ganze Karte wird dann eingefärbt */}
@@ -117,6 +139,14 @@ export default function BoardCardView({
             {card.birthDate ? `geb. ${fmtDate(card.birthDate)}${age ? ` (${age})` : ''}` : 'Geburtsdatum unbekannt'}
           </span>
           <span className="mt-0.5 flex flex-wrap gap-1 text-[11px] font-medium sm:mt-1">
+            {verdict && verdict.verdict !== 'jung' && (
+              <span
+                className={`rounded px-1.5 py-0.5 ${VERDICT_PILL[verdict.verdict]}`}
+                title={`${verdict.points} Punkte${verdict.parts.length ? `: ${verdict.parts.map((p) => `${p.label} ${p.points > 0 ? '+' : ''}${p.points}`).join(', ')}` : ''} (wie Vorschlag «Schlachten»; rot ab 5, gelb ab 2)`}
+              >
+                {VERDICT_LABEL[verdict.verdict]}
+              </span>
+            )}
             {pregnant === 'ja' && <span className="rounded bg-sky-100 px-1.5 py-0.5 text-sky-900">trächtig</span>}
             {pregnant === 'nein' && <span className="rounded bg-orange-100 px-1.5 py-0.5 text-orange-900">leer</span>}
             {pregnant === 'unsicher' && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">unsicher</span>}
@@ -181,24 +211,18 @@ export default function BoardCardView({
 
       {picking && onMoveToGroup && groupChoices && (
         <div className="mt-1 flex items-center gap-1" data-no-drag>
-          <select
-            autoFocus
-            defaultValue=""
-            aria-label="In Gruppe verschieben (Entwurf)"
-            onChange={(e) => {
-              if (e.target.value === '') return
+          <SearchPick
+            className="min-w-0 flex-1"
+            startOpen
+            label="In Gruppe verschieben (Entwurf)"
+            placeholder="Gruppe wählen…"
+            items={groupChoices.map((g) => ({ id: g.id ?? 'none', label: g.name }))}
+            value=""
+            onChange={(id) => {
               setPicking(false)
-              onMoveToGroup(e.target.value === 'none' ? null : e.target.value)
+              onMoveToGroup(id === 'none' ? null : id)
             }}
-            className="min-h-9 min-w-0 flex-1 rounded border border-gray-300 bg-white px-1 text-xs"
-          >
-            <option value="">Gruppe wählen…</option>
-            {groupChoices.map((g) => (
-              <option key={g.id ?? 'none'} value={g.id ?? 'none'}>
-                {g.name}
-              </option>
-            ))}
-          </select>
+          />
           <button type="button" onClick={() => setPicking(false)} aria-label="Abbrechen" className="grid h-9 w-9 place-items-center rounded text-gray-600 active:bg-gray-100">
             ✕
           </button>
@@ -223,6 +247,12 @@ export default function BoardCardView({
 
       {expanded && (
         <div className="mt-2 space-y-2 border-t pt-2 text-xs text-gray-700" data-no-drag>
+          {money && <MoneyBalance money={money} />}
+          {verdict && verdict.parts.length > 0 && (
+            <p className="text-[11px] text-gray-600">
+              {VERDICT_LABEL[verdict.verdict]}: {verdict.points} Punkte ({verdict.parts.map((p) => `${p.label} ${p.points > 0 ? '+' : ''}${p.points}`).join(', ')})
+            </p>
+          )}
           <Section title="Tier">
             <Row k="ID-Nummer" v={card.earTag} />
             {card.name && <Row k="Name" v={card.name} />}
@@ -466,6 +496,42 @@ function Row({ k, v }: { k: string; v: string }) {
     <div className="flex justify-between gap-2">
       <span className="text-gray-500">{k}</span>
       <span className="text-right text-gray-900">{v}</span>
+    </div>
+  )
+}
+
+/** Geldbilanz: schlachten jetzt gegen behalten bis zur Geburt; der Balken kippt zur besseren Seite. */
+function MoneyBalance({ money }: { money: { slaughter: number; keep: number; diff: number } }) {
+  const fr = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(Math.round(v)).toLocaleString('de-CH')} Fr.`
+  const max = Math.max(Math.abs(money.slaughter), Math.abs(money.keep), 1)
+  const w = (v: number) => `${Math.min(100, (Math.abs(v) / max) * 100)}%`
+  const slaughterBetter = money.diff > 0
+  return (
+    <div className="rounded-lg bg-gray-50 p-2" aria-label="Geldbilanz">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-gray-700">🥩 Schlachten jetzt</span>
+        <span className={`font-semibold tabular-nums ${money.slaughter >= 0 ? 'text-emerald-800' : 'text-red-800'}`}>{fr(money.slaughter)}</span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-gray-700">🥛 Behalten bis zur Geburt</span>
+        <span className={`font-semibold tabular-nums ${money.keep >= 0 ? 'text-emerald-800' : 'text-red-800'}`}>{fr(money.keep)}</span>
+      </div>
+      <div className="mt-1.5 flex h-2.5 items-stretch" aria-hidden>
+        <div className="flex flex-1 justify-end rounded-l-full bg-white">
+          <div className={`h-full rounded-l-full ${money.keep >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: w(money.keep) }} />
+        </div>
+        <div className="w-0.5 bg-gray-500" />
+        <div className="flex-1 rounded-r-full bg-white">
+          <div className={`h-full rounded-r-full ${money.slaughter >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: w(money.slaughter) }} />
+        </div>
+      </div>
+      <div className="flex justify-between text-[11px] text-gray-500">
+        <span>behalten</span>
+        <span>schlachten</span>
+      </div>
+      <p className={`mt-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${slaughterBetter ? 'bg-emerald-100 text-emerald-900' : 'bg-sky-100 text-sky-900'}`}>
+        {slaughterBetter ? `Schlachten bringt ≈ ${Math.round(money.diff).toLocaleString('de-CH')} Fr. mehr` : `Behalten bringt ≈ ${Math.round(-money.diff).toLocaleString('de-CH')} Fr. mehr`} (ohne Wert der nächsten Lämmer)
+      </p>
     </div>
   )
 }

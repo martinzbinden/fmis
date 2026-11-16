@@ -44,9 +44,11 @@ import { speciesOf, speciesTerms } from '../lib/species'
 import { loadMilkFeedData, milkFeed, milkFeedInputFor, milkFeedWindow, useMilkFeedSettings, type MilkFeed, type MilkFeedWindow } from '../lib/milkFeed'
 import { loadColumnTotals, periodLabel, saveColumnTotals, type ColumnTotalsSettings } from '../lib/columnTotals'
 import ColumnTotalsMenu from '../components/ColumnTotalsMenu'
+import SearchPick from '@fmis/core/SearchPick'
 import { loadRules } from '../lib/stallRules'
 import { MilkFeedSettingsPanel } from '../components/MilkFeedChip'
-import { addToWatchlist, deleteWatchlist, loadWatchlists, removeEntry, saveWatchlist } from '../lib/watchlists'
+import { cardVerdict, moneyBalance, type VerdictResult } from '../lib/cardVerdict'
+import { addToWatchlist, createWatchlist, deleteWatchlist, loadWatchlists, removeEntry, saveWatchlist } from '../lib/watchlists'
 
 async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string, milk: LambMilkSettings) {
   const trait = SIRE_TRAIT[species].trait
@@ -377,6 +379,18 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     },
   })
 
+  // Ampel-Kante und Geldbilanz je Karte (lib/cardVerdict.ts): Punkte wie im Vorschlag «Schlachten»
+  const verdictById = useMemo(() => {
+    const m = new Map<string, { verdict: VerdictResult; money: ReturnType<typeof moneyBalance> }>()
+    for (const c of cards) {
+      const balance = milkFeedById.get(c.id)?.balance ?? null
+      m.set(c.id, {
+        verdict: cardVerdict({ reasons: c.reasons, pregnancy: c.pregnancy, balance, frPerPoint: milkFeedSettings.frPerPoint, ageMonths: c.ageMonths, parity: c.parity, today }),
+        money: moneyBalance(species === 'sheep' ? (meatAll.get(c.id)?.net ?? null) : null, balance),
+      })
+    }
+    return m
+  }, [cards, milkFeedById, milkFeedSettings.frPerPoint, today, meatAll, species])
   // Suche aktiv: nur Spalten mit Treffern (die angesprungene Spalte bleibt)
   const searching = q.text.trim() !== ''
   const shownColumns = useMemo(
@@ -407,13 +421,16 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, jumpKey, jumpTier])
   const pending = draftSize(draft)
+  // Knopf «Alle aufklappen»: alle Karten der sichtbaren, nicht eingeklappten Spalten
+  const allCardKeys = shownColumns.filter((c) => !collapsed.has(c.key)).flatMap((c) => columnCards(c).map((x) => `${c.key}:${x.id}`))
+  const allCardsOpen = allCardKeys.length > 0 && allCardKeys.every((k) => open.has(k))
   const chosen = [...selected].filter((id) => cardById.has(id))
 
   function renderColumn(col: BoardColumn, stacked: boolean) {
     const list = columnCards(col)
     const isCollapsed = collapsed.has(col.key)
     const dropTarget = colDrag.target?.key === col.key ? colDrag.target : null
-    const meatSum = meatOn && species === 'sheep' && list.length > 0 ? sumMeat(list.map((c) => meatById.get(c.id) ?? null)) : null
+    const meatSum = totals.meat && species === 'sheep' && list.length > 0 ? sumMeat(list.map((c) => meatAll.get(c.id) ?? null)) : null
     const icon = col.kind === 'list' ? '🔖' : species === 'sheep' ? '🐑' : '🐄'
     return (
       <section
@@ -484,7 +501,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           )
         ) : (
           <>
-            {meatOn && species === 'sheep' && list.length > 0 && <ColumnMeatSum values={list.map((c) => meatById.get(c.id) ?? null)} />}
+            {list.length > 0 && <ColumnTotals list={list} totals={totals} sheep={species === 'sheep'} meatAll={meatAll} windowById={windowById} />}
             <div className="max-h-[calc(100dvh-8rem)] min-h-20 space-y-1.5 overflow-y-auto pr-0.5 sm:max-h-[calc(100vh-20rem)] sm:space-y-2">
               {list.map((c) => (
                 <ColumnCard
@@ -508,6 +525,8 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                   milkFeed={milkFeedOn || cardFields.includes('dailyMilk') ? (milkFeedById.get(c.id) ?? null) : null}
                   meatLimits={meatLimitList}
                   fields={cardFields}
+                  verdict={verdictById.get(c.id)?.verdict ?? null}
+                  money={verdictById.get(c.id)?.money ?? null}
                   pointerDown={pointerDown}
                 />
               ))}
@@ -515,7 +534,6 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             </div>
           </>
         )}
-        {list.length > 0 && <ColumnTotals list={list} totals={totals} sheep={species === 'sheep'} meatAll={meatAll} windowById={windowById} />}
       </section>
     )
   }
@@ -620,6 +638,15 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
               saveCardFields(moduleKey, next)
             }}
           />
+          <button
+            type="button"
+            onClick={() => setOpen(allCardsOpen ? new Set() : new Set(allCardKeys))}
+            aria-pressed={allCardsOpen}
+            title="Alle Karten auf- oder zuklappen (Geldbilanz, Trächtigkeit, Leistung, Ausmerzgründe)"
+            className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm"
+          >
+            {allCardsOpen ? '▴ Alle zuklappen' : '▾ Alle aufklappen'}
+          </button>
           <button type="button" onClick={() => setShowColumns(true)} className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm">
             Spalten ({visibleColumns.length}/{columns.length})
           </button>
@@ -762,6 +789,32 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           onList={(listId) => {
             void addToList(listId, chosen)
             setSelected(new Set())
+          }}
+          onNewGroup={async (name) => {
+            const ids = chosen
+            try {
+              const id = crypto.randomUUID()
+              await undoAction(`Neue Gruppe «${name}»`, () => saveGroup({ id, name, species: herdSpecies, milking: false, active: true, sort_order: (groups.length + 1) * 10, notes: null, updated_at: '', deleted_at: null }))
+              setHerd(await loadHerdData())
+              moveToDraft(ids, id)
+              setSelected(new Set())
+              notifySuccess(`Gruppe «${name}» angelegt; ${ids.length} ${ids.length === 1 ? 'Tier' : 'Tiere'} im Entwurf`)
+            } catch (e) {
+              notifyError(errorText(e))
+            }
+          }}
+          onNewList={async (name) => {
+            const ids = chosen
+            try {
+              const added = await undoAction(`Neue Merkliste «${name}»`, async () => {
+                const listId = await createWatchlist(db, name)
+                return addToWatchlist(db, listId, ids, null)
+              })
+              setSelected(new Set())
+              notifySuccess(`Merkliste «${name}» mit ${added} ${added === 1 ? 'Tier' : 'Tieren'} angelegt`)
+            } catch (e) {
+              notifyError(errorText(e))
+            }
           }}
           onClear={() => setSelected(new Set())}
         />
@@ -953,7 +1006,8 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   )
 }
 
-/** Summen unten in einer Spalte (Σ Summen): Schlachtwert, Milch und Futter im gewählten Zeitraum. */
+/** Summen oben in einer Spalte (Σ Summen: Kennzahlen und Zeitraum wählen): Schlachtwert mit Kategorien zum Aufklappen,
+ * Milch und Futter im gewählten Zeitraum. Eine Schätzung. */
 function ColumnTotals({
   list,
   totals,
@@ -967,14 +1021,10 @@ function ColumnTotals({
   meatAll: ReadonlyMap<string, MeatValue | null>
   windowById: ReadonlyMap<string, MilkFeedWindow>
 }) {
+  const [meatOpen, setMeatOpen] = useState(false)
   const fr = (v: number) => Math.round(v).toLocaleString('de-CH')
   const kg = (v: number) => (v < 100 ? v.toFixed(1) : Math.round(v).toLocaleString('de-CH'))
   const rows: { icon: string; label: string; value: string; note?: string }[] = []
-  if (sheep && totals.meat) {
-    const meat = list.map((c) => meatAll.get(c.id) ?? null)
-    const known = meat.filter((m): m is MeatValue => m != null)
-    rows.push({ icon: '🥩', label: 'Schlachtwert', value: `≈ ${fr(known.reduce((t, m) => t + m.net, 0))} Fr.`, note: known.length < list.length ? `${list.length - known.length} ohne Geburtsdatum` : undefined })
-  }
   const w = list.map((c) => windowById.get(c.id)).filter((x): x is MilkFeedWindow => !!x)
   const period = periodLabel(totals.days)
   if (totals.milk && w.length) {
@@ -984,63 +1034,61 @@ function ColumnTotals({
   if (totals.feed && w.length) {
     rows.push({ icon: '🌾', label: `Futter ${period}`, value: `${kg(w.reduce((t, x) => t + x.feedKg, 0))} kg ≈ ${fr(w.reduce((t, x) => t + x.feedCost, 0))} Fr.` })
   }
-  if (rows.length === 0) return null
+  const meat = sheep && totals.meat ? sumMeat(list.map((c) => meatAll.get(c.id) ?? null)) : null
+  if (rows.length === 0 && !meat) return null
+  const bandTotal = meat ? MEAT_BANDS.reduce((t, b) => t + Math.max(0, meat.byBand[b].net), 0) : 0
+  const used = meat ? MEAT_BANDS.filter((b) => meat.byBand[b].n > 0) : []
   return (
-    <dl className="mt-2 space-y-0.5 rounded-lg bg-white px-2 py-1.5 text-xs" aria-label="Summen der Spalte" title="Summen über alle Tiere dieser Spalte (Σ Summen: Kennzahlen und Zeitraum wählen). Eine Schätzung.">
-      {rows.map((r) => (
-        <div key={r.label} className="flex items-baseline justify-between gap-2">
-          <dt className="text-gray-600">
-            <span aria-hidden>{r.icon}</span> {r.label}
-          </dt>
-          <dd className="text-right font-semibold tabular-nums text-gray-900">
-            {r.value}
-            {r.note && <span className="block text-[11px] font-normal text-amber-800">{r.note}</span>}
-          </dd>
+    <div className="mb-1.5 rounded-lg bg-white px-2 py-1.5 text-xs sm:mb-2" aria-label="Summen der Spalte" title="Summen über alle Tiere dieser Spalte (Σ Summen: Kennzahlen und Zeitraum wählen). Eine Schätzung.">
+      {meat && (
+        <div className="mb-0.5">
+          <button type="button" onClick={() => setMeatOpen((v) => !v)} aria-expanded={meatOpen} className="flex w-full items-center gap-2 text-left">
+            <span className="text-gray-600">
+              <span aria-hidden>🥩</span> Schlachtwert
+            </span>
+            {bandTotal > 0 && (
+              <span role="img" aria-label={`nach Kategorie: ${used.map((b) => `${MEAT_BAND_LABEL[b]} ${meat.byBand[b].n}`).join(', ')}`} className="flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-100">
+                {used.map((b) => (
+                  <span key={b} className={`${MEAT_BAND_BAR[b]} h-full`} style={{ width: `${(Math.max(0, meat.byBand[b].net) / bandTotal) * 100}%` }} />
+                ))}
+              </span>
+            )}
+            <span className="ml-auto shrink-0 font-semibold tabular-nums text-gray-900">≈ {fr(meat.net)} Fr.</span>
+            <span className="shrink-0 text-gray-500" aria-hidden>{meatOpen ? '▴' : '▾'}</span>
+          </button>
+          {meatOpen && (
+            <div className="mt-1 rounded bg-emerald-50 px-1.5 py-1 text-emerald-950">
+              <ul className="space-y-0.5">
+                {used.map((b) => (
+                  <li key={b} className="flex items-center gap-1.5">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${MEAT_BAND_BAR[b]}`} aria-hidden />
+                    <span className="min-w-0 flex-1 truncate">{MEAT_BAND_LABEL[b]}</span>
+                    <span className="tabular-nums">{meat.byBand[b].n} · {fr(meat.byBand[b].net)} Fr.</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-0.5 text-[11px] text-emerald-900">
+                {meat.unknown > 0 ? `${meat.unknown} ohne Geburtsdatum · ` : ''}vor Abzügen {fr(meat.gross)} Fr.
+              </div>
+            </div>
+          )}
         </div>
-      ))}
-    </dl>
-  )
-}
-
-/** Summe des geschätzten Fleischwerts einer Spalte (nach Abzügen), mit Anzahl Lämmer und Schafe. */
-function ColumnMeatSum({ values }: { values: (MeatValue | null)[] }) {
-  const sum = sumMeat(values)
-  const fr = (v: number) => Math.round(v).toLocaleString('de-CH')
-  const total = MEAT_BANDS.reduce((t, b) => t + Math.max(0, sum.byBand[b].net), 0)
-  const used = MEAT_BANDS.filter((b) => sum.byBand[b].n > 0)
-  // am Handy nur Summe und Balken in einer Zeile; die Aufteilung klappt per Tipp auf
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="mb-1.5 rounded-lg bg-emerald-50 px-2 py-1 text-xs text-emerald-950 sm:mb-2 sm:py-1.5" aria-label="Fleischwert der Spalte">
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-2 text-left sm:pointer-events-none sm:block">
-      <span className="shrink-0 text-sm font-bold sm:block">≈ {fr(sum.net)} Fr.</span>
-      {total > 0 && (
-        <span
-          role="img"
-          aria-label={`Fleischwert nach Bereich: ${used.map((b) => `${MEAT_BAND_LABEL[b]} ${sum.byBand[b].n} Tiere, ${fr(sum.byBand[b].net)} Fr.`).join('; ')}`}
-          className="flex h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-white ring-1 ring-emerald-200 sm:my-1 sm:w-full"
-        >
-          {used.map((b) => (
-            <span key={b} className={`${MEAT_BAND_BAR[b]} h-full`} style={{ width: `${(Math.max(0, sum.byBand[b].net) / total) * 100}%` }} title={`${MEAT_BAND_LABEL[b]}: ${sum.byBand[b].n} Tiere, ${fr(sum.byBand[b].net)} Fr.`} />
-          ))}
-        </span>
       )}
-      <span className="shrink-0 text-emerald-800 sm:hidden" aria-hidden>{open ? '▴' : '▾'}</span>
-      </button>
-      <div className={open ? 'mt-1' : 'hidden sm:block'}>
-      <ul className="space-y-0.5">
-        {used.map((b) => (
-          <li key={b} className="flex items-center gap-1.5">
-            <span className={`h-2.5 w-2.5 shrink-0 rounded-sm ${MEAT_BAND_BAR[b]}`} aria-hidden />
-            <span className="min-w-0 flex-1 truncate">{MEAT_BAND_LABEL[b]}</span>
-            <span className="tabular-nums">{sum.byBand[b].n} · {fr(sum.byBand[b].net)} Fr.</span>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-0.5 text-[11px] text-emerald-900">
-        {sum.unknown > 0 ? `${sum.unknown} ohne Geburtsdatum · ` : ''}vor Abzügen {fr(sum.gross)} Fr.
-      </div>
-      </div>
+      {rows.length > 0 && (
+        <dl className="space-y-0.5">
+          {rows.map((r) => (
+            <div key={r.label} className="flex items-baseline justify-between gap-2">
+              <dt className="text-gray-600">
+                <span aria-hidden>{r.icon}</span> {r.label}
+              </dt>
+              <dd className="text-right font-semibold tabular-nums text-gray-900">
+                {r.value}
+                {r.note && <span className="block text-[11px] font-normal text-amber-800">{r.note}</span>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   )
 }
@@ -1065,6 +1113,8 @@ function ColumnCard({
   milkFeed,
   meatLimits,
   fields,
+  verdict,
+  money,
   pointerDown,
 }: {
   card: BoardCard
@@ -1087,6 +1137,8 @@ function ColumnCard({
   /** Grenzen im Balken (feste Skala) */
   meatLimits?: MeatLimit[]
   fields?: CardFieldKey[]
+  verdict?: VerdictResult | null
+  money?: ReturnType<typeof moneyBalance>
   pointerDown: (cardId: string, handle: boolean) => (e: React.PointerEvent) => void
 }) {
   void col
@@ -1113,6 +1165,8 @@ function ColumnCard({
       milkFeedSettings={milkFeedSettings}
       meatLimits={meatLimits}
       fields={fields}
+      verdict={verdict ?? null}
+      money={money ?? null}
       onDragCard={pointerDown(card.id, false)}
       onDragHandle={pointerDown(card.id, true)}
     />
@@ -1127,6 +1181,8 @@ function SelectionBar({
   canMove,
   onDraft,
   onList,
+  onNewGroup,
+  onNewList,
   onClear,
 }: {
   count: number
@@ -1135,11 +1191,12 @@ function SelectionBar({
   canMove: boolean
   onDraft: (target: string | null) => void
   onList: (listId: string) => void
+  onNewGroup: (name: string) => void
+  onNewList: (name: string) => void
   onClear: () => void
 }) {
   const [group, setGroup] = useState('')
   const [list, setList] = useState('')
-  const field = 'min-h-11 rounded-lg border border-gray-300 bg-white px-2 text-sm'
   return (
     <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-xl border-2 border-brand-700 bg-white p-2 text-sm shadow-lg" role="region" aria-label="Auswahl">
       <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-700 px-3 font-semibold text-white" aria-live="polite">
@@ -1147,35 +1204,36 @@ function SelectionBar({
       </span>
       {canMove && (
         <span className="flex items-center gap-1">
-          <select value={group} onChange={(e) => setGroup(e.target.value)} className={field} aria-label="In Gruppe verschieben">
-            <option value="">Gruppe wählen…</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-            <option value="none">Ohne Gruppe</option>
-          </select>
+          <SearchPick
+            className="w-52"
+            label="In Gruppe verschieben"
+            placeholder="Gruppe wählen…"
+            items={[...groups.map((g) => ({ id: g.id, label: g.name })), { id: 'none', label: 'Ohne Gruppe' }]}
+            value={group}
+            onChange={setGroup}
+            onCreate={onNewGroup}
+            createLabel="als neue Gruppe anlegen"
+          />
           <button type="button" disabled={!group} onClick={() => onDraft(group === 'none' ? null : group)} className="min-h-11 rounded-lg bg-brand-700 px-3 font-medium text-white disabled:opacity-50">
             In Entwurf
           </button>
         </span>
       )}
-      {lists.length > 0 && (
-        <span className="flex items-center gap-1">
-          <select value={list} onChange={(e) => setList(e.target.value)} className={field} aria-label="Auf Merkliste setzen">
-            <option value="">Merkliste wählen…</option>
-            {lists.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-          <button type="button" disabled={!list} onClick={() => onList(list)} className="min-h-11 rounded-lg border border-brand-700 px-3 font-medium text-brand-700 disabled:opacity-50">
-            Auf Liste
-          </button>
-        </span>
-      )}
+      <span className="flex items-center gap-1">
+        <SearchPick
+          className="w-52"
+          label="Auf Merkliste setzen"
+          placeholder="Merkliste wählen…"
+          items={lists.map((l) => ({ id: l.id, label: l.name }))}
+          value={list}
+          onChange={setList}
+          onCreate={onNewList}
+          createLabel="als neue Merkliste anlegen"
+        />
+        <button type="button" disabled={!list} onClick={() => onList(list)} className="min-h-11 rounded-lg border border-brand-700 px-3 font-medium text-brand-700 disabled:opacity-50">
+          Auf Liste
+        </button>
+      </span>
       <button type="button" onClick={onClear} className="ml-auto min-h-11 rounded-lg border border-gray-300 px-3 text-gray-800 active:bg-gray-100">
         ✕ Auswahl aufheben
       </button>
