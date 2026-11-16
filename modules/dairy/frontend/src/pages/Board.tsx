@@ -241,6 +241,28 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   const shown = useMemo(() => cards.filter((c) => q.match(c)), [cards, q])
   // feste Skala (bis MEAT_BAR_MAX Fr.) mit den Grenzen schwere Aue und schweres Lamm T3/H3/C3
   const meatLimitList = useMemo(() => buildMeatLimits(meatSettings, { ...meatPrices, lambH: proviande?.youngH ?? null, lambC: proviande?.youngC ?? null }), [meatSettings, meatPrices, proviande])
+  // Einstellungen der Kartenwerte: ein Knopf blendet alle ein oder aus (gemerkt je Gerät), standardmässig aus
+  const lambMilkSettingsUsed = species === 'sheep' && (cardFields.includes('lambMilk') || cardFields.includes('dailyMilk') || cardFields.includes('milkFeed'))
+  const anySettings = (meatOn && species === 'sheep') || cardFields.includes('milkFeed') || lambMilkSettingsUsed
+  const settingsKey = `${moduleKey}_board_settings_open`
+  const [showSettings, setShowSettings] = useState(() => {
+    try {
+      return localStorage.getItem(settingsKey) === '1'
+    } catch {
+      return false
+    }
+  })
+  function toggleSettings() {
+    setShowSettings((v) => {
+      try {
+        localStorage.setItem(settingsKey, v ? '0' : '1')
+      } catch {
+        // nur bis zum Neuladen
+      }
+      return !v
+    })
+  }
+
   function toggleMeat() {
     const next = !meatOn
     setMeatOn(next)
@@ -542,6 +564,17 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           <button type="button" onClick={() => setShowLegend(true)} aria-label="Legende der Karten" title="Legende der Karten" className="grid h-11 w-11 place-items-center rounded-full border-2 border-gray-300 bg-white text-lg font-bold text-brand-700 active:bg-gray-100">
             ⓘ
           </button>
+          {anySettings && (
+            <button
+              type="button"
+              onClick={() => toggleSettings()}
+              aria-pressed={showSettings}
+              title="Einstellungen der Kartenwerte (Fleischwert, Milch gegen Futter, Milch der Lämmer) ein- oder ausblenden"
+              className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${showSettings ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white'}`}
+            >
+              ⚙️ Einstellungen
+            </button>
+          )}
           <CardFieldsMenu
             species={species}
             selected={cardFields}
@@ -572,7 +605,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
 
       <QueryChips parsed={q.parsed} />
 
-      {meatOn && species === 'sheep' && (
+      {showSettings && meatOn && species === 'sheep' && (
         <div className={toolsOpen ? '' : 'hidden sm:block'}>
         <SettingsEditor
           value={meatSettings}
@@ -631,13 +664,13 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         </div>
       )}
 
-      {milkFeedOn && (
+      {showSettings && milkFeedOn && (
         <div className={toolsOpen ? '' : 'hidden sm:block'}>
           <MilkFeedSettingsPanel moduleKey={moduleKey} species={species} value={milkFeedSettings} />
         </div>
       )}
 
-      {(cardFields.includes('lambMilk') || cardFields.includes('dailyMilk') || cardFields.includes('milkFeed')) && species === 'sheep' && (
+      {showSettings && lambMilkSettingsUsed && (
         <div className={toolsOpen ? '' : 'hidden sm:block'}>
         <SettingsEditor
           value={lambMilkSettings}

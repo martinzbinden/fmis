@@ -6,6 +6,7 @@ import { useHasPermission } from '@fmis/core/AuthContext'
 import AdminMenu from '@fmis/core/AdminMenu'
 import NotificationBell from '@fmis/core/NotificationBell'
 import ProfileMenu from '@fmis/core/ProfileMenu'
+import { refreshMyLinks, useMyLinks } from '@fmis/core/myLinks'
 import type { ModuleDescriptor, ModuleGroup, QuickLink } from '@fmis/core/ModuleDescriptor'
 
 // Reihenfolge der Übersicht: Dienste (Kachel) → Tiere → Maschinen & Betrieb → Weitere → Flächen
@@ -36,7 +37,9 @@ export default function Dashboard({
   const canImport = useHasPermission('core:import:write')
   useEffect(() => {
     document.title = 'FMIS'
+    void refreshMyLinks()
   }, [])
+  const myLinks = useMyLinks()
   const tiles = (section: 'top' | 'maschinen') =>
     modules.flatMap((m) => (m.dashboardTiles ?? []).filter((t) => t.section === section).map(({ Tile }, i) => <Tile key={`${m.key}-${section}-${i}`} />))
 
@@ -56,6 +59,20 @@ export default function Dashboard({
       </header>
 
       <main className="mx-auto w-full max-w-md flex-1 p-4">
+        {/* Meine Links: nur für die angemeldete Person (Profil → Meine Links) */}
+        {myLinks && myLinks.length > 0 && (
+          <section aria-label="Meine Links" className="mb-4 flex flex-wrap gap-2">
+            {myLinks.map((l) => (
+              <a key={l.id} href={l.url} target="_blank" rel="noopener noreferrer" className="flex min-h-12 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-brand-800 shadow-sm active:bg-gray-100">
+                <span aria-hidden className="text-lg">
+                  {l.icon || '🔗'}
+                </span>
+                {l.title}
+                <span className="sr-only"> (öffnet in neuem Fenster)</span>
+              </a>
+            ))}
+          </section>
+        )}
         {modules.length === 0 ? (
           <p className="mt-8 text-center text-sm text-gray-500">
             Keine Module aktiviert — bitte einen Admin kontaktieren.

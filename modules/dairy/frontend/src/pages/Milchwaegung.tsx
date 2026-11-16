@@ -20,7 +20,9 @@ import { inTransaction } from '../db/transaction'
 import { notSupersededSql } from '../lib/journal'
 import { MILK_UNTIL_SQL } from '../lib/treatments'
 import NumberInput from '@fmis/core/NumberInput'
-import { errorText } from '@fmis/core/toast'
+import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
+import { animalProvider, refreshHerdData } from '@fmis/core/animals'
+import { loadHerdData, memberAt, moveAnimals, type HerdData } from '@fmis/tiere/lib/herds'
 
 /** Manuell dürfen ausnahmsweise so viele Tiere über die Plätze der Bank hinaus aufgenommen werden. */
 const MANUAL_EXTRA = 2
@@ -231,6 +233,8 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
   const dayWeighed = daySlots.filter((x) => x.slot.milk_kg != null && Number(x.slot.milk_kg) > 0)
   const dayMissing = daySlots.filter((x) => !(x.slot.milk_kg != null && Number(x.slot.milk_kg) > 0))
   const dayTotal = Math.round(dayWeighed.reduce((t, x) => t + Number(x.slot.milk_kg), 0) * 10) / 10
+  const dayAnimalIds = useMemo(() => [...new Set(daySlots.flatMap((x) => (x.slot.animal_id ? [x.slot.animal_id] : [])))].sort(), [daySlots])
+  const dayLabels = useMemo(() => Object.fromEntries(daySlots.flatMap((x) => (x.slot.animal_id ? [[x.slot.animal_id, x.slot.animal?.lauf_nr ?? shortEarTag(x.slot.ear_tag ?? x.slot.animal?.ear_tag ?? '')]] : []))), [daySlots])
 
   useEffect(() => {
     api<{ enabled: boolean }>(`/${moduleKey}/reader/status`)
@@ -833,6 +837,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
             {dayWeighed.length} von {daySlots.length} Tieren gewogen, zusammen {dayTotal.toLocaleString('de-CH')} kg
             {dayWeighed.length > 0 ? ` (Ø ${(dayTotal / dayWeighed.length).toFixed(2)} kg)` : ''}. Alle Bänke sind gesperrt; einzelne lassen sich mit «✏️ Korrigieren» freigeben.
           </p>
+          <GroupCheck moduleKey={moduleKey} date={date} animalIds={dayAnimalIds} labels={dayLabels} />
           {canWrite && (
             <button type="button" disabled={busy} onClick={() => void reopenDay()} className="min-h-11 rounded-lg border border-gray-400 bg-white px-3 text-sm font-medium text-gray-800 disabled:opacity-50">
               Wägung wieder öffnen
@@ -854,6 +859,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
                   {dayWeighed.length} von {daySlots.length} Tieren gewogen, zusammen {dayTotal.toLocaleString('de-CH')} kg.
                   {session?.active ? ' Der Leser wird getrennt.' : ''} Danach sind alle Bänke gesperrt.
                 </p>
+                <GroupCheck moduleKey={moduleKey} date={date} animalIds={dayAnimalIds} labels={dayLabels} />
                 {dayMissing.length > 0 && (
                   <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">
                     Ohne kg: {dayMissing.map((x) => `Bank ${x.bank} Platz ${x.slot.position} (${x.slot.animal?.lauf_nr ?? x.slot.ear_tag ?? '?'})`).join(', ')}
@@ -1498,6 +1504,63 @@ function BankTable({
           </form>
         )
       })()}
+    </div>
+  )
+}
+
+/** Abschluss der Wägung: in welchen Tiergruppen (Modul Tiere) die gewogenen Tiere stehen. Die Melkgruppe ist die
+ * gemolkene Gruppe mit den meisten dieser Tiere (sonst die häufigste). Wer woanders oder in keiner Gruppe steht, wird
+ * genannt; mit einem Knopf kommen diese Tiere ab dem Wägetag in die Melkgruppe. */
+function GroupCheck({ moduleKey, date, animalIds, labels }: { moduleKey: string; date: string; animalIds: string[]; labels: Record<string, string> }) {
+  const canMove = useHasPermission('tiere:herden:write') && !!animalProvider(moduleKey)
+  const [herd, setHerd] = useState<HerdData | null>(null)
+  const [busy, setBusy] = useState(false)
+  const key = animalIds.join(',')
+  const load = useCallback(() => loadHerdData().then(setHerd).catch(() => setHerd(null)), [])
+  useEffect(() => {
+    void load()
+  }, [load, key])
+  if (!herd || animalIds.length === 0) return null
+  const groupOf = new Map(animalIds.map((id) => {
+    const m = memberAt(herd, id, date)
+    return [id, m ? (herd.groups.find((g) => g.id === m.group_id) ?? null) : null] as const
+  }))
+  const count = new Map<string, number>()
+  for (const g of groupOf.values()) if (g) count.set(g.id, (count.get(g.id) ?? 0) + 1)
+  const ranked = [...count.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => herd.groups.find((g) => g.id === id)!)
+  const target = ranked.find((g) => g.milking) ?? ranked[0] ?? null
+  if (!target) return <p className="rounded bg-amber-50 p-2 text-sm text-amber-900">Keines der gewogenen Tiere steht in einer Tiergruppe.</p>
+  const off = animalIds.filter((id) => groupOf.get(id)?.id !== target.id)
+  if (off.length === 0) return <p className="text-sm text-green-800">✓ Alle {animalIds.length} gewogenen Tiere stehen in «{target.name}».</p>
+  async function move() {
+    setBusy(true)
+    try {
+      const ids = new Set(off)
+      const refs = ((await animalProvider(moduleKey)?.listAnimals()) ?? []).filter((r) => ids.has(r.id))
+      await moveAnimals(herd!, { toGroup: target!, fromGroup: null, date, animals: refs, counts: {}, dryOff: false })
+      await refreshHerdData()
+      await load()
+      notifySuccess(`${refs.length} nach «${target!.name}» verschoben`)
+    } catch (e) {
+      notifyError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-2 rounded bg-amber-50 p-2 text-sm text-amber-900">
+      <p>
+        <b>{off.length} {off.length === 1 ? 'Tier steht' : 'Tiere stehen'} nicht in «{target.name}»</b>, wo die meisten gewogenen Tiere sind:{' '}
+        {off.map((id) => {
+          const g = groupOf.get(id)
+          return `${labels[id] || '?'} (${g ? g.name : 'ohne Gruppe'})`
+        }).join(', ')}
+      </p>
+      {canMove && (
+        <button type="button" disabled={busy} onClick={() => void move()} className="min-h-11 rounded-lg border-2 border-amber-600 bg-white px-3 font-semibold text-amber-900 disabled:opacity-50">
+          {busy ? 'verschiebe …' : `Alle ${off.length} ab ${fmtDate(date)} nach «${target.name}»`}
+        </button>
+      )}
     </div>
   )
 }

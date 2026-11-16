@@ -23,6 +23,8 @@ export function logout(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(EMAIL_KEY)
   localStorage.removeItem(ME_KEY)
+  // persönliche Links des Geräts (myLinks.ts) nicht für die nächste Person stehen lassen
+  localStorage.removeItem('fmis_my_links')
   stopViewAs()
 }
 

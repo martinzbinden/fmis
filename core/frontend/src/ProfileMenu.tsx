@@ -8,6 +8,8 @@ import { cachedModules } from './modulesApi'
 import { setNotifyEmail, useNotifications } from './notifications'
 import { errorText, notifyError } from './toast'
 import { useViewAs } from './viewAs'
+import { useEffect, useState } from 'react'
+import { addMyLink, refreshMyLinks, removeMyLink, useMyLinks } from './myLinks'
 
 /** Anfangsbuchstabe der E-Mail im runden Symbol (ohne Namen im Konto) */
 function initial(email: string | undefined): string {
@@ -123,6 +125,8 @@ export function ProfilePanel() {
             <p className="text-sm text-gray-600">Nur mit Verbindung zum Server.</p>
           )}
 
+          <MyLinksEditor />
+
           <h3 className={h}>Rechte{view ? ' (in dieser Ansicht)' : ''}</h3>
           <ul className="space-y-1.5 text-sm">
             {[...byArea.entries()]
@@ -137,5 +141,69 @@ export function ProfilePanel() {
         </>
       )}
     </SidePanel>
+  )
+}
+
+/** Meine Links im Profil: anzeigen, löschen, hinzufügen (erscheinen auf der Startseite, nur für dich). */
+function MyLinksEditor() {
+  const links = useMyLinks()
+  const [title, setTitle] = useState('')
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    void refreshMyLinks()
+  }, [])
+  async function add() {
+    setBusy(true)
+    try {
+      await addMyLink({ title: title.trim(), url: url.trim() })
+      setTitle('')
+      setUrl('')
+    } catch (e) {
+      notifyError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const input = 'min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base'
+  return (
+    <>
+      <h3 className="mb-1 mt-4 text-sm font-bold text-gray-800">Meine Links</h3>
+      <p className="mb-2 text-xs text-gray-600">Erscheinen auf der Startseite, nur für dich.</p>
+      <ul className="mb-2 divide-y rounded-lg bg-white text-sm">
+        {(links ?? []).map((l) => (
+          <li key={l.id} className="flex items-center gap-2 px-3 py-1">
+            <span aria-hidden>{l.icon || '🔗'}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium text-gray-900">{l.title}</span>
+              <span className="block truncate text-xs text-gray-600">{l.url}</span>
+            </span>
+            <button type="button" onClick={() => void removeMyLink(l.id).catch((e) => notifyError(errorText(e)))} aria-label={`Link ${l.title} entfernen`} className="grid h-11 w-11 place-items-center rounded-full text-gray-600 active:bg-gray-100">
+              ✕
+            </button>
+          </li>
+        ))}
+        {links && links.length === 0 && <li className="px-3 py-2 text-gray-600">Noch keine.</li>}
+      </ul>
+      <form
+        className="space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void add()
+        }}
+      >
+        <label className="block text-xs text-gray-700">
+          Titel
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} className={input} />
+        </label>
+        <label className="block text-xs text-gray-700">
+          Adresse (https://…)
+          <input value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" type="url" className={input} />
+        </label>
+        <button type="submit" disabled={busy || !title.trim() || !url.trim().startsWith('https://')} className="min-h-11 rounded-lg bg-brand-700 px-4 font-semibold text-white disabled:bg-gray-400">
+          Link hinzufügen
+        </button>
+      </form>
+    </>
   )
 }
