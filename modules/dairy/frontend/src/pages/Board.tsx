@@ -376,6 +376,13 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
     },
   })
 
+  // Suche aktiv: nur Spalten mit Treffern (die angesprungene Spalte bleibt)
+  const searching = q.text.trim() !== ''
+  const shownColumns = useMemo(
+    () => (searching ? visibleColumns.filter((c) => c.key === jumpKey || cardsInColumn(c, shown, groupOf).length > 0) : visibleColumns),
+    [searching, visibleColumns, jumpKey, shown, groupOf],
+  )
+  const emptyHidden = visibleColumns.length - shownColumns.length
   const columnCards = useCallback((col: BoardColumn) => (q.queryCompare && sort === QUERY_SORT_KEY ? [...cardsInColumn(col, shown, groupOf)].sort(q.queryCompare) : sortCards(cardsInColumn(col, shown, groupOf), sort as SortKey)), [shown, groupOf, sort, q.queryCompare])
 
   const loading = !data || !herd || !refs
@@ -754,8 +761,17 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         />
       )}
 
+      {searching && emptyHidden > 0 && (
+        <p className="mb-2 text-sm text-gray-700" role="status">
+          {emptyHidden} {emptyHidden === 1 ? 'Spalte' : 'Spalten'} ohne Treffer ausgeblendet ·{' '}
+          <button type="button" onClick={() => q.setText('')} className="min-h-9 font-medium text-brand-700 underline">
+            Suche leeren
+          </button>
+        </p>
+      )}
+
       <div ref={scroller} className="flex snap-x snap-mandatory items-start gap-2 overflow-x-auto pb-4 sm:snap-proximity sm:gap-3">
-        {buildLanes(visibleColumns, collapsed).map((lane) =>
+        {buildLanes(shownColumns, collapsed).map((lane) =>
           lane.kind === 'column' ? (
             renderColumn(lane.col, false)
           ) : (
