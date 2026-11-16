@@ -45,12 +45,14 @@ export interface MilkFeedSettings {
   maxSampleAgeDays: number
   /** Vorschlag Schlachtung: 1 Punkt je … Fr. Verlust (0 = Bilanz zählt nicht) */
   frPerPoint: number
+  /** Lämmer unter 6 Monaten fressen diesen Anteil des Grundfutters (Summen im Dashboard) */
+  youngFeedShare: number
 }
 
 export const DEFAULT_MILK_FEED: Record<Species, MilkFeedSettings> = {
   // Stand 15.11.2026: Schafe nur morgens gemolken (1 Melkung), Milchpreis 2.90 Fr./kg
-  sheep: { milkingsPerDay: 1, milkPrice: 2.9, declinePerMonth: 10, minDailyKg: 0.3, dryDaysBeforeBirth: 60, matingInDays: 30, feedPricePerKg: 0.6, feedKgPerDay: 2.5, feedPerKgMilk: 0.25, maxSampleAgeDays: 60, frPerPoint: 100 },
-  cattle: { milkingsPerDay: 2, milkPrice: 0.75, declinePerMonth: 8, minDailyKg: 8, dryDaysBeforeBirth: 56, matingInDays: 45, feedPricePerKg: 0.4, feedKgPerDay: 15, feedPerKgMilk: 0.15, maxSampleAgeDays: 45, frPerPoint: 300 },
+  sheep: { milkingsPerDay: 1, milkPrice: 2.9, declinePerMonth: 10, minDailyKg: 0.3, dryDaysBeforeBirth: 60, matingInDays: 30, feedPricePerKg: 0.6, feedKgPerDay: 2.5, feedPerKgMilk: 0.25, maxSampleAgeDays: 60, frPerPoint: 100, youngFeedShare: 0.5 },
+  cattle: { milkingsPerDay: 2, milkPrice: 0.75, declinePerMonth: 8, minDailyKg: 8, dryDaysBeforeBirth: 56, matingInDays: 45, feedPricePerKg: 0.4, feedKgPerDay: 15, feedPerKgMilk: 0.15, maxSampleAgeDays: 45, frPerPoint: 300, youngFeedShare: 0.3 },
 }
 
 /** Letzte Wägung eines Tiers. */
@@ -134,6 +136,54 @@ function dailyAt(kg0: number, days: number, s: MilkFeedSettings): number {
 
 const round2 = (v: number) => Math.round(v * 100) / 100
 
+/** Gemolkene (verkaufte) Milch Tag für Tag ab heute bis zum Trockenstellen (`lastDay` exklusiv) oder bis die Menge unter
+ * die Grenze fällt. Bis zum Absetzen trinken die Lämmer ihren Teil. */
+function soldMilkSeries(total0: number, since: number, lamb: { perDay: number; weanInDays: number } | null, lastDay: number, s: MilkFeedSettings): number[] {
+  const out: number[] = []
+  for (let d = 0; d < lastDay; d++) {
+    const total = dailyAt(total0, since + d, s)
+    const drunk = lamb && d < lamb.weanInDays ? lamb.perDay : 0
+    // trockenstellen erst, wenn keine Lämmer mehr saugen und die Menge unter die Grenze fällt
+    if (!drunk && total < s.minDailyKg) break
+    out.push(Math.max(0, total - drunk))
+  }
+  return out
+}
+
+export interface MilkFeedWindow {
+  /** gemolkene Milch und ihr Wert in den nächsten `days` Tagen */
+  milkKg: number
+  milkValue: number
+  /** Futter in dieser Zeit: Grundfutter (kg und Fr.) plus Kraftfutter je kg Milch (Fr.) */
+  feedKg: number
+  feedCost: number
+  /** melkendes Tier ohne aktuelle Wägung: Milch nicht bekannt (zählt als 0) */
+  milkUnknown: boolean
+}
+
+/** Milch und Futter eines Tiers für die nächsten `days` Tage (Summen je Spalte im Dashboard). `young`: Lamm unter
+ * 6 Monaten, frisst den Anteil `youngFeedShare` des Grundfutters. Nach der nächsten Geburt rechnet es keine Milch mehr
+ * (neue Laktation unbekannt), Futter läuft weiter. */
+export function milkFeedWindow(i: MilkFeedInput, s: MilkFeedSettings, days: number, young = false): MilkFeedWindow {
+  const { birth } = nextBirth(i, s)
+  const dryOff = addDays(birth, -s.dryDaysBeforeBirth)
+  const sample = i.sample && (!i.lastBirth || i.sample.date >= i.lastBirth) && daysBetween(i.sample.date, i.today) <= s.maxSampleAgeDays ? i.sample : null
+  const kg0 = sample ? sample.kg * (sample.perMilking ? s.milkingsPerDay : 1) : null
+  const since = sample ? Math.max(0, daysBetween(sample.date, i.today)) : 0
+  const milking = !i.dry && kg0 != null
+  const lamb = milking && i.lambs && i.lambs.perDay > 0 ? i.lambs : null
+  const series = milking && kg0 != null ? soldMilkSeries(kg0 + (lamb ? lamb.perDay : 0), since, lamb, Math.min(days, daysBetween(i.today, dryOff)), s) : []
+  const milkKg = series.reduce((t, kg) => t + kg, 0)
+  const feedKg = days * s.feedKgPerDay * (young ? s.youngFeedShare : 1)
+  return {
+    milkKg: round2(milkKg),
+    milkValue: round2(milkKg * s.milkPrice),
+    feedKg: round2(feedKg),
+    feedCost: round2(feedKg * s.feedPricePerKg + milkKg * s.feedPerKgMilk),
+    milkUnknown: !i.dry && kg0 == null && i.lastBirth != null,
+  }
+}
+
 export function milkFeed(i: MilkFeedInput, s: MilkFeedSettings): MilkFeed {
   const { birth, basis } = nextBirth(i, s)
   const feedDays = Math.max(0, daysBetween(i.today, birth))
@@ -143,26 +193,14 @@ export function milkFeed(i: MilkFeedInput, s: MilkFeedSettings): MilkFeed {
   const kg0 = sample ? sample.kg * (sample.perMilking ? s.milkingsPerDay : 1) : null
   const since = sample ? Math.max(0, daysBetween(sample.date, i.today)) : 0
 
-  let milkDays = 0
-  let milkKg = 0
-  let milkUntil: string | null = null
   const milking = !i.dry && kg0 != null
   const lamb = milking && i.lambs && i.lambs.perDay > 0 ? i.lambs : null
   // die Lämmer trinken heute ihren Teil; die Mutter gibt also gemolken + Lämmer
   const total0 = kg0 == null ? null : kg0 + (lamb ? lamb.perDay : 0)
-  if (milking && total0 != null) {
-    const lastDay = daysBetween(i.today, dryOff) // Tage bis zum Trockenstellen (exklusiv)
-    for (let d = 0; d < lastDay; d++) {
-      const total = dailyAt(total0, since + d, s)
-      const drunk = lamb && d < lamb.weanInDays ? lamb.perDay : 0
-      // trockenstellen erst, wenn keine Lämmer mehr saugen und die Menge unter die Grenze fällt
-      if (!drunk && total < s.minDailyKg) break
-      const kg = Math.max(0, total - drunk)
-      milkKg += kg
-      if (kg > 0 || drunk) milkDays++
-    }
-    milkUntil = milkDays > 0 ? addDays(i.today, milkDays - 1) : null
-  }
+  const series = milking && total0 != null ? soldMilkSeries(total0, since, lamb, daysBetween(i.today, dryOff), s) : []
+  const milkDays = series.length
+  const milkKg = series.reduce((t, kg) => t + kg, 0)
+  const milkUntil = milkDays > 0 ? addDays(i.today, milkDays - 1) : null
   const milkValue = milkKg * s.milkPrice
   const feedCost = feedDays * feedPerDay(s) + milkKg * s.feedPerKgMilk
   const unknown = !i.dry && kg0 == null
@@ -304,4 +342,5 @@ export const MILK_FEED_FIELDS: { key: keyof MilkFeedSettings; label: string; ste
   { key: 'matingInDays', label: 'Ohne Belegung: Belegung in … Tagen', step: 1 },
   { key: 'maxSampleAgeDays', label: 'Wägung gilt höchstens (Tage)', step: 1 },
   { key: 'frPerPoint', label: 'Vorschlag: 1 Punkt je … Fr. Verlust (0 = aus)', step: 10 },
+  { key: 'youngFeedShare', label: 'Jungtiere unter 6 Mt.: Anteil Grundfutter', step: 0.1 },
 ]

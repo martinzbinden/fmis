@@ -41,7 +41,9 @@ import { bucketByDam, loadLambs, nursingByDam } from '../lib/lambs'
 import { estimateAll, loadParentLinks } from '../lib/breedingEstimate'
 import { DEFAULT_LAMB_MILK, loadLambMilkSettings, milkByDam, saveLambMilkSettings, type LambMilkSettings } from '../lib/lambMilk'
 import { speciesOf, speciesTerms } from '../lib/species'
-import { loadMilkFeedData, milkFeed, milkFeedInputFor, useMilkFeedSettings, type MilkFeed } from '../lib/milkFeed'
+import { loadMilkFeedData, milkFeed, milkFeedInputFor, milkFeedWindow, useMilkFeedSettings, type MilkFeed, type MilkFeedWindow } from '../lib/milkFeed'
+import { loadColumnTotals, periodLabel, saveColumnTotals, type ColumnTotalsSettings } from '../lib/columnTotals'
+import ColumnTotalsMenu from '../components/ColumnTotalsMenu'
 import { loadRules } from '../lib/stallRules'
 import { MilkFeedSettingsPanel } from '../components/MilkFeedChip'
 import { addToWatchlist, loadWatchlists, removeEntry } from '../lib/watchlists'
@@ -210,6 +212,18 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
       )
     return m
   }, [milkData, cards, species, today, milkFeedSettings, weanDay])
+  // Summen je Spalte (Σ Summen): Milch und Futter jedes Tiers für den gewählten Zeitraum
+  const [totals, setTotals] = useState<ColumnTotalsSettings>(() => loadColumnTotals(moduleKey))
+  const windowById = useMemo(() => {
+    const m = new Map<string, MilkFeedWindow>()
+    if (!milkData || (!totals.milk && !totals.feed)) return m
+    for (const c of cards)
+      m.set(
+        c.id,
+        milkFeedWindow(milkFeedInputFor(milkData, { id: c.id, lastBirth: c.lastBirth, expectedBirth: c.expectedBirth, pregnancy: c.pregnancy, dry: c.dry }, species, today, weanDay), milkFeedSettings, totals.days, c.ageMonths != null && c.ageMonths < 6),
+      )
+    return m
+  }, [milkData, cards, species, today, weanDay, milkFeedSettings, totals])
   const meatById = useMemo(() => (meatOn || cardFields.includes('meat') ? meatAll : new Map<string, ReturnType<typeof meatValue>>()), [meatAll, meatOn, cardFields])
 
   // Suchfeld: Freitext und Formeln wie «ZZ > 200» (lib/boardQuery.ts), Sortierung nach dem Filter vorschlagen (core/query)
@@ -424,7 +438,8 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           >
             {isCollapsed ? '▸' : '▾'}
           </button>
-          <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-800">
+          {/* lange Namen: bis zwei Zeilen, ganzer Name im Tooltip */}
+          <h2 className="line-clamp-2 min-w-0 flex-1 break-words text-sm font-bold leading-tight text-gray-800" title={col.title}>
             {icon} {col.title}
           </h2>
           <span className="text-xs text-gray-600">{list.length}</span>
@@ -487,6 +502,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
             </div>
           </>
         )}
+        {list.length > 0 && <ColumnTotals list={list} totals={totals} sheep={species === 'sheep'} meatAll={meatAll} windowById={windowById} />}
       </section>
     )
   }
@@ -575,6 +591,14 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
               ⚙️ Einstellungen
             </button>
           )}
+          <ColumnTotalsMenu
+            value={totals}
+            sheep={species === 'sheep'}
+            onChange={(v) => {
+              setTotals(v)
+              saveColumnTotals(moduleKey, v)
+            }}
+          />
           <CardFieldsMenu
             species={species}
             selected={cardFields}
@@ -843,6 +867,55 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         />
       )}
     </div>
+  )
+}
+
+/** Summen unten in einer Spalte (Σ Summen): Schlachtwert, Milch und Futter im gewählten Zeitraum. */
+function ColumnTotals({
+  list,
+  totals,
+  sheep,
+  meatAll,
+  windowById,
+}: {
+  list: BoardCard[]
+  totals: ColumnTotalsSettings
+  sheep: boolean
+  meatAll: ReadonlyMap<string, MeatValue | null>
+  windowById: ReadonlyMap<string, MilkFeedWindow>
+}) {
+  const fr = (v: number) => Math.round(v).toLocaleString('de-CH')
+  const kg = (v: number) => (v < 100 ? v.toFixed(1) : Math.round(v).toLocaleString('de-CH'))
+  const rows: { icon: string; label: string; value: string; note?: string }[] = []
+  if (sheep && totals.meat) {
+    const meat = list.map((c) => meatAll.get(c.id) ?? null)
+    const known = meat.filter((m): m is MeatValue => m != null)
+    rows.push({ icon: '🥩', label: 'Schlachtwert', value: `≈ ${fr(known.reduce((t, m) => t + m.net, 0))} Fr.`, note: known.length < list.length ? `${list.length - known.length} ohne Geburtsdatum` : undefined })
+  }
+  const w = list.map((c) => windowById.get(c.id)).filter((x): x is MilkFeedWindow => !!x)
+  const period = periodLabel(totals.days)
+  if (totals.milk && w.length) {
+    const unknown = w.filter((x) => x.milkUnknown).length
+    rows.push({ icon: '🥛', label: `Milch ${period}`, value: `${kg(w.reduce((t, x) => t + x.milkKg, 0))} kg ≈ ${fr(w.reduce((t, x) => t + x.milkValue, 0))} Fr.`, note: unknown ? `${unknown} ohne aktuelle Wägung` : undefined })
+  }
+  if (totals.feed && w.length) {
+    rows.push({ icon: '🌾', label: `Futter ${period}`, value: `${kg(w.reduce((t, x) => t + x.feedKg, 0))} kg ≈ ${fr(w.reduce((t, x) => t + x.feedCost, 0))} Fr.` })
+  }
+  if (rows.length === 0) return null
+  return (
+    <dl className="mt-2 space-y-0.5 rounded-lg bg-white px-2 py-1.5 text-xs" aria-label="Summen der Spalte" title="Summen über alle Tiere dieser Spalte (Σ Summen: Kennzahlen und Zeitraum wählen). Eine Schätzung.">
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-baseline justify-between gap-2">
+          <dt className="text-gray-600">
+            <span aria-hidden>{r.icon}</span> {r.label}
+          </dt>
+          <dd className="text-right font-semibold tabular-nums text-gray-900">
+            {r.value}
+            {r.note && <span className="block text-[11px] font-normal text-amber-800">{r.note}</span>}
+          </dd>
+        </div>
+      ))}
+    </dl>
   )
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_MILK_FEED, fmtMilkFeed, milkFeed, milkFeedPoints, type MilkFeedInput, type MilkFeedSettings } from './milkFeed'
+import { DEFAULT_MILK_FEED, fmtMilkFeed, milkFeed, milkFeedPoints, milkFeedWindow, type MilkFeedInput, type MilkFeedSettings } from './milkFeed'
 
 // feste Werte für die Rechenbeispiele (unabhängig von den Vorgaben des Betriebs)
 const S: MilkFeedSettings = { ...DEFAULT_MILK_FEED.sheep, milkingsPerDay: 2, milkPrice: 2.5, declinePerMonth: 0, minDailyKg: 0.1 }
@@ -89,5 +89,32 @@ describe('milkFeed', () => {
     expect(m.birth).toBe('2026-11-15')
     expect(m.milkDays).toBe(0)
     expect(m.feedDays).toBe(0)
+  })
+})
+
+describe('milkFeedWindow (Summen je Spalte)', () => {
+  const S2 = { ...S, feedPricePerKg: 0.6, feedKgPerDay: 2.5, feedPerKgMilk: 0, youngFeedShare: 0.5 }
+  it('Milch und Futter für 30 Tage, ohne Rückgang', () => {
+    const w = milkFeedWindow({ ...base, sample: { date: '2026-11-15', kg: 1, perMilking: false } }, S2, 30)
+    expect(w.milkKg).toBe(30)
+    expect(w.milkValue).toBe(75)
+    expect(w.feedKg).toBe(75)
+    expect(w.feedCost).toBeCloseTo(45, 5)
+    expect(w.milkUnknown).toBe(false)
+  })
+  it('Lämmer am Euter: bis zum Absetzen nur der gemolkene Teil', () => {
+    const w = milkFeedWindow({ ...base, sample: { date: '2026-11-15', kg: 1, perMilking: false }, lambs: { perDay: 2, weanInDays: 10 } }, S2, 30)
+    expect(w.milkKg).toBeCloseTo(10 * 1 + 20 * 3, 5)
+  })
+  it('Jungtier frisst den halben Anteil, melkt nicht', () => {
+    const w = milkFeedWindow({ ...base, lastBirth: null }, S2, 30, true)
+    expect(w).toMatchObject({ milkKg: 0, feedKg: 37.5, milkUnknown: false })
+  })
+  it('melkende Aue ohne Wägung: Milch unbekannt', () => {
+    expect(milkFeedWindow(base, S2, 1).milkUnknown).toBe(true)
+  })
+  it('nach dem Trockenstellen keine Milch mehr', () => {
+    const w = milkFeedWindow({ ...base, sample: { date: '2026-11-15', kg: 1, perMilking: false }, expectedBirth: '2027-01-24' }, S2, 90)
+    expect(w.milkKg).toBe(10) // Trockenstellen 60 Tage vor dem 24.1. = 25.11.
   })
 })
