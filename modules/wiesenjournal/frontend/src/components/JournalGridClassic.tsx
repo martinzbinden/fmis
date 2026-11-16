@@ -7,6 +7,7 @@ import {
   abbreviateKultur,
   addDaysIso,
   fmtArea,
+  laufhofZeichen,
   todayIso,
   usageDescription,
   usageLegend,
@@ -604,7 +605,7 @@ export default function JournalGridClassic({
                 let content: string | null = null
                 if (log) {
                   const v = log[row.key as keyof DailyFarmLog]
-                  if (row.key.startsWith('laufhof_')) content = v ? '✓' : null
+                  if (row.key.startsWith('laufhof_')) content = laufhofZeichen(v)
                   else if (v != null) content = String(v)
                 }
                 // Laufhof ohne Häkchen: aus den Herdengruppen (✓ alle, ◐ ein Teil)

@@ -1,6 +1,6 @@
 import type { AnimalCategory, DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { categoryMark, categoryTitle, type CategoryDay } from '@fmis/tiere/lib/outdoorAccess'
-import { PARCEL_CATEGORY_COLOR, todayIso, usageDescription, usageLegend } from '../lib/format'
+import { PARCEL_CATEGORY_COLOR, laufhofZeichen, todayIso, usageDescription, usageLegend } from '../lib/format'
 import type { SortField, SortState } from '../lib/parcelSort'
 import type { ParcelSummary } from '../lib/parcelSummary'
 import ParcelHeaderSort from './ParcelHeaderSort'
@@ -241,7 +241,7 @@ export default function JournalGrid({
                 let content: string | null = null
                 if (log) {
                   const v = log[row.key as keyof DailyFarmLog]
-                  if (row.key.startsWith('laufhof_')) content = v ? '✓' : null
+                  if (row.key.startsWith('laufhof_')) content = laufhofZeichen(v)
                   else if (v != null) content = String(v)
                 }
                 // Laufhof ohne Häkchen: aus den Herdengruppen (✓ alle, ◐ ein Teil)

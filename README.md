@@ -20,7 +20,9 @@ Laufzeit (ohne Neustart/Redeploy) aktivieren/deaktivieren.
   Wiesenjournal: digitales Weide-/Wiesenjournal (Nutzung/Düngung pro
   Parzelle und Tag als Raster oder flaches Journal, freiform gezeichnete
   Weidegänge auf der Karte statt nur fixer Parzellen, Tagesmeldung).
-  Erster Wurf, Stand 2026-09-20.
+  Seit 16.11.2026 mit den Seiten des [AGFF-Wiesenjournals](https://github.com/AGFF-ADCF-APF/agff-app-journal)
+  (Heute, Raster plus, Jahr, Steckbrief, Druck, Fragen), gespiegelt mit
+  `tools/agff_journal.py` (siehe [docs/wiesenjournal-agff.md](docs/wiesenjournal-agff.md)).
 
 Alle vier sind **offline-fähig** (pglite — vollständiges Postgres im
 Browser, WASM) mit Hintergrund-Sync gegen PostgreSQL, sobald wieder
@@ -187,3 +189,10 @@ docker-compose.yml -f docker-compose.local.yml up --build` — Backend auf
 Das neue Modul erscheint danach automatisch in der `modules`-Tabelle
 (aktiviert per Default) und kann jederzeit über "⚙️ Verwaltung" umgeschaltet
 werden, ohne dass Code dafür geändert werden muss.
+
+## Lizenz
+
+Lizenziert unter der EUPL-1.2 (Datei `LICENSE`; amtliche Fassungen auch auf Deutsch, Französisch und Italienisch:
+https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12). Die Dateien unter
+`modules/wiesenjournal/frontend/src/agff/` (ausser `fmis/` und den in `HERKUNFT.json` als «lokal» geführten) stammen aus
+dem AGFF-Wiesenjournal, © 2026 AGFF – Arbeitsgemeinschaft zur Förderung des Futterbaues, ebenfalls EUPL-1.2.

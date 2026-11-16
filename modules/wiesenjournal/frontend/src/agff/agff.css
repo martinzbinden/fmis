@@ -1,0 +1,265 @@
+/* Gespiegelt aus agff-app-journal src/index.css – nicht von Hand ändern (tools/agff_journal.py). */
+
+.leaflet-container {
+  font: inherit;
+  background: #e5e7eb;
+}
+
+/* Fokus überall gut sichtbar (Befund R14); in Rasterzellen nach innen versetzt */
+:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+[data-p]:focus-visible,
+[data-laufhof]:focus-visible,
+[data-farm-cell]:focus-visible,
+[data-tag-kopf]:focus-visible {
+  outline-offset: -3px;
+}
+
+/* Weniger Bewegung, wenn das Gerät es so eingestellt hat (Befund R20) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Bausteine in der Ebene «components»: Tailwind-Klassen am Element (z.B. pl-8, bg-red-700, text-xs) gehen ihnen vor.
+   Ausserhalb der Ebene gewannen die Bausteine, und solche Angaben wirkten nicht (Lupe im Suchfeld, 16.11.2026). */
+@layer components {
+  /* Eingabefelder einheitlich; Ränder mit 3 : 1 Kontrast (Befund R13) */
+  .inp {
+    @apply rounded border border-gray-500 bg-white px-2 py-1.5 text-sm focus:border-brand-600 focus:ring-1 focus:ring-brand-600;
+  }
+  /* Treffer am Handy mindestens 40 px, am Desktop 32 px (Befund R9) */
+  .btn {
+    @apply inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-gray-400 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 active:bg-gray-100 disabled:opacity-50 sm:min-h-8;
+  }
+  .btn-primary {
+    @apply inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-brand-700 px-3 py-1.5 text-sm font-medium text-white active:bg-brand-800 disabled:opacity-50 sm:min-h-8;
+  }
+  .chip {
+    @apply inline-flex min-h-10 items-center rounded-full border px-3 py-0.5 text-xs font-medium sm:min-h-7;
+  }
+  .chip-on {
+    @apply border-brand-700 bg-brand-100 text-brand-900;
+  }
+  .chip-off {
+    @apply border-gray-500 text-gray-700;
+  }
+  .card {
+    @apply rounded-lg bg-white shadow-sm ring-1 ring-black/5;
+  }
+}
+
+.parcel-label {
+  background: rgba(255, 255, 255, 0.85);
+  border: none;
+  box-shadow: none;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f2937;
+}
+.parcel-label::before {
+  display: none;
+}
+
+/* Richtungskegel am eigenen Standort (components/Standort.tsx) */
+.standort-kegel {
+  background: none;
+  border: none;
+  pointer-events: none;
+}
+.standort-kegel svg {
+  transform-origin: 50% 50%;
+  transition: transform 0.2s linear;
+}
+
+/* ---------- Druck im Format des AGFF-Wiesenjournals (pages/DruckPage.tsx, Etappe 5) ---------- */
+@page agffdruck {
+  size: A4 landscape;
+  margin: 8mm;
+}
+.druck-seite {
+  width: 281mm;
+  min-height: 190mm;
+  margin: 0 auto 6mm;
+  padding: 3mm;
+  background: #fff;
+  color: #111;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 7pt;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+  break-after: page;
+}
+.druck-seite:last-child {
+  break-after: auto;
+}
+.dr-kopf {
+  display: flex;
+  gap: 6mm;
+  align-items: flex-start;
+  margin-bottom: 2mm;
+  font-size: 8pt;
+}
+.dr-titel {
+  font-size: 14pt;
+  font-weight: 700;
+}
+.dr-betrieb {
+  margin-top: 1mm;
+  font-weight: 600;
+}
+.dr-legende {
+  flex: 1;
+  font-size: 6.5pt;
+  line-height: 1.35;
+}
+.dr-tabelle {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.dr-tabelle th,
+.dr-tabelle td {
+  border: 0.2mm solid #9ca3af;
+  padding: 0 0.3mm;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.dr-tabelle thead th {
+  font-weight: 600;
+  font-size: 6pt;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.1;
+}
+.dr-c-name {
+  width: 27mm;
+}
+.dr-c-no {
+  width: 5mm;
+}
+.dr-c-aren {
+  width: 8mm;
+}
+.dr-c-typ {
+  width: 22mm;
+}
+.dr-c-int {
+  width: 6mm;
+}
+.dr-c-n {
+  width: 8mm;
+}
+.dr-tabelle .dr-tag {
+  padding: 0;
+  text-align: center;
+  font-size: 5pt;
+  border-left-color: #e5e7eb;
+  border-right-color: #e5e7eb;
+}
+.dr-tabelle .dr-fuenf {
+  border-right: 0.3mm solid #6b7280;
+}
+.dr-tabelle .dr-monat {
+  border-left: 0.5mm solid #111;
+}
+.dr-tabelle .dr-tagnr {
+  height: 3mm;
+  overflow: visible;
+  font-size: 4.5pt;
+  letter-spacing: -0.2pt;
+}
+.dr-oben td {
+  height: 3.2mm;
+}
+.dr-unten td {
+  height: 3.2mm;
+  border-bottom: 0.4mm solid #4b5563;
+}
+.dr-name {
+  font-weight: 700;
+  font-size: 8pt;
+  font-style: italic;
+}
+.dr-typ {
+  font-size: 6.5pt;
+  font-style: italic;
+}
+.dr-zahl,
+.dr-n {
+  text-align: center;
+  font-size: 7pt;
+}
+.dr-total {
+  font-weight: 700;
+}
+.dr-nutzung {
+  font-weight: 700;
+}
+.dr-unten td {
+  position: relative;
+  overflow: visible;
+}
+.dr-gabe {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  white-space: nowrap;
+  font-size: 5.5pt;
+  font-weight: 700;
+  background: #fff;
+  padding-right: 0.3mm;
+}
+.dr-hof td {
+  height: 3.2mm;
+  font-size: 6pt;
+}
+.dr-tabelle tfoot .dr-tag {
+  font-size: 4.5pt;
+}
+.dr-mm {
+  font-style: italic;
+  color: #4b5563;
+}
+/* Niederschlag von Hand gerade und schwarz, automatisch kursiv grau; Summe der Seite rechts */
+.dr-mm-hand {
+  font-style: normal;
+  font-weight: 600;
+  color: #000;
+}
+.dr-mm-summe {
+  text-align: left;
+  padding-left: 1mm;
+  font-style: italic;
+}
+.dr-fuss {
+  margin-top: 1.5mm;
+  font-size: 5.5pt;
+  color: #4b5563;
+}
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  .druck-seite {
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* FMIS: benanntes Druckformat (tools/agff_journal.py) */
+.druck-seite {
+  page: agffdruck;
+}

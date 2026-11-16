@@ -178,21 +178,24 @@ export interface NDoseSummary {
   deleted_at: string | null
 }
 
+/** X Weide, L Laufhof, 0 kein Auslauf, null automatisch (schema/0029); lesen über lib/format.ts laufhofZeichen() */
+export type LaufhofWert = 'X' | 'L' | '0' | null
+
 export interface DailyFarmLog {
   id: string
   entry_date: string
-  laufhof_kuehe: boolean | null
-  laufhof_rinder: boolean | null
+  laufhof_kuehe: LaufhofWert
+  laufhof_rinder: LaufhofWert
   wetter_code: string | null
   niederschlag_mm: number | null
   mond_phase: string | null
   notes: string | null
   updated_at: string
   deleted_at: string | null
-  laufhof_kaelber: boolean | null
-  laufhof_galtkuehe: boolean | null
-  laufhof_schafe: boolean | null
-  laufhof_legehennen: boolean | null
+  laufhof_kaelber: LaufhofWert
+  laufhof_galtkuehe: LaufhofWert
+  laufhof_schafe: LaufhofWert
+  laufhof_legehennen: LaufhofWert
   animal_counts: string | null   // JSON {"kuehe": 20, ...}
   // 'geodaten': künftig automatisch vom Geodatenserver befüllt (noch nicht
   // angebunden); 'manuell': lokal erfasst/überschrieben, hat Vorrang.

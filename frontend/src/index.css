@@ -1,3 +1,6 @@
+/* Bausteine des AGFF-Wiesenjournals (.btn, .chip, .card, .inp, Druckformat), gespiegelt: tools/agff_journal.py */
+@import '../../modules/wiesenjournal/frontend/src/agff/agff.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

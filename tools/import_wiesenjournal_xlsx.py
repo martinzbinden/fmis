@@ -667,7 +667,9 @@ def main() -> None:
             "animal_counts": json.dumps(fd.counts) if fd.counts else (prev or {}).get("animal_counts"),
         }
         for cat in ANIMAL_LETTER.values():
-            row[f"laufhof_{cat}"] = True if fd.laufhof.get(cat) else (prev or {}).get(f"laufhof_{cat}") or False
+            # Zeichen seit schema/0029: L = Laufhof (Häkchen im Excel), sonst bisheriger Wert bzw. automatisch
+            alt = (prev or {}).get(f"laufhof_{cat}")
+            row[f"laufhof_{cat}"] = "L" if fd.laufhof.get(cat) else ("L" if alt in (True, "true") else alt if alt in ("X", "L", "0") else None)
         emit("daily_farm_log", row)
 
     # Aufräumen: Zeilen, die ein früherer Lauf dieses Tools angelegt hat

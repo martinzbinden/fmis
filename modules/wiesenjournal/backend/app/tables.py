@@ -7,6 +7,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "base_geometry", "sort_order", "notes", "updated_at", "deleted_at",
         "source", "category", "farm_id", "farm_name", "fields_lineage_id",
         "fields_declaration_id", "external_kultur_id", "kultur_code", "kultur_name_de",
+        "favorit", "immer_zeigen", "name_import",
     ],
     "paddocks": [
         "id", "paddock_id", "version_number", "is_current", "parcel_id",
@@ -33,6 +34,7 @@ SYNC_TABLES: dict[str, list[str]] = {
         "fertilizer_type_id", "dilution", "dilution_factor", "container_count",
         "extent_type", "track_id", "track_width_m", "geometry", "area_a",
         "n_kg", "n_avail_kg", "p2o5_kg", "k2o_kg", "import_key", "is_planned",
+        "container_size", "incomplete",
     ],
     "fertilization_shares": [
         "id", "entry_id", "parcel_id", "area_a", "n_kg", "n_avail_kg",
@@ -60,6 +62,13 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "variety", "tkg_g", "germination_pct", "seeds_m2", "emergence_pct",
         "row_spacing_cm", "wide_row_every", "notes", "updated_at", "deleted_at",
     ],
+    # Rückimport AGFF-Journal (schema/0029_agff_journal.sql)
+    "auslauf_ausnahmen": [
+        "id", "kategorie", "grund", "freitext", "anzahl", "tier", "von", "bis", "updated_at", "deleted_at",
+    ],
+    "journal_einstellungen": [
+        "id", "schluessel", "wert", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at",
         "snapshot", "updated_at",
@@ -83,6 +92,8 @@ TABLE_AREA: dict[str, str] = {
     "daily_farm_log": "wiesenjournal:tagesmeldung",
     "weed_observations": "wiesenjournal:tracking",
     "sowing_details": "wiesenjournal:nutzung",
+    "auslauf_ausnahmen": "wiesenjournal:tagesmeldung",
+    "journal_einstellungen": "wiesenjournal:parcels",
     "data_history": "wiesenjournal:history",
 }
 

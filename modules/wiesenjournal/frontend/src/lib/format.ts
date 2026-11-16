@@ -3,6 +3,14 @@ import { localTodayIso } from '@fmis/core/dates'
 // pglite liefert numeric-Spalten als string (Präzisionserhalt) — zentrale
 // Konvertierungs- und Format-Helfer.
 
+/** Laufhof-Zeichen einer Tagesmeldung (schema/0029): X Weide, L Laufhof, 0 kein Auslauf, null automatisch.
+ * Ältere Geräte schicken noch das Häkchen (true/false bzw. 'true'/'false'): true = L, false = automatisch. */
+export function laufhofZeichen(v: unknown): 'X' | 'L' | '0' | null {
+  if (v === 'X' || v === 'L' || v === '0') return v
+  if (v === true || v === 'true') return 'L'
+  return null
+}
+
 export function num(v: unknown): number | null {
   if (v === null || v === undefined) return null
   const n = typeof v === 'number' ? v : Number(v)

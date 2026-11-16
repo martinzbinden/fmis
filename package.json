@@ -1,5 +1,6 @@
 {
   "name": "fmis",
   "private": true,
+  "license": "EUPL-1.2",
   "workspaces": ["frontend"]
 }

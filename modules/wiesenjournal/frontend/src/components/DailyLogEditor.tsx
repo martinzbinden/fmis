@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getDb } from '../db/pglite'
 import { upsertRow } from '../db/write'
-import { ANIMAL_CATEGORIES, ANIMAL_CATEGORY_LABEL, fmtDate } from '../lib/format'
+import { ANIMAL_CATEGORIES, ANIMAL_CATEGORY_LABEL, fmtDate, laufhofZeichen } from '../lib/format'
 import { loadHerdData } from '@fmis/tiere/lib/herds'
 import { accessIndex, categoryDay, categoryMark, categoryTitle, type CategoryDay } from '@fmis/tiere/lib/outdoorAccess'
 import Modal from './Modal'
-import type { AnimalCategory, DailyFarmLog } from '../types'
+import type { AnimalCategory, DailyFarmLog, LaufhofWert } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
 
 export default function DailyLogEditor({
@@ -20,7 +20,7 @@ export default function DailyLogEditor({
 }) {
   const [existing, setExisting] = useState<DailyFarmLog | null>(null)
   // Laufhof je Tierkategorie — Spalten laufhof_<kategorie> (schema/0008).
-  const [laufhof, setLaufhof] = useState<Record<string, boolean>>({})
+  const [laufhof, setLaufhof] = useState<Record<string, LaufhofWert>>({})
   const [animalCounts, setAnimalCounts] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState('')
   const [wetterCode, setWetterCode] = useState('')
@@ -45,8 +45,8 @@ export default function DailyLogEditor({
       setHerd(categoryDay(accessIndex(herdData), herdData, date))
       const e = rows[0] ?? null
       setExisting(e)
-      const lh: Record<string, boolean> = {}
-      for (const c of ANIMAL_CATEGORIES) lh[c] = !!(e as unknown as Record<string, unknown> | null)?.[`laufhof_${c}`]
+      const lh: Record<string, LaufhofWert> = {}
+      for (const c of ANIMAL_CATEGORIES) lh[c] = laufhofZeichen((e as unknown as Record<string, unknown> | null)?.[`laufhof_${c}`])
       setLaufhof(lh)
       let counts: Record<string, unknown> = {}
       try {
@@ -73,7 +73,7 @@ export default function DailyLogEditor({
       await upsertRow('daily_farm_log', {
         id: existing?.id ?? crypto.randomUUID(),
         entry_date: date,
-        ...Object.fromEntries(ANIMAL_CATEGORIES.map((c) => [`laufhof_${c}`, !!laufhof[c]])),
+        ...Object.fromEntries(ANIMAL_CATEGORIES.map((c) => [`laufhof_${c}`, laufhof[c] ?? null])),
         wetter_code: wetterCode.trim() || null,
         niederschlag_mm: niederschlag ? Number(niederschlag) : null,
         mond_phase: mondPhase.trim() || null,
@@ -116,11 +116,14 @@ export default function DailyLogEditor({
                     <input
                       type="checkbox"
                       className="mt-1"
-                      checked={!!laufhof[c]}
-                      onChange={(e) => setLaufhof((s) => ({ ...s, [c]: e.target.checked }))}
+                      checked={laufhof[c] === 'L'}
+                      onChange={(e) => setLaufhof((s) => ({ ...s, [c]: e.target.checked ? 'L' : null }))}
                     />
                     <span>
                       {ANIMAL_CATEGORY_LABEL[c]}
+                      {(laufhof[c] === 'X' || laufhof[c] === '0') && (
+                        <span className="block text-xs text-gray-600">{laufhof[c] === 'X' ? 'gesetzt: X Weide' : 'gesetzt: 0 kein Auslauf'} (Tageskarte «Heute»)</span>
+                      )}
                       {h && (
                         <span title={categoryTitle(h)} className={`block text-xs ${mark === '✓' ? 'text-emerald-700' : 'text-amber-700'}`}>
                           Herden: {h.withAccess} von {h.animals} {mark ?? ''}

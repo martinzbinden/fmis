@@ -57,6 +57,11 @@ Eigenständige Hilfsskripte, kein Teil der laufenden App.
   Heuristik-Entscheide), `--mapping JSON`, idempotent, schützt in der App
   bearbeitete Zeilen (`--force`). Braucht openpyxl.
 
+- **`agff_journal.py`** — Seiten des AGFF-Wiesenjournals (github.com/AGFF-ADCF-APF/agff-app-journal)
+  ins Modul Wiesenjournal spiegeln: `stand` (was ist neu), `holen [REV]` (Spiegel nachführen, Tests und
+  Build danach), `pruefen` (wurde im Spiegel von Hand geändert?). Ablauf und Regeln in
+  [docs/wiesenjournal-agff.md](../docs/wiesenjournal-agff.md).
+
 - **`leitungskataster_pdf.py`** — Leitungskataster-Auszug (PDF aus dem
   Geoportal des Kantons Bern, je Werk eine PDF-Ebene als Rasterbild) in eine
   Grundlage für die Karte der Bauprojekte umwandeln: Ebenen auslesen, über

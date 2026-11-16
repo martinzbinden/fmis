@@ -27,6 +27,13 @@ Demo-Daten des ersten Wurfs (`0003_seed_demo.sql`) sind per
 `0009_remove_demo.sql` wieder entfernt. Excel-Import: `tools/
 import_wiesenjournal_xlsx.py`.
 
+## Seiten aus dem AGFF-Wiesenjournal (seit 16.11.2026)
+
+Heute, Raster plus, Jahr, Steckbrief, Drucken, Suchen und Fragen und «Mehr» stammen aus dem AGFF-Wiesenjournal
+und liegen als Spiegel unter `frontend/src/agff/` (nie von Hand ändern; FMIS-Eigenes in `agff/fmis/` und den in
+`agff/HERKUNFT.json` als «lokal» geführten Dateien). Nachführen mit `tools/agff_journal.py`. Aufbau, Brücke zu pglite und
+Modul Tiere, Prüfung auf Rückschritte: [docs/wiesenjournal-agff.md](../../docs/wiesenjournal-agff.md).
+
 ## Parzellen = GELAN-Parzellen
 
 `parcels` wird pro Saison aus `fields.field_declarations` befüllt

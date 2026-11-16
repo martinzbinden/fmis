@@ -229,7 +229,7 @@ export const TABLE_LABELS: Record<string, string> = {
   duty_companions: 'Begleitung', duty_tasks: 'Arbeit',
   // Wiesenjournal
   parcels: 'Parzelle', paddocks: 'Weide', usage_entries: 'Nutzung', fertilizer_types: 'Dünger', fertilization_entries: 'Düngung',
-  daily_farm_log: 'Tagesmeldung', weed_observations: 'Unkraut', sowing_details: 'Saat',
+  daily_farm_log: 'Tagesmeldung', weed_observations: 'Unkraut', sowing_details: 'Saat', auslauf_ausnahmen: 'Auslauf-Ausnahme', journal_einstellungen: 'Journal-Einstellung',
   // Mast
   animal_groups: 'Gruppe', group_memberships: 'Gruppenzuteilung', weighings: 'Wägung', medications: 'Behandlung', feed_records: 'Futter',
   expenses: 'Ausgabe', slaughter_results: 'Schlachtung', market_prices: 'Marktpreis', proviande_prices: 'Proviande-Preis', reader_pools: 'Gruppe vom Lesegerät',
