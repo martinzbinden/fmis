@@ -71,6 +71,11 @@ export async function saveWatchlist(pg: PGlite, list: Watchlist): Promise<void> 
   await upsertRow(pg, 'watchlists', { ...list })
 }
 
+/** Merkliste löschen (weich: deleted_at); die Einträge bleiben in der Datenbank, erscheinen aber nirgends mehr. */
+export async function deleteWatchlist(pg: PGlite, list: Watchlist): Promise<void> {
+  await upsertRow(pg, 'watchlists', { ...list, deleted_at: new Date().toISOString() })
+}
+
 // Speichern je Liste nacheinander: ein doppelter Tipp auf «hinzufügen» startete sonst zwei
 // Durchläufe, die beide «noch nicht auf der Liste» sahen und jedes Tier zweimal eintrugen.
 const listQueue = new Map<string, Promise<unknown>>()

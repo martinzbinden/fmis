@@ -58,9 +58,9 @@ export default function BoardCardView({
   onSelect: () => void
   onToggle: () => void
   onUndoDraft?: () => void
-  /** in einer Merklisten-Spalte: von dieser Liste nehmen (kleiner Knopf neben dem Griff) */
+  /** in einer Merklisten-Spalte: von dieser Liste nehmen (kleiner Knopf vor dem Griff) */
   onRemoveFromList?: () => void
-  /** in einer Gruppen-Spalte: Zielgruppen für den kleinen Wechsel-Knopf neben dem Griff (null = ohne Gruppe) */
+  /** in einer Gruppen-Spalte: Zielgruppen für den kleinen Wechsel-Knopf vor dem Griff (null = ohne Gruppe) */
   groupChoices?: { id: string | null; name: string }[]
   onMoveToGroup?: (groupId: string | null) => void
   /** geschätzter Fleischwert (nur Schafe, wenn aktiv) */
@@ -86,12 +86,24 @@ export default function BoardCardView({
       data-card={card.id}
       onPointerDown={onDragCard}
       title={filterNames.length ? filterNames.join(', ') : undefined}
-      className={`rounded-lg border-2 p-1.5 shadow-sm sm:p-2 ${pendingTo ? 'border-dashed border-amber-500 bg-amber-50' : main ? main.card : 'border-gray-200 bg-white'} ${selected ? 'ring-2 ring-brand-700' : ''} ${canDrag ? 'cursor-grab' : ''}`}
+      className={`rounded-lg border-2 p-1.5 shadow-sm transition-colors sm:p-2 ${pendingTo ? 'border-dashed border-amber-500 bg-amber-50' : selected ? 'border-brand-700 bg-brand-50 shadow-md' : main ? main.card : 'border-gray-200 bg-white'} ${selected && pendingTo ? 'ring-2 ring-brand-700' : ''} ${canDrag ? 'cursor-grab' : ''}`}
     >
       <div className="flex items-start gap-1">
-        <label className="-m-1 grid h-11 w-9 shrink-0 cursor-pointer place-items-center" data-no-drag>
-          <input type="checkbox" checked={selected} onChange={onSelect} aria-label={`Tier ${card.laufNr ?? card.shortTag} auswählen`} className="h-5 w-5" />
-        </label>
+        {/* Auswahl: runder Haken, gewählt gefüllt; die ganze Karte wird dann eingefärbt */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          data-no-drag
+          onClick={onSelect}
+          aria-label={`Tier ${card.laufNr ?? card.shortTag} auswählen`}
+          title={selected ? 'Aus der Auswahl nehmen' : 'Auswählen (mehrere Tiere gemeinsam verschieben oder auf eine Merkliste)'}
+          className="-m-1 grid h-11 w-9 shrink-0 place-items-center"
+        >
+          <span aria-hidden className={`grid h-6 w-6 place-items-center rounded-full border-2 text-sm font-bold leading-none ${selected ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-400 bg-white text-transparent hover:border-brand-600 hover:text-brand-300'}`}>
+            ✓
+          </span>
+        </button>
         <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
           <span className="flex items-baseline gap-2">
             <span className="text-lg font-bold leading-tight text-gray-900">{card.laufNr ?? '–'}</span>
@@ -127,18 +139,6 @@ export default function BoardCardView({
             )}
           </span>
         </button>
-        {canDrag && (
-          <span
-            onPointerDown={onDragHandle}
-            style={{ touchAction: 'none' }}
-            className="grid h-11 w-9 shrink-0 cursor-grab place-items-center rounded text-xl text-gray-500 active:bg-gray-100"
-            role="img"
-            aria-label="Zum Verschieben ziehen"
-            title="Ziehen, um zu verschieben"
-          >
-            ⠿
-          </span>
-        )}
         {onMoveToGroup && groupChoices && (
           <button
             type="button"
@@ -156,6 +156,19 @@ export default function BoardCardView({
           <button type="button" data-no-drag onClick={onRemoveFromList} aria-label="Von der Liste nehmen" title="Von der Liste nehmen" className="grid h-11 w-8 shrink-0 place-items-center rounded text-base text-gray-500 active:bg-red-50 active:text-red-700">
             ✕
           </button>
+        )}
+        {/* Griff ganz rechts: dort sucht man ihn zum Ziehen */}
+        {canDrag && (
+          <span
+            onPointerDown={onDragHandle}
+            style={{ touchAction: 'none' }}
+            className="-mr-1 grid h-11 w-8 shrink-0 cursor-grab place-items-center rounded text-xl text-gray-400 hover:text-gray-600 active:bg-gray-100"
+            role="img"
+            aria-label="Zum Verschieben ziehen"
+            title="Ziehen, um zu verschieben"
+          >
+            ⠿
+          </span>
         )}
       </div>
 

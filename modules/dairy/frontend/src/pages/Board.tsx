@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalProvider, refreshHerdData, type AnimalRef } from '@fmis/core/animals'
 import { useHasPermission } from '@fmis/core/AuthContext'
@@ -46,7 +46,7 @@ import { loadColumnTotals, periodLabel, saveColumnTotals, type ColumnTotalsSetti
 import ColumnTotalsMenu from '../components/ColumnTotalsMenu'
 import { loadRules } from '../lib/stallRules'
 import { MilkFeedSettingsPanel } from '../components/MilkFeedChip'
-import { addToWatchlist, loadWatchlists, removeEntry } from '../lib/watchlists'
+import { addToWatchlist, deleteWatchlist, loadWatchlists, removeEntry, saveWatchlist } from '../lib/watchlists'
 
 async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string, milk: LambMilkSettings) {
   const trait = SIRE_TRAIT[species].trait
@@ -179,6 +179,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
   // Handy: Werkzeuge (Sortieren, Spalten, Einstellungen) aufgeklappt
   const [toolsOpen, setToolsOpen] = useState(false)
   const [editGroup, setEditGroup] = useState<string | null>(null)
+  const [editList, setEditList] = useState<string | null>(null)
   const [cardFields, setCardFields] = useState<CardFieldKey[]>(() => loadCardFields(moduleKey))
   const [meatOn, setMeatOn] = useState(() => {
     try {
@@ -464,6 +465,11 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           )}
           {col.kind === 'group' && col.id && canMove && (
             <button type="button" onClick={() => setEditGroup(col.id)} aria-label={`Gruppe «${col.title}» umbenennen oder löschen`} title="Umbenennen oder löschen" className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
+              ⋮
+            </button>
+          )}
+          {col.kind === 'list' && col.id && (
+            <button type="button" onClick={() => setEditList(col.id)} aria-label={`Merkliste «${col.title}»: umbenennen, archivieren, löschen`} title="Umbenennen, archivieren, löschen" className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
               ⋮
             </button>
           )}
@@ -802,6 +808,67 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
         </FooterBar>
       )}
 
+      {editList && (() => {
+        const l = lists.find((x) => x.id === editList)
+        if (!l) return null
+        const offen = (data?.entries ?? []).filter((e) => e.list_id === l.id && !e.done_at).length
+        return (
+          <GroupEditModal
+            noun="Merkliste"
+            name={l.name}
+            memberCount={offen}
+            blockedReason={null}
+            deleteInfo={
+              <p>
+                {offen === 0 ? 'Die Merkliste ist leer.' : `${offen} ${offen === 1 ? 'Tier steht' : 'Tiere stehen'} darauf.`} Die Tiere selbst bleiben, wo sie sind; nur die Liste verschwindet.
+                Wer sie später noch braucht, archiviert sie lieber.
+              </p>
+            }
+            extra={
+              <>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await undoAction(`Merkliste «${l.name}» archiviert`, () => saveWatchlist(db, { ...l, archived_at: new Date().toISOString() }))
+                      notifySuccess(`«${l.name}» archiviert (Seite Merklisten)`)
+                      setEditList(null)
+                    } catch (e) {
+                      notifyError(errorText(e))
+                    }
+                  }}
+                  className="min-h-12 w-full rounded-lg border-2 border-gray-400 px-3 font-semibold text-gray-800"
+                >
+                  🗄 Archivieren
+                </button>
+                <Link to={`/${moduleKey}/merklisten`} className="grid min-h-12 w-full place-items-center rounded-lg border-2 border-gray-300 px-3 font-semibold text-brand-800">
+                  Merklisten öffnen (Gründe, erledigt)
+                </Link>
+              </>
+            }
+            onClose={() => setEditList(null)}
+            onRename={async (next) => {
+              try {
+                await undoAction(`Merkliste «${l.name}» umbenannt in «${next}»`, () => saveWatchlist(db, { ...l, name: next }))
+                notifySuccess(`Merkliste heisst jetzt «${next}»`)
+              } catch (e) {
+                notifyError(errorText(e))
+                throw e
+              }
+            }}
+            onDelete={async () => {
+              try {
+                await undoAction(`Merkliste «${l.name}» gelöscht`, () => deleteWatchlist(db, l))
+                notifySuccess(`Merkliste «${l.name}» gelöscht`)
+              } catch (e) {
+                notifyError(errorText(e))
+                throw e
+              }
+            }}
+          />
+        )
+      })()}
+
       {editGroup && herd && (() => {
         const g = herd.groups.find((x) => x.id === editGroup)
         if (!g) return null
@@ -1074,8 +1141,10 @@ function SelectionBar({
   const [list, setList] = useState('')
   const field = 'min-h-11 rounded-lg border border-gray-300 bg-white px-2 text-sm'
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 p-2 text-sm" role="region" aria-label="Auswahl">
-      <span className="font-semibold text-sky-900">{count} gewählt</span>
+    <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-xl border-2 border-brand-700 bg-white p-2 text-sm shadow-lg" role="region" aria-label="Auswahl">
+      <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-brand-700 px-3 font-semibold text-white" aria-live="polite">
+        <span aria-hidden>✓</span> {count} {count === 1 ? 'Tier' : 'Tiere'} gewählt
+      </span>
       {canMove && (
         <span className="flex items-center gap-1">
           <select value={group} onChange={(e) => setGroup(e.target.value)} className={field} aria-label="In Gruppe verschieben">
@@ -1107,8 +1176,8 @@ function SelectionBar({
           </button>
         </span>
       )}
-      <button type="button" onClick={onClear} className="ml-auto min-h-11 rounded-lg px-3 text-gray-700 underline">
-        Auswahl aufheben
+      <button type="button" onClick={onClear} className="ml-auto min-h-11 rounded-lg border border-gray-300 px-3 text-gray-800 active:bg-gray-100">
+        ✕ Auswahl aufheben
       </button>
     </div>
   )

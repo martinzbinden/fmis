@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import Modal from '@fmis/core/Modal'
 
-/** Gruppe im Dashboard umbenennen oder löschen. Löschen fragt immer nach: Die Tiere bleiben erhalten und stehen danach
+/** Gruppe oder Merkliste im Dashboard umbenennen oder löschen (Menü ⋮ im Spaltenkopf). Löschen fragt immer nach: Die Tiere bleiben erhalten und stehen danach
  * «ohne Gruppe», Stall und Weide der Gruppe enden, der Verlauf bleibt (wie «Gruppe auflösen» im Modul Tiere). */
 export default function GroupEditModal({
   name,
@@ -10,8 +10,17 @@ export default function GroupEditModal({
   onRename,
   onDelete,
   onClose,
+  noun = 'Gruppe',
+  deleteInfo,
+  extra,
 }: {
   name: string
+  /** «Gruppe» oder «Merkliste» */
+  noun?: 'Gruppe' | 'Merkliste'
+  /** Text vor dem Löschen (Vorgabe: was mit den Tieren einer Gruppe geschieht) */
+  deleteInfo?: ReactNode
+  /** weitere Knöpfe zwischen Umbenennen und Löschen (z.B. Archivieren, Merkliste öffnen) */
+  extra?: ReactNode
   memberCount: number
   /** z.B. offener Entwurf: dann ist Löschen gesperrt */
   blockedReason: string | null
@@ -38,19 +47,19 @@ export default function GroupEditModal({
   }
 
   return (
-    <Modal title={confirming ? `Gruppe «${name}» löschen?` : `Gruppe «${name}»`} onClose={onClose} dirty={changed}>
+    <Modal title={confirming ? `${noun} «${name}» löschen?` : `${noun} «${name}»`} onClose={onClose} dirty={changed}>
       {confirming ? (
         <div className="space-y-3 text-sm text-gray-800">
-          <p>
+          {deleteInfo ?? <p>
             {memberCount === 0 ? 'Die Gruppe hat keine Tiere.' : `${memberCount} ${memberCount === 1 ? 'Tier steht' : 'Tiere stehen'} danach «ohne Gruppe».`} Die Tiere selbst bleiben erhalten. Stall und Weide der Gruppe enden heute, die Gruppe verschwindet aus dem Dashboard. Der Verlauf (wer wann wo stand) bleibt.
-          </p>
+          </p>}
           <p className="text-gray-600">Mit «Rückgängig» nimmst du es danach wieder zurück.</p>
           <div className="flex gap-2">
             <button type="button" onClick={() => setConfirming(false)} disabled={busy} className="min-h-12 flex-1 rounded-lg border-2 border-gray-400 px-3 font-semibold text-gray-800">
               Abbrechen
             </button>
             <button type="button" onClick={() => void run(onDelete)} disabled={busy} className="min-h-12 flex-1 rounded-lg bg-red-700 px-3 font-semibold text-white disabled:opacity-50">
-              {busy ? 'löscht …' : 'Gruppe löschen'}
+              {busy ? 'löscht …' : `${noun} löschen`}
             </button>
           </div>
         </div>
@@ -71,10 +80,11 @@ export default function GroupEditModal({
               Umbenennen
             </button>
           </form>
+          {extra && <div className="space-y-2 border-t pt-3">{extra}</div>}
           <div className="border-t pt-3">
             {blockedReason && <p className="mb-2 text-sm text-amber-800">{blockedReason}</p>}
             <button type="button" disabled={!!blockedReason} onClick={() => setConfirming(true)} className="min-h-12 w-full rounded-lg border-2 border-red-700 px-3 font-semibold text-red-700 disabled:opacity-40">
-              Gruppe löschen …
+              {noun} löschen …
             </button>
           </div>
         </div>
