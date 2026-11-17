@@ -60,8 +60,12 @@ export interface BoardCard {
   sccLevels: SccLevel[]
   /** Tendenz über die Laktationen (ab 2 bewerteten Laktationen, sonst null) */
   trend: TrendDirection | null
-  /** Wägungen (Prüfungen) der laufenden Laktation */
+  /** offizielle Milchprüfungen (mit Gehalten, SMG) der laufenden Laktation; private Wägungen zählen nicht */
   weighings: number
+  /** Beginn der laufenden Laktation (letzte Geburt oder Abkalbedatum der Milchprüfung, das spätere) */
+  lactationStart?: string | null
+  /** Zellzahl der letzten Prüfung dieser Laktation (Tsd./ml) mit Datum; null ohne */
+  lastScc?: { value: number; date: string } | null
   /** mittlere Tage zwischen zwei Geburten (ab 2 Geburten) */
   intervalDays: number | null
   /** geschätzte Milch der Lämmer des letzten Wurfs (lib/lambMilk.ts); null ohne Lämmer */
@@ -152,7 +156,12 @@ export function buildCards(input: BoardInput): BoardCard[] {
       levels: ctx.trend?.levels ?? [],
       sccLevels: ctx.sccByLactation,
       trend: ctx.trend?.direction ?? null,
-      weighings: ctx.currentLactationTests.length,
+      weighings: ctx.lactationTests.filter((t) => t.lab).length,
+      lactationStart: ctx.lactationStart,
+      lastScc: (() => {
+        const t = [...ctx.lactationTests].reverse().find((x) => x.scc != null)
+        return t ? { value: t.scc!, date: t.date } : null
+      })(),
       intervalDays: birthInterval(ctx),
       lambMilk: input.lambMilk?.get(ref.id) ?? null,
       breedingEstimate: input.breedingEstimates?.get(ref.id) ?? null,

@@ -11,7 +11,7 @@ import LactationSpark from './LactationSpark'
 import SearchPick from '@fmis/core/SearchPick'
 import { fmtCells } from '../lib/culling'
 import { MilkFeedChip } from './MilkFeedChip'
-import type { MilkFeed, MilkFeedSettings } from '../lib/milkFeed'
+import type { MilkFeed, MilkFeedSettings, MilkSample } from '../lib/milkFeed'
 import NursingLambs, { WeanedLambs } from './NursingLambs'
 import { VERDICT_LABEL, type Verdict, type VerdictResult } from '../lib/cardVerdict'
 
@@ -54,6 +54,7 @@ export default function BoardCardView({
   onMoveToGroup,
   meat,
   milkFeed,
+  lastMilk = null,
   milkFeedSettings,
   meatLimits,
   fields = [],
@@ -85,6 +86,8 @@ export default function BoardCardView({
   meat?: MeatValue | null
   /** Milch gegen Futter bis zur nächsten Geburt (Kartenfeld «milkFeed») */
   milkFeed?: MilkFeed | null
+  /** zuletzt gewogene Milch (Milchwägung oder Milchprüfung), Kartenfeld «Letzte Wägung» */
+  lastMilk?: MilkSample | null
   milkFeedSettings?: MilkFeedSettings
   /** auf der Karte gewählte Eigenschaften (Menü «Karte») */
   /** Grenzen im Fleischwert-Balken (schwere Aue, schweres Lamm T3/H3/C3); die Skala ist fest */
@@ -209,7 +212,7 @@ export default function BoardCardView({
       {/* Werte über die ganze Kartenbreite (nicht nur neben Griff und ⇄) */}
       {fields.length > 0 && (
         <button type="button" onClick={onToggle} tabIndex={-1} className="block w-full text-left">
-          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} milkFeed={milkFeed ?? null} milkFeedSettings={milkFeedSettings} />
+          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} milkFeed={milkFeed ?? null} lastMilk={lastMilk} milkFeedSettings={milkFeedSettings} />
         </button>
       )}
 
@@ -330,6 +333,7 @@ function CardProps({
   meat,
   meatLimits,
   milkFeed,
+  lastMilk,
   milkFeedSettings,
 }: {
   card: BoardCard
@@ -337,6 +341,7 @@ function CardProps({
   meat: MeatValue | null
   meatLimits?: MeatLimit[]
   milkFeed: MilkFeed | null
+  lastMilk: MilkSample | null
   milkFeedSettings?: MilkFeedSettings
 }) {
   const has = (k: CardFieldKey) => fields.includes(k)
@@ -403,7 +408,30 @@ function CardProps({
       ),
     )
   }
-  if (has('weighings')) rows.push(line('Wägungen', card.lastBirth || card.weighings > 0 ? String(card.weighings) : '–', 'weighings'))
+  if (has('weighings')) {
+    // «0.5 kg · ZZ 105' (5 W.)»: zuletzt gewogene Milch dieser Laktation (auch privat, ohne Labor), Zellzahl der letzten
+    // Prüfung, Anzahl offizieller Prüfungen (mit Gehalten); Details im Tooltip
+    const start = card.lactationStart ?? card.lastBirth
+    const milk = lastMilk && (!start || lastMilk.date >= start) ? lastMilk : null
+    const scc = card.lastScc ?? null
+    const parts = [milk ? `${milk.kg.toLocaleString('de-CH', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} kg` : null, scc ? `ZZ ${Math.round(scc.value)}'` : null].filter(Boolean)
+    const tip = [
+      milk ? `Letzte Wägung ${fmtDate(milk.date)}: ${milk.kg.toLocaleString('de-CH')} kg ${milk.perMilking ? 'je Melkung (Milchwägung, privat)' : 'Tagesmilch (Milchprüfung)'}` : 'Keine Wägung in dieser Laktation',
+      scc ? `Zellzahl ${Math.round(scc.value).toLocaleString('de-CH')}'000/ml aus der Prüfung vom ${fmtDate(scc.date)}` : null,
+      `${card.weighings} offizielle Prüfungen mit Gehalten (SMG) in dieser Laktation; private Wägungen zählen nicht`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+    rows.push(
+      <div key="weighings" className="flex justify-between gap-2" title={tip}>
+        <span className="text-gray-500">Letzte Wägung</span>
+        <span className="text-right font-medium text-gray-900">
+          {parts.length ? parts.join(' · ') : '–'}
+          {(start || card.weighings > 0) && <span className="font-normal text-gray-600"> ({card.weighings} W.)</span>}
+        </span>
+      </div>,
+    )
+  }
   if (has('interval')) rows.push(line('Zwischenablammzeit', card.intervalDays == null ? '–' : `Ø ${card.intervalDays} Tage`, 'interval'))
   if (has('lambMilk')) {
     const m = card.lambMilk

@@ -62,6 +62,10 @@ export interface AnimalContext {
   currentLactationScc: (number | null)[]
   /** Proben der laufenden Laktation mit Laktationstag (für die stadienabhängige Zellzahl). */
   currentLactationTests: { scc: number | null; dim: number | null }[]
+  /** Für die Karte: Beginn der laufenden Laktation (letzte Geburt oder Abkalbedatum der letzten Milchprüfung, das
+   * spätere; auch für Tiere ohne erfasste Geburt) und ihre Milchprüfungen; `lab` = mit Gehalten (offiziell, SMG) */
+  lactationStart: string | null
+  lactationTests: { date: string; scc: number | null; lab: boolean }[]
   breedingValues: Record<string, BreedingValueEntry>
   lactationNumber: number | null
   /** Tage mit Krankheit/Behandlung im Journal der letzten 12 Monate. */
@@ -95,6 +99,20 @@ export function sccByLactation(tests: { lactation_number?: unknown; cell_count: 
   return [...by.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([nr, cs]) => ({ lactation_number: nr, scc: Math.round(geoMean(cs) ?? 0), tests: cs.length }))
+}
+
+/** Laufende Laktation für die Karte (Feld «Letzte Wägung»): Tests sind nach Datum sortiert. */
+function cardLactation(tests: Record<string, unknown>[], lastBirth: string | null): { lactationStart: string | null; lactationTests: { date: string; scc: number | null; lab: boolean }[] } {
+  const last = tests[tests.length - 1]
+  const testCalving = last ? isoDate(last.calving_date) : null
+  const start = [lastBirth, testCalving].filter((d): d is string => !!d).sort().pop() ?? null
+  if (!start) return { lactationStart: null, lactationTests: [] }
+  return {
+    lactationStart: start,
+    lactationTests: tests
+      .filter((t) => (isoDate(t.test_date) ?? '') >= start)
+      .map((t) => ({ date: isoDate(t.test_date)!, scc: num(t.cell_count), lab: num(t.protein_pct) != null || num(t.fat_pct) != null })),
+  }
 }
 
 export async function loadHerdContext(pg: PGlite, species: Species, today: string): Promise<Map<string, AnimalContext>> {
@@ -268,6 +286,7 @@ export async function loadHerdContext(pg: PGlite, species: Species, today: strin
             .filter((t) => (isoDate(t.test_date) ?? '') >= lastBirth)
             .map((t) => ({ scc: num(t.cell_count), dim: lactationDayAt(lastBirth, isoDate(t.test_date)) }))
         : [],
+      ...cardLactation(testsByAnimal.get(a.id) ?? [], lastBirth),
       breedingValues: bvByAnimal.get(a.id) ?? {},
       lactationNumber: maxLact || null,
       healthEvents12m: (healthByAnimal.get(a.id) ?? []).map((h) => ({ date: isoDate(h.entry_date)!, diagnosis: h.diagnosis })),

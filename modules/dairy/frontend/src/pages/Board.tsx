@@ -41,7 +41,7 @@ import { bucketByDam, loadLambs, nursingByDam } from '../lib/lambs'
 import { estimateAll, loadParentLinks } from '../lib/breedingEstimate'
 import { DEFAULT_LAMB_MILK, loadLambMilkSettings, milkByDam, saveLambMilkSettings, type LambMilkSettings } from '../lib/lambMilk'
 import { speciesOf, speciesTerms } from '../lib/species'
-import { loadMilkFeedData, milkFeed, milkFeedInputFor, milkFeedWindow, useMilkFeedSettings, type MilkFeed, type MilkFeedWindow } from '../lib/milkFeed'
+import { loadMilkFeedData, milkFeed, milkFeedInputFor, milkFeedWindow, useMilkFeedSettings, type MilkFeed, type MilkFeedWindow, type MilkSample } from '../lib/milkFeed'
 import { loadColumnTotals, periodLabel, saveColumnTotals, type ColumnTotalsSettings } from '../lib/columnTotals'
 import ColumnTotalsMenu from '../components/ColumnTotalsMenu'
 import SearchPick from '@fmis/core/SearchPick'
@@ -523,6 +523,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
                   onMoveToGroup={col.kind === 'group' && canMove ? (id) => moveToDraft([c.id], id) : undefined}
                   meat={meatById.get(c.id) ?? null}
                   milkFeed={milkFeedOn || cardFields.includes('dailyMilk') ? (milkFeedById.get(c.id) ?? null) : null}
+                  lastMilk={milkData?.samples.get(c.id) ?? null}
                   meatLimits={meatLimitList}
                   fields={cardFields}
                   verdict={verdictById.get(c.id)?.verdict ?? null}
@@ -1111,6 +1112,7 @@ function ColumnCard({
   onMoveToGroup,
   meat,
   milkFeed,
+  lastMilk,
   meatLimits,
   fields,
   verdict,
@@ -1134,6 +1136,7 @@ function ColumnCard({
   onMoveToGroup?: (groupId: string | null) => void
   meat?: MeatValue | null
   milkFeed?: MilkFeed | null
+  lastMilk?: MilkSample | null
   /** Grenzen im Balken (feste Skala) */
   meatLimits?: MeatLimit[]
   fields?: CardFieldKey[]
@@ -1162,6 +1165,7 @@ function ColumnCard({
       onMoveToGroup={onMoveToGroup}
       meat={meat}
       milkFeed={milkFeed}
+      lastMilk={lastMilk ?? null}
       milkFeedSettings={milkFeedSettings}
       meatLimits={meatLimits}
       fields={fields}
