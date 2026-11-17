@@ -94,6 +94,10 @@ export const SYNC_TABLES = {
   stall_decisions: ['id', 'step', 'offspring_id', 'animal_id', 'decision', 'decided_on', 'until', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   culling_marks: ['id', 'animal_id', 'mark', 'marked_on', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   lamb_selection: ['id', 'animal_key', 'offspring_id', 'leaning', 'purpose', 'decided_on', 'notes', 'updated_at', 'deleted_at'],
+  yogurt_batches: [
+    'id', 'batch_date', 'target_kg', 'factor', 'criterion', 'milk_kg', 'fat_pct', 'protein_pct', 'cell_count',
+    'cows', 'notes', 'created_by', 'updated_at', 'deleted_at',
+  ],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -135,5 +139,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   pedigree_info: new Set(['document_date']),
   conformation_scores: new Set(['score_date', 'document_date']),
   pedigree_performance: new Set(['calving_date', 'document_date']),
+  yogurt_batches: new Set(['batch_date']),
   data_history: new Set(),
 }

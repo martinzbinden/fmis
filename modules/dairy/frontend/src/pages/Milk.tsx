@@ -5,6 +5,7 @@ import { useQuery } from '../hooks/useQuery'
 import { fmtDate, fmtKg, fmtPct, isoDate, num } from '../lib/format'
 import { lactationDayAt } from '../lib/lactationDay'
 import YogurtPlanner from '../components/YogurtPlanner'
+import { loadRun } from '../lib/yogurtBatch'
 import { speciesTerms } from '../lib/species'
 import type { AnimalMilkCurrent } from '../types'
 import LactationView from '../components/LactationView'
@@ -95,7 +96,10 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
   const cows = useMemo(() => (data ?? []).filter((c) => !only || only.has(c.animal_id)), [data, only])
   const [sortKey, setSortKey] = useState<SortKey>('protein_pct')
   // Zwei Tabs: Laktationsleistung (Abschlüsse) und letzte Milchwägung.
-  const [tab, setTab] = useState<'laktation' | 'waegung' | 'joghurt'>('laktation')
+  // ?ansicht=joghurt (Link aus dem Verlauf) oder ein laufender Joghurt-Vorgang öffnet gleich den Joghurt
+  const [tab, setTab] = useState<'laktation' | 'waegung' | 'joghurt'>(() =>
+    moduleKey === 'dairy' && (params.get('ansicht') === 'joghurt' || loadRun()) ? 'joghurt' : 'laktation',
+  )
   // Joghurt-Auswahl nur für Milchkühe — Nebengeleise, deshalb eingeklappt
   // unter "Benutzerdefinierte Filter und Aktionen".
   const showYogurt = moduleKey === 'dairy'

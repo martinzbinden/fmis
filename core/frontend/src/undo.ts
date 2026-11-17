@@ -217,7 +217,7 @@ export const TABLE_LABELS: Record<string, string> = {
   animal_journal: 'Journal', treatment_templates: 'Behandlungsvorlage', pedigree: 'Abstammung', matings: 'Belegung',
   pregnancy_checks: 'Trächtigkeit', births: 'Geburt', birth_offspring: 'Nachkomme', watchlists: 'Merkliste',
   watchlist_entries: 'Merklisten-Eintrag', reminders: 'Erinnerung', journal_photos: 'Foto', claw_exams: 'Klauen', claw_findings: 'Klauenbefund', lamb_selection: 'Lämmer-Selektion',
-  breeding_values: 'Zuchtwert', conformation_scores: 'Exterieur', weanings: 'Absetzen', animal_weights: 'Gewicht', stall_decisions: 'Stall-Entscheid', culling_marks: 'Ausmerzliste',
+  breeding_values: 'Zuchtwert', conformation_scores: 'Exterieur', weanings: 'Absetzen', animal_weights: 'Gewicht', stall_decisions: 'Stall-Entscheid', culling_marks: 'Ausmerzliste', yogurt_batches: 'Joghurt-Milch',
   // Tiere
   locations: 'Ort', herd_groups: 'Gruppe', herd_stays: 'Aufenthalt', herd_members: 'Gruppenzuteilung', herd_counts: 'Tierzahl', herd_laufhof: 'Laufhof',
   // Bau
