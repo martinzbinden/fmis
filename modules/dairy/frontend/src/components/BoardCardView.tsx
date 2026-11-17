@@ -127,9 +127,10 @@ export default function BoardCardView({
           </span>
         </button>
         <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
-          <span className="flex items-baseline gap-2">
-            <span className="text-lg font-bold leading-tight text-gray-900">{card.laufNr ?? '–'}</span>
-            <span className="truncate text-xs text-gray-600">{card.shortTag}</span>
+          {/* Ohrmarke immer ganz: lieber Geschlecht/Alter auf die nächste Zeile umbrechen als die Nummer abschneiden */}
+          <span className="flex flex-wrap items-baseline gap-x-2">
+            <span className="shrink-0 text-lg font-bold leading-tight text-gray-900">{card.laufNr ?? '–'}</span>
+            <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-gray-600">{card.shortTag}</span>
             {card.sex && <span className="text-sm text-gray-700" title={SEX_LABEL[card.sex]}>{SEX_ICON[card.sex]}</span>}
             {/* am Handy: Alter gleich in der ersten Zeile, die Zeile mit Geschlecht und Geburtsdatum entfällt */}
             {age && <span className="shrink-0 text-xs text-gray-600 sm:hidden">{age}</span>}
@@ -169,37 +170,40 @@ export default function BoardCardView({
             )}
           </span>
         </button>
-        {onMoveToGroup && groupChoices && (
-          <button
-            type="button"
-            data-no-drag
-            onClick={() => setPicking((v) => !v)}
-            aria-expanded={picking}
-            aria-label="Gruppe wechseln"
-            title="Gruppe wechseln"
-            className={`grid h-11 w-8 shrink-0 place-items-center rounded text-base active:bg-gray-100 ${picking ? 'bg-sky-100 text-sky-900' : 'text-gray-500'}`}
-          >
-            ⇄
-          </button>
-        )}
-        {onRemoveFromList && (
-          <button type="button" data-no-drag onClick={onRemoveFromList} aria-label="Von der Liste nehmen" title="Von der Liste nehmen" className="grid h-11 w-8 shrink-0 place-items-center rounded text-base text-gray-500 active:bg-red-50 active:text-red-700">
-            ✕
-          </button>
-        )}
-        {/* Griff ganz rechts: dort sucht man ihn zum Ziehen */}
-        {canDrag && (
-          <span
-            onPointerDown={onDragHandle}
-            style={{ touchAction: 'none' }}
-            className="-mr-1 grid h-11 w-8 shrink-0 cursor-grab place-items-center rounded text-xl text-gray-400 hover:text-gray-600 active:bg-gray-100"
-            role="img"
-            aria-label="Zum Verschieben ziehen"
-            title="Ziehen, um zu verschieben"
-          >
-            ⠿
-          </span>
-        )}
+        {/* rechts übereinander: Griff (ziehen), darunter ⇄ Gruppe wechseln bzw. ✕ von der Liste — so bleibt der Name breit */}
+        <span className="-mr-1 flex shrink-0 flex-col items-center">
+          {/* Griff ganz rechts: dort sucht man ihn zum Ziehen */}
+          {canDrag && (
+            <span
+              onPointerDown={onDragHandle}
+              style={{ touchAction: 'none' }}
+              className="grid h-10 w-8 shrink-0 cursor-grab place-items-center rounded text-xl text-gray-400 hover:text-gray-600 active:bg-gray-100"
+              role="img"
+              aria-label="Zum Verschieben ziehen"
+              title="Ziehen, um zu verschieben"
+            >
+              ⠿
+            </span>
+          )}
+          {onMoveToGroup && groupChoices && (
+            <button
+              type="button"
+              data-no-drag
+              onClick={() => setPicking((v) => !v)}
+              aria-expanded={picking}
+              aria-label="Gruppe wechseln"
+              title="Gruppe wechseln"
+              className={`grid h-10 w-8 shrink-0 place-items-center rounded text-base active:bg-gray-100 ${picking ? 'bg-sky-100 text-sky-900' : 'text-gray-500'}`}
+            >
+              ⇄
+            </button>
+          )}
+          {onRemoveFromList && (
+            <button type="button" data-no-drag onClick={onRemoveFromList} aria-label="Von der Liste nehmen" title="Von der Liste nehmen" className="grid h-10 w-8 shrink-0 place-items-center rounded text-base text-gray-500 active:bg-red-50 active:text-red-700">
+              ✕
+            </button>
+          )}
+        </span>
       </div>
 
       {/* Werte über die ganze Kartenbreite (nicht nur neben Griff und ⇄) */}
