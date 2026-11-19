@@ -319,6 +319,12 @@ export function saveMilkFeedSettings(moduleKey: string, s: MilkFeedSettings): vo
   listeners.forEach((l) => l())
 }
 
+/** Nach dem Laden einer Dashboard-Ansicht (lib/boardViews.ts): neu aus dem localStorage lesen. */
+export function forgetMilkFeedSettings(moduleKey: string): void {
+  cache.delete(moduleKey)
+  listeners.forEach((l) => l())
+}
+
 export function useMilkFeedSettings(moduleKey: string, species: Species): MilkFeedSettings {
   return useSyncExternalStore(
     (l) => {

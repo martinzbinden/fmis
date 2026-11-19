@@ -21,6 +21,7 @@ import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatLimits as buildMeatLimits, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, MEAT_BAR_MAX, type MeatLimit, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
+import BoardViewsMenu from '../components/BoardViewsMenu'
 import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
 import SortMenu from '@fmis/core/query/SortMenu'
 import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
@@ -70,6 +71,12 @@ function readHidden(moduleKey: string): Set<string> {
  * Filter färben oder blenden aus; Karten lassen sich in eine andere Gruppe ziehen (als Entwurf, der
  * gesamthaft bestätigt wird) oder auf eine Merkliste (kommt sofort drauf, bleibt in der Gruppe). */
 export default function Board({ moduleKey }: { moduleKey: string }) {
+  // Laden einer gespeicherten Ansicht (components/BoardViewsMenu): Seite mit den neuen Einstellungen neu aufbauen
+  const [generation, setGeneration] = useState(0)
+  return <BoardPage key={generation} moduleKey={moduleKey} reload={() => setGeneration((g) => g + 1)} />
+}
+
+function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => void }) {
   const db = useDb()
   const species = speciesOf(moduleKey)
   const herdSpecies = species === 'sheep' ? 'schafe' : 'rinder'
@@ -604,6 +611,7 @@ export default function Board({ moduleKey }: { moduleKey: string }) {
           </span>
         </div>
         <div className={`ml-auto flex-wrap items-center justify-end gap-2 ${toolsOpen ? 'flex' : 'hidden'} sm:flex`}>
+          <BoardViewsMenu moduleKey={moduleKey} onApplied={reload} />
           {species === 'sheep' && (
             <button type="button" onClick={toggleMeat} aria-pressed={meatOn} className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${meatOn ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-300 bg-white'}`}>
               🥩 Fleischwert

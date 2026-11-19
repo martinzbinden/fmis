@@ -113,6 +113,8 @@ function describeEntry(entry: DataHistory, moduleKey: string, lk?: Lookup): { la
       return { label: `Ausmerzliste: ${tier(snap.animal_id)} ${snap.mark === 'leben' ? '👍 bleibt' : snap.mark === 'schlachten' ? '👎 schlachten' : ''}`, link: tierLink(snap.animal_id) }
     case 'yogurt_batches':
       return { label: `Joghurt-Milch ${day(snap.batch_date)}: ${kg(snap.milk_kg) ?? '?'}`, link: `/${moduleKey}/leistung?ansicht=joghurt` }
+    case 'board_views':
+      return { label: `Dashboard-Ansicht «${s(snap.name) ?? '?'}»${snap.shared ? ' (für alle)' : ''}`, link: `/${moduleKey}/dashboard` }
     case 'animals':
       return { label: snap.ear_tag ? animalLabel({ ear_tag: String(snap.ear_tag), name: s(snap.name) }) : entry.row_id, link: `/${moduleKey}/tiere/${entry.row_id}` }
     case 'milk_tests':

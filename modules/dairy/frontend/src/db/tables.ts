@@ -98,6 +98,7 @@ export const SYNC_TABLES = {
     'id', 'batch_date', 'target_kg', 'factor', 'criterion', 'milk_kg', 'fat_pct', 'protein_pct', 'cell_count',
     'cows', 'notes', 'created_by', 'updated_at', 'deleted_at',
   ],
+  board_views: ['id', 'name', 'owner', 'shared', 'settings', 'created_by', 'updated_at', 'deleted_at'],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -140,5 +141,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   conformation_scores: new Set(['score_date', 'document_date']),
   pedigree_performance: new Set(['calving_date', 'document_date']),
   yogurt_batches: new Set(['batch_date']),
+  board_views: new Set(),
   data_history: new Set(),
 }
