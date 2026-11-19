@@ -5,6 +5,7 @@ import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
 import { todayIso } from '../lib/format'
 import { memberAt, type HerdData } from '../lib/herds'
 import { buildReaderLists, VARIANTS, type ListVariant, type ReaderEntry } from '../lib/readerLists'
+import { buildReaderDatabase, type ReaderDatabase } from '../lib/readerDatabase'
 import Modal from './Modal'
 
 function download(name: string, text: string) {
@@ -27,6 +28,8 @@ export default function ReaderListsDialog({ data, onClose }: { data: HerdData; o
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
+  const [sendingDb, setSendingDb] = useState(false)
+  const [sentDb, setSentDb] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
@@ -75,6 +78,32 @@ export default function ReaderListsDialog({ data, onClose }: { data: HerdData; o
     }
   }
 
+  /** Tierinfos als Datenbank aufs Gerät: der Server sichert die alte Datenbank, ersetzt sie, liest jeden Datensatz zurück und
+   * spielt bei einer Abweichung den alten Stand wieder auf. Die Sicherung kommt als Datei. */
+  async function sendDatabase(db: ReaderDatabase) {
+    if (!window.confirm(`Die Datenbank auf dem APR600 wird durch ${db.rows.length} Tiere ersetzt (${db.fields.length} Felder). Sie hat am Gerät Vorrang vor der Link-Liste; die Nummer beim Lesen kommt dann aus der Datenbank. Der alte Stand wird vorher gesichert (Datei) und bei einem Fehler wieder aufgespielt. Weiter?`)) return
+    setSendingDb(true)
+    setSentDb(null)
+    try {
+      const res = await fetch(`${API_URL}/tiere/reader/database`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: db.fields, rows: db.rows }),
+      })
+      const body = (await res.json().catch(() => null)) as { detail?: string; sent?: number; verified?: number; backup?: string; backup_rows?: number } | null
+      if (!res.ok || !body) throw new Error(typeof body?.detail === 'string' ? body.detail : `Fehler ${res.status}`)
+      if (body.backup) download(`APR600_Sicherung_${today}_Datenbank.txt`, body.backup)
+      setSentDb(`✓ ${body.sent} Tiere in der Datenbank, jeder Datensatz auf dem Gerät zurückgelesen und geprüft. Der alte Stand (${body.backup_rows} Datensätze) ist als Datei gesichert.`)
+      notifySuccess('Datenbank ist auf dem Gerät')
+    } catch (e) {
+      setSentDb(null)
+      notifyError(errorText(e))
+    } finally {
+      setSendingDb(false)
+    }
+  }
+
+  const database = useMemo(() => (entries ? buildReaderDatabase(entries, today) : null), [entries, today])
   const lists = useMemo(() => (entries ? buildReaderLists(entries, variant, today) : null), [entries, variant, today])
   const label = VARIANTS.find((v) => v.key === variant)!.label.replace(/\W+/g, '')
 
@@ -130,6 +159,20 @@ export default function ReaderListsDialog({ data, onClose }: { data: HerdData; o
               </button>
               {sent && <p className="rounded bg-green-100 p-2 text-green-900">{sent}</p>}
             </div>
+            {database && (
+              <div className="space-y-1 rounded-lg border-2 border-brand-700 bg-brand-50 p-3">
+                <h3 className="font-semibold text-gray-900">Tierinfos als Datenbank aufs Gerät</h3>
+                <p className="text-gray-700">
+                  Nach dem Lesen erscheint die Nummer (VID, wie oben). Dazu zeigt das Gerät unter Menü → Daten → Suche per EID (Datenbank-Taste) je Tier:{' '}
+                  {database.fields.slice(1).map((f) => f.title).join(', ')}. Der Server ersetzt die Datenbank, liest jeden Datensatz zurück und sichert den alten Stand als Datei.
+                  Die Datenbank hat am Gerät Vorrang vor der Link-Liste.
+                </p>
+                <button type="button" disabled={sendingDb || database.rows.length === 0} onClick={() => void sendDatabase(database)} className="min-h-11 rounded-lg border-2 border-brand-700 bg-white px-4 font-semibold text-brand-800 disabled:opacity-50">
+                  {sendingDb ? 'sendet …' : `Tierinfos aufs Gerät senden (${database.rows.length})`}
+                </button>
+                {sentDb && <p className="rounded bg-green-100 p-2 text-green-900">{sentDb}</p>}
+              </div>
+            )}
             <p className="text-xs text-gray-500">Stand von heute. Nach Gruppenwechseln, Ablammungen oder Untersuchungen neue Listen erzeugen.</p>
           </>
         )}

@@ -37,6 +37,9 @@ export interface ReaderFacts {
   lastService?: string | null
   /** Anzahl saugende Lämmer/Kälber */
   nursing?: number
+  /** Milchleistung: Index im Herdenvergleich (Mittel 100) und Anteil der Gleichaltrigen (1.1 = 110 %) */
+  idxPerformance?: number | null
+  performanceRel?: number | null
 }
 
 export interface AnimalProvider {

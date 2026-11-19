@@ -29,6 +29,7 @@ from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
 from modules.betrieb.backend.app import machine_files as betrieb_machine_files
 from modules.betrieb.backend.app import school_timetable as betrieb_school
 from modules.betrieb.backend.app import sync as betrieb_sync
+from modules.tiere.backend.app import reader_database as tiere_reader_database
 from modules.tiere.backend.app import reader_lists as tiere_reader_lists
 from modules.tiere.backend.app import reader_pools as tiere_reader_pools
 from modules.tiere.backend.app import sync as tiere_sync
@@ -140,6 +141,12 @@ app.include_router(
 # Link-Liste (Ohrmarke → VID) direkt aufs Lesegerät senden (modules/tiere/backend/app/reader_lists.py)
 app.include_router(
     tiere_reader_lists.router,
+    prefix="/tiere",
+    dependencies=[Depends(require_module_enabled("tiere"))],
+)
+# Tierinfos als Datenbank aufs Lesegerät (modules/tiere/backend/app/reader_database.py)
+app.include_router(
+    tiere_reader_database.router,
     prefix="/tiere",
     dependencies=[Depends(require_module_enabled("tiere"))],
 )

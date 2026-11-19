@@ -227,7 +227,7 @@ class ReaderConnection:
         den Live-Read-Anwendungsfall gedacht, der keine send_command()-Calls
         mehr macht, sobald live_reads() läuft."""
         parts = "|".join([command, *args])
-        self._writer.write(f"[{parts}]".encode("ascii"))
+        self._writer.write(f"[{parts}]".encode(encoding))
         await self._writer.drain()
 
         opener = f"[{command}]"
