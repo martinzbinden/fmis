@@ -13,6 +13,8 @@ import { preselectionLabel, type Preselection } from '../lib/lambRecommendation'
 import { speciesOf } from '../lib/species'
 import { InbreedingBadge } from './AnimalDetail'
 import NumberInput from '@fmis/core/NumberInput'
+import { useMilkFeedSettings } from '../lib/milkFeed'
+import { DEFAULT_LAMB_VALUE, LAMB_VALUE_FIELDS, lambValue, lambValueTip, loadLambValueSettings, saveLambValueSettings, type LambValue, type LambValueSettings } from '../lib/lambValue'
 import SettingsEditor, { ReadValue } from '@fmis/core/SettingsEditor'
 
 function settingsKey(moduleKey: string) {
@@ -58,6 +60,9 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
   const [sexFilter, setSexFilter] = useState<SexFilter>('w')
   const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('alle')
   const [showSettings, setShowSettings] = useState(false)
+  // Geldwert als Zuchttier (lib/lambValue.ts): Milchpreis aus «Milch gegen Futter»
+  const milkPrice = useMilkFeedSettings(moduleKey, species).milkPrice
+  const [valueSettings, setValueSettings] = useState<LambValueSettings>(() => loadLambValueSettings(moduleKey, species))
   const [saving, setSaving] = useState<string | null>(null)
 
   function updateSettings(next: SelectionSettings) {
@@ -82,6 +87,17 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
     })
   }, [data, settings, today])
 
+  const values = useMemo(() => {
+    const m = new Map<string, LambValue>()
+    for (const r of rows) {
+      const p = r.dam?.performance
+      const v = lambValue({ damRel: p?.performance_rel ?? null, damLactations: p?.n_lactations ?? 0, sireValue: r.sire_value }, valueSettings, data?.herdLactationKg ?? null, milkPrice)
+      if (v) m.set(r.key, v)
+    }
+    return m
+  }, [rows, valueSettings, data, milkPrice])
+  const fr = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toLocaleString('de-CH')} Fr.`
+
   const jumpTo = useJumpTarget()
   const visible = rows.filter(
     (r) =>
@@ -103,7 +119,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
   }
 
   function exportCsv() {
-    const header = ['Rang', youngWord, 'Geburt', 'Geschlecht', 'Wurf', 'Mutter', 'Leistung rel.', 'Basis', 'Tendenz Mutter je Lakt.', `Zellzahl ('000)`, 'Datenbasis', 'Vater', sireTrait.label, 'Inzucht %', 'Index', 'Entscheid']
+    const header = ['Rang', youngWord, 'Geburt', 'Geschlecht', 'Wurf', 'Mutter', 'Leistung rel.', 'Basis', 'Tendenz Mutter je Lakt.', `Zellzahl ('000)`, 'Datenbasis', 'Vater', sireTrait.label, 'Inzucht %', 'Index', 'Zucht-Mehrwert Fr.', 'Milch erwartet %', 'Entscheid']
     const lines = visible.map((r) =>
       [
         r.rank,
@@ -121,6 +137,8 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
         r.sire_value,
         (r.inbreeding * 100).toFixed(1),
         r.index,
+        values.get(r.key)?.francs,
+        values.get(r.key)?.pct,
         r.purpose,
       ]
         .map(csvEscape)
@@ -184,7 +202,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
           <option value="mast">Mast ({count('mast')})</option>
         </select>
         <button type="button" onClick={() => setShowSettings((v) => !v)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700">
-          ⚙ Gewichtung
+          ⚙ Gewichtung und Geldwert
         </button>
       </div>
 
@@ -214,6 +232,40 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
         </SettingsEditor>
       )}
 
+      {showSettings && (
+        <SettingsEditor
+          value={valueSettings}
+          onSave={(v) => {
+            setValueSettings(v)
+            saveLambValueSettings(moduleKey, v)
+          }}
+          onReset={() => DEFAULT_LAMB_VALUE[species]}
+          label="Zucht-Mehrwert"
+          className="rounded-lg bg-white p-4 shadow-sm print:hidden"
+          title="Zucht-Mehrwert in Franken"
+        >
+          {({ value, set, editing }) => (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {LAMB_VALUE_FIELDS.map((f) => (
+                <label key={f.key} className="flex items-center justify-between gap-2 text-sm text-gray-700">
+                  {f.label}
+                  {editing ? (
+                    <NumberInput min={0} step={f.step} value={value[f.key]} onChange={(e) => set({ ...value, [f.key]: Math.max(0, Number(e.target.value) || 0) })} className="w-20 rounded border border-gray-300 px-2 py-1 text-right" />
+                  ) : (
+                    <ReadValue>{value[f.key]}</ReadValue>
+                  )}
+                </label>
+              ))}
+              <p className="text-xs text-gray-500 sm:col-span-2">
+                Erwartete Milch des Jungtiers = ½ × Erbanteil der Mutterleistung + ½ × Vater. Erbanteil der Mutter = n·h² / (1 + (n−1)·Wiederholbarkeit) bei n
+                Laktationen. In Franken: × Herdenmittel {data?.herdLactationKg ? `${data.herdLactationKg.toLocaleString('de-CH')} kg` : '(zu wenig Laktationen)'} je Laktation × Milchpreis{' '}
+                {milkPrice.toFixed(2)} Fr./kg (Einstellung «Milch gegen Futter») × Laktationen. Nur Milchmenge, ohne Zellzahl und Gehalte; Vergleich mit einem Durchschnittstier.
+              </p>
+            </div>
+          )}
+        </SettingsEditor>
+      )}
+
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
       {data && visible.length === 0 && (
         <p className="text-center text-sm text-gray-500">
@@ -236,6 +288,9 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                 <th className="px-2 py-2">Vater</th>
                 <th className="px-2 py-2 text-center">Inzucht</th>
                 <th className="bg-brand-50 px-2 py-2 text-right text-brand-800">Index</th>
+                <th className="px-2 py-2 text-right" title="Mehr- oder Minderwert als Zuchttier gegenüber einem Durchschnittstier, nur aus der Milchmenge der Eltern">
+                  Zucht-Mehrwert
+                </th>
                 <th className="px-2 py-2 print:hidden">Entscheid</th>
               </tr>
             </thead>
@@ -303,6 +358,19 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     </td>
                     <td className="bg-brand-50 px-2 py-2 text-right text-base font-bold text-brand-900">
                       {r.index != null ? r.index.toLocaleString('de-CH', { minimumFractionDigits: 1 }) : '–'}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-right" title={values.get(r.key) && data?.herdLactationKg ? lambValueTip(values.get(r.key)!, valueSettings, data.herdLactationKg, milkPrice) : undefined}>
+                      {values.get(r.key) ? (
+                        <>
+                          <span className={`font-semibold ${values.get(r.key)!.francs < 0 ? 'text-red-800' : 'text-gray-900'}`}>{fr(values.get(r.key)!.francs)}</span>
+                          <div className="text-xs text-gray-500">
+                            Milch {values.get(r.key)!.pct > 0 ? '+' : values.get(r.key)!.pct < 0 ? '−' : '±'}
+                            {Math.abs(values.get(r.key)!.pct).toLocaleString('de-CH')} %
+                          </div>
+                        </>
+                      ) : (
+                        '–'
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-2 py-2 print:hidden">
                       <div className="flex gap-1">

@@ -36,6 +36,13 @@ const n0 = (v: number | null) => (v == null ? '–' : Math.round(v).toLocaleStri
 
 /** Die Karte eines Tiers: Nummern, Geschlecht und Geburtsdatum immer; aufgeklappt Trächtigkeit, Geburt,
  * Leistung und Ausmerzgründe. Farben stammen von den eingefärbten Filtern. */
+/** Zucht-Mehrwert eines Jungtiers für die Karte (lib/lambValue.ts) */
+export interface CardLambValue {
+  francs: number
+  pct: number
+  tip: string
+}
+
 export default function BoardCardView({
   card,
   moduleKey,
@@ -55,6 +62,7 @@ export default function BoardCardView({
   meat,
   milkFeed,
   lastMilk = null,
+  lambValue = null,
   milkFeedSettings,
   meatLimits,
   fields = [],
@@ -88,6 +96,8 @@ export default function BoardCardView({
   milkFeed?: MilkFeed | null
   /** zuletzt gewogene Milch (Milchwägung oder Milchprüfung), Kartenfeld «Letzte Wägung» */
   lastMilk?: MilkSample | null
+  /** Zucht-Mehrwert aus der Abstammung (lib/lambValue.ts), Kartenfeld «lambValue» */
+  lambValue?: CardLambValue | null
   milkFeedSettings?: MilkFeedSettings
   /** auf der Karte gewählte Eigenschaften (Menü «Karte») */
   /** Grenzen im Fleischwert-Balken (schwere Aue, schweres Lamm T3/H3/C3); die Skala ist fest */
@@ -212,7 +222,7 @@ export default function BoardCardView({
       {/* Werte über die ganze Kartenbreite (nicht nur neben Griff und ⇄) */}
       {fields.length > 0 && (
         <button type="button" onClick={onToggle} tabIndex={-1} className="block w-full text-left">
-          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} milkFeed={milkFeed ?? null} lastMilk={lastMilk} milkFeedSettings={milkFeedSettings} />
+          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} milkFeed={milkFeed ?? null} lastMilk={lastMilk} lambValue={lambValue} milkFeedSettings={milkFeedSettings} />
         </button>
       )}
 
@@ -334,6 +344,7 @@ function CardProps({
   meatLimits,
   milkFeed,
   lastMilk,
+  lambValue,
   milkFeedSettings,
 }: {
   card: BoardCard
@@ -342,6 +353,7 @@ function CardProps({
   meatLimits?: MeatLimit[]
   milkFeed: MilkFeed | null
   lastMilk: MilkSample | null
+  lambValue: CardLambValue | null
   milkFeedSettings?: MilkFeedSettings
 }) {
   const has = (k: CardFieldKey) => fields.includes(k)
@@ -389,6 +401,18 @@ function CardProps({
         </div>,
       )
     } else rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
+  }
+  if (has('lambValue') && card.ageMonths != null && card.ageMonths < 12 && card.sex !== 'm') {
+    const v = lambValue
+    rows.push(
+      <div key="lambValue" className="flex justify-between gap-2" title={v?.tip ?? 'Keine Schätzung: weder bewertete Mutter noch Zuchtwert des Vaters'}>
+        <span className="text-gray-500">Zucht-Mehrwert</span>
+        <span className={`text-right font-medium ${v && v.francs < 0 ? 'text-red-800' : 'text-gray-900'}`}>
+          {v ? `${v.francs > 0 ? '+' : v.francs < 0 ? '−' : '±'}${Math.abs(v.francs).toLocaleString('de-CH')} Fr.` : '–'}
+          {v && <span className="font-normal text-gray-600"> (Milch {v.pct > 0 ? '+' : v.pct < 0 ? '−' : '±'}{Math.abs(v.pct).toLocaleString('de-CH')} %)</span>}
+        </span>
+      </div>,
+    )
   }
   if (has('litter')) rows.push(line('Wurf', card.lastLitterSize == null ? '–' : `letzter ${card.lastLitterSize}${card.litterMean != null ? ` · Ø ${n1(card.litterMean)}` : ''}`, 'litter'))
   if (has('lambing')) {

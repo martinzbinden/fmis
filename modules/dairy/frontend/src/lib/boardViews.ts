@@ -24,6 +24,7 @@ export const VIEW_KEYS = [
   'meat_settings',
   'lamb_milk',
   'milk_feed_settings',
+  'lamb_value',
 ] as const
 
 export type ViewSettings = Partial<Record<(typeof VIEW_KEYS)[number], string>>

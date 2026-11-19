@@ -11,6 +11,7 @@ import { loadInbreeding } from './pedigreeData'
 import { SIRE_TRAIT } from './breedingTraits'
 import type { Inbreeding } from './inbreeding'
 import type { DamInfo, LambCandidate, Purpose } from './lambSelection'
+import { herdMeanLactationKg } from './lambValue'
 import type { Animal } from '../types'
 
 export interface LambSelectionData {
@@ -23,6 +24,8 @@ export interface LambSelectionData {
   inbreeding: Inbreeding
   /** Herdenkontext (Kennzahlen je Tier), aus dem die Mütter-Infos stammen */
   context: Map<string, AnimalContext>
+  /** Herdenmittel Milch je Laktation (lib/lambValue.ts), null bei zu wenig Daten */
+  herdLactationKg: number | null
 }
 
 export { SIRE_TRAIT }
@@ -133,7 +136,13 @@ export async function loadLambSelection(pg: PGlite, species: Species, today: str
     sireValueBasis.set(sireKey, 'eltern')
   }
 
-  return { candidates: [...candidates.values()], dams, sireValues, sireValueBasis, decisions: decisionMap, inbreeding, context }
+  const lact = await pg.query<Record<string, unknown>>('select milk_kg, days_in_milk, calving_date from lactations where deleted_at is null')
+  const herdLactationKg = herdMeanLactationKg(
+    lact.rows.map((l) => ({ milk_kg: num(l.milk_kg), days_in_milk: num(l.days_in_milk), calving_date: isoDate(l.calving_date) })),
+    today,
+  )
+
+  return { candidates: [...candidates.values()], dams, sireValues, sireValueBasis, decisions: decisionMap, inbreeding, context, herdLactationKg }
 }
 
 /** Entscheid speichern bzw. zurücknehmen (purpose null) — immer dieselbe

@@ -16,7 +16,7 @@ import { dissolveGroup, loadHerdData, memberAt, moveAnimals, removeMembers, save
 import { compositionAt } from '@fmis/tiere/lib/herdModel'
 import GroupEditModal from '../components/GroupEditModal'
 import { useQuery } from '../hooks/useQuery'
-import BoardCardView from '../components/BoardCardView'
+import BoardCardView, { type CardLambValue } from '../components/BoardCardView'
 import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatLimits as buildMeatLimits, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, MEAT_BAR_MAX, type MeatLimit, type MeatSettings, type MeatValue } from '../lib/meatValue'
 import { useProviandePrices } from '../lib/proviandePrices'
@@ -39,6 +39,8 @@ import { SIRE_TRAIT } from '../lib/breedingTraits'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadHerdContext } from '../lib/herdContext'
+import { loadLambSelection } from '../lib/lambSelectionData'
+import { lambValue as computeLambValue, lambValueTip, loadLambValueSettings } from '../lib/lambValue'
 import { bucketByDam, loadLambs, nursingByDam } from '../lib/lambs'
 import { estimateAll, loadParentLinks } from '../lib/breedingEstimate'
 import { DEFAULT_LAMB_MILK, loadLambMilkSettings, milkByDam, saveLambMilkSettings, type LambMilkSettings } from '../lib/lambMilk'
@@ -216,6 +218,21 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
       )
     return m
   }, [milkData, cards, species, today, milkFeedSettings, weanDay])
+  // Zucht-Mehrwert der Jungtiere aus der Abstammung (lib/lambValue.ts): Daten der Lämmerauswahl, nur wenn das Feld gewählt ist
+  const lambValueOn = cardFields.includes('lambValue')
+  const lambData = useQuery((pg) => (lambValueOn ? loadLambSelection(pg, species, today) : Promise.resolve(null)), [lambValueOn, species, today]).data
+  const lambValueById = useMemo(() => {
+    const m = new Map<string, CardLambValue>()
+    if (!lambData?.herdLactationKg) return m
+    const s = loadLambValueSettings(moduleKey, species)
+    for (const c of lambData.candidates) {
+      if (!c.animal_id) continue
+      const p = c.dam_key ? lambData.dams.get(c.dam_key)?.performance : undefined
+      const v = computeLambValue({ damRel: p?.performance_rel ?? null, damLactations: p?.n_lactations ?? 0, sireValue: c.sire_key ? (lambData.sireValues.get(c.sire_key) ?? null) : null }, s, lambData.herdLactationKg, milkFeedSettings.milkPrice)
+      if (v) m.set(c.animal_id, { francs: v.francs, pct: v.pct, tip: lambValueTip(v, s, lambData.herdLactationKg, milkFeedSettings.milkPrice) })
+    }
+    return m
+  }, [lambData, moduleKey, species, milkFeedSettings.milkPrice])
   // Summen je Spalte (Σ Summen): Milch und Futter jedes Tiers für den gewählten Zeitraum
   const [totals, setTotals] = useState<ColumnTotalsSettings>(() => loadColumnTotals(moduleKey))
   const windowById = useMemo(() => {
@@ -518,6 +535,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
                   meat={meatById.get(c.id) ?? null}
                   milkFeed={milkFeedOn || cardFields.includes('dailyMilk') ? (milkFeedById.get(c.id) ?? null) : null}
                   lastMilk={milkData?.samples.get(c.id) ?? null}
+                  lambValue={lambValueById.get(c.id) ?? null}
                   meatLimits={meatLimitList}
                   fields={cardFields}
                   verdict={verdictById.get(c.id)?.verdict ?? null}
@@ -1104,6 +1122,7 @@ function ColumnCard({
   meat,
   milkFeed,
   lastMilk,
+  lambValue,
   meatLimits,
   fields,
   verdict,
@@ -1128,6 +1147,7 @@ function ColumnCard({
   meat?: MeatValue | null
   milkFeed?: MilkFeed | null
   lastMilk?: MilkSample | null
+  lambValue?: CardLambValue | null
   /** Grenzen im Balken (feste Skala) */
   meatLimits?: MeatLimit[]
   fields?: CardFieldKey[]
@@ -1157,6 +1177,7 @@ function ColumnCard({
       meat={meat}
       milkFeed={milkFeed}
       lastMilk={lastMilk ?? null}
+      lambValue={lambValue ?? null}
       milkFeedSettings={milkFeedSettings}
       meatLimits={meatLimits}
       fields={fields}
