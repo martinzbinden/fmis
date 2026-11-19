@@ -120,6 +120,16 @@ describe('Sortierung', () => {
   it('Ausmerz-Punkte: meiste zuerst', () => {
     expect(sortCards([a, c, b], 'score').map((x) => x.id)).toEqual(['b', 'a', 'c'])
   })
+  it('letzte Belegung: jüngste zuerst, ohne am Ende', () => {
+    const s = (date: string) => ({ date, to: null, kind: 'kb' as const, sire: null, daysAgo: 0 })
+    const x = { ...a, lastService: s('2026-09-01') }
+    const y = { ...b, lastService: s('2026-10-15') }
+    expect(sortCards([c, x, y], 'service').map((v) => v.id)).toEqual(['b', 'a', 'c'])
+  })
+  it('Zucht-Mehrwert: höchster zuerst, ohne Wert am Ende', () => {
+    const v = new Map([['a', 120], ['b', -40]])
+    expect(sortCards([b, c, a], 'lambValue', (k) => v.get(k.id) ?? null).map((x) => x.id)).toEqual(['a', 'b', 'c'])
+  })
 })
 
 describe('Spalten', () => {

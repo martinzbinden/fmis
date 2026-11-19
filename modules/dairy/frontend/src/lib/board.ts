@@ -12,6 +12,7 @@ import type { LactationLevel, TrendDirection } from './lactationTrend'
 import type { DamMilk } from './lambMilk'
 import type { BreedingEstimate } from './breedingEstimate'
 import { speciesTerms } from './species'
+import { daysBetween } from './format'
 import type { PregnancyStatus } from './pregnancy'
 import type { Watchlist, WatchlistEntry } from './watchlists'
 
@@ -36,6 +37,10 @@ export interface BoardCard {
   // Fortpflanzung
   pregnancy: PregnancyStatus | null
   expectedBirth: string | null
+  /** letzte Belegung (KB oder Natursprung, bei Bockzeit mit Ende `to`), auch vor der letzten Geburt; null ohne */
+  lastService?: { date: string; to: string | null; kind: 'kb' | 'natursprung' | null; sire: string | null; daysAgo: number } | null
+  /** Belegungen seit der letzten Geburt (ohne Geburt: alle) */
+  servicesSinceBirth?: number
   lastBirth: string | null
   daysSinceBirth: number | null
   parity: number | null
@@ -135,6 +140,11 @@ export function buildCards(input: BoardInput): BoardCard[] {
       bucketLambs: input.bucket?.get(ref.id) ?? 0,
       pregnancy: ctx.pregnancy,
       expectedBirth: ctx.fertility.expected_birth,
+      lastService: (() => {
+        const m = ctx.matings.at(-1)
+        return m ? { date: m.service_date, to: m.service_to, kind: m.kind, sire: m.sire_name || m.sire_ear_tag || null, daysAgo: daysBetween(m.service_to && m.service_to < input.today ? m.service_to : m.service_date, input.today) } : null
+      })(),
+      servicesSinceBirth: ctx.fertility.services_since_birth,
       lastBirth: ctx.fertility.last_birth,
       daysSinceBirth: ctx.fertility.days_since_birth,
       parity: ref.parity,
@@ -288,13 +298,14 @@ export function boardPresets(species: Species): FilterDef[] {
   ]
 }
 
-export type SortKey = 'nr' | 'age' | 'birth' | 'expected' | 'score' | 'lambValue'
+export type SortKey = 'nr' | 'age' | 'birth' | 'expected' | 'service' | 'score' | 'lambValue'
 
 export const SORTS: { key: SortKey; label: string }[] = [
   { key: 'nr', label: 'Nummer' },
   { key: 'age', label: 'Alter (älteste zuerst)' },
   { key: 'birth', label: 'Letzte Geburt (jüngste zuerst)' },
   { key: 'expected', label: 'Erwartete Geburt (früheste zuerst)' },
+  { key: 'service', label: 'Letzte Belegung (jüngste zuerst)' },
   { key: 'score', label: 'Ausmerz-Punkte (meiste zuerst)' },
   { key: 'lambValue', label: 'Zucht-Mehrwert Jungtiere (höchster zuerst)' },
 ]
@@ -316,6 +327,8 @@ export function sortCards(cards: BoardCard[], key: SortKey, lambValue?: (c: Boar
       return out.sort((a, b) => nullsLast(a.lastBirth, b.lastBirth, (x, y) => y.localeCompare(x)) || byNr(a, b))
     case 'expected':
       return out.sort((a, b) => nullsLast(a.expectedBirth, b.expectedBirth, (x, y) => x.localeCompare(y)) || byNr(a, b))
+    case 'service':
+      return out.sort((a, b) => nullsLast(a.lastService?.date ?? null, b.lastService?.date ?? null, (x, y) => y.localeCompare(x)) || byNr(a, b))
     case 'score':
       return out.sort((a, b) => b.reasonScore - a.reasonScore || byNr(a, b))
     default:

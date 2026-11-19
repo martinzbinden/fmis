@@ -248,7 +248,11 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   const q = useListQuery({ storage: `${moduleKey}_board`, fields: QUERY_FIELDS, ctx: queryCtx, texts: boardTexts, defaultSort: 'nr', validSorts: SORTS.map((x) => x.key) })
   const sort = q.sortKey
   // Sortierter Wert steht auf der Karte, auch wenn das Feld nicht gewählt ist
-  const shownFields = useMemo<CardFieldKey[]>(() => (sort === 'lambValue' && !cardFields.includes('lambValue') ? [...cardFields, 'lambValue'] : cardFields), [sort, cardFields])
+  const shownFields = useMemo<CardFieldKey[]>(() => {
+    const byFilter = sort === QUERY_SORT_KEY && q.auto && ['tagebel', 'belegungen'].includes(q.auto.field.key)
+    const auto: CardFieldKey | null = sort === 'lambValue' ? 'lambValue' : sort === 'service' || byFilter ? 'service' : null
+    return auto && !cardFields.includes(auto) ? [...cardFields, auto] : cardFields
+  }, [sort, cardFields, q.auto])
   // Zucht-Mehrwert der Jungtiere aus der Abstammung (lib/lambValue.ts): Daten der Lämmerauswahl, nur wenn das Feld gewählt oder danach sortiert ist
   const lambValueOn = cardFields.includes('lambValue') || sort === 'lambValue'
   const lambData = useQuery((pg) => (lambValueOn ? loadLambSelection(pg, species, today) : Promise.resolve(null)), [lambValueOn, species, today]).data

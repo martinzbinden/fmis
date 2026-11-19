@@ -12,6 +12,18 @@ const ctx: QueryContext = { today: '2026-11-14', groupName: (c) => (c.groupId ==
 const hits = (q: string, c: BoardCard) => matchesQuery(c, parseQuery(q), ctx)
 
 describe('parseQuery', () => {
+  it('Belegungen: Tage seit Belegung, belegt, KB, Vatertier', () => {
+    const served = card({ lastService: { date: '2026-10-25', to: null, kind: 'kb', sire: 'Testbock', daysAgo: 20 }, servicesSinceBirth: 2 })
+    const open = card({ lastService: null, servicesSinceBirth: 0 })
+    expect(hits('Tage seit Belegung < 30', served)).toBe(true)
+    expect(hits('Tage seit Belegung < 30', open)).toBe(false)
+    expect(hits('belegt', served)).toBe(true)
+    expect(hits('nicht belegt', open)).toBe(true)
+    expect(hits('Belegungen >= 2 und KB', served)).toBe(true)
+    expect(hits('Natursprung', served)).toBe(false)
+    expect(hits('Bock = test', served)).toBe(true)
+    expect(hits('Bock = anderer', served)).toBe(false)
+  })
   it('Zahlenvergleich mit Alias: ZZ > 200', () => {
     const q = parseQuery('ZZ > 200')
     expect(q.conditions).toHaveLength(1)

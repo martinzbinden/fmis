@@ -432,6 +432,43 @@ function CardProps({
       ),
     )
   }
+  if (has('service')) {
+    const m = card.lastService
+    const dm = (d: string) => (d.slice(0, 4) === String(new Date().getFullYear()) ? `${d.slice(8, 10)}.${d.slice(5, 7)}.` : fmtDate(d))
+    const n = card.servicesSinceBirth ?? 0
+    const tip = m
+      ? [
+          `Letzte Belegung ${fmtDate(m.date)}${m.to && m.to !== m.date ? ` bis ${fmtDate(m.to)}` : ''} (${m.daysAgo} Tage)`,
+          m.kind ? (m.kind === 'kb' ? 'Künstliche Besamung' : 'Natursprung') : null,
+          m.sire ? `Vatertier: ${m.sire}` : null,
+          `${n} Belegung${n === 1 ? '' : 'en'} seit der letzten Geburt`,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : 'Keine Belegung erfasst'
+    rows.push(
+      <div key="service" className="flex justify-between gap-2" title={tip}>
+        <span className="text-gray-500">Belegung</span>
+        <span className="min-w-0 truncate text-right font-medium text-gray-900">
+          {m ? (
+            <>
+              {dm(m.date)}
+              {m.to && m.to !== m.date ? `–${dm(m.to)}` : ''} · {m.daysAgo} T.
+              {(m.kind || m.sire) && (
+                <span className="font-normal text-gray-600">
+                  {' '}
+                  · {[m.kind === 'kb' ? 'KB' : m.kind === 'natursprung' ? 'NS' : null, m.sire].filter(Boolean).join(' ')}
+                </span>
+              )}
+              {n > 1 && <span className="font-normal text-gray-600"> ({n}.)</span>}
+            </>
+          ) : (
+            '–'
+          )}
+        </span>
+      </div>,
+    )
+  }
   if (has('weighings')) {
     // «0.5 kg · ZZ 105' (5 W.)»: zuletzt gewogene Milch dieser Laktation (auch privat, ohne Labor), Zellzahl der letzten
     // Prüfung, Anzahl offizieller Prüfungen (mit Gehalten); Details im Tooltip

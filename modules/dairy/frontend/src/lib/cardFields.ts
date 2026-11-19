@@ -1,6 +1,6 @@
 // Wählbare Eigenschaften der Dashboard-Karten (pages/Board.tsx): die Auswahl gilt je Gerät (localStorage).
 
-export type CardFieldKey = 'lambValue' | 'milk' | 'scc' | 'spark' | 'ltl' | 'zw' | 'litter' | 'interval' | 'meat' | 'weaned' | 'lambMilk' | 'lambing' | 'weighings' | 'milkFeed' | 'dailyMilk'
+export type CardFieldKey = 'service' | 'lambValue' | 'milk' | 'scc' | 'spark' | 'ltl' | 'zw' | 'litter' | 'interval' | 'meat' | 'weaned' | 'lambMilk' | 'lambing' | 'weighings' | 'milkFeed' | 'dailyMilk'
 
 export interface CardFieldDef {
   key: CardFieldKey
@@ -21,6 +21,7 @@ export const CARD_FIELDS: CardFieldDef[] = [
   { key: 'zw', label: 'Zuchtwert (GZW / ISET)', hint: 'Gesamtzuchtwert aus dem Herdebuch' },
   { key: 'litter', label: 'Wurfgrösse', hint: 'Letzter Wurf und Mittel aller Würfe', species: 'sheep' },
   { key: 'interval', label: 'Zwischenablammzeit', hint: 'Mittlere Tage zwischen zwei Geburten' },
+  { key: 'service', label: 'Letzte Belegung', hint: 'Datum (bei Natursprung mit Bockzeit von–bis), KB oder Natursprung, Vatertier und Tage seit der Belegung; Anzahl Belegungen seit der letzten Geburt' },
   { key: 'lambing', label: 'Ablammung: Datum und Tage', hint: 'Letzte Geburt mit Datum und Tagen seit der Geburt' },
   { key: 'weighings', label: 'Letzte Wägung', hint: 'Zuletzt gewogene Milch (auch private Milchwägung ohne Labor), Zellzahl der letzten Prüfung und Anzahl offizieller Prüfungen (mit Gehalten, SMG) dieser Laktation' },
   { key: 'dailyMilk', label: 'Tagesmilch, korrigiert um die Lämmer', hint: 'Gemolken (letzte Wägung) plus Milch der saugenden Lämmer; Lämmer am Eimer zählen nicht' },
