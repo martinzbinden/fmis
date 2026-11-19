@@ -288,7 +288,7 @@ export function boardPresets(species: Species): FilterDef[] {
   ]
 }
 
-export type SortKey = 'nr' | 'age' | 'birth' | 'expected' | 'score'
+export type SortKey = 'nr' | 'age' | 'birth' | 'expected' | 'score' | 'lambValue'
 
 export const SORTS: { key: SortKey; label: string }[] = [
   { key: 'nr', label: 'Nummer' },
@@ -296,6 +296,7 @@ export const SORTS: { key: SortKey; label: string }[] = [
   { key: 'birth', label: 'Letzte Geburt (jüngste zuerst)' },
   { key: 'expected', label: 'Erwartete Geburt (früheste zuerst)' },
   { key: 'score', label: 'Ausmerz-Punkte (meiste zuerst)' },
+  { key: 'lambValue', label: 'Zucht-Mehrwert Jungtiere (höchster zuerst)' },
 ]
 
 const collator = new Intl.Collator('de', { numeric: true })
@@ -303,9 +304,12 @@ const byNr = (a: BoardCard, b: BoardCard) => collator.compare(a.laufNr ?? '￿',
 /** Unbekannte Werte kommen immer ans Ende. */
 const nullsLast = <T>(a: T | null, b: T | null, cmp: (x: T, y: T) => number) => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : cmp(a, b))
 
-export function sortCards(cards: BoardCard[], key: SortKey): BoardCard[] {
+/** `lambValue`: Zucht-Mehrwert in Fr. je Karte (lib/lambValue.ts), ohne Wert ans Ende */
+export function sortCards(cards: BoardCard[], key: SortKey, lambValue?: (c: BoardCard) => number | null): BoardCard[] {
   const out = [...cards]
   switch (key) {
+    case 'lambValue':
+      return out.sort((a, b) => nullsLast(lambValue?.(a) ?? null, lambValue?.(b) ?? null, (x, y) => y - x) || byNr(a, b))
     case 'age':
       return out.sort((a, b) => nullsLast(a.ageMonths, b.ageMonths, (x, y) => y - x) || byNr(a, b))
     case 'birth':

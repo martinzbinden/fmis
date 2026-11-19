@@ -218,21 +218,6 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
       )
     return m
   }, [milkData, cards, species, today, milkFeedSettings, weanDay])
-  // Zucht-Mehrwert der Jungtiere aus der Abstammung (lib/lambValue.ts): Daten der Lämmerauswahl, nur wenn das Feld gewählt ist
-  const lambValueOn = cardFields.includes('lambValue')
-  const lambData = useQuery((pg) => (lambValueOn ? loadLambSelection(pg, species, today) : Promise.resolve(null)), [lambValueOn, species, today]).data
-  const lambValueById = useMemo(() => {
-    const m = new Map<string, CardLambValue>()
-    if (!lambData?.herdLactationKg) return m
-    const s = loadLambValueSettings(moduleKey, species)
-    for (const c of lambData.candidates) {
-      if (!c.animal_id) continue
-      const p = c.dam_key ? lambData.dams.get(c.dam_key)?.performance : undefined
-      const v = computeLambValue({ damRel: p?.performance_rel ?? null, damLactations: p?.n_lactations ?? 0, sireValue: c.sire_key ? (lambData.sireValues.get(c.sire_key) ?? null) : null }, s, lambData.herdLactationKg, milkFeedSettings.milkPrice)
-      if (v) m.set(c.animal_id, { francs: v.francs, pct: v.pct, tip: lambValueTip(v, s, lambData.herdLactationKg, milkFeedSettings.milkPrice) })
-    }
-    return m
-  }, [lambData, moduleKey, species, milkFeedSettings.milkPrice])
   // Summen je Spalte (Σ Summen): Milch und Futter jedes Tiers für den gewählten Zeitraum
   const [totals, setTotals] = useState<ColumnTotalsSettings>(() => loadColumnTotals(moduleKey))
   const windowById = useMemo(() => {
@@ -262,6 +247,23 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   )
   const q = useListQuery({ storage: `${moduleKey}_board`, fields: QUERY_FIELDS, ctx: queryCtx, texts: boardTexts, defaultSort: 'nr', validSorts: SORTS.map((x) => x.key) })
   const sort = q.sortKey
+  // Sortierter Wert steht auf der Karte, auch wenn das Feld nicht gewählt ist
+  const shownFields = useMemo<CardFieldKey[]>(() => (sort === 'lambValue' && !cardFields.includes('lambValue') ? [...cardFields, 'lambValue'] : cardFields), [sort, cardFields])
+  // Zucht-Mehrwert der Jungtiere aus der Abstammung (lib/lambValue.ts): Daten der Lämmerauswahl, nur wenn das Feld gewählt oder danach sortiert ist
+  const lambValueOn = cardFields.includes('lambValue') || sort === 'lambValue'
+  const lambData = useQuery((pg) => (lambValueOn ? loadLambSelection(pg, species, today) : Promise.resolve(null)), [lambValueOn, species, today]).data
+  const lambValueById = useMemo(() => {
+    const m = new Map<string, CardLambValue>()
+    if (!lambData?.herdLactationKg) return m
+    const s = loadLambValueSettings(moduleKey, species)
+    for (const c of lambData.candidates) {
+      if (!c.animal_id) continue
+      const p = c.dam_key ? lambData.dams.get(c.dam_key)?.performance : undefined
+      const v = computeLambValue({ damRel: p?.performance_rel ?? null, damLactations: p?.n_lactations ?? 0, sireValue: c.sire_key ? (lambData.sireValues.get(c.sire_key) ?? null) : null }, s, lambData.herdLactationKg, milkFeedSettings.milkPrice)
+      if (v) m.set(c.animal_id, { francs: v.francs, pct: v.pct, tip: lambValueTip(v, s, lambData.herdLactationKg, milkFeedSettings.milkPrice) })
+    }
+    return m
+  }, [lambData, moduleKey, species, milkFeedSettings.milkPrice])
   const builtinPresets = useMemo(() => boardPresets(species === 'sheep'), [species])
   const presetState = usePresets(`${moduleKey}_board`, builtinPresets)
   // Formeln der Vorschläge einmal zerlegen: Treffer je Vorschlag (Zähler) und Einfärben
@@ -409,7 +411,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
     [searching, visibleColumns, jumpKey, shown, groupOf],
   )
   const emptyHidden = visibleColumns.length - shownColumns.length
-  const columnCards = useCallback((col: BoardColumn) => (q.queryCompare && sort === QUERY_SORT_KEY ? [...cardsInColumn(col, shown, groupOf)].sort(q.queryCompare) : sortCards(cardsInColumn(col, shown, groupOf), sort as SortKey)), [shown, groupOf, sort, q.queryCompare])
+  const columnCards = useCallback((col: BoardColumn) => (q.queryCompare && sort === QUERY_SORT_KEY ? [...cardsInColumn(col, shown, groupOf)].sort(q.queryCompare) : sortCards(cardsInColumn(col, shown, groupOf), sort as SortKey, (c) => lambValueById.get(c.id)?.francs ?? null)), [shown, groupOf, sort, q.queryCompare, lambValueById])
 
   const loading = !data || !herd || !refs
   useEffect(() => {
@@ -537,7 +539,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
                   lastMilk={milkData?.samples.get(c.id) ?? null}
                   lambValue={lambValueById.get(c.id) ?? null}
                   meatLimits={meatLimitList}
-                  fields={cardFields}
+                  fields={shownFields}
                   verdict={verdictById.get(c.id)?.verdict ?? null}
                   money={verdictById.get(c.id)?.money ?? null}
                   pointerDown={pointerDown}
@@ -838,7 +840,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         </p>
       )}
 
-      <div ref={scroller} className="flex snap-x snap-mandatory items-start gap-2 overflow-x-auto pb-4 sm:snap-proximity sm:gap-3">
+      <div ref={scroller} className="flex snap-x snap-mandatory items-start gap-2 overflow-x-auto pb-4 sm:snap-none sm:gap-3">
         {buildLanes(shownColumns, collapsed).map((lane) =>
           lane.kind === 'column' ? (
             renderColumn(lane.col, false)

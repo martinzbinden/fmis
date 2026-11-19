@@ -5,6 +5,10 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
  * laufen gleich; passt alles in die Breite, verschwindet er. */
 export default function StickyHScroll({ target }: { target: RefObject<HTMLDivElement | null> }) {
   const bar = useRef<HTMLDivElement>(null)
+  // zuletzt von Hand gesetzte Werte: das Echo-Ereignis des anderen Balkens darf nicht zurückschreiben, sonst zieht es
+  // beim Wischen (Trägheit) den Spaltenbereich auf einen alten Stand zurück
+  const setOnBar = useRef<number | null>(null)
+  const setOnTarget = useRef<number | null>(null)
   const [size, setSize] = useState({ width: 0, scroll: 0 })
 
   useEffect(() => {
@@ -21,7 +25,16 @@ export default function StickyHScroll({ target }: { target: RefObject<HTMLDivEle
     })
     mo.observe(el, { childList: true })
     const fromTarget = () => {
-      if (bar.current && Math.abs(bar.current.scrollLeft - el.scrollLeft) > 1) bar.current.scrollLeft = el.scrollLeft
+      if (setOnTarget.current != null && Math.abs(el.scrollLeft - setOnTarget.current) <= 1) {
+        setOnTarget.current = null
+        return
+      }
+      setOnTarget.current = null
+      const b = bar.current
+      if (b && Math.abs(b.scrollLeft - el.scrollLeft) > 1) {
+        setOnBar.current = el.scrollLeft
+        b.scrollLeft = el.scrollLeft
+      }
     }
     el.addEventListener('scroll', fromTarget, { passive: true })
     return () => {
@@ -37,8 +50,17 @@ export default function StickyHScroll({ target }: { target: RefObject<HTMLDivEle
       ref={bar}
       aria-hidden
       onScroll={(e) => {
+        const left = e.currentTarget.scrollLeft
+        if (setOnBar.current != null && Math.abs(left - setOnBar.current) <= 1) {
+          setOnBar.current = null
+          return
+        }
+        setOnBar.current = null
         const el = target.current
-        if (el && Math.abs(el.scrollLeft - e.currentTarget.scrollLeft) > 1) el.scrollLeft = e.currentTarget.scrollLeft
+        if (el && Math.abs(el.scrollLeft - left) > 1) {
+          setOnTarget.current = left
+          el.scrollLeft = left
+        }
       }}
       className="sticky bottom-0 z-20 hidden overflow-x-auto bg-gray-50/90 sm:block"
       style={{ width: size.width }}
