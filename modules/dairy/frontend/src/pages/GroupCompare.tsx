@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { herdLocator, refreshHerdData } from '@fmis/core/animals'
+import { useHasPermission } from '@fmis/core/AuthContext'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
@@ -20,6 +21,7 @@ import { fmtAge, fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
 import { addToWatchlist, createWatchlist, loadWatchlists } from '../lib/watchlists'
 import { loadSettings } from './LambSelection'
+import ReaderGroupImport from '@fmis/tiere/components/ReaderGroupImport'
 import type { Animal } from '../types'
 
 async function loadData(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: string) {
@@ -107,6 +109,8 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
   const [comparing, setComparing] = useState(false)
   const [marked, setMarked] = useState<string[]>([])
   const [building, setBuilding] = useState(false)
+  const [fromReader, setFromReader] = useState(false)
+  const canHerds = useHasPermission('tiere:herden:write')
   const [newName, setNewName] = useState('')
   const [newIds, setNewIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -348,6 +352,12 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
           )}
           {building && (
             <div className="space-y-2 rounded-lg bg-gray-50 p-2">
+              {fromReader && <ReaderGroupImport onClose={() => setFromReader(false)} onDone={() => void refreshHerdData()} />}
+              {canHerds && (
+                <button type="button" onClick={() => setFromReader(true)} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 text-sm font-medium text-sky-950">
+                  📡 Gruppen vom Lesegerät als Tiergruppen übernehmen
+                </button>
+              )}
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name der Gruppe, z.B. Erstlaktierende" className="min-h-11 w-full rounded-lg border border-gray-300 px-3 text-base" />
               <AnimalPicker animals={allAnimals} selected={newIds} onChange={setNewIds} multiple readerModule={moduleKey} />
               <div className="flex items-center justify-between gap-2">

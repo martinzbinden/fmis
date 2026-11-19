@@ -225,3 +225,122 @@ async def reader_refresh(user: CurrentUser = Depends(require_auth)) -> dict[str,
     if WRITE not in user.permissions:
         raise HTTPException(status_code=403, detail="Das Lesegerät abfragen braucht das Recht Tiergruppen")
     return await refresh()
+
+
+# --- Gruppen am Gerät auswählen und importieren (Seite Tiergruppen → «Gruppen vom Gerät wählen») ---
+#
+# Unabhängig vom Schalter «Sync»: Ein Mensch fragt ausdrücklich, darum eine kurze Verbindung genau jetzt. Erst die
+# Liste (XGGROUPS, schnell), dann nur die gewählten Gruppen mit Inhalt (XGGROUP je Gruppe). Die gewählten landen
+# wie die Vorschläge in `reader_pools`, damit «importiert» und der Verlauf dort stehen; anlegen tut die App.
+
+MAX_PICK = 60
+
+
+async def _reader_or_error() -> tuple[str, int]:
+    resolved = await resolve_reader("tiere")
+    if resolved is None:
+        raise HTTPException(status_code=409, detail="Kein Lesegerät aktiviert (Verwaltung → Module)")
+    return resolved[1], resolved[2]
+
+
+def _device_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ReaderBusyError):
+        return HTTPException(status_code=409, detail="Das Lesegerät ist gerade belegt (Milchwägung, AgriLink oder ein anderer Abruf). Bitte kurz warten und nochmals versuchen.")
+    return HTTPException(status_code=502, detail=f"Lesegerät nicht erreichbar: {exc}")
+
+
+async def _imported_heads() -> dict[tuple[str, str], dict[str, Any]]:
+    """(Kennung, Kopf) → letzter Import dieser Gruppe in FMIS (Zeitpunkt, Gruppen-ID)."""
+    async with pool.connection() as conn:
+        rows = await (
+            await conn.execute(
+                "select device_group_id, name, device_count, handled_at, imported_group_id from reader_pools "
+                "where deleted_at is null and status = 'importiert' order by handled_at"
+            )
+        ).fetchall()
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in rows:
+        head = f"{r[1] or ''}|{r[2] if r[2] is not None else ''}"
+        out[(r[0], head)] = {"imported_at": r[3].isoformat() if r[3] else None, "imported_group_id": str(r[4]) if r[4] else None}
+    return out
+
+
+@router.get("/reader/groups")
+async def reader_groups(user: CurrentUser = Depends(require_auth)) -> dict[str, Any]:
+    """Gruppen, die jetzt auf dem Gerät liegen (Name, Anzahl Datensätze), mit Hinweis, ob schon importiert."""
+    if WRITE not in user.permissions:
+        raise HTTPException(status_code=403, detail="Das Lesegerät abfragen braucht das Recht Tiergruppen")
+    host, port = await _reader_or_error()
+    try:
+        async with acquire_reader(host, port) as conn:
+            raw = await conn.send_command("XGGROUPS")
+    except (ReaderBusyError, ReaderError, OSError) as exc:
+        raise _device_error(exc) from exc
+    imported = await _imported_heads()
+    groups = []
+    for g in parse_pool_list(raw):
+        head = f"{g['name'] or ''}|{g['count'] if g['count'] is not None else ''}"
+        groups.append({"group_id": g["group_id"], "name": g["name"], "count": g["count"], **imported.get((g["group_id"], head), {"imported_at": None, "imported_group_id": None})})
+    state.update(last_ok_at=time.time(), last_error=None)
+    return {"groups": groups}
+
+
+class PickBody(BaseModel):
+    group_ids: list[str]
+
+
+async def store_picked(found: list[dict[str, Any]]) -> list[str]:
+    """Gewählte Gruppen ablegen (gleicher Inhalt wie schon abgelegt → dieselbe Zeile); gibt die Zeilen-IDs zurück.
+    Eine früher verworfene oder überholte Zeile wird wieder «neu», eine importierte bleibt importiert."""
+    ids: list[str] = []
+    async with pool.connection() as conn, conn.transaction():
+        for g in found:
+            sig = signature(g["name"], g["count"], g["tags"])
+            row = await (
+                await conn.execute(
+                    "insert into reader_pools (id, device_group_id, name, device_count, tag_count, tags, unmatched, raw, signature, status, scanned_at, updated_at) "
+                    "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'neu', %s, clock_timestamp()) "
+                    "on conflict (device_group_id, signature) do update set "
+                    "status = case when reader_pools.status in ('verworfen', 'ersetzt') then 'neu' else reader_pools.status end, "
+                    "deleted_at = null, updated_at = clock_timestamp() "
+                    "returning id",
+                    (str(uuidlib.uuid4()), g["group_id"], g["name"], g["count"], len(g["tags"]), json.dumps(g["tags"]), json.dumps(g["unmatched"]), g["raw_tags"], sig, _device_time(g["scanned"])),
+                )
+            ).fetchone()
+            ids.append(str(row[0]))
+    return ids
+
+
+@router.post("/reader/groups/fetch")
+async def reader_groups_fetch(body: PickBody, user: CurrentUser = Depends(require_auth)) -> dict[str, Any]:
+    """Inhalt der gewählten Gruppen holen (Ohrmarken) und ablegen; die App legt daraus Tiergruppen an."""
+    if WRITE not in user.permissions:
+        raise HTTPException(status_code=403, detail="Das Lesegerät abfragen braucht das Recht Tiergruppen")
+    wanted = list(dict.fromkeys(x.strip() for x in body.group_ids if x.strip()))
+    if not wanted:
+        raise HTTPException(status_code=400, detail="Keine Gruppe gewählt")
+    if len(wanted) > MAX_PICK:
+        raise HTTPException(status_code=400, detail=f"Höchstens {MAX_PICK} Gruppen auf einmal")
+    host, port = await _reader_or_error()
+    found: list[dict[str, Any]] = []
+    try:
+        async with acquire_reader(host, port) as conn:
+            listed = {g["group_id"]: g for g in parse_pool_list(await conn.send_command("XGGROUPS"))}
+            for gid in wanted:
+                g = listed.get(gid)
+                if g is None:
+                    continue  # inzwischen am Gerät gelöscht
+                raw_tags = await conn.send_command("XGGROUP", gid)
+                tags, unmatched, scanned = parse_pool_tags(raw_tags)
+                found.append({**g, "tags": tags, "unmatched": unmatched, "scanned": scanned, "raw_tags": raw_tags[:RAW_MAX]})
+    except (ReaderBusyError, ReaderError, OSError) as exc:
+        raise _device_error(exc) from exc
+    ids = await store_picked(found)
+    state.update(last_ok_at=time.time(), last_error=None)
+    return {
+        "groups": [
+            {"pool_id": pid, "group_id": g["group_id"], "name": g["name"], "count": g["count"], "tags": g["tags"], "unmatched": g["unmatched"], "scanned_at": g["scanned"]}
+            for pid, g in zip(ids, found)
+        ],
+        "missing": [gid for gid in wanted if gid not in {g["group_id"] for g in found}],
+    }

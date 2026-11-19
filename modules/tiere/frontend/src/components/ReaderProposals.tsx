@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
 import { listAllAnimals, type AnimalRef } from '@fmis/core/animals'
-import { API_URL, getCurrentUserEmail, getToken } from '@fmis/core/auth'
+import { API_URL, getToken } from '@fmis/core/auth'
 import { syncModuleNow } from '@fmis/core/sync'
 import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
-import { getDb } from '../db/pglite'
-import { upsertRow } from '../db/write'
+import { markPool } from '../lib/readerPools'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDateTime } from '../lib/format'
 import { resolveTags, toProposal, type PoolProposal } from '../lib/groupScan'
@@ -122,21 +121,7 @@ export default function ReaderProposals({ data, canWrite, onImported }: { data: 
     }
   }
 
-  async function mark(p: PoolProposal, next: 'importiert' | 'verworfen', group?: HerdGroup) {
-    const { rows } = await getDb().then((pg) => pg.query<Record<string, unknown>>('select * from reader_pools where id = $1', [p.id]))
-    if (!rows[0]) return
-    const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v))
-    await upsertRow('reader_pools', {
-      ...rows[0],
-      id: p.id,
-      fetched_at: iso(rows[0].fetched_at),
-      handled_at: new Date().toISOString(),
-      status: next,
-      handled_by: getCurrentUserEmail(),
-      imported_group_id: group?.id ?? null,
-      deleted_at: null,
-    } as never)
-  }
+  const mark = (p: PoolProposal, next: 'importiert' | 'verworfen', group?: HerdGroup) => markPool(p.id, next, group?.id)
 
   async function discard(p: PoolProposal) {
     if (!window.confirm(`Gruppe «${p.name ?? p.device_group_id}» vom Lesegerät nicht importieren?`)) return

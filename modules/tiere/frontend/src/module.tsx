@@ -31,6 +31,7 @@ const tiereModule: ModuleDescriptor = {
   ],
   pageTitles: { auslauf: 'Auslaufjournal', weide: 'Weidenutzung' },
   historyPermission: 'tiere:history:read',
+  importActions: [{ to: '/tiere?lesegeraet=gruppen', label: '📡 Gruppen vom Lesegerät', hint: 'Gruppen im APR600 ansehen, wählen und als Tiergruppen anlegen', permission: 'tiere:herden:write' }],
   routes: [
     { path: '', element: <Herds /> },
     { path: 'auslauf', element: <OutdoorJournal /> },

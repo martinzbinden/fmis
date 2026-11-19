@@ -106,6 +106,8 @@ export default function Upload({ modules, inModal = false }: { modules: ModuleDe
   const mayImport = !!user?.permissions.includes('core:import:write')
   const importers = modules.filter((m) => m.importer && mayImport && user?.permissions.includes(m.importer.permission))
   const withoutRight = modules.filter((m) => m.importer && user && (!mayImport || !user.permissions.includes(m.importer.permission)))
+  // Import ohne Datei (z.B. Gruppen vom Lesegerät): Knöpfe der Module, je nach Recht
+  const actions = modules.flatMap((m) => m.importActions ?? []).filter((a) => user?.permissions.includes(a.permission))
   const [dragging, setDragging] = useState(false)
   const [batches, setBatches] = useState<Batch[]>([])
   const [runs, setRuns] = useState<Record<string, Run>>({})
@@ -211,6 +213,15 @@ export default function Upload({ modules, inModal = false }: { modules: ModuleDe
     <div className={inModal ? 'space-y-4' : 'mx-auto max-w-2xl space-y-4 p-4 pb-24'}>
       <div>
         {!inModal && <h1 className="text-xl font-bold text-gray-800">Daten importieren</h1>}
+        {actions.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {actions.map((a) => (
+              <Link key={a.to} to={a.to} onClick={() => closeImport()} title={a.hint} className="flex min-h-11 items-center rounded-lg border border-sky-300 bg-sky-50 px-3 text-sm font-medium text-sky-950">
+                {a.label}
+              </Link>
+            ))}
+          </div>
+        )}
         <p className="text-xs text-gray-500">
           Dateien einzeln, mehrere zusammen oder als ZIP. Welches Modul und welche Herde sie bekommt, wird am Inhalt erkannt.
           Importe ergänzen nur, sie löschen nichts. Weitere Dateien kannst du jederzeit dazulegen — sie kommen als eigener

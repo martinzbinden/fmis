@@ -42,6 +42,16 @@ export interface QuickLink {
   permission: string
 }
 
+/** Eintrag im Import-Fenster (📥) für Daten, die nicht als Datei kommen, z.B. Gruppen vom Lesegerät. */
+export interface ImportAction {
+  /** Ziel in der App; die Seite öffnet dort den passenden Dialog */
+  to: string
+  label: string
+  hint?: string
+  /** nur mit diesem Recht sichtbar */
+  permission: string
+}
+
 export interface ModuleDescriptor {
   key: string
   title: string
@@ -74,6 +84,8 @@ export interface ModuleDescriptor {
   /** Bereiche für «Strukturierte Daten einfügen» auf der Import-Seite
    * (core/frontend/src/pasteImport.ts). */
   pasteImporters?: PasteImporter[]
+  /** Import ohne Datei, im Import-Fenster oben als Knopf (z.B. vom Lesegerät). */
+  importActions?: ImportAction[]
   /** Liegt über allen Seiten der App (auch anderer Module), z.B. das
    * Badge einer laufenden GPS-Aufzeichnung. Prüft selbst, ob es etwas zeigt. */
   globalOverlay?: ComponentType

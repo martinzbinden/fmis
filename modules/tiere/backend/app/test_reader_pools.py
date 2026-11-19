@@ -157,3 +157,55 @@ class SyncSwitchTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await task
             self.assertEqual(calls, [1])
+
+
+class PickGroupsTest(unittest.IsolatedAsyncioTestCase):
+    """Gruppen am Gerät auswählen: Liste mit Hinweis «schon importiert», dann nur die gewählten mit Inhalt holen."""
+
+    user = mock.Mock(permissions=[rp.WRITE])
+
+    async def resolve(self, module: str):
+        return ("tiere", "h", 1)
+
+    async def test_list_marks_imported_groups(self) -> None:
+        conn = FakeConn("[0|1|Weide|2]\r\n[1|2|Stall|1]\r\n", {})
+
+        async def imported():
+            return {("2", "Stall|1"): {"imported_at": "2026-11-19T10:00:00+00:00", "imported_group_id": "g-1"}}
+
+        with mock.patch.object(rp, "acquire_reader", fake_reader(conn)), mock.patch.object(rp, "resolve_reader", self.resolve), mock.patch.object(rp, "_imported_heads", imported):
+            r = await rp.reader_groups(self.user)
+        self.assertEqual([(g["group_id"], g["name"], g["count"], g["imported_group_id"]) for g in r["groups"]], [("1", "Weide", 2, None), ("2", "Stall", 1, "g-1")])
+        self.assertEqual(conn.calls, [("XGGROUPS",)])  # nur die Liste, keine Inhalte
+
+    async def test_fetch_reads_only_picked_and_reports_missing(self) -> None:
+        conn = FakeConn("[0|1|Weide|2]\r\n[1|2|Stall|1]\r\n", {"2": rec("2", 0, "0756000021727969")})
+        stored: list = []
+
+        async def store(found):
+            stored.extend(found)
+            return [f"pool-{g['group_id']}" for g in found]
+
+        with mock.patch.object(rp, "acquire_reader", fake_reader(conn)), mock.patch.object(rp, "resolve_reader", self.resolve), mock.patch.object(rp, "store_picked", store):
+            r = await rp.reader_groups_fetch(rp.PickBody(group_ids=["2", "9", "2"]), self.user)
+        self.assertEqual(conn.calls, [("XGGROUPS",), ("XGGROUP", "2")])
+        self.assertEqual(r["missing"], ["9"])
+        self.assertEqual([(g["pool_id"], g["name"], g["tags"]) for g in r["groups"]], [("pool-2", "Stall", ["CH000021727969"])])
+        self.assertEqual(len(stored), 1)
+
+    async def test_busy_reader_gives_a_clear_409(self) -> None:
+        @asynccontextmanager
+        async def busy(host: str, port: int, *, keepalive: bool = False):
+            raise ReaderBusyError("belegt")
+            yield  # pragma: no cover
+
+        with mock.patch.object(rp, "acquire_reader", busy), mock.patch.object(rp, "resolve_reader", self.resolve):
+            with self.assertRaises(rp.HTTPException) as ctx:
+                await rp.reader_groups(self.user)
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertIn("belegt", ctx.exception.detail)
+
+    async def test_needs_the_group_right(self) -> None:
+        with self.assertRaises(rp.HTTPException) as ctx:
+            await rp.reader_groups(mock.Mock(permissions=[]))
+        self.assertEqual(ctx.exception.status_code, 403)

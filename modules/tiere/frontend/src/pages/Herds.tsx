@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import AnimalOption from '@fmis/core/AnimalOption'
 import { animalProviders, listAllAnimals, listAllWatchlists, type AnimalRef } from '@fmis/core/animals'
@@ -17,6 +17,7 @@ import GroupHistoryDialog from '../components/GroupHistoryDialog'
 import GroupScanDialog from '../components/GroupScanDialog'
 import ReaderListsDialog from '../components/ReaderListsDialog'
 import ReaderProposals from '../components/ReaderProposals'
+import ReaderGroupImport from '../components/ReaderGroupImport'
 import type { HerdGroup, HerdLocation, HerdSpecies, HerdStay, LaufhofMode, LocationKind, StaySlot } from '../types'
 import { errorText, notifySuccess } from '@fmis/core/toast'
 import SelectAllBox from '@fmis/core/SelectAllBox'
@@ -927,6 +928,7 @@ type DialogState = { seq: number } & (
   | { kind: 'locations' }
   | { kind: 'scan' }
   | { kind: 'readerlists' }
+  | { kind: 'readergroups' }
   | { kind: 'history'; group: HerdGroup }
 )
 type DialogInput = DialogState extends infer D ? (D extends { seq: number } ? Omit<D, 'seq'> : never) : never
@@ -942,6 +944,17 @@ export default function Herds() {
   const [dialog, setDialogState] = useState<DialogState | null>(null)
   const setDialog = (d: DialogInput | null) => setDialogState((prev) => (d ? ({ ...d, seq: (prev?.seq ?? 0) + 1 } as DialogState) : null))
   const [open, setOpen] = useState<Set<string>>(new Set())
+  // aus dem Import-Fenster (📥) oder anderen Modulen: «/tiere?lesegeraet=gruppen» öffnet die Auswahl der Gruppen am Lesegerät
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    if (params.get('lesegeraet') !== 'gruppen' || !canWrite) return
+    setDialog({ kind: 'readergroups' })
+    setParams((p) => {
+      p.delete('lesegeraet')
+      return p
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, canWrite])
   const [allActive, setAllActive] = useState<AnimalRef[] | null>(null)
   const [pick, setPick] = useState<Set<string>>(new Set())
 
@@ -991,6 +1004,9 @@ export default function Herds() {
           </button>
           <button type="button" onClick={() => setDialog({ kind: 'scan' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             📡 Gruppe scannen
+          </button>
+          <button type="button" onClick={() => setDialog({ kind: 'readergroups' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm" title="Gruppen im Lesegerät ansehen, wählen und als Tiergruppen anlegen">
+            📥 Gruppen vom Lesegerät
           </button>
           <button type="button" onClick={() => setDialog({ kind: 'locations' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             Orte
@@ -1305,6 +1321,7 @@ export default function Herds() {
         />
       )}
       {dialog?.kind === 'readerlists' && <ReaderListsDialog key={dialog.seq} data={data} onClose={close} />}
+      {dialog?.kind === 'readergroups' && <ReaderGroupImport key={dialog.seq} onClose={close} />}
       {dialog?.kind === 'history' && <GroupHistoryDialog key={dialog.seq} data={data} group={dialog.group} onChanged={refresh} onClose={close} />}
       {dialog?.kind === 'identify' && (
         <IdentifyDialog key={dialog.seq} data={data} group={dialog.group} preselected={dialog.preselected} date={date} onClose={close} />
