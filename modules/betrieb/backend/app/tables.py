@@ -40,6 +40,7 @@ SYNC_TABLES: dict[str, list[str]] = {
     "duty_people": [
         "id", "name", "email", "color", "active", "sort_order", "notes", "updated_at",
         "deleted_at", "school_class", "school_half", "companion",
+        "employment_pct", "school_pct", "absence_with",
     ],
     "duty_types": [
         "id", "name", "start_time", "duration_min", "weekdays", "color", "description", "active",

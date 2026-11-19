@@ -3,6 +3,7 @@
 // Funktionen (getestet). Schreiben: lib/dutyData.ts.
 
 import { absenceOn, addDays, conflictsFor, hasConflict, mondayOf, shiftId, slotsFor, weekdayIndex, weekDates, type Slot } from './duty'
+import { compareRank, loadFulltimeHours, targetMinutes, workloadRank } from './workload'
 import type { DutyAbsence, DutyPerson, DutyShift, DutySkill, DutyTemplate, DutyTemplateSlot, DutyType, DutyWeek } from '../types'
 
 /** Wochen müssen spätestens so viele Monate im Voraus vom Büro bestätigt sein. */
@@ -67,6 +68,8 @@ export interface PlanInput {
   absences: DutyAbsence[]
   /** true: schon eingeteilte Personen, die abwesend sind, durch Ersatz ersetzen (statt nur offene Plätze zu füllen) */
   adjustExisting?: boolean
+  /** Vollzeit-Stunden je Woche für das Pensum (lib/workload.ts) */
+  fulltimeHours?: number
 }
 
 const ABSENCE_LABEL: Record<string, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', schule: 'Schule', andere: 'abwesend' }
@@ -84,15 +87,21 @@ export function planWeek(inp: PlanInput): PlanResult {
   const live = inp.templateSlots.filter((t) => !t.deleted_at)
 
   const load = new Map<string, number>()
-  const bump = (id: string) => load.set(id, (load.get(id) ?? 0) + 1)
-  for (const s of work) if (s.shift?.person_id) bump(s.shift.person_id)
+  const minutes = new Map<string, number>()
+  const bump = (id: string, s?: Slot, sign = 1) => {
+    load.set(id, Math.max(0, (load.get(id) ?? 0) + sign))
+    if (s) minutes.set(id, Math.max(0, (minutes.get(id) ?? 0) + sign * Math.max(0, s.type.duration_min)))
+  }
+  const fulltime = inp.fulltimeHours ?? loadFulltimeHours()
+  const rank = (p: DutyPerson) => workloadRank(minutes.get(p.id) ?? 0, targetMinutes(p, fulltime))
+  for (const s of work) if (s.shift?.person_id) bump(s.shift.person_id, s)
 
   const want = new Map<number, { person: string; reason: string }>() // Index im work -> wer ersetzt werden muss
   const assignments: PlannedAssignment[] = []
   const assign = (i: number, personId: string, note: string | null) => {
     const s = work[i]
     s.shift = { id: s.id, type_id: s.type.id, date: s.date, slot: s.slot, person_id: personId, notes: note, assigned_by: null, updated_at: '', deleted_at: null }
-    bump(personId)
+    bump(personId, s)
     assignments.push({ slot: slots[i], personId, note })
   }
 
@@ -104,7 +113,7 @@ export function planWeek(inp: PlanInput): PlanResult {
         const a = absenceOn(existing, s.date, inp.absences)!
         want.set(i, { person: existing, reason: ABSENCE_LABEL[a.kind] ?? 'abwesend' })
         s.shift = null // Platz für den Ersatz freimachen
-        load.set(existing, Math.max(0, (load.get(existing) ?? 1) - 1))
+        bump(existing, s, -1)
       }
       continue
     }
@@ -124,7 +133,7 @@ export function planWeek(inp: PlanInput): PlanResult {
     const s = work[i]
     const candidates = active
       .filter((p) => p.id !== why.person && !hasConflict(conflictsFor(p.id, s, work, inp.skills, inp.absences)))
-      .sort((a, b) => (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0) || a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de-CH'))
+      .sort((a, b) => compareRank(rank(a), rank(b)) || (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0) || a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'de-CH'))
     const pick = candidates[0]
     if (pick) assign(i, pick.id, `Ersatz für ${nameOf(why.person)} (${why.reason})`)
     else unfilled.push(`${s.date} ${s.type.start_time} ${s.type.animal ? `${s.type.animal} · ` : ''}${s.type.name}: ${nameOf(why.person)} ${why.reason}, niemand frei`)

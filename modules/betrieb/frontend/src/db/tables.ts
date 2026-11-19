@@ -38,7 +38,7 @@ export const SYNC_TABLES = {
     'id', 'track_id', 'machine_id', 'parcel_id', 'event_at', 'source', 'volume_m3', 'distance_m',
     'spread_s', 'width_m', 'lat', 'lng', 'notes', 'updated_at', 'deleted_at', 'unit',
   ],
-  duty_people: ['id', 'name', 'email', 'color', 'active', 'sort_order', 'notes', 'updated_at', 'deleted_at', 'school_class', 'school_half', 'companion'],
+  duty_people: ['id', 'name', 'email', 'color', 'active', 'sort_order', 'notes', 'updated_at', 'deleted_at', 'school_class', 'school_half', 'companion', 'employment_pct', 'school_pct', 'absence_with'],
   duty_types: ['id', 'name', 'start_time', 'duration_min', 'weekdays', 'color', 'description', 'active', 'sort_order', 'updated_at', 'deleted_at', 'animal', 'active_from', 'active_to', 'summer_from', 'summer_to', 'times'],
   duty_skills: ['id', 'person_id', 'type_id', 'updated_at', 'deleted_at'],
   duty_absences: ['id', 'person_id', 'from_date', 'to_date', 'kind', 'notes', 'created_by', 'updated_at', 'deleted_at', 'source', 'import_key', 'missing_since'],

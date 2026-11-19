@@ -5,6 +5,7 @@ import { adjustWeek, copyTemplate, deleteTemplate, generateWeeks, saveTemplate, 
 import { confirmDeadline, GENERATE_AHEAD_WEEKS, templateOn, templateSlotsFromWeek, weekStates } from '../lib/dutyPlan'
 import type { DutyTemplate, DutyType } from '../types'
 import { errorText } from '@fmis/core/toast'
+import { fmtHours, loadFulltimeHours, saveFulltimeHours, targetMinutes } from '../lib/workload'
 
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 const field = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
@@ -64,6 +65,18 @@ export default function Planning({ d, refresh, openWeek }: { d: DutyData; refres
   }, [])
 
   const openCount = (monday: string) => slotsFor(d.types, d.shifts, weekDates(monday)).filter((s) => !s.shift?.person_id).length
+  // Pensum der Angestellten je Woche: eingeteilte Minuten gegen das Soll (lib/workload.ts)
+  const fulltime = loadFulltimeHours()
+  const employed = d.people.filter((p) => p.active && !p.deleted_at && p.employment_pct != null)
+  const pensum = (monday: string) => {
+    const min = new Map<string, number>()
+    for (const s of slotsFor(d.types, d.shifts, weekDates(monday))) if (s.shift?.person_id) min.set(s.shift.person_id, (min.get(s.shift.person_id) ?? 0) + Math.max(0, s.type.duration_min))
+    return employed.map((p) => {
+      const soll = targetMinutes(p, fulltime) ?? 0
+      const have = min.get(p.id) ?? 0
+      return { p, have, soll, off: soll > 0 && Math.abs(have - soll) / soll > 0.15 }
+    })
+  }
   const editing = d.templates.find((t) => t.id === editId) ?? null
 
   return (
@@ -138,6 +151,16 @@ export default function Planning({ d, refresh, openWeek }: { d: DutyData; refres
                     {tpl ? tpl.name : 'kein Standardplan'}
                     {n ? ` · ${n} offen` : ''}
                   </span>
+                  {employed.length > 0 && (
+                    <span className="block text-xs text-gray-600" title="Eingeteilte Stunden / Soll aus Anstellung − Schule/ÜK (Einstellungen → Personen)">
+                      {pensum(s.monday).map((x, i) => (
+                        <span key={x.p.id} className={x.off ? 'font-semibold text-amber-800' : ''}>
+                          {i > 0 ? ' · ' : ''}
+                          {x.p.name.split(/\s+/).slice(-1)[0]} {fmtHours(x.have)}/{fmtHours(x.soll)} h
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </button>
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -294,6 +317,9 @@ function Templates({ d, editing, setEditId }: { d: DutyData; editing: DutyTempla
 /** Raster eines Standardplans: Dienste (nach Tierart) × Wochentage, je Platz eine Person. */
 function TemplateEditor({ d, t, onClose }: { d: DutyData; t: DutyTemplate; onClose: () => void }) {
   const [weekNo, setWeekNo] = useState(0)
+  const [mode, setMode] = useState<'dienst' | 'person'>('dienst')
+  const [fulltime, setFulltime] = useState(loadFulltimeHours)
+  const [who, setWho] = useState<string>(() => d.people.find((p) => p.active && !p.companion)?.id ?? '')
   const [meta, setMeta] = useState({ name: t.name, valid_from: t.valid_from, cycle_weeks: t.cycle_weeks })
   const [confirmDel, setConfirmDel] = useState(false)
   const types = groupTypes(d.types.filter((x) => x.active)).flatMap((g) => g.types)
@@ -310,6 +336,14 @@ function TemplateEditor({ d, t, onClose }: { d: DutyData; t: DutyTemplate; onClo
         overlaps(timeRange(ty), timeRange(o)),
     )
   const people = d.people.filter((p) => p.active)
+  // Pensum laut Standardplan (diese Woche des Zyklus): Dauer der Dienste je Person (Grundzeit, ohne Sommer/Winter)
+  const tplMinutes = new Map<string, number>()
+  for (const ty of types)
+    for (let wd = 0; wd < 7; wd++)
+      for (let k = 0; k < Number(ty.weekdays[wd] ?? 0); k++) {
+        const pid = cell(ty, wd, k)
+        if (pid) tplMinutes.set(pid, (tplMinutes.get(pid) ?? 0) + Math.max(0, ty.duration_min))
+      }
   const dirty = meta.name !== t.name || meta.valid_from !== t.valid_from || meta.cycle_weeks !== t.cycle_weeks
   return (
     <div className="mt-2 space-y-2">
@@ -343,6 +377,86 @@ function TemplateEditor({ d, t, onClose }: { d: DutyData; t: DutyTemplate; onClo
           ))}
         </div>
       )}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-xs">
+          {(['dienst', 'person'] as const).map((m) => (
+            <button key={m} type="button" onClick={() => setMode(m)} className={`px-2 py-1 ${mode === m ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
+              {m === 'dienst' ? 'nach Dienst' : 'nach Person'}
+            </button>
+          ))}
+        </span>
+        {mode === 'person' && (
+          <select className={field} value={who} onChange={(e) => setWho(e.target.value)} aria-label="Person">
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      {mode === 'person' ? (
+        <div className="overflow-x-auto">
+          <table className="text-xs">
+            <thead>
+              <tr>
+                <th className="sticky left-0 bg-white" />
+                {DAYS.map((x) => (
+                  <th key={x} className="px-1 pb-1 font-semibold text-gray-600">
+                    {x}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {types.map((ty) => (
+                <tr key={ty.id} className="border-t">
+                  <td className="sticky left-0 max-w-[10rem] bg-white py-1 pr-2 leading-tight">
+                    <span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: ty.color ?? '#64748b' }} />
+                    {typeLabel(ty)}
+                    <span className="block text-[10px] text-gray-500">
+                      {ty.start_time} · {fmtHours(ty.duration_min)} h
+                    </span>
+                  </td>
+                  {DAYS.map((_, wd) => {
+                    const n = Number(ty.weekdays[wd] ?? 0)
+                    if (n === 0) return <td key={wd} className="text-center text-gray-300">–</td>
+                    const ks = Array.from({ length: n }, (_, k) => k)
+                    const mine = ks.filter((k) => cell(ty, wd, k) === who)
+                    const free = ks.find((k) => !cell(ty, wd, k))
+                    const others = ks.map((k) => cell(ty, wd, k)).filter((x): x is string => !!x && x !== who)
+                    const skilled = canDo(who, ty.id, d.skills)
+                    const on = mine.length > 0
+                    const blocked = !on && (free == null || !skilled)
+                    const warn = on && (clash(ty, wd, who) || !skilled)
+                    const otherNames = others.map((id) => d.people.find((p) => p.id === id)?.name.split(/\s+/).slice(-1)[0] ?? '?').join(', ')
+                    return (
+                      <td key={wd} className="px-0.5 py-0.5 text-center">
+                        <label
+                          className={`flex min-h-11 min-w-11 flex-col items-center justify-center rounded border ${on ? (warn ? 'border-amber-500 bg-amber-50' : 'border-indigo-600 bg-indigo-50') : blocked ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-gray-300'}`}
+                          title={!skilled ? 'nicht befähigt (Einstellungen → «Wer kann welchen Dienst?»)' : free == null && !on ? `besetzt: ${otherNames}` : warn ? 'gleichzeitig eingeteilt' : undefined}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={blocked || !who}
+                            onChange={(e) => {
+                              if (e.target.checked && free != null) void setTemplateSlot(t.id, weekNo, wd, ty.id, free, who)
+                              else for (const k of mine) void setTemplateSlot(t.id, weekNo, wd, ty.id, k, null)
+                            }}
+                            aria-label={`${typeLabel(ty)} ${DAYS[wd]}`}
+                          />
+                          {otherNames && <span className="max-w-[3.5rem] truncate text-[9px] leading-tight text-gray-500">{otherNames}</span>}
+                        </label>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="text-xs">
           <thead>
@@ -395,6 +509,43 @@ function TemplateEditor({ d, t, onClose }: { d: DutyData; t: DutyTemplate; onClo
             )}
           </tbody>
         </table>
+      </div>
+      )}
+      <div className="rounded-lg bg-gray-50 p-2 text-xs">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-gray-700">Pensum laut Standardplan{t.cycle_weeks > 1 ? ` (Woche ${String.fromCharCode(65 + weekNo)})` : ''}</span>
+          <label className="flex items-center gap-1 text-gray-600">
+            Vollzeit
+            <input
+              type="number"
+              min={10}
+              max={80}
+              className={`${field} w-16`}
+              value={fulltime}
+              onChange={(e) => {
+                const v = Number(e.target.value)
+                setFulltime(v)
+                if (v >= 10 && v <= 80) saveFulltimeHours(v)
+              }}
+            />
+            h/Woche
+          </label>
+        </div>
+        <ul className="flex flex-wrap gap-x-4 gap-y-0.5">
+          {people
+            .filter((p) => tplMinutes.has(p.id) || p.employment_pct != null)
+            .map((p) => {
+              const have = tplMinutes.get(p.id) ?? 0
+              const soll = targetMinutes(p, fulltime)
+              const off = soll != null && soll > 0 && Math.abs(have - soll) / soll > 0.15
+              return (
+                <li key={p.id} className={off ? 'font-semibold text-amber-800' : 'text-gray-800'}>
+                  {p.name}: {fmtHours(have)} h{soll != null ? ` / Soll ${fmtHours(soll)} h` : ''}
+                </li>
+              )
+            })}
+        </ul>
+        <p className="mt-1 text-gray-500">Soll = (Anstellung − Schule/ÜK) × Vollzeit. Beim Einteilen kommen zuerst Angestellte unter dem Soll, dann Personen ohne Anstellung, zuletzt solche über dem Soll.</p>
       </div>
       <p className="text-xs text-gray-500">Änderungen werden sofort gespeichert. Auswahl nur unter Personen, die den Dienst können (Einstellungen → «Wer kann welchen Dienst?»). Gelb = gleichzeitig eingeteilt oder nicht befähigt.</p>
       <div className="flex gap-2">

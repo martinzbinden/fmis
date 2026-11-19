@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { localToday } from '../lib/duty'
-import { dayOfYear, daysInYear, overlaps, planEntries, vacationDays, type PlanEntry } from '../lib/vacationPlan'
+import { absenceUnits, dayOfYear, daysInYear, overlaps, planEntries, vacationDays, type PlanEntry } from '../lib/vacationPlan'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest } from '../types'
 
 const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
@@ -27,8 +27,9 @@ export default function VacationPlan({
 }) {
   const [withSchool, setWithSchool] = useState(true)
   const [picked, setPicked] = useState<PlanEntry | null>(null)
-  const entries = useMemo(() => planEntries(absences, requests, year), [absences, requests, year])
-  const clash = useMemo(() => overlaps(entries, { withSchool }), [entries, withSchool])
+  const entries = useMemo(() => planEntries(absences, requests, year, new Set(people.filter((p) => !p.deleted_at).map((p) => p.id))), [absences, requests, year, people])
+  const unitOf = useMemo(() => absenceUnits(people), [people])
+  const clash = useMemo(() => overlaps(entries, { withSchool, unitOf }), [entries, withSchool, unitOf])
   const total = daysInYear(year)
   const pct = (iso: string) => `${(dayOfYear(iso) / total) * 100}%`
   const width = (a: string, b: string) => `${((dayOfYear(b) - dayOfYear(a) + 1) / total) * 100}%`
@@ -143,6 +144,16 @@ export default function VacationPlan({
                 </li>
               ))}
             </ul>
+          )}
+          {people.some((p) => p.absence_with) && (
+            <p className="mt-1 text-xs text-gray-500">
+              Gemeinsam weg, keine Überschneidung:{' '}
+              {people
+                .filter((p) => p.absence_with && people.some((q) => q.id === p.absence_with))
+                .map((p) => `${name(p.id)} + ${name(p.absence_with!)}`)
+                .join(', ')}{' '}
+              (Einstellungen → Personen).
+            </p>
           )}
         </section>
         <section>

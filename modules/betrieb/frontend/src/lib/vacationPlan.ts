@@ -24,11 +24,13 @@ const yearStart = (y: number) => `${y}-01-01`
 const yearEnd = (y: number) => `${y}-12-31`
 
 /** Abwesenheiten und offene Wünsche, die ins Jahr fallen (auf das Jahr gekürzt). */
-export function planEntries(absences: DutyAbsence[], requests: DutyRequest[], year: number): PlanEntry[] {
+export function planEntries(absences: DutyAbsence[], requests: DutyRequest[], year: number, personIds?: Set<string>): PlanEntry[] {
   const a = yearStart(year)
   const b = yearEnd(year)
   const out: PlanEntry[] = []
   const push = (e: PlanEntry) => {
+    // Einträge gelöschter Personen zählen nicht
+    if (personIds && !personIds.has(e.personId)) return
     if (e.to < a || e.from > b || e.to < e.from) return
     out.push({ ...e, from: e.from < a ? a : e.from, to: e.to > b ? b : e.to })
   }
@@ -39,9 +41,28 @@ export function planEntries(absences: DutyAbsence[], requests: DutyRequest[], ye
   return out.sort((x, y) => x.from.localeCompare(y.from) || x.personId.localeCompare(y.personId))
 }
 
-/** Tage, an denen mindestens zwei Personen weg sind, zu Zeiträumen mit gleicher Besetzung zusammengefasst.
- * Ohne `withSchool` zählen Schultage nicht. */
-export function overlaps(entries: PlanEntry[], { withSchool = true } = {}): Overlap[] {
+/** Personen, die gemeinsam Ferien machen (absence_with, in beide Richtungen und über Ketten), auf einen Schlüssel
+ * abbilden: sie zählen im Ferienplan als eine Einheit. */
+export function absenceUnits(people: { id: string; absence_with?: string | null }[]): (personId: string) => string {
+  const parent = new Map<string, string>()
+  const find = (x: string): string => {
+    const p = parent.get(x) ?? x
+    if (p === x) return x
+    const r = find(p)
+    parent.set(x, r)
+    return r
+  }
+  for (const p of people) if (p.absence_with) {
+    const a = find(p.id)
+    const b = find(p.absence_with)
+    if (a !== b) parent.set(a < b ? b : a, a < b ? a : b)
+  }
+  return find
+}
+
+/** Tage, an denen mindestens zwei Personen (bzw. Einheiten gemeinsam Abwesender) weg sind, zu Zeiträumen mit
+ * gleicher Besetzung zusammengefasst. Ohne `withSchool` zählen Schultage nicht. */
+export function overlaps(entries: PlanEntry[], { withSchool = true, unitOf = (id: string) => id }: { withSchool?: boolean; unitOf?: (id: string) => string } = {}): Overlap[] {
   const byDay = new Map<string, Map<string, Overlap['who'][number]>>()
   for (const e of entries) {
     if (!withSchool && e.kind === 'schule') continue
@@ -54,7 +75,7 @@ export function overlaps(entries: PlanEntry[], { withSchool = true } = {}): Over
       byDay.set(d, m)
     }
   }
-  const days = [...byDay.entries()].filter(([, m]) => m.size >= 2).sort(([a], [b]) => a.localeCompare(b))
+  const days = [...byDay.entries()].filter(([, m]) => new Set([...m.keys()].map(unitOf)).size >= 2).sort(([a], [b]) => a.localeCompare(b))
   const out: Overlap[] = []
   const sig = (m: Map<string, Overlap['who'][number]>) => [...m.values()].map((w) => `${w.personId}:${w.kind}:${w.pending}`).sort().join('|')
   let lastSig = ''

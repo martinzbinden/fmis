@@ -200,6 +200,12 @@ export interface DutyPerson {
   school_half: 'A' | 'B' | null
   /** begleitet nur (Praktikum, Schnupperlehre): zählt nicht als Besetzung (schema/0012) */
   companion: boolean
+  /** Anstellung in %; null = nicht angestellt (Familie) — schema/0013 */
+  employment_pct?: number | null
+  /** davon Schule/ÜK in % (Lehrling) */
+  school_pct?: number | null
+  /** Ferien gemeinsam mit dieser Person: keine Überschneidung im Ferienplan */
+  absence_with?: string | null
 }
 export interface DutyType {
   id: string

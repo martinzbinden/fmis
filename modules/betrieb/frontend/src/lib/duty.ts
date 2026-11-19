@@ -2,6 +2,7 @@
 // Konflikte (abwesend, gleichzeitig, nicht befähigt), fairer Vorschlag.
 
 import type { DutyAbsence, DutyPerson, DutyShift, DutySkill, DutyType } from '../types'
+import { compareRank, loadFulltimeHours, targetMinutes, workloadRank } from './workload'
 import { localTodayIso } from '@fmis/core/dates'
 
 const DAY = 86_400_000
@@ -228,12 +229,17 @@ export const hasConflict = (c: Conflict) => !!c.absent || c.overlap.length > 0 |
  * eingeteilt; bei mehreren die Person mit den wenigsten Diensten dieser
  * Woche (gleichmässig verteilt), bei Gleichstand die mit diesem Dienst
  * zuletzt am wenigsten. */
-export function suggest(slots: Slot[], people: DutyPerson[], skills: DutySkill[], absences: DutyAbsence[]): { slot: Slot; personId: string }[] {
+export function suggest(slots: Slot[], people: DutyPerson[], skills: DutySkill[], absences: DutyAbsence[], fulltimeHours = loadFulltimeHours()): { slot: Slot; personId: string }[] {
   const work = slots.map((s) => ({ ...s, shift: s.shift ? { ...s.shift } : null }))
   const load = new Map<string, number>()
+  // Pensum: Minuten dieser Slots je Person gegen das Soll (lib/workload.ts)
+  const minutes = new Map<string, number>()
+  const addMin = (id: string, s: Slot) => minutes.set(id, (minutes.get(id) ?? 0) + Math.max(0, s.type.duration_min))
+  const rank = (p: DutyPerson) => workloadRank(minutes.get(p.id) ?? 0, targetMinutes(p, fulltimeHours))
   const sameType = new Map<string, number>()
   for (const s of work)
     if (s.shift?.person_id) {
+      addMin(s.shift.person_id, s)
       load.set(s.shift.person_id, (load.get(s.shift.person_id) ?? 0) + 1)
       sameType.set(`${s.shift.person_id}|${s.type.id}`, (sameType.get(`${s.shift.person_id}|${s.type.id}`) ?? 0) + 1)
     }
@@ -245,6 +251,7 @@ export function suggest(slots: Slot[], people: DutyPerson[], skills: DutySkill[]
       .filter((p) => !hasConflict(conflictsFor(p.id, s, work, skills, absences)))
       .sort(
         (a, b) =>
+          compareRank(rank(a), rank(b)) ||
           (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0) ||
           (sameType.get(`${a.id}|${s.type.id}`) ?? 0) - (sameType.get(`${b.id}|${s.type.id}`) ?? 0) ||
           a.sort_order - b.sort_order ||
@@ -254,6 +261,7 @@ export function suggest(slots: Slot[], people: DutyPerson[], skills: DutySkill[]
     if (!p) continue
     s.shift = { id: s.id, type_id: s.type.id, date: s.date, slot: s.slot, person_id: p.id, notes: null, assigned_by: null, updated_at: '', deleted_at: null }
     load.set(p.id, (load.get(p.id) ?? 0) + 1)
+    addMin(p.id, s)
     sameType.set(`${p.id}|${s.type.id}`, (sameType.get(`${p.id}|${s.type.id}`) ?? 0) + 1)
     // der unveränderte (offene) Platz: assignSlots vergleicht mit dem bisherigen Stand
     out.push({ slot: slots[i], personId: p.id })

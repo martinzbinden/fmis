@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayOfYear, daysInYear, overlaps, planEntries, vacationDays } from './vacationPlan'
+import { absenceUnits, dayOfYear, daysInYear, overlaps, planEntries, vacationDays } from './vacationPlan'
 import type { DutyAbsence, DutyRequest } from '../types'
 
 const abs = (person_id: string, from_date: string, to_date: string, kind: DutyAbsence['kind'] = 'ferien'): DutyAbsence =>
@@ -29,6 +29,12 @@ describe('Ferienplan', () => {
   it('Ferien gehen vor dem Schultag derselben Person', () => {
     const e = planEntries([abs('a', '2027-03-01', '2027-03-01', 'schule'), abs('a', '2027-03-01', '2027-03-07'), abs('b', '2027-03-01', '2027-03-01', 'kurs')], [], 2027)
     expect(overlaps(e)[0].who.map((w) => w.kind)).toEqual(['ferien', 'kurs'])
+  })
+
+  it('gemeinsam Abwesende zählen als eine Einheit; gelöschte Personen gar nicht', () => {
+    const unitOf = absenceUnits([{ id: 'a', absence_with: 'b' }, { id: 'b' }, { id: 'c' }])
+    const e = planEntries([abs('a', '2027-02-20', '2027-02-28'), abs('b', '2027-02-20', '2027-02-28'), abs('c', '2027-02-27', '2027-03-02'), abs('x', '2027-02-20', '2027-02-21')], [], 2027, new Set(['a', 'b', 'c']))
+    expect(overlaps(e, { unitOf }).map((o) => [o.from, o.to, o.who.length])).toEqual([['2027-02-27', '2027-02-28', 3]])
   })
 
   it('aneinander anschliessend ist keine Überschneidung', () => {

@@ -58,6 +58,12 @@ describe('Konflikte und Vorschlag', () => {
     // zurückgegeben werden die offenen Plätze (sonst überspringt das Speichern sie)
     expect(sug.every((x) => x.slot.shift === null)).toBe(true)
   })
+  it('Vorschlag beachtet das Pensum: zuerst Angestellte unter dem Soll, dann ohne Anstellung', () => {
+    const anna = { ...P('a', 'Anna'), employment_pct: 20, school_pct: 10 } // 10 % von 50 h = 300 Min.
+    const sug = suggest(slotsFor([kuehe], [], dates), [anna, P('b', 'Beat')], skills, [], 50)
+    // 90 Min. je Tag: Anna bis 270 Min. (unter Soll), danach die Familie
+    expect(sug.map((x) => x.personId)).toEqual(['a', 'a', 'a', 'a', 'b', 'b', 'b'])
+  })
   it('Vorwoche übernehmen', () => {
     const prevDates = weekDates('2026-10-05')
     const prevShifts: DutyShift[] = prevDates.map((d) => ({ id: shiftId('k', d, 0), type_id: 'k', date: d, slot: 0, person_id: 'b', notes: null, assigned_by: null, updated_at: '', deleted_at: null }))

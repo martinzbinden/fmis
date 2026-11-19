@@ -1360,6 +1360,47 @@ function Settings({ d }: { d: DutyData }) {
                       <option value="B">Halbklasse B</option>
                     </select>
                   </span>
+                  <span className="flex w-full flex-wrap items-center gap-2 text-xs text-gray-600">
+                    Anstellung
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={5}
+                      className={`${field} w-20`}
+                      value={editPerson.employment_pct ?? ''}
+                      onChange={(e) => setEditPerson({ ...editPerson, employment_pct: e.target.value === '' ? null : Math.min(100, Math.max(0, Number(e.target.value))) })}
+                      placeholder="–"
+                      aria-label="Anstellung in Prozent"
+                    />
+                    % · davon Schule/ÜK
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={5}
+                      className={`${field} w-20`}
+                      value={editPerson.school_pct ?? ''}
+                      onChange={(e) => setEditPerson({ ...editPerson, school_pct: e.target.value === '' ? null : Math.min(100, Math.max(0, Number(e.target.value))) })}
+                      placeholder="–"
+                      aria-label="davon Schule und überbetriebliche Kurse in Prozent"
+                    />
+                    % <span className="text-gray-500">(leer = nicht angestellt, z.B. Familie)</span>
+                  </span>
+                  <label className="flex w-full flex-wrap items-center gap-2 text-xs text-gray-600">
+                    Ferien gemeinsam mit
+                    <select className={field} value={editPerson.absence_with ?? ''} onChange={(e) => setEditPerson({ ...editPerson, absence_with: e.target.value || null })}>
+                      <option value="">—</option>
+                      {people
+                        .filter((q) => q.id !== p.id)
+                        .map((q) => (
+                          <option key={q.id} value={q.id}>
+                            {q.name}
+                          </option>
+                        ))}
+                    </select>
+                    <span className="text-gray-500">(gleichzeitig weg ist keine Überschneidung im Ferienplan)</span>
+                  </label>
                   <button type="button" className={btn} onClick={() => void savePerson({ ...editPerson, name: editPerson.name.trim(), email: editPerson.email?.trim() || null, school_class: editPerson.school_class?.trim() || null }).then(() => setEditPerson(null))}>
                     Speichern
                   </button>
@@ -1377,6 +1418,12 @@ function Settings({ d }: { d: DutyData }) {
                 <button type="button" className="flex-1 text-left" onClick={() => setEditPerson(p)}>
                   <b className={p.active ? '' : 'text-gray-500 line-through'}>{p.name}</b> <span className="text-xs text-gray-500">{p.email ?? 'ohne FMIS-Konto'}</span>
                   {p.companion && <span className="ml-1 text-xs text-teal-800">🤝 begleitet</span>}
+                  {p.employment_pct != null && (
+                    <span className="ml-1 text-xs text-indigo-800">
+                      💼 {p.employment_pct} %{p.school_pct ? ` (davon ${p.school_pct} % Schule/ÜK)` : ''}
+                    </span>
+                  )}
+                  {p.absence_with && <span className="ml-1 text-xs text-sky-800">🏖 mit {people.find((q) => q.id === p.absence_with)?.name ?? '?'}</span>}
                   {p.school_class && (
                     <span className="ml-1 text-xs text-amber-800">
                       🎓 {p.school_class}
