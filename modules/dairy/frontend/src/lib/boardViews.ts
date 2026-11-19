@@ -21,7 +21,6 @@ export const VIEW_KEYS = [
   'board_presets',
   'board_sort',
   'board_sort_auto',
-  'meat_on',
   'meat_settings',
   'lamb_milk',
   'milk_feed_settings',

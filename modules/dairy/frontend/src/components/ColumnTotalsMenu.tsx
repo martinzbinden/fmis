@@ -36,7 +36,7 @@ export default function ColumnTotalsMenu({ value, onChange, sheep }: { value: Co
       {open && (
         <div role="group" aria-label="Summen je Spalte" className="absolute right-0 z-30 mt-1 w-80 max-w-[90vw] rounded-xl border border-gray-300 bg-white p-2 shadow-xl">
           <p className="px-1 pb-1 text-xs text-gray-600">Unten in jeder Gruppe und Merkliste, für alle ihre Tiere.</p>
-          {sheep && item('meat', '🥩 Schlachtwert', 'Fleischwert nach Abzügen am Schlachttermin (Einstellungen: 🥩 Fleischwert)')}
+          {sheep && item('meat', '🥩 Schlachtwert', 'Fleischwert nach Abzügen am Schlachttermin (Einstellungen: ⚙️ Einstellungen)')}
           {item('milk', '🥛 Milch', 'Gemolkene Milch und ihr Wert im Zeitraum, aus der letzten Wägung (Einstellungen: Milch gegen Futter)')}
           {item('feed', '🌾 Futterbedarf', 'Grundfutter in kg und Futterkosten (inkl. Kraftfutter je kg Milch) im Zeitraum')}
           <fieldset className="mt-1 border-t px-1 pt-2">

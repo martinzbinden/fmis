@@ -24,7 +24,7 @@ export const CARD_FIELDS: CardFieldDef[] = [
   { key: 'weighings', label: 'Letzte Wägung', hint: 'Zuletzt gewogene Milch (auch private Milchwägung ohne Labor), Zellzahl der letzten Prüfung und Anzahl offizieller Prüfungen (mit Gehalten, SMG) dieser Laktation' },
   { key: 'dailyMilk', label: 'Tagesmilch, korrigiert um die Lämmer', hint: 'Gemolken (letzte Wägung) plus Milch der saugenden Lämmer; Lämmer am Eimer zählen nicht' },
   { key: 'milkFeed', label: 'Milch gegen Futter bis Geburt', hint: 'Milchgeld bis zum Trockenstellen minus Futterkosten bis zur nächsten Geburt (Einstellungen erscheinen oben, wenn gewählt)' },
-  { key: 'meat', label: 'Geschätzter Fleischwert', hint: 'Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen (Einstellungen: Knopf «Fleischwert»)', species: 'sheep' },
+  { key: 'meat', label: 'Geschätzter Fleischwert', hint: 'Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen (Einstellungen: «⚙️ Einstellungen»)', species: 'sheep' },
 ]
 
 export const DEFAULT_CARD_FIELDS: CardFieldKey[] = ['weaned', 'milk', 'scc', 'spark']
@@ -33,6 +33,15 @@ const storageKey = (moduleKey: string) => `${moduleKey}_board_card_fields`
 
 export function loadCardFields(moduleKey: string): CardFieldKey[] {
   try {
+    // früherer Knopf «🥩 Fleischwert» (bis 11.2026): eingeschaltet → Feld «Geschätzter Fleischwert» auf der Karte
+    const meatOn = localStorage.getItem(`${moduleKey}_meat_on`)
+    if (meatOn != null) {
+      localStorage.removeItem(`${moduleKey}_meat_on`)
+      if (meatOn === '1') {
+        const now = loadCardFields(moduleKey)
+        if (!now.includes('meat')) saveCardFields(moduleKey, [...now, 'meat'])
+      }
+    }
     const raw = JSON.parse(localStorage.getItem(storageKey(moduleKey)) ?? 'null') as unknown
     if (Array.isArray(raw)) return raw.filter((k): k is CardFieldKey => CARD_FIELDS.some((f) => f.key === k))
   } catch {

@@ -22,6 +22,7 @@ import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatLimi
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
 import BoardViewsMenu from '../components/BoardViewsMenu'
+import StickyHScroll from '../components/StickyHScroll'
 import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
 import SortMenu from '@fmis/core/query/SortMenu'
 import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
@@ -190,13 +191,6 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   const [editGroup, setEditGroup] = useState<string | null>(null)
   const [editList, setEditList] = useState<string | null>(null)
   const [cardFields, setCardFields] = useState<CardFieldKey[]>(() => loadCardFields(moduleKey))
-  const [meatOn, setMeatOn] = useState(() => {
-    try {
-      return localStorage.getItem(`${moduleKey}_meat_on`) === '1'
-    } catch {
-      return false
-    }
-  })
   const [meatSettings, setMeatSettings] = useState<MeatSettings>(() => loadMeatSettings(moduleKey))
   const proviande = useProviandePrices(species)
   const meatPrices = useMemo(() => ({ lamb: proviande?.young ?? FALLBACK_MEAT_PRICES.lamb, sheep: proviande?.adult ?? FALLBACK_MEAT_PRICES.sheep }), [proviande])
@@ -234,7 +228,9 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
       )
     return m
   }, [milkData, cards, species, today, weanDay, milkFeedSettings, totals])
-  const meatById = useMemo(() => (meatOn || cardFields.includes('meat') ? meatAll : new Map<string, ReturnType<typeof meatValue>>()), [meatAll, meatOn, cardFields])
+  const meatById = useMemo(() => (cardFields.includes('meat') ? meatAll : new Map<string, ReturnType<typeof meatValue>>()), [meatAll, cardFields])
+  // Fleischwert in Gebrauch (Karte oder Spaltensumme): dann stehen seine Einstellungen unter «⚙️ Einstellungen»
+  const meatUsed = species === 'sheep' && (cardFields.includes('meat') || totals.meat)
 
   // Suchfeld: Freitext und Formeln wie «ZZ > 200» (lib/boardQuery.ts), Sortierung nach dem Filter vorschlagen (core/query)
   const queryCtx = useMemo<QueryContext>(
@@ -267,7 +263,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   const meatLimitList = useMemo(() => buildMeatLimits(meatSettings, { ...meatPrices, lambH: proviande?.youngH ?? null, lambC: proviande?.youngC ?? null }), [meatSettings, meatPrices, proviande])
   // Einstellungen der Kartenwerte: ein Knopf blendet alle ein oder aus (gemerkt je Gerät), standardmässig aus
   const lambMilkSettingsUsed = species === 'sheep' && (cardFields.includes('lambMilk') || cardFields.includes('dailyMilk') || cardFields.includes('milkFeed'))
-  const anySettings = (meatOn && species === 'sheep') || cardFields.includes('milkFeed') || lambMilkSettingsUsed
+  const anySettings = meatUsed || cardFields.includes('milkFeed') || lambMilkSettingsUsed
   const settingsKey = `${moduleKey}_board_settings_open`
   const [showSettings, setShowSettings] = useState(() => {
     try {
@@ -287,15 +283,6 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
     })
   }
 
-  function toggleMeat() {
-    const next = !meatOn
-    setMeatOn(next)
-    try {
-      localStorage.setItem(`${moduleKey}_meat_on`, next ? '1' : '0')
-    } catch {
-      // nur bis zum Neuladen
-    }
-  }
   const [hidden, setHidden] = useState<Set<string>>(() => readHidden(moduleKey))
   const [showColumns, setShowColumns] = useState(false)
   // Sprung aus dem Einzeltier (?gruppe=herde:<id>&tier=<id>): die Gruppe steht im Blick, das Tier ist hervorgehoben
@@ -509,7 +496,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         ) : (
           <>
             {list.length > 0 && <ColumnTotals list={list} totals={totals} sheep={species === 'sheep'} meatAll={meatAll} windowById={windowById} />}
-            <div className="max-h-[calc(100dvh-8rem)] min-h-20 space-y-1.5 overflow-y-auto pr-0.5 sm:max-h-[calc(100vh-20rem)] sm:space-y-2">
+            <div className="max-h-[calc(100dvh-8rem)] min-h-20 space-y-1.5 overflow-y-auto pr-0.5 sm:max-h-none sm:space-y-2 sm:overflow-visible">
               {list.map((c) => (
                 <ColumnCard
                   key={c.id}
@@ -612,11 +599,6 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         </div>
         <div className={`ml-auto flex-wrap items-center justify-end gap-2 ${toolsOpen ? 'flex' : 'hidden'} sm:flex`}>
           <BoardViewsMenu moduleKey={moduleKey} onApplied={reload} />
-          {species === 'sheep' && (
-            <button type="button" onClick={toggleMeat} aria-pressed={meatOn} className={`min-h-11 rounded-lg border-2 px-3 text-sm font-semibold ${meatOn ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-gray-300 bg-white'}`}>
-              🥩 Fleischwert
-            </button>
-          )}
           <button type="button" onClick={() => setShowLegend(true)} aria-label="Legende der Karten" title="Legende der Karten" className="grid h-11 w-11 place-items-center rounded-full border-2 border-gray-300 bg-white text-lg font-bold text-brand-700 active:bg-gray-100">
             ⓘ
           </button>
@@ -678,7 +660,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
 
       <QueryChips parsed={q.parsed} />
 
-      {showSettings && meatOn && species === 'sheep' && (
+      {showSettings && meatUsed && (
         <div className={toolsOpen ? '' : 'hidden sm:block'}>
         <SettingsEditor
           value={meatSettings}
@@ -849,6 +831,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
           ),
         )}
       </div>
+      <StickyHScroll target={scroller} />
 
       {colDrag.drag && (
         <div ref={colDrag.ghost} aria-hidden className="pointer-events-none fixed left-0 top-0 z-[3000] rounded-lg border-2 border-brand-700 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xl">

@@ -19,7 +19,7 @@ describe('captureView / applyView', () => {
     expect(captureView('m', s)).toEqual({ board_kinds: 'gruppen', board_sort: 'nr' })
   })
   it('schreibt die Ansicht und entfernt, was sie nicht enthält', () => {
-    const s = memStore({ m_board_kinds: 'gruppen', m_meat_on: '1', m_other: 'x' })
+    const s = memStore({ m_board_kinds: 'gruppen', m_lamb_milk: '{}', m_other: 'x' })
     applyView('m', { board_sort: 'zz' }, s)
     expect(Object.fromEntries(s.m)).toEqual({ m_board_sort: 'zz', m_other: 'x' })
   })
