@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { localToday as todayIso, monthGrid, runsOf } from '../lib/duty'
 import { me, saveAbsence, saveRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest } from '../types'
+import VacationPlan from './VacationPlan'
 
 const KIND_LABEL: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', schule: 'Schule', andere: 'abwesend' }
 const KIND_COLOR: Record<DutyAbsenceKind, string> = { ferien: '#0284c7', frei: '#059669', krank: '#dc2626', kurs: '#7c3aed', schule: '#d97706', andere: '#6b7280' }
@@ -27,7 +28,7 @@ const short = (name: string | undefined) => (name ?? '?').replace(/^TEST\s+/, ''
 export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d: DutyData; canWrite: boolean; absences: DutyAbsence[]; refresh: () => void }) {
   const today = todayIso()
   const self = useMemo(() => me(d.people), [d.people])
-  const [view, setView] = useState<'monat' | 'jahr'>('monat')
+  const [view, setView] = useState<'monat' | 'jahr' | 'plan'>('monat')
   const [ym, setYm] = useState(() => ({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) }))
   const [filter, setFilter] = useState<string>('')
   const [sel, setSel] = useState<Set<string>>(new Set())
@@ -103,25 +104,27 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <select className={field} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Person anzeigen">
+          {view !== 'plan' && <select className={field} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Person anzeigen">
             <option value="">alle Personen</option>
             {d.people.filter((p) => p.active).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
-          </select>
+          </select>}
           <span className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-xs">
-            {(['monat', 'jahr'] as const).map((v) => (
+            {(['monat', 'jahr', 'plan'] as const).map((v) => (
               <button key={v} type="button" onClick={() => setView(v)} className={`px-2 py-1 ${view === v ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
-                {v === 'monat' ? 'Monat' : 'Jahr'}
+                {v === 'monat' ? 'Monat' : v === 'jahr' ? 'Jahr' : 'Ferienplan'}
               </button>
             ))}
           </span>
         </div>
       </div>
 
-      {view === 'monat' ? (
+      {view === 'plan' ? (
+        <VacationPlan year={ym.y} people={d.people} absences={absences} requests={d.requests as DutyRequest[]} kindLabel={KIND_LABEL} kindColor={KIND_COLOR} />
+      ) : view === 'monat' ? (
         <div>
           <div className="grid grid-cols-7 gap-px text-center text-xs font-semibold text-gray-500">
             {DAYS.map((x) => (

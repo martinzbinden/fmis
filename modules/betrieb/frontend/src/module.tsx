@@ -18,6 +18,7 @@ import FarmDataTile from './components/FarmDataTile'
 import TrackingBadge from './components/TrackingBadge'
 import { maintenancePasteImporter } from './lib/pasteMaintenance'
 import { dutyPasteImporter } from './lib/pasteDuty'
+import { absencePasteImporter } from './lib/pasteAbsences'
 import './theme.css'
 import { betriebYearSummary } from './lib/yearSummary'
 
@@ -65,7 +66,7 @@ const betriebModule: ModuleDescriptor = {
   // Tracking & Fahrhilfe: Symbol oben neben dem Import statt grosser Kachel
   quickLinks: [{ to: '/betrieb/tracking', icon: '🧭', title: 'Tracking & Fahrhilfe', permission: 'betrieb:tracking:write' }],
   globalOverlay: TrackingBadge,
-  pasteImporters: [maintenancePasteImporter, dutyPasteImporter],
+  pasteImporters: [maintenancePasteImporter, dutyPasteImporter, absencePasteImporter],
 }
 
 export default betriebModule
