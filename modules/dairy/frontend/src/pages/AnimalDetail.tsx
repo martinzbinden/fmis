@@ -2,6 +2,7 @@ import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
 import PhotoThumbs from '../components/PhotoThumbs'
 import PhotoStrip from '@fmis/core/PhotoStrip'
 import { useWorkPhotos } from '../lib/workPhotos'
+import { loadProvisionalYoung } from '../lib/provisional'
 // Pendenz als Folgearbeit im Arbeitsplan (Modul Betrieb), erst bei Bedarf geladen
 const FollowUpDialog = lazy(() => import('@fmis/betrieb/components/FollowUpDialog'))
 import { loadPhotos, uploadPendingPhotos, type JournalPhoto } from '../lib/photos'
@@ -339,6 +340,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       </Section>
 
       <JournalSection animalId={a.id} animalLabelOf={[a.lauf_nr, a.name].filter(Boolean).join(' ') || a.ear_tag} journal={journal} />
+      <UnmarkedYoungJournal damId={a.id} />
 
       {claws.length > 0 && (
         <Section title="Klauen" id="klauen">
@@ -771,6 +773,51 @@ function JournalSection({ animalId, animalLabelOf, journal }: { animalId: string
               </li>
             ),
           )}
+        </ul>
+      )}
+    </Section>
+  )
+}
+
+/** Einträge zu Jungtieren dieser Mutter, die noch auf die Ohrmarke warten (provisorische Nummer, schema/0028).
+ * Mit der Ohrmarke gehen sie ans Tier (lib/earTagPending.ts adoptJournal) und verschwinden hier. */
+function UnmarkedYoungJournal({ damId }: { damId: string }) {
+  const { data } = useQuery(
+    async (pg) => {
+      const [young, rows] = await Promise.all([
+        loadProvisionalYoung(pg),
+        pg.query<Record<string, unknown>>(
+          `select j.id, j.offspring_id, j.entry_date, j.category, j.text, j.medication, j.dose
+           from animal_journal j join birth_offspring o on o.id = j.offspring_id join births b on b.id = o.birth_id
+           where b.dam_id = $1 and j.animal_id is null and j.deleted_at is null and o.deleted_at is null and o.ear_tag is null
+           order by j.entry_date desc`,
+          [damId],
+        ),
+      ])
+      return { young: young.filter((y) => y.damId === damId), rows: rows.rows }
+    },
+    [damId],
+  )
+  if (!data || data.young.length === 0) return null
+  const nr = (offspringId: unknown) => data.young.find((y) => y.offspringId === offspringId)?.nr ?? '?'
+  return (
+    <Section title="Jungtiere ohne Ohrmarke" id="jungtiere-ohne-ohrmarke">
+      <p className="mb-1 text-xs text-gray-600">
+        {data.young.map((y) => `prov. ${y.nr}${y.sex === 'w' ? ' ♀' : y.sex === 'm' ? ' ♂' : ''}`).join(' · ')} — Einträge gehen mit der Ohrmarke ans Tier.
+      </p>
+      {data.rows.length === 0 ? (
+        <p className="text-sm text-gray-600">Noch keine Einträge.</p>
+      ) : (
+        <ul className="divide-y text-sm">
+          {data.rows.map((j) => (
+            <li key={String(j.id)} className="py-1.5">
+              <span className="text-xs text-gray-500">
+                {fmtDate(isoDate(j.entry_date)!)} · prov. {nr(j.offspring_id)} · {categoryIcon(j.category as never)} {categoryLabel(j.category as never)}
+              </span>
+              <div className="text-gray-800">{String(j.text ?? '')}</div>
+              {Boolean(j.medication || j.dose) && <div className="text-xs text-gray-600">{[j.medication, j.dose].filter(Boolean).join(' ')}</div>}
+            </li>
+          ))}
         </ul>
       )}
     </Section>

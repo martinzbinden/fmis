@@ -225,7 +225,7 @@ export function AnimalListPanel({ animals, selected, onPick }: { animals: Animal
               <button type="button" onClick={() => onPick(a.id)} className="flex min-h-12 w-full items-center px-3 py-2 text-left active:bg-gray-50">
                 <span className="block w-full">
                   <AnimalOption animal={a} />
-                  {sort !== 'nr' && sort !== 'jung' && <span className="block text-sm text-gray-700">{d ? `${word} ${fmtDate(d)}` : `nie ${word}`}</span>}
+                  {sort !== 'nr' && sort !== 'jung' && !a.id.startsWith('o:') && <span className="block text-sm text-gray-700">{d ? `${word} ${fmtDate(d)}` : `nie ${word}`}</span>}
                 </span>
               </button>
             </li>

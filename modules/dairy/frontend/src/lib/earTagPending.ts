@@ -1,6 +1,7 @@
 // Ohrmarken nachtragen (pages/EarTagPending.tsx): lebende Nachkommen, die bei der
 // Geburtserfassung noch keine Ohrmarke hatten (schema/0018).
 
+import { litterIndexOf } from './lambs'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey, earTagProblem } from '@fmis/core/earTag'
 import { softDeleteRow, upsertRow } from '../db/write'
@@ -24,6 +25,8 @@ export interface PendingOffspring {
   siblings: string[]
   /** der ganze Wurf (inkl. dieses Tiers) für die Querverweise */
   members: LitterMember[]
+  /** Nummer im Wurf (1 …), gleich wie lib/lambs.ts: ergibt die provisorische Nummer «Mutter-Nummer» */
+  litterIndex: number
 }
 
 export interface LitterMember {
@@ -60,6 +63,7 @@ export async function loadPendingOffspring(pg: PGlite, requestedId?: string | nu
   for (const r of rows) byBirth.set(String(r.birth_id), [...(byBirth.get(String(r.birth_id)) ?? []), r])
   const out: PendingOffspring[] = []
   for (const litter of byBirth.values()) {
+    const order = [...litter].sort((a, b) => String(a.import_key ?? a.id).localeCompare(String(b.import_key ?? b.id))).map((o) => String(o.id))
     for (const r of litter) {
       if (r.ear_tag || r.stillborn || r.died_24h || r.died_on) continue
       if (r.source === 'import' && r.id !== requestedId) continue
@@ -75,6 +79,7 @@ export async function loadPendingOffspring(pg: PGlite, requestedId?: string | nu
         dead: litter.filter((o) => o.stillborn || o.died_24h || o.died_on).length,
         siblings: litter.filter((o) => o.ear_tag).map((o) => String(o.ear_tag)),
         members: litter.map(memberOf),
+        litterIndex: litterIndexOf(r.import_key as string | null, order.indexOf(String(r.id)) + 1),
       })
     }
   }

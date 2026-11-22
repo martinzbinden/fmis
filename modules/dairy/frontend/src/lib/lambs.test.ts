@@ -70,7 +70,7 @@ describe('buildLambs', () => {
   })
 
   it('kennzeichnet Lämmer ohne Ohrmarke mit Meldezeitpunkt, Nummer im Wurf und Mutter', () => {
-    expect(unmarkedLabel({ reportedAt: '2026-11-02T13:32:00', birthDate: '2026-11-02', litter: 3, litterIndex: 2 }, '101')).toBe('gemeldet 2.11. 13:32 · 2/3 · Mutter 101')
+    expect(unmarkedLabel({ reportedAt: '2026-11-02T13:32:00', birthDate: '2026-11-02', litter: 3, litterIndex: 2 }, '101')).toBe('prov. 101-2 · gemeldet 2.11. 13:32 · 2/3 · Mutter 101')
     expect(unmarkedLabel({ reportedAt: null, birthDate: '2026-11-02', litter: 1, litterIndex: 1 }, null)).toBe('geboren 2.11.')
   })
 
@@ -78,5 +78,15 @@ describe('buildLambs', () => {
     const input = base()
     input.animals[0].status = 'abgegangen'
     expect(buildLambs(input, TODAY).some((l) => l.key === 'o1')).toBe(false)
+  })
+})
+
+describe('provisorische Nummer', () => {
+  it('bleibt fest, auch wenn ein Geschwister vorher die Ohrmarke bekommt', async () => {
+    const { litterIndexOf, provisionalNr } = await import('./lambs')
+    expect(litterIndexOf('CH99990001|2026-11-15|#2', 1)).toBe(3)
+    expect(litterIndexOf('CH99990001|2026-11-15|CH99990002', 2)).toBe(2)
+    expect(litterIndexOf(null, 1)).toBe(1)
+    expect(provisionalNr('101', 2)).toBe('101-2')
   })
 })

@@ -3,6 +3,7 @@ import { openImport } from '@fmis/core/importModal'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalKey, shortEarTag } from '@fmis/core/earTag'
+import { provisionalNr } from '../lib/lambs'
 import { useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useDb } from '@fmis/core/DbContext'
@@ -241,7 +242,11 @@ function PendingCard({
         ) : (
           <span className="font-semibold text-gray-900">Mutter ?</span>
         )}
-        <span className="text-right text-xs text-gray-600">{p.litter > 1 ? `${p.litter} ${youngPl} im Wurf${p.dead > 0 ? `, ${p.dead} tot` : ''}` : 'Einling'}</span>
+        <span className="text-right text-xs text-gray-600">
+          {/* provisorische Nummer (lib/lambs.ts provisionalNr): unter ihr stehen Einträge vor der Ohrmarke */}
+          <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-900">prov. {provisionalNr(dam ? (dam.lauf_nr ?? shortEarTag(dam.ear_tag)) : null, p.litterIndex)}</span>
+          {p.litter > 1 ? `${p.litter} ${youngPl} im Wurf${p.dead > 0 ? `, ${p.dead} tot` : ''}` : 'Einling'}
+        </span>
       </div>
       <LitterList p={p} self={p.id} sex={sex} idByKey={idByKey} youngPl={youngPl} onError={setError} />
       <p className={`text-sm ${age > deadline ? 'font-semibold text-red-700' : age > deadline - 7 ? 'text-amber-800' : 'text-gray-700'}`}>

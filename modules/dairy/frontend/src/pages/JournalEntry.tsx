@@ -1,20 +1,25 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
 import JournalForm from '../components/JournalForm'
 import { speciesTerms } from '../lib/species'
 import type { Animal } from '../types'
+import { asPickerAnimal, isProvisional, loadProvisionalYoung, offspringIdOf } from '../lib/provisional'
 import { useOnUndo } from '@fmis/core/undo'
 
 /** Beobachtung/Krankheit/Behandlung für ein oder mehrere Tiere erfassen. */
 export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
   const terms = speciesTerms(moduleKey)
-  const { data } = useQuery((pg) =>
-    pg
-      .query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' order by lauf_nr nulls last, ear_tag")
-      .then((r) => r.rows),
-  )
+  // Tiere und Jungtiere, die noch auf die Ohrmarke warten (provisorische Nummer, z.B. «101-2» = Mutter 101)
+  const { data: all } = useQuery(async (pg) => {
+    const [animals, young] = await Promise.all([
+      pg.query<Animal>("select * from animals where deleted_at is null and status = 'aktiv' order by lauf_nr nulls last, ear_tag").then((r) => r.rows),
+      loadProvisionalYoung(pg),
+    ])
+    return { animals, young }
+  })
+  const data = useMemo(() => (all ? [...all.animals, ...all.young.map(asPickerAnimal)] : undefined), [all])
   // ?tier=<id> (Aktionen auf der Tierseite) wählt das Tier vor
   const [ids, setIds] = useState<string[]>(() => {
     const t = new URLSearchParams(window.location.search).get('tier')
@@ -35,7 +40,7 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
       {saved && (
         <div className="rounded-lg bg-green-50 p-3 text-sm text-green-900">
           Gespeichert.{' '}
-          {saved.length === 1 && (
+          {saved.length === 1 && !isProvisional(saved[0]) && (
             <Link to={`../tiere/${saved[0]}`} relative="path" className="link-btn font-medium text-brand-700">
               Zum Tier
             </Link>
@@ -44,11 +49,16 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
       )}
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <div className="mb-1 text-sm text-gray-600">{terms.plural} (eines oder mehrere)</div>
+        <p className="mb-1 text-xs text-gray-600">Jungtiere ohne Ohrmarke unter der provisorischen Nummer «Mutter-Nummer im Wurf», z.B. 101-2. Mit der Ohrmarke gehen die Einträge ans Tier.</p>
         <AnimalPicker animals={data ?? []} selected={ids} onChange={setIds} multiple readerModule={moduleKey} />
       </div>
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <JournalForm
-          animalIds={ids}
+          animalIds={ids.filter((id) => !isProvisional(id))}
+          unmarked={ids.filter(isProvisional).map((id) => {
+            const y = all?.young.find((x) => x.offspringId === offspringIdOf(id))
+            return { offspringId: offspringIdOf(id), label: `ohne Ohrmarke, prov. ${y?.nr ?? '?'}${y?.damLabel ? `, Mutter ${y.damLabel}` : ''}` }
+          })}
           onSaved={() => {
             setSaved(ids)
             setIds([])

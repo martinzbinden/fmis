@@ -142,7 +142,7 @@ export function buildLambs(input: LambInput, today: string): Lamb[] {
       birthDate: b.birth_date,
       damId: b.dam_id,
       litter: litters.get(o.birth_id)?.length ?? 1,
-      litterIndex: (litters.get(o.birth_id)?.indexOf(o.id) ?? 0) + 1,
+      litterIndex: litterIndexOf(o.import_key, (litters.get(o.birth_id)?.indexOf(o.id) ?? 0) + 1),
       reportedAt: b.reported_at ?? null,
       birthWeight: o.birth_weight_kg,
     })
@@ -230,10 +230,22 @@ export async function loadNursingDams(pg: PGlite, today: string): Promise<Map<st
 
 /** Kennung eines Lamms ohne Ohrmarke: Meldezeitpunkt der Ablammung (Tag, Uhrzeit), Nummer im
  * Wurf und Mutter — z.B. «gemeldet 2.11. 14:32 · 2/3 · Mutter 101». */
+/** Nummer im Wurf aus der Erfassung der Geburt: import_key endet auf «|#<Position>» (lib/recordBirth.ts, addSibling),
+ * solange keine Ohrmarke da ist. Bleibt fest, auch wenn ein Geschwister vorher seine Ohrmarke bekommt (dessen
+ * Schlüssel ändert sich, die Reihenfolge also auch). Ohne «#»: Position in der Liste. */
+export function litterIndexOf(importKey: string | null | undefined, fallback: number): number {
+  const m = /\|#(\d+)$/.exec(importKey ?? '')
+  return m ? Number(m[1]) + 1 : fallback
+}
+
+/** Provisorische Nummer eines Jungtiers ohne Ohrmarke: Laufnummer (sonst kurze Ohrmarke) der Mutter und Nummer im
+ * Wurf, z.B. «101-2». Bleibt gleich, bis die Ohrmarke erfasst ist (Nummer im Wurf aus der Erfassung der Geburt). */
+export const provisionalNr = (damLabel: string | null, litterIndex: number) => `${damLabel ?? '?'}-${litterIndex}`
+
 export function unmarkedLabel(l: Pick<Lamb, 'reportedAt' | 'birthDate' | 'litter' | 'litterIndex'>, damLabel: string | null): string {
   const d = l.reportedAt ? new Date(l.reportedAt) : null
   const when = d
     ? `gemeldet ${d.getDate()}.${d.getMonth() + 1}. ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     : `geboren ${Number(l.birthDate.slice(8, 10))}.${Number(l.birthDate.slice(5, 7))}.`
-  return [when, l.litter > 1 ? `${l.litterIndex}/${l.litter}` : null, damLabel ? `Mutter ${damLabel}` : null].filter(Boolean).join(' · ')
+  return [damLabel ? `prov. ${provisionalNr(damLabel, l.litterIndex)}` : null, when, l.litter > 1 ? `${l.litterIndex}/${l.litter}` : null, damLabel ? `Mutter ${damLabel}` : null].filter(Boolean).join(' · ')
 }
