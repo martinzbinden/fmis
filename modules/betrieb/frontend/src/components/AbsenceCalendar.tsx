@@ -3,6 +3,7 @@ import { localToday as todayIso, monthGrid, runsOf } from '../lib/duty'
 import { me, saveAbsence, saveRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest } from '../types'
 import VacationPlan from './VacationPlan'
+import AbsenceGaps from './AbsenceGaps'
 
 const KIND_LABEL: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', schule: 'Schule', andere: 'abwesend' }
 const KIND_COLOR: Record<DutyAbsenceKind, string> = { ferien: '#0284c7', frei: '#059669', krank: '#dc2626', kurs: '#7c3aed', schule: '#d97706', andere: '#6b7280' }
@@ -37,6 +38,8 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  // nach dem Eintragen durchs Büro: Lücken im Dienstplan gegenüber dem Standardplan zeigen
+  const [gapRuns, setGapRuns] = useState<{ personId: string; from: string; to: string }[]>([])
   const canEnter = canWrite || !!self
   const who = canWrite ? person : (self?.id ?? '')
 
@@ -78,6 +81,7 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
         if (direct) await saveAbsence({ id: crypto.randomUUID(), person_id: who, from_date: from, to_date: to, kind, notes: notes.trim() || null })
         else await saveRequest({ kind: 'wunsch', person_id: who, from_date: from, to_date: to, absence_kind: kind, notes: notes.trim() || null })
       }
+      if (direct && canWrite && kind !== 'schule') setGapRuns(runs.map(([from, to]) => ({ personId: who, from, to })))
       setMsg(direct ? `${runs.length} ${runs.length === 1 ? 'Eintrag' : 'Einträge'} gespeichert.` : `${runs.length} ${runs.length === 1 ? 'Antrag' : 'Anträge'} gestellt, das Büro bestätigt.`)
       setSel(new Set())
       setNotes('')
@@ -239,6 +243,9 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
       )}
       {!canEnter && <p className="text-xs text-amber-900">Dein Konto ist noch keiner Person zugeordnet. Das Büro trägt bei deiner Person die E-Mail deines FMIS-Kontos ein.</p>}
       {msg && <p className="rounded bg-sky-50 px-2 py-1 text-sky-900">{msg}</p>}
+      {gapRuns.map((g) => (
+        <AbsenceGaps key={`${g.personId}${g.from}`} d={d} personId={g.personId} from={g.from} to={g.to} onClose={() => setGapRuns((r) => r.filter((x) => x !== g))} />
+      ))}
     </section>
   )
 }

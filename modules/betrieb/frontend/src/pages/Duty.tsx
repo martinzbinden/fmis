@@ -8,6 +8,7 @@ import { absenceOn, addDays, localToday as todayIso, conflictsFor, copyFromPrevi
 import TimeStrip, { TimeAxis } from '../components/TimeStrip'
 import Planning, { OfficeBar } from '../components/DutyPlanning'
 import AbsenceCalendar from '../components/AbsenceCalendar'
+import AbsenceGaps from '../components/AbsenceGaps'
 import { isoDate } from '../lib/format'
 import { absencePartner, pairChanges } from '../lib/vacationPlan'
 import { GENERATE_AHEAD_WEEKS, weekStates } from '../lib/dutyPlan'
@@ -810,8 +811,11 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
     setErr(null)
     job.then(refresh).catch((e: unknown) => setErr(errorText(e)))
   }
+  // nach dem Bestätigen eines Freiwunschs: Lücken im Dienstplan zeigen und Ersatz einsetzen
+  const [gaps, setGaps] = useState<{ personId: string; from: string; to: string } | null>(null)
   return (
     <div className="space-y-3">
+      {gaps && <AbsenceGaps d={d} personId={gaps.personId} from={gaps.from} to={gaps.to} onClose={() => setGaps(null)} />}
       {canPropose && !canWrite && (
         <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
           <h3 className="font-semibold text-gray-700">Freiwunsch eintragen</h3>
@@ -888,7 +892,10 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
                     </div>
                   ) : (
                     <div className="flex gap-2">
-                      <button type="button" className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40" disabled={!check.ok} onClick={() => run(decideRequest(d, r, 'bestaetigt'))}>
+                      <button type="button" className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40" disabled={!check.ok} onClick={() => {
+                          run(decideRequest(d, r, 'bestaetigt'))
+                          if (r.kind === 'wunsch' && r.from_date && r.to_date) setGaps({ personId: r.person_id, from: r.from_date, to: r.to_date })
+                        }}>
                         Bestätigen
                       </button>
                       <button type="button" className={btn} onClick={() => { setRejectId(r.id); setReason('') }}>
@@ -930,6 +937,7 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
 function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refresh: () => void }) {
   const self = me(d.people)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [gapsOf, setGapsOf] = useState<string | null>(null)
   // alle Abwesenheiten (Jahresübersicht), nicht nur die des geladenen Zeitraums
   const { data: all } = useQuery(async (pg) =>
     (await pg.query<DutyAbsence>('select * from duty_absences where deleted_at is null order by from_date')).rows.map((a) => ({ ...a, from_date: isoDate(a.from_date)!, to_date: isoDate(a.to_date)!, missing_since: a.missing_since ? isoDate(a.missing_since) : null })),
@@ -954,13 +962,18 @@ function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; re
           </li>
         ))}
         {list.map((a) => (
-          <li key={a.id} className={`flex items-center gap-2 px-3 py-2 ${a.missing_since ? 'bg-amber-50' : ''}`}>
+          <li key={a.id} className={`flex flex-wrap items-center gap-2 px-3 py-2 ${a.missing_since ? 'bg-amber-50' : ''}`}>
             <span className="flex-1">
               <b>{personName(d, a.person_id)}</b> · {KIND[a.kind]} · {dm(a.from_date)}
               {a.to_date !== a.from_date ? `–${dm(a.to_date)}` : ''}
               {a.notes ? ` · ${a.notes}` : ''}
               {a.missing_since && <span className="block text-xs text-amber-900">⚠ seit {dm(a.missing_since)} nicht mehr im Stundenplan: prüfen und ggf. löschen</span>}
             </span>
+            {canWrite && a.kind !== 'schule' && (
+              <button type="button" className={`${btn} shrink-0`} aria-expanded={gapsOf === a.id} onClick={() => setGapsOf(gapsOf === a.id ? null : a.id)} title="Dienste in dieser Zeit und Ersatz">
+                Lücken
+              </button>
+            )}
             {mayDelete(a) &&
               (confirmId === a.id ? (
                 <button type="button" className="min-h-11 rounded-lg bg-red-600 px-3 py-1 text-sm text-white" onClick={() => void deleteAbsence(a.id).then(() => setConfirmId(null))}>
@@ -971,10 +984,16 @@ function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; re
                   ×
                 </button>
               ))}
+            {gapsOf === a.id && (
+              <div className="w-full">
+                <AbsenceGaps d={d} personId={a.person_id} from={a.from_date < todayIso() ? todayIso() : a.from_date} to={a.to_date} onClose={() => setGapsOf(null)} />
+              </div>
+            )}
           </li>
         ))}
         {list.length === 0 && schoolBy.length === 0 && <li className="px-3 py-2 text-gray-500">Keine kommenden Abwesenheiten.</li>}
       </ul>
+
     </div>
   )
 }

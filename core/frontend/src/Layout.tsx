@@ -79,6 +79,31 @@ export default function Layout({
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
   useEffect(() => setHeaderHidden(false), [pathname])
+  // Seitenleiste (PC) beginnt genau unter der Kopfzeile: darüber können das Band der Testumgebung oder der Balken
+  // «Ansicht als» stehen, und die Kopfzeile blendet sich auf manchen Seiten beim Scrollen aus
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>('[data-app-header]')
+    if (!header) return
+    let last = -1
+    const place = () => {
+      const bottom = Math.max(0, Math.round(header.getBoundingClientRect().bottom))
+      if (bottom === last) return
+      last = bottom
+      document.documentElement.style.setProperty('--app-header-bottom', `${bottom}px`)
+    }
+    place()
+    window.addEventListener('scroll', place, { passive: true })
+    window.addEventListener('resize', place)
+    header.addEventListener('transitionend', place)
+    const ro = new ResizeObserver(place)
+    ro.observe(document.body)
+    return () => {
+      window.removeEventListener('scroll', place)
+      window.removeEventListener('resize', place)
+      header.removeEventListener('transitionend', place)
+      ro.disconnect()
+    }
+  }, [])
   const stall = useStallMode()
   // Seite für «zuletzt geöffnet» (Suche, Mehr) merken; der Verlauf ist kein Ziel
   useEffect(() => {
@@ -150,7 +175,7 @@ export default function Layout({
         {/* Platz für laufende Zwischenstände über dem Menü (core/FooterBar.tsx) */}
         <div id={FOOTER_SLOT_ID} />
         <nav
-          className="grid border-t bg-white pb-[env(safe-area-inset-bottom,0px)] lg:fixed lg:bottom-0 lg:left-0 lg:top-[57px] lg:!flex lg:w-52 lg:flex-col lg:gap-0.5 lg:border-r lg:border-t-0 lg:px-2 lg:pt-4"
+          className="grid border-t bg-white pb-[env(safe-area-inset-bottom,0px)] lg:fixed lg:bottom-0 lg:left-0 lg:top-[var(--app-header-bottom,57px)] lg:!flex lg:w-52 lg:flex-col lg:gap-0.5 lg:border-r lg:border-t-0 lg:px-2 lg:pt-4"
           style={{ gridTemplateColumns: `repeat(${shownNav.length}, minmax(0, 1fr))` }}
         >
           {shownNav.map((item) => {
