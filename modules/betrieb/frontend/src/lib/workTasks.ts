@@ -189,7 +189,7 @@ export async function cancelWorkTask(t: WorkTask): Promise<void> {
 export interface Completion {
   date: string
   notes: string
-  /** Shop-Arbeit: Nummer des eben erstellten Lieferscheins */
+  /** Nummer des eben im Shop erstellten Lieferscheins (Shop-Anfrage oder von Hand geplant) */
   deliveryNoteNo?: string | null
   /** Stalljournal (Tiere) */
   category?: string
@@ -227,7 +227,7 @@ export async function completeWorkTask(t: WorkTask, c: Completion): Promise<stri
   // Shop-Arbeit: nach dem Abschluss bleibt nur der Verweis «Anfrage CODE», keine Kontaktdaten (der Shop löscht sie auch)
   const shop = t.source === 'shop'
   const shopRef = shop ? (t.notes ?? '').split('\n')[0].trim() || 'Shop-Anfrage' : null
-  const customer = shop ? [shopRef, c.deliveryNoteNo ? `Lieferschein ${c.deliveryNoteNo}` : null].filter(Boolean).join(' · ') : t.customer
+  const customer = [shop ? shopRef : t.customer, c.deliveryNoteNo ? `Lieferschein ${c.deliveryNoteNo}` : null].filter(Boolean).join(' · ') || null
   const taskNotes = shop ? shopRef : t.notes
   if (c.deliveryNoteNo) refs.push(`Lieferschein ${c.deliveryNoteNo} im Shop`)
   const rest: TaskTarget[] = t.targets.filter((x) => x.kind !== 'tier' && x.kind !== 'gruppe')

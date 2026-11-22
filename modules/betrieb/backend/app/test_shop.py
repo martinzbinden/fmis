@@ -1,6 +1,9 @@
 """Shop-Anfragen → Arbeiten (shop.py): welche Anfrage eine Arbeit auslöst und was darin steht. Erfundene Daten."""
 
-from .shop import ref_line, task_fields
+import pytest
+from fastapi import HTTPException
+
+from .shop import DirectDeliveryNote, direct_payload, ref_line, task_fields
 
 V_HOLZ = "11111111-0000-4000-8000-000000000001"
 V_ANDERES = "11111111-0000-4000-8000-000000000002"
@@ -30,3 +33,23 @@ def test_abholung_und_verweis_ohne_personendaten():
     assert task_fields(r, {V_HOLZ})["title"].startswith("Bereitstellen")
     assert ref_line(r) == "Anfrage K7M2QX · Abholung"
     assert "Muster" not in ref_line(r)
+
+
+TASK = "0b6e2f7a-0000-4000-8000-000000000010"
+
+
+def test_lieferschein_ohne_anfrage_sammelkunde_mit_empfaenger():
+    p = direct_payload(TASK, DirectDeliveryNote(recipient={"name": " Erika Muster ", "address": "", "phone": None}, lines=[{"variant_id": V_HOLZ, "quantity": 3}], delivered_on="2026-12-18", note=" abgeladen "))
+    assert p == {"external_ref": TASK, "customer_id": None, "lines": [{"variant_id": V_HOLZ, "quantity": "3"}], "recipient": {"name": "Erika Muster"}, "delivered_on": "2026-12-18", "note": "abgeladen"}
+
+
+def test_lieferschein_ohne_anfrage_kunde_ohne_empfaenger():
+    p = direct_payload(TASK, DirectDeliveryNote(customer_id="c1", recipient={"name": "Erika Muster"}, lines=[{"variant_id": V_HOLZ, "quantity": 1.5}]))
+    assert "recipient" not in p and p["customer_id"] == "c1" and p["lines"][0]["quantity"] == "1.5"
+
+
+def test_lieferschein_ohne_anfrage_braucht_uuid_und_zeilen():
+    with pytest.raises(HTTPException):
+        direct_payload("keine-uuid", DirectDeliveryNote(lines=[{"variant_id": V_HOLZ, "quantity": 1}]))
+    with pytest.raises(HTTPException):
+        direct_payload(TASK, DirectDeliveryNote(lines=[{"variant_id": V_HOLZ, "quantity": 0}]))

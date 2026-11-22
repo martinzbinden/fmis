@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import AppIcon from '@fmis/core/AppIcon'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 import Modal from './Modal'
@@ -6,7 +6,7 @@ import PhotoInput from '@fmis/core/PhotoInput'
 import PhotoStrip from '@fmis/core/PhotoStrip'
 import type { PreparedPhoto } from '@fmis/core/photos'
 import { addPhotos, PHOTO_MODULE } from '../lib/photoRefs'
-import { createDeliveryNote, searchShopCustomers, type ShopCustomer } from '../lib/shop'
+import { createDeliveryNote, createDirectDeliveryNote, getShopProducts, searchShopCustomers, variantLabel, type ShopCustomer, type ShopVariant } from '../lib/shop'
 import { fmtDate, todayIso } from '../lib/format'
 import { activityByTitle, AREA_ICON, AREA_LABEL, cancelWorkTask, completeWorkTask, STABLE_CATEGORIES, targetIcon, type FarmJournalEntry, type FollowUpOrigin, type TaskArea, type WorkTask } from '../lib/workTasks'
 
@@ -99,7 +99,29 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
   const [followUp, setFollowUp] = useState(false)
   // Arbeit aus einer Shop-Anfrage: Lieferschein im Shop erstellen (auf einen Shop-Kunden, sonst den Sammelkunden)
   const fromShop = task.source === 'shop'
+  // von Hand geplant (Brennholz u.ä.): Lieferschein ohne Anfrage, Produkt aus dem Shop-Katalog wählen
+  const canDirect = !fromShop && (task.area === 'brennholz' || task.quantity != null)
   const [withNote, setWithNote] = useState(fromShop)
+  const direct = canDirect && withNote
+  const [products, setProducts] = useState<(ShopVariant & { chosen: boolean })[] | null>(null)
+  const [variantId, setVariantId] = useState('')
+  const [recipient, setRecipient] = useState({ name: task.customer ?? '', address: '', phone: '' })
+  useEffect(() => {
+    if (!direct || products) return
+    getShopProducts()
+      .then((list) => {
+        const sorted = [...list].sort((a, b) => Number(b.chosen) - Number(a.chosen) || variantLabel(a).localeCompare(variantLabel(b), 'de'))
+        setProducts(sorted)
+        // Vorschlag: angekreuztes Produkt, dessen Name im Titel der Arbeit vorkommt, sonst das erste angekreuzte
+        const title = task.title.toLowerCase()
+        const hit = sorted.find((v) => v.chosen && v.product_name.toLowerCase().split(/[\s,]+/).some((w) => w.length > 3 && title.includes(w))) ?? sorted.find((v) => v.chosen)
+        if (hit) setVariantId(hit.variant_id)
+      })
+      .catch((e: unknown) => {
+        setProducts([])
+        setErr(e instanceof Error ? e.message : String(e))
+      })
+  }, [direct, products, task.title])
   const [custQ, setCustQ] = useState('')
   const [custHits, setCustHits] = useState<ShopCustomer[] | null>(null)
   const [cust, setCust] = useState<ShopCustomer | null>(null)
@@ -114,6 +136,17 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
       let deliveryNoteNo: string | null = null
       if (fromShop && withNote) {
         const r = await createDeliveryNote(task.id, { customer_id: cust?.id ?? null, quantity: q != null && Number.isFinite(q) && q !== task.quantity ? q : null, delivered_on: date, note: notes.trim() || null })
+        deliveryNoteNo = r.delivery_note_no
+      } else if (direct) {
+        if (!variantId) throw new Error('Produkt für den Lieferschein wählen.')
+        if (q == null || !Number.isFinite(q) || q <= 0) throw new Error('Menge für den Lieferschein angeben.')
+        const r = await createDirectDeliveryNote(task.id, {
+          customer_id: cust?.id ?? null,
+          recipient: cust ? null : { name: recipient.name.trim(), address: recipient.address.trim(), phone: recipient.phone.trim() },
+          lines: [{ variant_id: variantId, quantity: q }],
+          delivered_on: date,
+          note: notes.trim() || null,
+        })
         deliveryNoteNo = r.delivery_note_no
       }
       // Fotos gehören zur Arbeit: Betriebs- und Stalljournal zeigen sie über die Arbeit (task_id bzw. ref_id)
@@ -159,7 +192,7 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
             )}
           </>
         )}
-        {(task.quantity != null || task.area === 'brennholz') && (
+        {(task.quantity != null || task.area === 'brennholz' || direct) && (
           <label className="block">
             <span className="text-gray-600">Menge {task.unit ? `(${task.unit})` : ''}</span>
             <input inputMode="decimal" className={`${field} w-full`} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
@@ -169,16 +202,30 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
           <span className="text-gray-600">Was gemacht, Befund</span>
           <textarea className={`${field} w-full`} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
-        {fromShop && (
+        {(fromShop || canDirect) && (
           <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-2">
             <label className="flex min-h-11 items-center gap-2 font-medium text-gray-900">
-              <input type="checkbox" className="h-5 w-5" checked={withNote} onChange={(e) => setWithNote(e.target.checked)} />
+              <input type="checkbox" className="h-5 w-5" checked={withNote} onChange={(e) => (setWithNote(e.target.checked), setErr(null))} />
               Lieferschein im Shop erstellen
             </label>
             {withNote && (
               <>
+                {direct && (
+                  <label className="block">
+                    <span className="text-gray-600">Produkt</span>
+                    <select className={`${field} w-full`} value={variantId} onChange={(e) => setVariantId(e.target.value)} disabled={!products?.length}>
+                      <option value="">{products ? (products.length ? 'wählen…' : 'Katalog nicht verfügbar') : 'Lädt Katalog…'}</option>
+                      {products?.map((v) => (
+                        <option key={v.variant_id} value={v.variant_id}>
+                          {variantLabel(v)}
+                          {v.unit ? ` (${v.unit})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <p className="text-xs text-gray-700">
-                  Auf: <b>{cust ? cust.company_name : 'Sammelkunde (Name und Adresse der Anfrage als Notiz)'}</b>
+                  Auf: <b>{cust ? cust.company_name : fromShop ? 'Sammelkunde (Name und Adresse der Anfrage als Notiz)' : 'Sammelkunde (Empfänger als Notiz)'}</b>
                   {cust && (
                     <button type="button" className="ml-2 underline" onClick={() => setCust(null)}>
                       Sammelkunde
@@ -200,6 +247,13 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
                     Suchen
                   </button>
                 </div>
+                {direct && !cust && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input className={`${field} col-span-2`} value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} placeholder="Empfänger: Name" aria-label="Empfänger Name" />
+                    <textarea className={`${field} col-span-2`} rows={2} value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} placeholder="Adresse (optional)" aria-label="Empfänger Adresse" />
+                    <input className={field} inputMode="tel" value={recipient.phone} onChange={(e) => setRecipient({ ...recipient, phone: e.target.value })} placeholder="Telefon (optional)" aria-label="Empfänger Telefon" />
+                  </div>
+                )}
                 {custHits && (
                   <ul className="max-h-40 divide-y overflow-y-auto rounded-lg border bg-white">
                     {custHits.length === 0 && <li className="px-2 py-2 text-gray-600">Kein Kunde gefunden.</li>}

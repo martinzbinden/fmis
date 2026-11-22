@@ -308,6 +308,15 @@ async def catalog(user: CurrentUser = Depends(require_auth)) -> Any:
     return await _shop(await _cfg_or_409(), "GET", "/requests/catalog")
 
 
+@router.get("/shop/products")
+async def products(user: CurrentUser = Depends(require_auth)) -> list[dict[str, Any]]:
+    """Aktive Varianten für den Lieferschein beim Abschluss einer Arbeit; «chosen» = hier angekreuzt."""
+    _need(user, WORK_WRITE)
+    cfg = await _cfg_or_409()
+    rows = await _shop(cfg, "GET", "/requests/catalog")
+    return [{**v, "chosen": str(v.get("variant_id")) in cfg["variants"]} for v in rows or [] if v.get("active", True)]
+
+
 @router.get("/shop/customers")
 async def customers(q: str = "", user: CurrentUser = Depends(require_auth)) -> Any:
     _need(user, WORK_WRITE)
@@ -353,3 +362,57 @@ async def delivery_note(task_id: str, body: DeliveryNote, user: CurrentUser = De
         await conn.execute("update shop_requests set status = 'erledigt', delivery_note_no = %s, updated_at = now() where request_id = %s", (no, rid))
         await conn.commit()
     return {"delivery_note_no": no, "public_code": (done or {}).get("public_code")}
+
+
+class Recipient(BaseModel):
+    name: str | None = None
+    address: str | None = None
+    phone: str | None = None
+
+
+class DirectLine(BaseModel):
+    variant_id: str
+    quantity: float
+
+
+class DirectDeliveryNote(BaseModel):
+    customer_id: str | None = None
+    recipient: Recipient | None = None
+    lines: list[DirectLine] = []
+    delivered_on: str | None = None
+    note: str | None = None
+
+
+def direct_payload(task_id: str, body: DirectDeliveryNote) -> dict[str, Any]:
+    """Anfrage an den Shop für einen Lieferschein ohne Shop-Anfrage. external_ref = id der Arbeit (UUID), damit eine
+    Wiederholung (z.B. nach Verbindungsabbruch) denselben Lieferschein liefert. Empfänger nur beim Sammelkunden."""
+    try:
+        ref = str(uuidlib.UUID(task_id))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Arbeit ohne gültige id") from None
+    lines = [{"variant_id": ln.variant_id, "quantity": f"{ln.quantity:g}"} for ln in body.lines if ln.variant_id and ln.quantity > 0]
+    if not lines:
+        raise HTTPException(status_code=422, detail="Produkt und Menge angeben")
+    out: dict[str, Any] = {"external_ref": ref, "customer_id": body.customer_id or None, "lines": lines}
+    if not body.customer_id and body.recipient:
+        rec = {k: v.strip() for k, v in body.recipient.model_dump().items() if v and v.strip()}
+        if rec:
+            out["recipient"] = rec
+    if body.delivered_on:
+        out["delivered_on"] = body.delivered_on
+    if body.note and body.note.strip():
+        out["note"] = body.note.strip()[:1000]
+    return out
+
+
+@router.post("/shop/tasks/{task_id}/direct-delivery-note")
+async def direct_delivery_note(task_id: str, body: DirectDeliveryNote, user: CurrentUser = Depends(require_auth)) -> dict[str, Any]:
+    """Lieferschein im Shop für eine von Hand geplante Arbeit (ohne Shop-Anfrage), z.B. Brennholz."""
+    _need(user, WORK_WRITE)
+    payload = direct_payload(task_id, body)
+    cfg = await _cfg_or_409()
+    async with pool.connection() as conn:
+        if await (await conn.execute("select 1 from shop_requests where task_id = %s", (task_id,))).fetchone():
+            raise HTTPException(status_code=409, detail="Arbeit stammt aus einer Shop-Anfrage: dort den Lieferschein erstellen")
+    done = await _shop(cfg, "POST", "/requests/direct-delivery-note", payload) or {}
+    return {"delivery_note_no": done.get("delivery_note_no"), "order_code": done.get("order_code"), "created": done.get("created", True)}

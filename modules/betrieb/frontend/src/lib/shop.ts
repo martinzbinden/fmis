@@ -60,5 +60,15 @@ export const pollShop = () => call<{ configured: boolean; created?: number; upda
 export const createDeliveryNote = (taskId: string, body: { customer_id?: string | null; quantity?: number | null; delivered_on?: string; note?: string | null }) =>
   call<{ delivery_note_no: string | null; public_code: string | null }>('POST', `/tasks/${taskId}/delivery-note`, body)
 
+/** Aktive Varianten für den Lieferschein beim Abschluss; chosen = in den Einstellungen angekreuzt. */
+export const getShopProducts = () => call<(ShopVariant & { chosen: boolean })[]>('GET', '/products')
+/** Lieferschein für eine von Hand geplante Arbeit ohne Shop-Anfrage (Wiederholung liefert denselben Lieferschein). */
+export const createDirectDeliveryNote = (
+  taskId: string,
+  body: { customer_id?: string | null; recipient?: { name?: string; address?: string; phone?: string } | null; lines: { variant_id: string; quantity: number }[]; delivered_on?: string; note?: string | null },
+) => call<{ delivery_note_no: string | null; order_code: string | null; created: boolean }>('POST', `/tasks/${taskId}/direct-delivery-note`, body)
+
+export const variantLabel = (v: Pick<ShopVariant, 'product_name' | 'package_size' | 'variant_sku'>) => [v.product_name, v.package_size || v.variant_sku].filter(Boolean).join(' · ')
+
 /** Dauerhafter Verweis einer Shop-Arbeit: erste Zeile der Notiz («Anfrage CODE · Lieferung»). */
 export const shopRef = (notes: string | null | undefined) => (notes ?? '').split('\n')[0].trim() || 'Shop-Anfrage'
