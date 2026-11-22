@@ -5,6 +5,7 @@
 import type { ModuleDescriptor } from './ModuleDescriptor'
 import { animalProviders, type AnimalRef } from './animals'
 import { animalKey } from './earTag'
+import { nameAndBirthMatch, parseAnimalQuery } from './animalQuery'
 
 /** Reihenfolge der Gruppen in der Trefferliste */
 export const SEARCH_GROUPS = {
@@ -114,9 +115,17 @@ export function functionHits(modules: Pick<ModuleDescriptor, 'key' | 'title' | '
 const digits = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '')
 
 /** Wie gut passt `q` zu einem Tier? Ziffern: Laufnummer genau/Anfang, Ohrmarke Ende/enthalten; Buchstaben: Name. */
-export function animalRank(q: string, a: Pick<AnimalRef, 'ear_tag' | 'lauf_nr' | 'name'>): number | null {
+export function animalRank(q: string, a: Pick<AnimalRef, 'ear_tag' | 'lauf_nr' | 'name'> & { birth_date?: string | null }): number | null {
   const t = q.trim()
   if (!t) return null
+  // Geburtsdatum (auch mit Name oder Nummer kombiniert): «12.3.2021», «12.3.», «3.2021»
+  const parsed = parseAnimalQuery(t)
+  if (parsed.dates.length > 0 || (parsed.words.length > 0 && parsed.number)) {
+    if (!nameAndBirthMatch(parsed, { name: a.name, birth_date: a.birth_date ?? null })) return null
+    if (!parsed.number) return 1
+    const r = animalRank(parsed.number, a)
+    return r == null ? null : r
+  }
   const qd = digits(t)
   if (qd && qd.length === t.replace(/[\s.]/g, '').length) {
     const lauf = digits(a.lauf_nr)
@@ -164,7 +173,7 @@ export async function animalHits(q: string): Promise<SearchHit[]> {
         key: `a:${moduleKey}:${a.id}`,
         group: 'tiere',
         title: [a.lauf_nr, a.name].filter(Boolean).join(' ') || a.label,
-        subtitle: [a.label, a.sex === 'm' ? '♂' : a.sex === 'w' ? '♀' : null, several ? title : null].filter(Boolean).join(' · '),
+        subtitle: [a.label, a.sex === 'm' ? '♂' : a.sex === 'w' ? '♀' : null, a.birth_date ? `geb. ${a.birth_date.slice(8, 10)}.${a.birth_date.slice(5, 7)}.${a.birth_date.slice(0, 4)}` : null, several ? title : null].filter(Boolean).join(' · '),
         icon: a.species === 'schafe' ? 'schaf' : 'kuh',
         to: link?.to ?? `/${moduleKey}`,
         actions: link?.actions,

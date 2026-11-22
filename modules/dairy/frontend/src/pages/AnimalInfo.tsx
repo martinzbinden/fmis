@@ -20,6 +20,7 @@ import { loadLambSelection } from '../lib/lambSelectionData'
 import { fmtAge, fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { AnimalListPanel } from '../components/AnimalPicker'
 import { matchAnimals, METHOD_LABEL, RESULT_LABEL, uniqueMatch } from '../lib/pregnancy'
+import { nameAndBirthMatch, parseAnimalQuery } from '@fmis/core/animalQuery'
 import { speciesOf } from '../lib/species'
 import { withdrawalUntil } from '../lib/treatments'
 import { clawStatusByAnimal, examSummary, loadClawExams } from '../lib/clawHealth'
@@ -103,10 +104,16 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
   const input = useRef<HTMLInputElement>(null)
   const animals = useMemo(() => data?.animals ?? [], [data])
   // aktive Tiere zuerst (gleiche Endziffern bei abgegangenen Tieren)
+  // Nummer (Laufnummer, Ende der Ohrmarke), Name und Geburtsdatum, auch kombiniert: «Berta», «12.3.2021», «12.3.», «3.2021»
+  const parsed = useMemo(() => parseAnimalQuery(query), [query])
   const matches = useMemo(() => {
-    const m = matchAnimals(animals, query)
+    const { number, words, dates } = parsed
+    if (!number && words.length === 0 && dates.length === 0) return []
+    const base = number ? matchAnimals(animals, number) : animals
+    const m = words.length || dates.length ? base.filter((a) => nameAndBirthMatch(parsed, a)) : base
     return [...m.filter((a) => a.status === 'aktiv'), ...m.filter((a) => a.status !== 'aktiv')]
-  }, [animals, query])
+  }, [animals, parsed])
+  const [abc, setAbc] = useState(false)
 
   function show(animalId: string) {
     setId(animalId)
@@ -137,19 +144,35 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
             ref={input}
             value={query}
             onChange={(e) => {
-              setQuery(e.target.value.replace(/[^\d]/g, '').slice(0, 9))
-              const one = uniqueMatch(animals, e.target.value)
+              const v = e.target.value.slice(0, 40)
+              setQuery(v)
+              // nur eine reine Nummer springt direkt zum Tier (Name und Datum zeigen die Liste)
+              const one = /^[\d\s]+$/.test(v) ? uniqueMatch(animals, v) : null
               if (one) show(one.id)
             }}
             onKeyDown={(e) => e.key === 'Enter' && matches[0] && show(matches[0].id)}
-            inputMode="numeric"
+            // Ziffern mit Punkt (Datum) oder Buchstaben (Name)
+            inputMode={abc ? 'text' : 'decimal'}
             enterKeyHint="go"
             autoComplete="off"
-            placeholder="Laufnr. / Ohrmarke"
-            aria-label="Laufnummer oder letzte Ziffern der Ohrmarke"
-            className="min-h-12 w-full rounded-lg border-2 border-gray-500 px-3 text-xl tracking-widest focus:border-brand-700 focus:outline-none"
+            autoCapitalize="off"
+            placeholder={abc ? 'Name' : 'Nummer oder Geburtsdatum'}
+            aria-label="Laufnummer, Ende der Ohrmarke, Name oder Geburtsdatum"
+            className="min-h-12 w-full rounded-lg border-2 border-gray-500 px-3 text-xl focus:border-brand-700 focus:outline-none"
           />
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            setAbc(!abc)
+            input.current?.focus()
+          }}
+          aria-pressed={abc}
+          title={abc ? 'Zifferntastatur' : 'Buchstaben-Tastatur (Name)'}
+          className="min-h-12 shrink-0 rounded-lg border-2 border-gray-400 bg-white px-2 text-sm font-semibold text-gray-800"
+        >
+          {abc ? '123' : 'ABC'}
+        </button>
         <button
           type="button"
           onClick={() => setListOpen((o) => !o)}
@@ -174,7 +197,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
           }}
         />
       )}
-      {query && matches.length > 0 && !(matches.length === 1 && matches[0].id === id) && (
+      {query.trim() && matches.length > 0 && !(matches.length === 1 && matches[0].id === id) && (
         <ul className="max-h-64 divide-y overflow-y-auto rounded-lg border-2 border-gray-300 bg-white">
           {matches.length > 4 && <li className="px-3 py-1 text-xs text-gray-600">{matches.length} Tiere passen</li>}
           {matches.map((a) => (
@@ -186,10 +209,10 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
           ))}
         </ul>
       )}
-      {query && matches.length === 0 && <p className="text-sm text-gray-700">Kein Tier mit dieser Nummer.</p>}
+      {query.trim() && matches.length === 0 && <p className="text-sm text-gray-700">Kein Tier für «{query.trim()}».</p>}
 
       {!data && <p className="text-center text-gray-500">Lädt…</p>}
-      {data && !ctx && !query && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Laufnummer oder die letzten Ziffern der Ohrmarke eintippen – oder mit dem Lesegerät lesen.</p>}
+      {data && !ctx && !query && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Laufnummer, die letzten Ziffern der Ohrmarke, den Namen (ABC) oder das Geburtsdatum eintippen, z.B. «12.3.2021», «12.3.» (jedes Jahr) oder «3.2021» (ganzer Monat). Name und Datum lassen sich kombinieren. Oder mit dem Lesegerät lesen.</p>}
 
       {data && ctx && (() => {
         const a = ctx.animal

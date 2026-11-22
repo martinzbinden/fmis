@@ -128,10 +128,10 @@ function SearchBody({ modules }: { modules: ModuleDescriptor[] }) {
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          inputMode={abc ? 'search' : 'numeric'}
+          inputMode={abc ? 'search' : 'decimal'}
           enterKeyHint="go"
           autoComplete="off"
-          placeholder={abc ? 'Name, Funktion, Parzelle …' : 'Nummer'}
+          placeholder={abc ? 'Name, Funktion, Parzelle …' : 'Nummer oder Geburtsdatum'}
           aria-label="Suchbegriff"
           className="min-h-14 min-w-0 flex-1 rounded-xl border-2 border-gray-300 px-4 text-lg"
         />

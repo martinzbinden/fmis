@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
-import { getSyncedDb as getDb } from '../db/access'
+import type { PGlite } from '@electric-sql/pglite'
+import { getDb } from '../db/pglite'
+import { syncClient } from '../db/sync'
 import { subscribeDataChanged } from '../db/write'
 import { addDays, localToday as todayIso, slotsFor, timeText, typeLabel } from '../lib/duty'
-import { loadDuty, me } from '../lib/dutyData'
+import { me } from '../lib/dutyData'
+import { isoDate } from '../lib/format'
+import type { DutyPerson, DutyShift, DutyType } from '../types'
 import AppIcon from '@fmis/core/AppIcon'
 
 interface TileData {
@@ -12,34 +16,65 @@ interface TileData {
   open7: number
 }
 
+// Letzter Stand je Gerät: die Kachel steht sofort da (kein Springen der Übersicht), danach frisch aus der Datenbank
+const CACHE_KEY = 'fmis_duty_tile'
+function readCache(): TileData | null {
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as { date: string; data: TileData } | null
+    return c && c.date === todayIso() ? c.data : null
+  } catch {
+    return null
+  }
+}
+function writeCache(data: TileData): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ date: todayIso(), data }))
+  } catch {
+    // ohne Speicher: beim nächsten Öffnen wieder kurz leer
+  }
+}
+
+/** Nur was die Kachel braucht (statt des ganzen Dienstplans): Personen, Dienste, eingeteilte Dienste der 7 Tage. */
+async function loadTile(pg: PGlite): Promise<TileData> {
+  const from = todayIso()
+  const to = addDays(from, 7)
+  const [people, types, shifts] = await Promise.all([
+    pg.query<DutyPerson>('select * from duty_people where deleted_at is null'),
+    pg.query<DutyType>('select * from duty_types where deleted_at is null order by sort_order, start_time, name'),
+    pg.query<DutyShift>('select * from duty_shifts where deleted_at is null and date between $1 and $2', [from, to]),
+  ])
+  const typeRows = types.rows.map((t) => ({ ...t, duration_min: Number(t.duration_min) }))
+  const shiftRows = shifts.rows.map((x) => ({ ...x, date: isoDate(x.date), slot: Number(x.slot) }))
+  const self = me(people.rows)
+  const dates = Array.from({ length: 7 }, (_, i) => addDays(from, i))
+  const slots = slotsFor(typeRows, shiftRows, dates)
+  const name = (id: string | null | undefined) => people.rows.find((p) => p.id === id)?.name ?? null
+  return {
+    today: slots
+      .filter((x) => x.date === from)
+      .map((x) => ({ time: timeText(x.type), name: typeLabel(x.type), person: name(x.shift?.person_id), color: x.type.color, mine: !!self && x.shift?.person_id === self.id })),
+    open7: slots.filter((x) => !x.shift?.person_id).length,
+  }
+}
+
 /** Kachel auf der Übersicht: heute im Dienst und offene Dienste der nächsten 7 Tage. */
 export default function DutyTile() {
   const canRead = useHasPermission('betrieb:dienste:read')
-  const [d, setD] = useState<TileData | null>(null)
+  const [d, setD] = useState<TileData | null>(readCache)
   useEffect(() => {
     if (!canRead) return
     let alive = true
     const load = () =>
       getDb()
-        .then((pg) => loadDuty(pg, todayIso(), addDays(todayIso(), 7)))
+        .then(loadTile)
         .then((data) => {
-          const self = me(data.people)
-          const dates = Array.from({ length: 7 }, (_, i) => addDays(todayIso(), i))
-          const slots = slotsFor(data.types, data.shifts, dates)
-          const name = (id: string | null | undefined) => data.people.find((p) => p.id === id)?.name ?? null
-          if (alive)
-            setD({
-              today: slots
-                .filter((s) => s.date === todayIso())
-                .map((s) => ({ time: timeText(s.type), name: typeLabel(s.type), person: name(s.shift?.person_id), color: s.type.color, mine: !!self && s.shift?.person_id === self.id })),
-              open7: slots.filter((s) => !s.shift?.person_id).length,
-            })
+          if (!alive) return
+          setD(data)
+          writeCache(data)
         })
-        .catch((e) => {
-          console.error('Dienstplan-Kachel', e)
-          if (alive) setD(null)
-        })
-    void load()
+        .catch((e) => console.error('Dienstplan-Kachel', e))
+    // zuerst lesen, dann erst synchronisieren: der Abgleich belegt die Datenbank sonst vor der Kachel
+    void load().then(() => syncClient.startSyncLoop())
     const off = subscribeDataChanged(() => void load())
     return () => {
       alive = false

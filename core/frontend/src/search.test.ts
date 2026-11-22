@@ -21,6 +21,11 @@ describe('Suche über alles', () => {
     expect(animalRank('345', a)).toBeNull()
     expect(animalRank('testl', a)).toBe(1)
     expect(animalRank('999', a)).toBeNull()
+    const b = { ...a, birth_date: '2021-03-12' }
+    expect(animalRank('12.3.2021', b)).toBe(1)
+    expect(animalRank('testl 3.2021', b)).toBe(1)
+    expect(animalRank('101 12.3.', b)).toBe(0)
+    expect(animalRank('13.3.', b)).toBeNull()
   })
 
   it('leitet Funktionen aus Fussleiste und Seitentiteln ab, eigene Liste geht vor', () => {
