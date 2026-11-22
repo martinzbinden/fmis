@@ -37,7 +37,9 @@ import Lambs from './pages/Lambs'
 import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
 import { createDairyAnimalProvider } from './lib/animalProvider'
-import { speciesTerms } from './lib/species'
+import { menuItems } from './lib/menuItems'
+import { WEAN_FROM_DAYS } from './lib/lambs'
+import { searchWatchlists } from './lib/search'
 import { dairyYearSummary } from './lib/yearSummary'
 import LastCapture from './components/LastCapture'
 import ViewSwitch, { type View } from './components/ViewSwitch'
@@ -59,7 +61,6 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
   }
 
   const sheep = key === 'dairy_schafe'
-  const terms = speciesTerms(key)
   // Zwei Ansichten je Punkt der Fussleiste (ViewSwitch) und Erfassungsseiten, die sich der dynamische Punkt merkt
   const HOME: View[] = [{ to: '', label: 'Heute' }, { to: 'stall', label: 'Kalender' }]
   // Gruppen: Karten links (Vorgabe beim ersten Besuch), danach die zuletzt benutzte Ansicht (lib/groupViews.ts)
@@ -91,8 +92,8 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       'tiere/:id': 'Tier',
       'stammbaum/:key': 'Stammbaum',
       ausmerzen: 'Ausmerzliste',
-      'ausmerzen/laemmer': 'Lämmer zum Schlachttermin',
-      geburt: terms.calving,
+      'ausmerzen/laemmer': 'Jungtiere zum Schlachttermin',
+      geburt: 'Geburt',
       ohrmarken: 'Ohrmarken nachtragen',
       tvd: 'TVD-Geburtsmeldungen',
       belegung: sheep ? 'Belegung' : 'Besamung / Belegung',
@@ -105,12 +106,12 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       stall: 'Kalender',
       mehr: 'Mehr',
       tierinfo: 'Tier-Info',
-      laemmer: sheep ? 'Lämmer' : 'Kälber',
+      laemmer: 'Jungtiere',
       leistung: 'Leistung',
       journal: 'Beobachtung / Behandlung',
       behandlungen: 'Behandlungsjournal',
       anpaarung: 'Anpaarung planen',
-      selektion: sheep ? 'Lämmer-Selektion' : 'Kälber-Selektion',
+      selektion: 'Jungtier-Selektion',
       pruefbericht: 'Prüfbericht',
       milchwaegung: 'Milchwägung',
     },
@@ -155,6 +156,14 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     pasteImporters: [treatmentPasteImporter(key)],
     importer: createDairyImporter(key, title, ({ claim, ...run }) => <ImportPanel moduleKey={key} files={dairyFilesOf(claim)} {...run} />),
     animals: createDairyAnimalProvider(key, title),
+    // Suche über alles: alle Funktionen aus «Mehr» plus die Ansichten, die dort nicht stehen
+    functions: [
+      ...menuItems(sheep, WEAN_FROM_DAYS),
+      { to: 'dashboard', label: 'Karten', icon: '🃏', keywords: 'dashboard gruppen tiere' },
+      { to: 'stall', label: 'Kalender', icon: '📅', keywords: 'stall hinweise tränkeplan' },
+      { to: 'pruefbericht', label: 'Prüfbericht', icon: '🧾', keywords: 'milchprüfung' },
+    ],
+    search: (q) => searchWatchlists(key, title, q),
     yearSummary: (year) => {
       // Daten auch ohne Besuch des Moduls aktuell halten
       sync.startSyncLoop()

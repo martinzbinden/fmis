@@ -5,10 +5,10 @@ import type { NavItem } from '@fmis/core/ModuleDescriptor'
 import { notifyNavChanged } from '@fmis/core/navItems'
 
 /** Erfassungsfunktionen (Pfad im Modul) mit Fussleisten-Beschriftung. */
-export function captureInfo(path: string, sheep: boolean): { label: string; icon: string } | null {
+export function captureInfo(path: string, _sheep: boolean): { label: string; icon: string } | null {
   switch (path) {
     case 'geburt':
-      return { label: sheep ? 'Ablammung' : 'Abkalbung', icon: sheep ? '🐑' : '🐄' }
+      return { label: 'Geburt', icon: '🐣' }
     case 'belegung':
       return { label: 'Belegung', icon: '❤️' }
     case 'traechtigkeit':

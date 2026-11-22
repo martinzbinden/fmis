@@ -12,11 +12,18 @@ import type { ModuleDescriptor, NavItem } from './ModuleDescriptor'
 import { FOOTER_SLOT_ID } from './FooterBar'
 import UndoBar from './UndoBar'
 import { NAV_EVENT, navIsActive, resolveNav } from './navItems'
+import { SearchButton } from './GlobalSearch'
+import { openPanel } from './headerPanel'
+import { LockButton } from './StallLock'
+import { useStallMode } from './stallMode'
+import { recordRecent, type FunctionEntry } from './search'
 
 export default function Layout({
   children,
   moduleKey,
   title,
+  icon,
+  functions,
   navItems,
   pageTitles,
   historyPermission,
@@ -27,6 +34,10 @@ export default function Layout({
   children: ReactNode
   moduleKey: string
   title: string
+  /** Symbol des Moduls (für «zuletzt geöffnet» in der Suche) */
+  icon?: string
+  /** Funktionen des Moduls (Symbole für «zuletzt geöffnet») */
+  functions?: FunctionEntry[]
   navItems: NavItem[]
   pageTitles?: Record<string, string>
   historyPermission: string
@@ -67,6 +78,18 @@ export default function Layout({
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
   useEffect(() => setHeaderHidden(false), [pathname])
+  const stall = useStallMode()
+  // Seite für «zuletzt geöffnet» (Suche, Mehr) merken; der Verlauf ist kein Ziel
+  useEffect(() => {
+    if (!page || rest === 'verlauf') return
+    // Symbol: eigene Funktion des Moduls, sonst der Menüpunkt genau dieser Seite (nicht über `also`), sonst das Modul
+    const base = (to: string) => to.split('?')[0]
+    const fn = functions?.find((f) => !f.to.startsWith('/') && base(f.to) === rest)
+    const nav = navItems.find((n) => !n.resolve && n.to === rest)
+    recordRecent({ path: pathname, title: page, sub: title, icon: fn?.icon ?? nav?.icon ?? icon })
+    // nur beim Seitenwechsel
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, page])
 
   return (
     <div data-module={moduleKey} className="flex min-h-screen flex-col bg-gray-50">
@@ -92,18 +115,20 @@ export default function Layout({
         </div>
         <div className="flex shrink-0 items-center sm:gap-1">
           <SyncStatusDot status={status} error={error} pending={pending} onSync={() => void sync.syncNow()} />
-          {canImport && (
+          <SearchButton />
+          {stall && <LockButton />}
+          {canImport && !stall && (
             <ImportButton className="hidden min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100 sm:grid" />
           )}
-          {canViewHistory && history && (
+          {canViewHistory && history && !stall && (
             // Seitenfenster wie Status, Import und Benachrichtigungen; nochmals antippen schliesst
-            <PanelButton panel="verlauf" label="Verlauf">
+            <PanelButton panel="verlauf" label="Verlauf" className="hidden sm:grid">
               📜
             </PanelButton>
           )}
-          <NotificationBell />
-          <AdminMenu />
-          <ProfileMenu onLoggedOut={onLoggedOut} />
+          {!stall && <NotificationBell />}
+          {!stall && <AdminMenu />}
+          <ProfileMenu onLoggedOut={onLoggedOut} onHistory={canViewHistory && history ? () => openPanel('verlauf') : undefined} />
         </div>
       </header>
       {canViewHistory && history && (

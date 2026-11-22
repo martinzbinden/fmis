@@ -8,6 +8,7 @@ import Projects from './pages/Projects'
 import ProjectView from './pages/ProjectView'
 import History from './pages/History'
 import './theme.css'
+import { searchProjects } from './lib/search'
 
 function BauDbProvider({ children }: { children: ReactNode }) {
   return <DbProvider getDb={getDb}>{children}</DbProvider>
@@ -25,6 +26,7 @@ const bauModule: ModuleDescriptor = {
   group: 'betrieb',
   navItems: [{ to: '', label: 'Projekte', icon: '🏗️' }],
   historyPermission: 'bau:history:read',
+  search: searchProjects,
   pageTitles: { 'projekt/:id': 'Projekt' },
   routes: [
     { path: '', element: <Projects /> },

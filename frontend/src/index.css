@@ -71,6 +71,31 @@ html[data-view-as] .min-h-screen {
   }
 }
 
+/* Stallmodus (Profilmenü, je Gerät; core/frontend/src/stallMode.ts): alles rund 12 % grösser (Tailwind rechnet in rem),
+   Knöpfe, Felder und Häkchen mit Tippfläche für Handschuhe, kleine Schrift nicht unter 13 px. */
+html[data-stall='on'] {
+  font-size: 18px;
+}
+html[data-stall='on'] main :is(button, select, [role='button'], summary, input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden'])) {
+  min-height: 2.75rem;
+}
+html[data-stall='on'] main :is(button, [role='button']) {
+  min-width: 2.75rem;
+}
+html[data-stall='on'] main :is(input[type='checkbox'], input[type='radio']) {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+html[data-stall='on'] main .text-\[10px\],
+html[data-stall='on'] main .text-\[11px\],
+html[data-stall='on'] main .text-\[9px\] {
+  font-size: 13px;
+}
+html[data-stall='on'] main a:not([class]) {
+  display: inline-block;
+  padding-block: 0.5rem;
+}
+
 /* Am Handy (Touch) keine Eingabefelder unter 16 px: iOS zoomt sonst beim
    Antippen in die Seite. Überschreibt text-sm/text-xs an Feldern. */
 @media (pointer: coarse) {

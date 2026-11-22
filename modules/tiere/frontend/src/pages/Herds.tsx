@@ -25,7 +25,7 @@ import SelectAllBox from '@fmis/core/SelectAllBox'
 const SPECIES_ICON: Record<HerdSpecies, string> = { schafe: '🐑', rinder: '🐄' }
 const SPECIES_LABEL: Record<HerdSpecies, string> = { schafe: 'Schafe', rinder: 'Rinder' }
 const field = 'w-full rounded border border-gray-300 px-2 py-1.5 text-sm'
-const btn = 'rounded border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-700 active:bg-gray-50'
+const btn = 'min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 active:bg-gray-50'
 
 function stayName(data: HerdData, s: HerdStay | undefined): string | null {
   if (!s) return null
@@ -63,13 +63,13 @@ function LaufhofToday({ data, idx, groups, date, canWrite, onChanged }: { data: 
     <section className="space-y-2 rounded-lg bg-white p-3 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-700">Laufhof {date === todayIso() ? 'heute' : `am ${fmtDate(date)}`}</h2>
-        <Link to="/tiere/auslauf" className="text-xs text-brand-700">
+        <Link to="/tiere/auslauf" className="link-btn text-sm text-brand-700">
           Auslaufjournal →
         </Link>
       </div>
       <ul className="space-y-1">
         {rows.map(({ g, day }) => (
-          <li key={g.id} className="flex items-center justify-between gap-2 text-sm">
+          <li key={g.id} className="flex min-h-11 items-center justify-between gap-2 text-sm">
             <span>
               {SPECIES_ICON[g.species]} {g.name} <span className="text-xs text-gray-500">({day.animals})</span>
             </span>
@@ -80,7 +80,7 @@ function LaufhofToday({ data, idx, groups, date, canWrite, onChanged }: { data: 
                 type="button"
                 disabled={!canWrite || busy}
                 onClick={() => void run(() => setLaufhof(data, g.id, date, !day.laufhofEntry))}
-                className={`rounded-lg px-3 py-1 text-xs font-medium ${day.laufhofEntry ? 'bg-sky-600 text-white' : 'border border-gray-300 bg-white text-gray-600'}`}
+                className={`min-h-11 rounded-lg px-3 py-1 text-sm font-medium ${day.laufhofEntry ? 'bg-sky-600 text-white' : 'border border-gray-300 bg-white text-gray-600'}`}
               >
                 {day.laufhofEntry ? '✓ im Laufhof' : 'im Laufhof?'}
               </button>
@@ -180,7 +180,7 @@ function StayDialog({
             Bisher: {stayName(data, cur)} seit {fmtDate(cur.from_date)} — endet am Vortag.
           </p>
         )}
-        <button type="button" disabled={busy} onClick={() => void save()} className="w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={() => void save()} className="min-h-12 w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
           Speichern
         </button>
       </div>
@@ -231,7 +231,7 @@ function CountDialog({ data, group, date: initialDate, onClose }: { data: HerdDa
           <span className="mb-1 block font-medium text-gray-700">gilt ab</span>
           <input type="date" className={field} value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <button type="button" disabled={busy} onClick={() => void save()} className="w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={() => void save()} className="min-h-12 w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
           Speichern
         </button>
       </div>
@@ -295,7 +295,7 @@ function GroupDialog({ data, group, date, onClose }: { data: HerdData; group: He
           </label>
         )}
         {!group && <p className="text-xs text-gray-500">Stall, Weide und Tiere danach in der Gruppe setzen (ab {fmtDate(date)} oder einem anderen Datum).</p>}
-        <button type="button" disabled={busy || !name.trim()} onClick={() => void save()} className="w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
+        <button type="button" disabled={busy || !name.trim()} onClick={() => void save()} className="min-h-12 w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
           Speichern
         </button>
         {group?.active && (
@@ -816,7 +816,7 @@ function IdentifyDialog({
           type="button"
           disabled={busy || !group || chosen.length === 0}
           onClick={() => void save()}
-          className="w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50"
+          className="min-h-12 w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50"
         >
           {busy ? 'Speichert…' : `${chosen.length} ${chosen.length === 1 ? 'Tier' : 'Tiere'} in «${group?.name ?? '…'}» erfassen`}
         </button>
@@ -996,22 +996,22 @@ export default function Herds() {
       </div>
       {canWrite && (
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setDialog({ kind: 'group', group: null })} className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white">
+          <button type="button" onClick={() => setDialog({ kind: 'group', group: null })} className="min-h-11 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white">
             + Gruppe
           </button>
-          <button type="button" onClick={() => setDialog({ kind: 'move', from: null })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
+          <button type="button" onClick={() => setDialog({ kind: 'move', from: null })} className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             Tiere zuteilen
           </button>
-          <button type="button" onClick={() => setDialog({ kind: 'scan' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
+          <button type="button" onClick={() => setDialog({ kind: 'scan' })} className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             📡 Gruppe scannen
           </button>
-          <button type="button" onClick={() => setDialog({ kind: 'readergroups' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm" title="Gruppen im Lesegerät ansehen, wählen und als Tiergruppen anlegen">
+          <button type="button" onClick={() => setDialog({ kind: 'readergroups' })} className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm" title="Gruppen im Lesegerät ansehen, wählen und als Tiergruppen anlegen">
             📥 Gruppen vom Lesegerät
           </button>
-          <button type="button" onClick={() => setDialog({ kind: 'locations' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
+          <button type="button" onClick={() => setDialog({ kind: 'locations' })} className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             Orte
           </button>
-          <button type="button" onClick={() => setDialog({ kind: 'readerlists' })} className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
+          <button type="button" onClick={() => setDialog({ kind: 'readerlists' })} className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm">
             📋 Listen fürs Lesegerät
           </button>
         </div>
@@ -1055,7 +1055,7 @@ export default function Herds() {
 
       {groups.length > 0 && data && (gone.length || groups.some((g) => compositionAt(g.id, data.members, data.counts, date).counts.length)) ? (
         <details className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-          <summary className="cursor-pointer font-medium text-amber-900">
+          <summary className="flex min-h-11 cursor-pointer items-center font-medium text-amber-900">
             Bestand klären ·{' '}
             {[
               (() => {
@@ -1140,7 +1140,7 @@ export default function Herds() {
                   </div>
                 </div>
                 {canWrite && (
-                  <button type="button" onClick={() => setDialog({ kind: 'group', group: g })} className="text-xs text-gray-500">
+                  <button type="button" onClick={() => setDialog({ kind: 'group', group: g })} aria-label={`Gruppe «${g.name}» bearbeiten`} className="-m-2 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg text-gray-600 active:bg-gray-100">
                     ✎
                   </button>
                 )}

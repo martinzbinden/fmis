@@ -1,4 +1,7 @@
+import { useMemo, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { readRecent } from '@fmis/core/search'
+import { itemPath, menuItems, type MenuItem } from '../lib/menuItems'
 import { openImport } from '@fmis/core/importModal'
 import { speciesOf } from '../lib/species'
 import { useQuery } from '../hooks/useQuery'
@@ -12,59 +15,61 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
   const pending = useQuery(loadPendingOffspring).data?.length ?? 0
   const tvdOpen = useQuery((pg) => loadTvdBirths(pg, '2000-01-01')).data?.reduce((n, b) => n + reportable(b).length, 0) ?? 0
   const weanDue = useQuery((pg) => loadLambs(pg, localTodayIso())).data?.filter((l) => l.nursing && l.ageDays >= WEAN_FROM_DAYS).length ?? 0
-  const items = [
-    { to: 'tiere', icon: sheep ? '🐑' : '🐄', label: sheep ? 'Tierliste' : 'Tierliste', desc: 'Alle Tiere der Herde als Liste: suchen, filtern, Spalten wählen' },
-    { to: 'leistung', icon: '🥛', label: 'Leistung', desc: 'Milchleistung und Zuchtwerte, je Tier und Gruppe' },
-    { to: 'tierinfo', icon: '🔎', label: 'Tier-Info', desc: 'Nummer tippen oder lesen: Alter, Abstammung, Index, Ablammung, Belegung, Trächtigkeit, Merklisten, Verlauf aller Erfassungen' },
-    { to: 'geburt', icon: sheep ? '🐑' : '🐄', label: sheep ? 'Ablammung' : 'Abkalbung', desc: 'Mutter, Vater, Nachkommen – Ohrmarke auch später' },
-    { to: 'ohrmarken', icon: '🏷️', label: 'Ohrmarken nachtragen', desc: sheep ? 'Lämmer, die bei der Ablammung noch keine Ohrmarke hatten' : 'Kälber, die bei der Abkalbung noch keine Ohrmarke hatten' },
-    { to: 'tvd', icon: '📨', label: 'TVD-Geburtsmeldungen', desc: sheep ? 'Angaben je Lamm für die Meldung im Agate-Portal, kopieren oder als CSV, Abhaken' : 'Angaben je Kalb für die Meldung im Agate-Portal, kopieren oder als CSV, Abhaken' },
-    { to: 'laemmer?aktion=absetzen', icon: '✂️', label: 'Absetzen', desc: sheep ? `Saugende Lämmer ab ${WEAN_FROM_DAYS} Tagen wählen, in eine Lämmergruppe zügeln` : `Saugende Kälber ab ${WEAN_FROM_DAYS} Tagen wählen` },
-    { to: 'laemmer', icon: '🍼', label: sheep ? 'Lämmer' : 'Kälber', desc: 'Alter, Gewicht, saugend oder abgesetzt – wägen, Schoppen, Drenchen, Bolus, Behandlung für mehrere auf einmal' },
-    { to: 'belegung', icon: '❤️', label: sheep ? 'Belegung' : 'Besamung / Belegung', desc: sheep ? 'Widder und Zeitraum, für die ganze Gruppe' : 'Stier und Datum' },
-    { to: 'traechtigkeit', icon: '🤰', label: 'Trächtigkeit', desc: 'Einzeln oder mehrere Tiere (+ / Lesegerät), ja/leer/unsicher, Wochen' },
-    { to: 'klauen', icon: '🐾', label: 'Klauen', desc: sheep ? 'Moderhinke-Score je Fuss, lahm, geschnitten, Behandlung – im Durchgang, mit Lesegerät' : 'Befunde nach ICAR-Atlas, Lahmheit 1–5, geschnitten, Behandlung' },
-    { to: 'journal', icon: '💉', label: 'Beobachtung / Behandlung', desc: 'Krankheit, Behandlung mit Absetzfrist, Brunst, Klauen' },
-    { to: 'milchwaegung', icon: '⚖️', label: 'Milchwägung', desc: 'Melkreihenfolge für die Probenahme (Lesegerät oder von Hand)' },
-    { to: 'ausmerzen', icon: '📋', label: 'Ausmerzliste', desc: 'Tiere mit Gründen zum Ausmerzen: Fruchtbarkeit, Euter, Leistung, Klauen' },
-    { to: 'behandlungen', icon: '📒', label: 'Behandlungsjournal', desc: 'Tierarzneimittel für die Kontrolle: Liste, Absetzfristen, Druck, Favoriten, cownect-Import' },
-    { to: 'selektion', icon: '⭐', label: sheep ? 'Lämmer-Selektion' : 'Kälber-Selektion', desc: 'Remonte oder Mast nach Mutterleistung, Vater und Inzucht' },
-    { to: 'merklisten', icon: '🔖', label: 'Merklisten', desc: 'Tiere vormerken, z.B. «Ausmerzen prüfen» – auch aus Warnungen bei der Erfassung' },
-    { to: 'gruppen', icon: '📊', label: 'Gruppen', desc: 'Tiergruppen und Merklisten vergleichen: Leistung + Zuchtwert, Schlachterlös, Fortpflanzung, Klauen – beliebige Gruppen nebeneinander' },
-    { to: '/livestock/schlachtungen', icon: '🧾', label: 'Schlachtungen', desc: 'Schlachtabrechnungen aller Tiere: Gewicht nach Alter und Laktationstagen, Preise je Taxation (im Mastplaner)' },
-    { to: '/import', icon: '📥', label: 'Datenimport', desc: sheep ? 'TVD-Tierbestand, SMG-Dateien und weitere Dateien hochladen (gemeinsame Seite für alle Module)' : 'Herdebuch-Export und weitere Dateien hochladen (gemeinsame Seite für alle Module)' },
-    { to: 'anpaarung', icon: '🧬', label: 'Anpaarung planen', desc: 'Erwartete Inzucht je Mutter × ' + (sheep ? 'Widder' : 'Stier') },
-  ]
+  const items = useMemo(() => menuItems(sheep, WEAN_FROM_DAYS).sort((a, b) => a.label.localeCompare(b.label, 'de')), [sheep])
+  // die zwei zuletzt geöffneten Funktionen dieses Moduls (core/search.ts recordRecent, gesetzt von der Kopfzeile)
+  const recent = useMemo(() => {
+    const out: MenuItem[] = []
+    for (const r of readRecent()) {
+      const item = items.find((i) => !i.to.includes('?') && itemPath(moduleKey, i.to) === r.path)
+      if (item && !out.includes(item)) out.push(item)
+      if (out.length === 2) break
+    }
+    return out
+  }, [items, moduleKey])
+  const badge = (to: string) => (to === 'ohrmarken' ? pending : to === 'tvd' ? tvdOpen : to.startsWith('laemmer?aktion=absetzen') ? weanDue : 0)
+  const href = (to: string) => (to.startsWith('/') ? to : `../${to}`)
+  const onImport = (to: string) => (to === '/import' ? (e: MouseEvent) => (e.preventDefault(), openImport()) : undefined)
   return (
     <div className="mx-auto max-w-lg space-y-3 p-4 pb-24">
       <h1 className="mb-2 text-xl font-bold text-gray-800">Mehr</h1>
+      {recent.length > 0 && (
+        <section aria-label="Zuletzt benutzt" className="grid grid-cols-2 gap-3">
+          {recent.map((item) => (
+            <Link
+              key={item.to}
+              to={href(item.to)}
+              relative="path"
+              onClick={onImport(item.to)}
+              className="relative flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl bg-brand-50 p-3 shadow-sm ring-1 ring-brand-200 active:bg-brand-100"
+            >
+              <span className="text-3xl" aria-hidden>
+                {item.icon}
+              </span>
+              <span className="text-base font-semibold text-gray-900">{item.short}</span>
+              {badge(item.to) > 0 && <span className="absolute right-2 top-2 rounded-full bg-amber-700 px-2 py-0.5 text-sm font-bold text-white">{badge(item.to)}</span>}
+            </Link>
+          ))}
+        </section>
+      )}
       {items.map((item) => (
         <Link
           key={item.to}
-          to={item.to.startsWith('/') ? item.to : `../${item.to}`}
+          to={href(item.to)}
           relative="path"
           // Datenimport als Fenster über dieser Seite, statt die Seite zu verlassen
-          onClick={item.to === '/import' ? (e) => (e.preventDefault(), openImport()) : undefined}
-          className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm active:bg-gray-50"
+          onClick={onImport(item.to)}
+          className="flex items-center gap-4 rounded-xl bg-white p-4 shadow-sm active:bg-gray-50"
         >
-          <span className="text-3xl">{item.icon}</span>
+          <span className="text-3xl" aria-hidden>
+            {item.icon}
+          </span>
           <span className="min-w-0 flex-1">
             <span className="block text-base font-semibold text-gray-800">{item.label}</span>
-            <span className="block text-sm text-gray-500">{item.desc}</span>
+            <span className="block text-sm text-gray-600">{item.desc}</span>
           </span>
-          {item.to === 'ohrmarken' && pending > 0 && (
-            <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${pending} offen`}>
-              {pending}
-            </span>
-          )}
-          {item.to === 'tvd' && tvdOpen > 0 && (
-            <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${tvdOpen} offen`}>
-              {tvdOpen}
-            </span>
-          )}
-          {item.to.startsWith('laemmer?aktion=absetzen') && weanDue > 0 && (
-            <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${weanDue} ab ${WEAN_FROM_DAYS} Tagen`}>
-              {weanDue}
+          {badge(item.to) > 0 && (
+            <span className="shrink-0 rounded-full bg-amber-700 px-2.5 py-1 text-sm font-bold text-white" aria-label={`${badge(item.to)} offen`}>
+              {badge(item.to)}
             </span>
           )}
         </Link>

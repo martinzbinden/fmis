@@ -1,4 +1,5 @@
 import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useStallMode } from '@fmis/core/stallMode'
 import { Link } from 'react-router-dom'
 import { colorOf } from '@fmis/core/filters/filterModel'
 import { areaLabel, breedingBadge, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib/board'
@@ -115,13 +116,15 @@ export default function BoardCardView({
   const age = card.birthDate ? fmtAge(card.birthDate, today) : null
   const badge = breedingBadge(card, today)
   const [picking, setPicking] = useState(false)
+  // Stallmodus: grössere Karte, ganze Kopfzeile mindestens 48 px hoch
+  const stall = useStallMode()
 
   return (
     <div
       data-card={card.id}
       onPointerDown={onDragCard}
       title={filterNames.length ? filterNames.join(', ') : undefined}
-      className={`rounded-lg border-2 p-1.5 shadow-sm transition-colors sm:p-2 ${pendingTo ? 'border-dashed border-amber-500 bg-amber-50' : selected ? 'border-brand-700 bg-brand-50 shadow-md' : main ? main.card : 'border-gray-200 bg-white'} ${selected && pendingTo ? 'ring-2 ring-brand-700' : ''} ${verdict && !pendingTo ? `border-l-[6px] ${VERDICT_EDGE[verdict.verdict]}` : ''} ${canDrag ? 'cursor-grab' : ''}`}
+      className={`rounded-lg border-2 shadow-sm transition-colors ${stall ? 'p-2 text-base' : 'p-1.5 sm:p-2'} ${pendingTo ? 'border-dashed border-amber-500 bg-amber-50' : selected ? 'border-brand-700 bg-brand-50 shadow-md' : main ? main.card : 'border-gray-200 bg-white'} ${selected && pendingTo ? 'ring-2 ring-brand-700' : ''} ${verdict && !pendingTo ? `border-l-[6px] ${VERDICT_EDGE[verdict.verdict]}` : ''} ${canDrag ? 'cursor-grab' : ''}`}
     >
       <div className="flex items-start gap-1">
         {/* Auswahl: runder Haken, gewählt gefüllt; die ganze Karte wird dann eingefärbt */}
@@ -139,11 +142,11 @@ export default function BoardCardView({
             ✓
           </span>
         </button>
-        <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
+        <button type="button" onClick={onToggle} aria-expanded={expanded} className={`min-w-0 flex-1 text-left ${stall ? 'min-h-12' : ''}`}>
           {/* Ohrmarke immer ganz: lieber Geschlecht/Alter auf die nächste Zeile umbrechen als die Nummer abschneiden */}
           <span className="flex flex-wrap items-baseline gap-x-2">
             <span className="shrink-0 text-lg font-bold leading-tight text-gray-900">{card.laufNr ?? '–'}</span>
-            <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-gray-600">{card.shortTag}</span>
+            <span className={`shrink-0 whitespace-nowrap tabular-nums text-gray-600 ${stall ? 'text-sm' : 'text-xs'}`}>{card.shortTag}</span>
             {card.sex && <span className="text-sm text-gray-700" title={SEX_LABEL[card.sex]}>{SEX_ICON[card.sex]}</span>}
             {/* am Handy: Alter gleich in der ersten Zeile, die Zeile mit Geschlecht und Geburtsdatum entfällt */}
             {age && <span className="shrink-0 text-xs text-gray-600 sm:hidden">{age}</span>}
@@ -152,7 +155,7 @@ export default function BoardCardView({
             {card.sex ? `${SEX_LABEL[card.sex]} · ` : ''}
             {card.birthDate ? `geb. ${fmtDate(card.birthDate)}${age ? ` (${age})` : ''}` : 'Geburtsdatum unbekannt'}
           </span>
-          <span className="mt-0.5 flex flex-wrap gap-1 text-[11px] font-medium sm:mt-1">
+          <span className={`mt-0.5 flex flex-wrap gap-1 font-medium sm:mt-1 ${stall ? 'text-sm' : 'text-[0.73rem]'}`}>
             {verdict && verdict.verdict !== 'jung' && (
               <span
                 className={`rounded px-1.5 py-0.5 ${VERDICT_PILL[verdict.verdict]}`}
@@ -280,10 +283,10 @@ export default function BoardCardView({
       )}
 
       {expanded && (
-        <div className="mt-2 space-y-2 border-t pt-2 text-xs text-gray-700" data-no-drag>
+        <div className={`mt-2 space-y-2 border-t pt-2 text-gray-700 ${stall ? 'text-sm' : 'text-xs'}`} data-no-drag>
           {money && <MoneyBalance money={money} />}
           {verdict && verdict.parts.length > 0 && (
-            <p className="text-[11px] text-gray-600">
+            <p className="text-[0.73rem] text-gray-600">
               {VERDICT_LABEL[verdict.verdict]}: {verdict.points} Punkte ({verdict.parts.map((p) => `${p.label} ${p.points > 0 ? '+' : ''}${p.points}`).join(', ')})
             </p>
           )}
@@ -329,7 +332,7 @@ export default function BoardCardView({
               <ul className="space-y-0.5">
                 {card.reasons.map((r, i) => (
                   <li key={i}>
-                    <span className="mr-1 rounded bg-red-50 px-1 text-[11px] text-red-900">{areaLabel(r.area)}</span>
+                    <span className="mr-1 rounded bg-red-50 px-1 text-[0.73rem] text-red-900">{areaLabel(r.area)}</span>
                     {r.text}
                   </li>
                 ))}
@@ -414,7 +417,7 @@ function CardProps({
       rows.push(
         <div key="zw" className="flex justify-between gap-2" title={zwEstimateTitle(e)}>
           <span className="text-gray-500">Zuchtwert</span>
-          <span className="text-right font-medium italic text-violet-800">≈ {f0(e.value)} <span className="not-italic rounded bg-violet-100 px-1 text-[10px] font-semibold">Schätzung</span></span>
+          <span className="text-right font-medium italic text-violet-800">≈ {f0(e.value)} <span className="not-italic rounded bg-violet-100 px-1 text-[0.73rem] font-semibold">Schätzung</span></span>
         </div>,
       )
     } else rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
@@ -580,7 +583,7 @@ function CardProps({
   const spark = has('spark') && (card.levels.length > 0 || card.sccLevels.length > 0)
   if (rows.length === 0 && !spark) return null
   return (
-    <span className="mt-1 block space-y-0.5 border-t border-gray-100 pt-1 text-[11px]">
+    <span className="mt-1 block space-y-0.5 border-t border-gray-100 pt-1 text-[0.73rem]">
       {rows}
       {spark && (
         <span className="flex items-end justify-between gap-2" title="Leistungsniveau je Laktation gegen die Herde (Säulen) und Zellzahl Ø je Laktation (rote Linie)">
@@ -595,7 +598,7 @@ function CardProps({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h4 className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{title}</h4>
+      <h4 className="mb-0.5 text-[0.73rem] font-semibold uppercase tracking-wide text-gray-500">{title}</h4>
       <div className="space-y-0.5">{children}</div>
     </div>
   )
@@ -635,11 +638,11 @@ function MoneyBalance({ money }: { money: { slaughter: number; keep: number; dif
           <div className={`h-full rounded-r-full ${money.slaughter >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: w(money.slaughter) }} />
         </div>
       </div>
-      <div className="flex justify-between text-[11px] text-gray-500">
+      <div className="flex justify-between text-[0.73rem] text-gray-500">
         <span>behalten</span>
         <span>schlachten</span>
       </div>
-      <p className={`mt-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${slaughterBetter ? 'bg-emerald-100 text-emerald-900' : 'bg-sky-100 text-sky-900'}`}>
+      <p className={`mt-1 rounded px-1.5 py-0.5 text-[0.73rem] font-medium ${slaughterBetter ? 'bg-emerald-100 text-emerald-900' : 'bg-sky-100 text-sky-900'}`}>
         {slaughterBetter ? `Schlachten bringt ≈ ${Math.round(money.diff).toLocaleString('de-CH')} Fr. mehr` : `Behalten bringt ≈ ${Math.round(-money.diff).toLocaleString('de-CH')} Fr. mehr`} (ohne Wert der nächsten Lämmer)
       </p>
     </div>

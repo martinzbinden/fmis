@@ -21,6 +21,7 @@ import { dutyPasteImporter } from './lib/pasteDuty'
 import { absencePasteImporter } from './lib/pasteAbsences'
 import './theme.css'
 import { betriebYearSummary } from './lib/yearSummary'
+import { searchBetrieb } from './lib/search'
 
 function BetriebDbProvider({ children }: { children: ReactNode }) {
   return <DbProvider getDb={getDb}>{children}</DbProvider>
@@ -42,6 +43,7 @@ const betriebModule: ModuleDescriptor = {
     { to: 'wartung', label: 'Wartung', icon: '🔧' },
   ],
   historyPermission: 'betrieb:history:read',
+  search: searchBetrieb,
   pageTitles: { betriebsdaten: 'Betriebsdaten', 'maschinen/:id': 'Maschine' },
   routes: [
     { path: '', element: <Navigate to="dienste" replace /> },

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useKeepAwake } from '@fmis/core/stallMode'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
@@ -92,6 +93,8 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
   const today = localTodayIso()
 
   const [round, setRoundState] = useState<Round | null>(() => readRound(moduleKey))
+  // laufender Durchgang: Bildschirm bleibt an
+  useKeepAwake(round != null)
   const setRound = (r: Round | null) => {
     setRoundState(r)
     writeRound(moduleKey, r)

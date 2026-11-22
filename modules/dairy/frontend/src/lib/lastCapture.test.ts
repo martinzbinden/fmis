@@ -9,10 +9,10 @@ describe('last used capture function', () => {
     vi.stubGlobal('window', { dispatchEvent: () => true })
   })
 
-  it('defaults to the birth entry, with species-specific names', () => {
+  it('defaults to the birth entry, same name for all species', () => {
     expect(readLastCapture('dairy_schafe')).toBe('geburt')
-    expect(captureNavItem('dairy_schafe', true)).toMatchObject({ to: 'geburt', label: 'Ablammung' })
-    expect(captureNavItem('dairy', false)).toMatchObject({ to: 'geburt', label: 'Abkalbung' })
+    expect(captureNavItem('dairy_schafe', true)).toMatchObject({ to: 'geburt', label: 'Geburt' })
+    expect(captureNavItem('dairy', false)).toMatchObject({ to: 'geburt', label: 'Geburt' })
   })
 
   it('remembers the last one per module and shows it in the bar', () => {

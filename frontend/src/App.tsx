@@ -20,6 +20,8 @@ import tiereModule from '@fmis/tiere/module'
 import bauModule from '@fmis/bau/module'
 import Dashboard from './pages/Dashboard'
 import ImportModal, { ImportRoute } from './ImportModal'
+import GlobalSearch from '@fmis/core/GlobalSearch'
+import StallLock from '@fmis/core/StallLock'
 import { PanelRouteWatcher } from '@fmis/core/SidePanel'
 import SyncStatusPanel from '@fmis/core/SyncStatusPanel'
 import NotificationBell, { NotificationsPanel } from '@fmis/core/NotificationBell'
@@ -173,6 +175,8 @@ function AppShell({ onLoggedOut }: { onLoggedOut: () => void }) {
     <PendingSync keys={enabledModules.map((m) => m.key)} />
     {enabledModules.map((m) => (m.globalOverlay ? <m.globalOverlay key={`overlay-${m.key}`} /> : null))}
     <ImportModal modules={enabledModules} />
+    <GlobalSearch modules={enabledModules} />
+    <StallLock />
     {/* Seitenfenster der Kopfzeile, die überall gleich sind (core/SidePanel.tsx) */}
     <PanelRouteWatcher />
     <SyncStatusPanel />
@@ -232,6 +236,8 @@ function ModuleRoute({ mod, onLoggedOut }: { mod: ModuleDescriptor; onLoggedOut:
       <Layout
         moduleKey={mod.key}
         title={mod.title}
+        icon={mod.icon}
+        functions={mod.functions}
         navItems={mod.navItems}
         pageTitles={mod.pageTitles}
         historyPermission={mod.historyPermission}

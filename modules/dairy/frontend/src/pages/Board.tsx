@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useStallMode } from '@fmis/core/stallMode'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalProvider, refreshHerdData, type AnimalRef } from '@fmis/core/animals'
@@ -88,6 +89,8 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   const canMove = useHasPermission('tiere:herden:write') && !!animalProvider(moduleKey)
   const { thresholds } = useCullingThresholds(moduleKey, species)
 
+  // Stallmodus: eine Spalte je Bildschirmbreite, grössere Karten (components/BoardCardView.tsx)
+  const stall = useStallMode()
   const [lambMilkSettings, setLambMilkSettings] = useState<LambMilkSettings>(() => loadLambMilkSettings(moduleKey))
   const { data } = useQuery((pg) => loadBoard(pg, species, today, lambMilkSettings), [species, today, lambMilkSettings])
   const [herd, setHerd] = useState<HerdData | null>(null)
@@ -456,7 +459,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         data-col-key={col.key}
         data-stacked={stacked ? '1' : undefined}
         aria-label={col.title}
-        className={`relative shrink-0 snap-start rounded-xl p-2 ${stacked ? 'w-full' : 'w-[calc(100vw-1.5rem)] sm:w-72'} ${hover === col.key ? 'bg-brand-50 ring-2 ring-brand-700' : 'bg-gray-100'} ${colDrag.drag?.key === col.key ? 'opacity-50' : ''}`}
+        className={`relative shrink-0 snap-start rounded-xl p-2 ${stacked ? 'w-full' : stall ? 'w-[calc(100vw-1.5rem)] lg:w-[26rem]' : 'w-[calc(100vw-1.5rem)] sm:w-72'} ${hover === col.key ? 'bg-brand-50 ring-2 ring-brand-700' : 'bg-gray-100'} ${colDrag.drag?.key === col.key ? 'opacity-50' : ''}`}
       >
         {dropTarget && <span aria-hidden className={`absolute z-10 rounded bg-brand-700 ${stacked ? 'inset-x-0 h-1' : 'inset-y-0 w-1'} ${dropTarget.after ? (stacked ? '-bottom-1.5' : '-right-2') : stacked ? '-top-1.5' : '-left-2'}`} />}
         <header className={`flex items-center gap-1 ${isCollapsed ? '' : 'mb-2'}`}>
@@ -844,12 +847,12 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         </p>
       )}
 
-      <div ref={scroller} className="flex snap-x snap-mandatory items-start gap-2 overflow-x-auto pb-4 sm:snap-none sm:gap-3">
+      <div ref={scroller} className={`flex snap-x snap-mandatory items-start gap-2 overflow-x-auto pb-4 ${stall ? '' : 'sm:snap-none'} sm:gap-3`}>
         {buildLanes(shownColumns, collapsed).map((lane) =>
           lane.kind === 'column' ? (
             renderColumn(lane.col, false)
           ) : (
-            <div key={`stack:${lane.cols.map((c) => c.key).join('+')}`} className="w-[calc(100vw-1.5rem)] shrink-0 snap-start space-y-2 sm:w-64">
+            <div key={`stack:${lane.cols.map((c) => c.key).join('+')}`} className={`w-[calc(100vw-1.5rem)] shrink-0 snap-start space-y-2 ${stall ? 'lg:w-[26rem]' : 'sm:w-64'}`}>
               {lane.cols.map((c) => renderColumn(c, true))}
             </div>
           ),
@@ -1083,7 +1086,7 @@ function ColumnTotals({
                   </li>
                 ))}
               </ul>
-              <div className="mt-0.5 text-[11px] text-emerald-900">
+              <div className="mt-0.5 text-[0.73rem] text-emerald-900">
                 {meat.unknown > 0 ? `${meat.unknown} ohne Geburtsdatum · ` : ''}vor Abzügen {fr(meat.gross)} Fr.
               </div>
             </div>
@@ -1099,7 +1102,7 @@ function ColumnTotals({
               </dt>
               <dd className="text-right font-semibold tabular-nums text-gray-900">
                 {r.value}
-                {r.note && <span className="block text-[11px] font-normal text-amber-800">{r.note}</span>}
+                {r.note && <span className="block text-[0.73rem] font-normal text-amber-800">{r.note}</span>}
               </dd>
             </div>
           ))}

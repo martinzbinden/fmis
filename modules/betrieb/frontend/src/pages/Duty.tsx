@@ -25,8 +25,8 @@ const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 const KIND: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'frei', krank: 'krank', kurs: 'Kurs', schule: 'Schule', andere: 'abwesend' }
 const SEEN_KEY = 'wiesenjournal_duty_changes_seen'
 const dm = (iso: string) => `${DAYS[(new Date(`${iso}T12:00:00Z`).getUTCDay() + 6) % 7]} ${Number(iso.slice(8, 10))}.${Number(iso.slice(5, 7))}.`
-const field = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
-const btn = 'rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm active:bg-gray-100 disabled:opacity-40'
+const field = 'min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
+const btn = 'min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm active:bg-gray-100 disabled:opacity-40'
 
 /** Dienstname mit der Tierart voran, in der Farbe des Dienstes. */
 function TypeName({ t }: { t: Pick<DutyType, 'name' | 'animal' | 'color'> }) {
@@ -963,7 +963,7 @@ function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; re
             </span>
             {mayDelete(a) &&
               (confirmId === a.id ? (
-                <button type="button" className="rounded bg-red-600 px-2 py-1 text-xs text-white" onClick={() => void deleteAbsence(a.id).then(() => setConfirmId(null))}>
+                <button type="button" className="min-h-11 rounded-lg bg-red-600 px-3 py-1 text-sm text-white" onClick={() => void deleteAbsence(a.id).then(() => setConfirmId(null))}>
                   Wirklich löschen?
                 </button>
               ) : (
@@ -1229,7 +1229,7 @@ function Feeds({ d }: { d: DutyData }) {
                     >
                       {copied === l.token ? '✓ kopiert' : 'Kopieren'}
                     </button>
-                    <button type="button" className="text-xs text-red-700 underline" onClick={() => void call('/betrieb/duty/feed-token/revoke', { token: l.token }).then(load)}>
+                    <button type="button" className="link-btn px-1 text-sm text-red-700 underline" onClick={() => void call('/betrieb/duty/feed-token/revoke', { token: l.token }).then(load)}>
                       sperren
                     </button>
                   </>
@@ -1413,17 +1413,17 @@ function Settings({ d }: { d: DutyData }) {
                     Speichern
                   </button>
                   {confirmP === p.id ? (
-                    <button type="button" className="rounded bg-red-600 px-2 py-1 text-xs text-white" onClick={() => void deletePerson(p.id).then(() => setEditPerson(null))}>
+                    <button type="button" className="min-h-11 rounded-lg bg-red-600 px-3 py-1 text-sm text-white" onClick={() => void deletePerson(p.id).then(() => setEditPerson(null))}>
                       Wirklich löschen?
                     </button>
                   ) : (
-                    <button type="button" className="text-xs text-red-700 underline" onClick={() => setConfirmP(p.id)}>
+                    <button type="button" className="link-btn px-1 text-sm text-red-700 underline" onClick={() => setConfirmP(p.id)}>
                       löschen
                     </button>
                   )}
                 </>
               ) : (
-                <button type="button" className="flex-1 text-left" onClick={() => setEditPerson({ ...p, absence_with: absencePartner(people, p.id) })}>
+                <button type="button" className="min-h-11 flex-1 py-1 text-left" onClick={() => setEditPerson({ ...p, absence_with: absencePartner(people, p.id) })}>
                   <b className={p.active ? '' : 'text-gray-500 line-through'}>{p.name}</b> <span className="text-xs text-gray-500">{p.email ?? 'ohne FMIS-Konto'}</span>
                   {p.companion && <span className="ml-1 text-xs text-teal-800">🤝 begleitet</span>}
                   {p.employment_pct != null && (
@@ -1484,7 +1484,7 @@ function Settings({ d }: { d: DutyData }) {
                     {editType?.id === t.id ? (
                       <TypeEditor t={t} animals={animals} onDone={() => setEditType(null)} />
                     ) : (
-                      <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setEditType(t)}>
+                      <button type="button" className="flex min-h-11 w-full items-center gap-2 text-left" onClick={() => setEditType(t)}>
                         <span className="h-3 w-3 rounded-full" style={{ background: t.color ?? '#64748b' }} />
                         <span className={`flex-1 ${t.active ? '' : 'text-gray-500 line-through'}`}>{t.name}</span>
                         <span className="text-right text-xs tabular-nums text-gray-500">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_URL, getToken } from './auth'
 import { animalKey } from './earTag'
 import { errorText } from './toast'
+import { useKeepAwake } from './stallMode'
 
 // Zentrale Leser-Funktion (APR600 über den Server, core/backend/fmis_core/reader_scan.py)
 // für alle Stellen, an denen Tiernummern eingegeben werden. Das Formular bekommt jede
@@ -26,6 +27,9 @@ export interface TagRead {
   /** Vergleichsschlüssel wie animalKey(animals.ear_tag) */
   key: string | null
 }
+
+/** Ereignis mit der letzten Leser-Meldung (detail: ReaderFeedback & { reads }) für die Sperre im Stallmodus */
+export const READER_FEEDBACK_EVENT = 'fmis-reader-feedback'
 
 export type ReaderTone = 'ok' | 'warn' | 'error'
 export interface ReaderFeedback {
@@ -250,5 +254,10 @@ export function useTagReader(opts: TagReaderOptions): TagReader {
     }
   }, [])
 
+  // Bildschirm bleibt an, solange der Leser ein ist; die Sperre (StallLock.tsx) zeigt die letzte Lesung
+  useKeepAwake(on)
+  useEffect(() => {
+    if (on && message) window.dispatchEvent(new CustomEvent(READER_FEEDBACK_EVENT, { detail: { ...message, reads } }))
+  }, [on, message, reads])
   return { available, on, setOn: setOnPublic, phase, message, reads, ignored, takeIgnored, allowDuplicates, setAllowDuplicates }
 }

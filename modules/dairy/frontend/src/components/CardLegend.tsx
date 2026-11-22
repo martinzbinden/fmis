@@ -82,7 +82,7 @@ function Item({ sample, title, children }: { sample: ReactNode; title: string; c
   )
 }
 
-const chip = (cls: string, text: string) => <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${cls}`}>{text}</span>
+const chip = (cls: string, text: string) => <span className={`rounded px-1.5 py-0.5 text-[0.73rem] font-medium ${cls}`}>{text}</span>
 
 export default function CardLegend({ species, onClose }: { species: 'sheep' | 'cattle'; onClose: () => void }) {
   const sheep = species === 'sheep'
@@ -146,12 +146,12 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
             Das grüne Feld oben in jeder Spalte zeigt den geschätzten Fleischwert der ganzen Spalte als Balken mit Bereichen: <span className="font-semibold text-lime-700">hellgrün</span> Lämmer bis 120 Tage, <span className="font-semibold text-green-600">grün</span> Lämmer bis 210 Tage, <span className="font-semibold text-green-900">dunkelgrün</span> ältere Lämmer, <span className="font-semibold text-stone-600">grau</span> Schafe. Die Breite ist der Anteil am Wert der Spalte, darunter stehen Anzahl und Franken je Bereich.
           </Item>
         )}
-        <Item title="Milch" sample={<span className="text-[11px] text-gray-700">108 Pt – 105 % <span className="font-bold text-green-700">↗</span></span>}>
+        <Item title="Milch" sample={<span className="text-[0.73rem] text-gray-700">108 Pt – 105 % <span className="font-bold text-green-700">↗</span></span>}>
           <b>Pt</b>: Leistungsindex im Vergleich mit der ganzen Herde. 100 ist der Durchschnitt, 10 Punkte sind eine Streuung. Höher ist besser.<br />
           <b>%</b>: Leistung in Prozent der gleichaltrigen Tiere. 100 % ist gleich, mehr ist besser.<br />
           <b>Pfeil</b>: Tendenz über die Laktationen, nur bei mindestens zwei bewerteten Laktationen: <span className="font-bold text-green-700">↗</span> steigend, <span className="font-bold text-gray-600">→</span> stabil, <span className="font-bold text-red-700">↘</span> fallend (ab 5 Punkten je Laktation).
         </Item>
-        <Item title="Zellzahl" sample={<span className="text-[11px] text-gray-700">245'000 · 96 Pt (128 %)</span>}>
+        <Item title="Zellzahl" sample={<span className="text-[0.73rem] text-gray-700">245'000 · 96 Pt (128 %)</span>}>
           <b>Zahl</b>: Zellzahl im Mittel der letzten 12 Monate (geometrisches Mittel), Zellen/ml.<br />
           <b>Pt</b>: Zellzahl-Index im Vergleich mit der Herde. 100 ist der Durchschnitt, <i>höher ist besser</i> (tiefe Zellzahl gibt einen hohen Index).<br />
           <b>(%)</b>: Zellzahl in Prozent der Gleichaltrigen. 100 % ist gleich, <i>tiefer ist besser</i>, 128 % sind 28 % mehr Zellen als die Gleichaltrigen.
@@ -162,31 +162,31 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
           <span className="font-semibold text-red-600">Rote Linie</span>: Zellzahl im Mittel je Laktation (eigene Skala von 50'000 unten bis 2 Mio. oben, logarithmisch). Steigt die Linie, hat das Tier mehr Zellen.
         </Item>
         {sheep && (
-          <Item title="Milch der Lämmer" sample={<span className="text-[11px] text-gray-700">≈ 1.9 kg/Tag · 52 kg</span>}>
+          <Item title="Milch der Lämmer" sample={<span className="text-[0.73rem] text-gray-700">≈ 1.9 kg/Tag · 52 kg</span>}>
             Geschätzte Milch, die die Lämmer des letzten Wurfs bei der Mutter getrunken haben: Zuwachs zwischen der ersten Wägung (Geburt oder Ohrmarke) und dem Absetzen oder Wegnehmen, mal Milchfaktor (Vorgabe 5 kg Milch je kg Zuwachs). Es zählt nur bis zum Alter von 35 Tagen und bis zur Umstellung auf Eimer. «1 ohne Wägung» heisst, bei einem Lamm fehlt eine Wägung. Eine Näherung, keine Messung.
           </Item>
         )}
-        <Item title="Lebenstagleistung" sample={<span className="text-[11px] text-gray-700">0.84 kg</span>}>
+        <Item title="Lebenstagleistung" sample={<span className="text-[0.73rem] text-gray-700">0.84 kg</span>}>
           Milch je Lebenstag in kg.
         </Item>
-        <Item title={sheep ? 'Zuchtwert (GZW)' : 'Zuchtwert (ISET)'} sample={<span className="text-[11px] text-gray-700">112</span>}>
+        <Item title={sheep ? 'Zuchtwert (GZW)' : 'Zuchtwert (ISET)'} sample={<span className="text-[0.73rem] text-gray-700">112</span>}>
           Gesamtzuchtwert aus dem Herdebuch, höher ist besser.
         </Item>
-        <Item title="Zuchtwert aus Abstammung" sample={<span className="text-[11px] font-medium italic text-violet-800">≈ 106 <span className="not-italic rounded bg-violet-100 px-1 text-[10px] font-semibold">Schätzung</span></span>}>
+        <Item title="Zuchtwert aus Abstammung" sample={<span className="text-[0.73rem] font-medium italic text-violet-800">≈ 106 <span className="not-italic rounded bg-violet-100 px-1 text-[0.73rem] font-semibold">Schätzung</span></span>}>
           Tiere ohne eigenen Zuchtwert bekommen eine eigene Schätzung: das Mittel von Mutter und Vater. Ist ein Elternteil unbekannt oder ohne Zuchtwert, zählt er als 100 (Mittel), der bekannte Elternteil also nur halb. Violett und kursiv, damit sie nie mit einem gemessenen Zuchtwert verwechselt wird. Der Tooltip nennt die Elternwerte. Gemessene Werte gehen vor, die Schätzung fliesst nirgends in Ausmerzliste oder Filter ein.
         </Item>
         {sheep && (
-          <Item title="Wurf" sample={<span className="text-[11px] text-gray-700">letzter 3 · Ø 2.3</span>}>
+          <Item title="Wurf" sample={<span className="text-[0.73rem] text-gray-700">letzter 3 · Ø 2.3</span>}>
             Grösse des letzten Wurfs (inklusive tot Geborene) und Mittel aller Würfe.
           </Item>
         )}
-        <Item title={sheep ? 'Ablammung' : 'Abkalbung'} sample={<span className="text-[11px] text-gray-700">21.10.2026 (24 Tage)</span>}>
+        <Item title={sheep ? 'Ablammung' : 'Abkalbung'} sample={<span className="text-[0.73rem] text-gray-700">21.10.2026 (24 Tage)</span>}>
           Datum der letzten Geburt und die Tage seither.
         </Item>
-        <Item title="Wägungen" sample={<span className="text-[11px] text-gray-700">4</span>}>
+        <Item title="Wägungen" sample={<span className="text-[0.73rem] text-gray-700">4</span>}>
           Anzahl Milchwägungen (Prüfungen) der laufenden Laktation, also seit der letzten Geburt.
         </Item>
-        <Item title={sheep ? 'Zwischenablammzeit' : 'Zwischenkalbezeit'} sample={<span className="text-[11px] text-gray-700">Ø 362 Tage</span>}>
+        <Item title={sheep ? 'Zwischenablammzeit' : 'Zwischenkalbezeit'} sample={<span className="text-[0.73rem] text-gray-700">Ø 362 Tage</span>}>
           Mittlere Tage zwischen zwei Geburten, ab zwei Geburten.
         </Item>
         <Item title="Farbiger Rand" sample={<span className="h-6 w-14 rounded-md border-2 border-orange-400 bg-orange-50" />}>

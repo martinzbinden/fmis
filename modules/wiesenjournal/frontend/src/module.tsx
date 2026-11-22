@@ -30,6 +30,7 @@ function Agff({ children }: { children: ReactNode }) {
   )
 }
 import { wiesenjournalYearSummary } from './lib/yearSummary'
+import { searchParcels } from './lib/search'
 
 // Bis 2026-10 lagen Dienste, Tracking, Maschinen, Arbeitsplan und Herden im
 // Wiesenjournal. Alte Links/Lesezeichen (auch Mail-/Kalender-Links) leiten
@@ -57,6 +58,7 @@ const wiesenjournalModule: ModuleDescriptor = {
     { to: 'mehr', label: 'Mehr', icon: '☰' },
   ],
   historyPermission: 'wiesenjournal:history:read',
+  search: searchParcels,
   pageTitles: {
     duengerarten: 'Düngerarten',
     heute: 'Heute',

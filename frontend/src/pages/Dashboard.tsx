@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import AdminMenu from '@fmis/core/AdminMenu'
 import NotificationBell from '@fmis/core/NotificationBell'
+import { SearchButton, SearchField } from '@fmis/core/GlobalSearch'
+import { useStallMode } from '@fmis/core/stallMode'
 import ProfileMenu from '@fmis/core/ProfileMenu'
 import { refreshMyLinks, useMyLinks } from '@fmis/core/myLinks'
 import type { ModuleDescriptor, ModuleGroup, QuickLink } from '@fmis/core/ModuleDescriptor'
@@ -40,6 +42,7 @@ export default function Dashboard({
     void refreshMyLinks()
   }, [])
   const myLinks = useMyLinks()
+  const stall = useStallMode()
   const tiles = (section: 'top' | 'maschinen') =>
     modules.flatMap((m) => (m.dashboardTiles ?? []).filter((t) => t.section === section).map(({ Tile }, i) => <Tile key={`${m.key}-${section}-${i}`} />))
 
@@ -48,17 +51,21 @@ export default function Dashboard({
       <header data-app-header className="sticky top-0 z-20 flex items-center justify-between border-b bg-white py-1 pl-4 pr-2">
         <h1 className="text-lg font-bold text-brand-800">FMIS</h1>
         <div className="flex items-center gap-1">
-          {modules.flatMap((m) => (m.quickLinks ?? []).map((l) => <QuickLinkIcon key={`${m.key}-${l.to}`} link={l} />))}
-          {canImport && (
+          <SearchButton />
+          {!stall && modules.flatMap((m) => (m.quickLinks ?? []).map((l) => <QuickLinkIcon key={`${m.key}-${l.to}`} link={l} />))}
+          {canImport && !stall && (
             <ImportButton className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" />
           )}
           <NotificationBell />
-          <AdminMenu />
+          {!stall && <AdminMenu />}
           <ProfileMenu onLoggedOut={onLoggedOut} />
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-md flex-1 p-4">
+        <div className="mb-4">
+          <SearchField />
+        </div>
         {/* Meine Links: nur für die angemeldete Person (Profil → Meine Links) */}
         {myLinks && myLinks.length > 0 && (
           <section aria-label="Meine Links" className="mb-4 flex flex-wrap gap-2">

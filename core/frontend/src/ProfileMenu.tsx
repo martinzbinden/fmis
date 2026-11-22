@@ -10,6 +10,7 @@ import { errorText, notifyError } from './toast'
 import { useViewAs } from './viewAs'
 import { useEffect, useState } from 'react'
 import { addMyLink, refreshMyLinks, removeMyLink, useMyLinks } from './myLinks'
+import { setStallMode, useStallMode } from './stallMode'
 
 /** Anfangsbuchstabe der E-Mail im runden Symbol (ohne Namen im Konto) */
 function initial(email: string | undefined): string {
@@ -17,14 +18,18 @@ function initial(email: string | undefined): string {
 }
 
 /** 👤 in der Kopfzeile: nur ein Menü (öffnet selbst nichts) mit Profil und Abmelden; Platz für weitere Einträge. */
-export default function ProfileMenu({ onLoggedOut }: { onLoggedOut: () => void }) {
+export default function ProfileMenu({ onLoggedOut, onHistory }: { onLoggedOut: () => void; /** Verlauf des Moduls öffnen (am Handy und im Stallmodus steht 📜 hier statt in der Kopfzeile) */ onHistory?: () => void }) {
   const user = useAuthUser()
+  const stall = useStallMode()
+  const unread = useNotifications()?.unread ?? 0
   return (
     <HeaderMenu
-      label={user ? `Benutzer ${user.email}` : 'Benutzer'}
+      label={user ? `Benutzer ${user.email}${stall && unread ? `, ${unread} ungelesene Benachrichtigungen` : ''}` : 'Benutzer'}
       icon={
-        <span aria-hidden className="grid h-8 w-8 place-items-center rounded-full bg-brand-700 text-sm font-bold text-white">
+        <span aria-hidden className="relative grid h-8 w-8 place-items-center rounded-full bg-brand-700 text-sm font-bold text-white">
           {initial(user?.email)}
+          {/* im Stallmodus steht die Glocke hier im Menü: ungelesene als Punkt am Symbol */}
+          {stall && unread > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[11px] font-bold">{unread}</span>}
         </span>
       }
       width="w-64"
@@ -35,6 +40,22 @@ export default function ProfileMenu({ onLoggedOut }: { onLoggedOut: () => void }
             <div className="border-b px-3 pb-2 pt-1.5">
               <div className="truncate text-sm font-semibold text-gray-900">{user.email}</div>
               {user.role && <div className="text-xs text-gray-600">{user.role}</div>}
+            </div>
+          )}
+          <MenuItem onSelect={() => setStallMode(!stall)}>
+            <span aria-hidden>🧤</span> Stallmodus: {stall ? 'an' : 'aus'}
+            <span className="ml-auto text-xs text-gray-600">{stall ? 'ausschalten' : 'grösser, schlanker'}</span>
+          </MenuItem>
+          {stall && (
+            <MenuItem onSelect={() => (close(), openPanel('benachrichtigungen'))}>
+              <span aria-hidden>🔔</span> Benachrichtigungen{unread > 0 ? ` (${unread})` : ''}
+            </MenuItem>
+          )}
+          {onHistory && (
+            <div className={stall ? '' : 'sm:hidden'}>
+              <MenuItem onSelect={() => (close(), onHistory())}>
+                <span aria-hidden>📜</span> Verlauf
+              </MenuItem>
             </div>
           )}
           <MenuItem onSelect={() => (close(), openPanel('profil'))}>

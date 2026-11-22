@@ -5,6 +5,7 @@ import type { ModuleImporter } from './upload'
 import type { AnimalProvider, HerdLocator } from './animals'
 import type { PasteImporter } from './pasteImport'
 import type { YearSection } from './yearSummary'
+import type { FunctionEntry, SearchHit } from './search'
 
 export interface NavItem {
   to: string
@@ -92,4 +93,9 @@ export interface ModuleDescriptor {
   /** Kennzahlen und Diagramme eines Jahres für die Jahresübersicht
    * (frontend/src/pages/YearOverview.tsx, core/frontend/src/yearSummary.ts). */
   yearSummary?: (year: number) => Promise<YearSection | null>
+  /** Seiten für die Suche über alles (Gruppe «Funktionen»), mit Symbol und Suchwörtern. Ohne Angabe gelten
+   * Fussleiste und Seitentitel (core/frontend/src/search.ts moduleFunctions). */
+  functions?: FunctionEntry[]
+  /** Weitere Treffer für die Suche über alles, z.B. Tiergruppen, Parzellen, Maschinen (lokale Datenbank). */
+  search?: (q: string) => Promise<SearchHit[]>
 }

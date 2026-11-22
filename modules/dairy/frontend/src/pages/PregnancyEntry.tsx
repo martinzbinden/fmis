@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useKeepAwake } from '@fmis/core/stallMode'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
@@ -96,6 +97,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     const r = readJson<PregnancyRound>(roundKey(moduleKey))
     return r ? { ...r, unit: r.unit ?? 'wochen' } : null
   })
+  // laufender Durchgang: Bildschirm bleibt an
+  useKeepAwake(round != null)
   function setRound(r: PregnancyRound | null) {
     setRoundState(r)
     writeJson(roundKey(moduleKey), r)

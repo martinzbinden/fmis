@@ -114,13 +114,13 @@ export default function AnimalTable({ animals, storageKey }: { animals: AnimalRo
   return (
     <div className="space-y-2">
       <details className="text-xs text-gray-600">
-        <summary className="cursor-pointer select-none">
+        <summary className="flex min-h-11 cursor-pointer select-none items-center">
           Spalten ({visible.length} von {COLUMNS.length})
         </summary>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 rounded bg-white p-2 shadow-sm">
           {COLUMNS.map((c) => (
-            <label key={c.key} className="flex items-center gap-1">
-              <input type="checkbox" checked={columns.includes(c.key)} onChange={() => toggleColumn(c.key)} className="h-3.5 w-3.5" />
+            <label key={c.key} className="flex min-h-11 items-center gap-1.5">
+              <input type="checkbox" checked={columns.includes(c.key)} onChange={() => toggleColumn(c.key)} className="h-5 w-5" />
               {c.label}
             </label>
           ))}
@@ -134,7 +134,7 @@ export default function AnimalTable({ animals, storageKey }: { animals: AnimalRo
                 <th
                   key={c.key}
                   onClick={() => handleSort(c.key)}
-                  className={`cursor-pointer select-none whitespace-nowrap px-3 py-2 font-medium active:bg-gray-100 ${
+                  className={`h-11 cursor-pointer select-none whitespace-nowrap px-3 py-2 font-medium active:bg-gray-100 ${
                     sortKey === c.key ? 'text-brand-700' : ''
                   }`}
                 >
@@ -150,7 +150,7 @@ export default function AnimalTable({ animals, storageKey }: { animals: AnimalRo
                 {visible.map((c) => (
                   <td
                     key={c.key}
-                    className={`whitespace-nowrap px-3 py-1.5 ${c.key === 'name' || c.key === 'ear_tag' ? 'font-medium text-gray-800' : c.key === 'lauf_nr' ? 'text-base font-bold text-gray-800' : ''}`}
+                    className={`h-12 whitespace-nowrap px-3 py-1 ${c.key === 'name' || c.key === 'ear_tag' ? 'font-medium text-gray-800' : c.key === 'lauf_nr' ? 'text-base font-bold text-gray-800' : ''}`}
                   >
                     {c.key === 'status' ? (
                       <span
@@ -161,7 +161,7 @@ export default function AnimalTable({ animals, storageKey }: { animals: AnimalRo
                         {a.status}
                       </span>
                     ) : c.key === 'name' || c.key === 'ear_tag' || c.key === 'lauf_nr' ? (
-                      <Link to={a.id} className="hover:text-brand-700 hover:underline">
+                      <Link to={a.id} className="-my-1 flex min-h-12 items-center hover:text-brand-700 hover:underline">
                         {cellText(c, a) || '–'}
                       </Link>
                     ) : (

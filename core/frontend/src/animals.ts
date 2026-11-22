@@ -5,6 +5,7 @@
 // Shell registriert die aktivierten beim Start (frontend/src/App.tsx).
 
 import { syncModuleNow } from './sync'
+import type { SearchAction } from './search'
 
 export type HerdSpecies = 'schafe' | 'rinder'
 
@@ -53,6 +54,8 @@ export interface AnimalProvider {
   dryOff?(animalIds: string[], date: string, note: string): Promise<void>
   /** Offene Merklisten mit ihren Tieren (z.B. um sie einer Tiergruppe zuzuteilen). */
   listWatchlists?(): Promise<{ id: string; name: string; animalIds: string[] }[]>
+  /** Suche über alles: wohin ein Tier-Treffer führt und welche Direktknöpfe er hat (z.B. Behandlung, Belegung). */
+  searchLinks?(a: AnimalRef): { to: string; actions?: SearchAction[] }
 }
 
 /** Merklisten aller Tiermodule einer Tierart (Name mit Modul, falls mehrere). */

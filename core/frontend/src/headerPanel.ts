@@ -3,7 +3,7 @@
 
 import { useSyncExternalStore } from 'react'
 
-export type PanelKey = 'status' | 'import' | 'verlauf' | 'benachrichtigungen' | 'profil'
+export type PanelKey = 'status' | 'import' | 'verlauf' | 'benachrichtigungen' | 'profil' | 'suche'
 
 let open: PanelKey | null = null
 /** nächster Seitenwechsel schliesst nicht (z.B. /import öffnet und springt zurück) */

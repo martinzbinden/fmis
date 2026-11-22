@@ -13,6 +13,7 @@ import { isoDate, localTodayIso, num } from './format'
 import { loadHerdContext } from './herdContext'
 import { loadNursingDams } from './lambs'
 import { speciesOf } from './species'
+import { animalSearchLinks } from './search'
 
 export function createDairyAnimalProvider(moduleKey: string, title: string): AnimalProvider {
   const species = speciesOf(moduleKey) === 'sheep' ? 'schafe' : 'rinder'
@@ -49,6 +50,7 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
         }
       })
     },
+    searchLinks: (a) => animalSearchLinks(moduleKey, a.id),
     async listWatchlists() {
       const pg = await getDb(moduleKey)
       const { rows } = await pg.query<{ id: string; name: string; animal_ids: string[] | null }>(

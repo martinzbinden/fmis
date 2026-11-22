@@ -6,8 +6,10 @@ import UpdatePrompt from './UpdatePrompt.tsx'
 import './index.css'
 import { requestPersistentStorage } from '@fmis/core/storagePersist'
 import { checkInstance, datenstandText } from '@fmis/core/instance'
+import { initStallMode } from '@fmis/core/stallMode'
 
 void requestPersistentStorage()
+initStallMode()
 
 // Testumgebung: vor dem Öffnen der lokalen Datenbank den Datenstand prüfen (core/instance.ts)
 void checkInstance().then((info) => {

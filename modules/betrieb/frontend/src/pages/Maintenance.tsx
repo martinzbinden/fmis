@@ -100,7 +100,7 @@ export default function Maintenance() {
   return (
     <div className="mx-auto max-w-3xl space-y-3 p-4 pb-24">
       <div>
-        <Link to="../maschinen" className="text-sm text-brand-700">
+        <Link to="../maschinen" className="link-btn text-sm text-brand-700">
           ← Maschinen
         </Link>
         <h1 className="text-xl font-bold text-gray-800">Wartungsjournal</h1>
@@ -116,7 +116,7 @@ export default function Maintenance() {
               key={c}
               type="button"
               onClick={() => setView({ category: c })}
-              className={`rounded-lg px-3 py-1.5 text-sm ${view.category === c ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}
+              className={`min-h-11 rounded-lg px-3 py-1.5 text-sm ${view.category === c ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}
             >
               {c === 'alle' ? 'Alle' : `${CATEGORY_ICON[c]} ${CATEGORY_LABEL[c]}`} <span className="opacity-70">{n}</span>
               {due > 0 && <span className="ml-1 rounded bg-red-600 px-1 text-xs font-semibold text-white">{due}</span>}
@@ -131,15 +131,15 @@ export default function Maintenance() {
             key={t}
             type="button"
             onClick={() => setView({ tab: t })}
-            className={`rounded px-2 py-0.5 ${view.tab === t ? 'bg-gray-800 text-white' : 'border border-gray-300 text-gray-600'}`}
+            className={`min-h-11 rounded-lg px-3 py-1 ${view.tab === t ? 'bg-gray-800 text-white' : 'border border-gray-300 text-gray-600'}`}
           >
             {t === 'plan' ? 'Fälligkeiten' : 'Journal & Kosten'}
           </button>
         ))}
         {view.tab === 'plan' && (
           <>
-            <label className="flex items-center gap-1 text-xs text-gray-600">
-              <input type="checkbox" checked={view.onlyDue} onChange={(e) => setView({ onlyDue: e.target.checked })} />
+            <label className="flex min-h-11 items-center gap-1.5 text-sm text-gray-600">
+              <input type="checkbox" className="h-5 w-5" checked={view.onlyDue} onChange={(e) => setView({ onlyDue: e.target.checked })} />
               nur fällige, bald fällige und Pendenzen
             </label>
             <span className="flex gap-1 text-xs">
@@ -168,7 +168,7 @@ export default function Maintenance() {
             {withoutPlan.length} {withoutPlan.length === 1 ? 'Maschine hat' : 'Maschinen haben'} noch keinen Wartungsplan. Die Standard-Pläne enthalten übliche
             Intervalle (Ölwechsel, Filter, Abschmieren, Kontrollen) — danach an die Betriebsanleitung anpassen.
           </span>
-          <button type="button" disabled={busy} onClick={() => void applyAll()} className="rounded-lg bg-sky-700 px-3 py-1.5 text-white disabled:opacity-50">
+          <button type="button" disabled={busy} onClick={() => void applyAll()} className="min-h-11 rounded-lg bg-sky-700 px-3 py-1.5 text-white disabled:opacity-50">
             {busy ? 'Übernimmt…' : 'Standard-Pläne übernehmen'}
           </button>
         </div>
@@ -186,7 +186,7 @@ export default function Maintenance() {
                     setOpen(new Set(open).add(m.id))
                     setTimeout(() => document.getElementById(`wartung-${m.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
                   }}
-                  className="w-full py-1.5 text-left"
+                  className="min-h-11 w-full py-1.5 text-left"
                 >
                   <TodoLine todo={t} machineName={m.name} today={today} />
                 </button>
@@ -242,7 +242,7 @@ export default function Maintenance() {
                       canWrite={canWrite}
                       onChanged={refresh}
                     />
-                    <Link to={`../maschinen/${m.id}`} className="mt-2 inline-block text-xs text-brand-700">
+                    <Link to={`../maschinen/${m.id}`} className="link-btn mt-1 text-sm text-brand-700">
                       Maschine →
                     </Link>
                   </div>

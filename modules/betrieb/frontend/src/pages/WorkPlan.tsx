@@ -194,7 +194,7 @@ function TaskCard({
       )}
       {canWrite && (
         <div className="flex flex-wrap gap-2 border-t pt-3">
-          <button type="button" onClick={onComplete} className="flex-1 rounded-lg border border-green-600 px-3 py-2 text-sm font-medium text-green-700">
+          <button type="button" onClick={onComplete} className="min-h-11 flex-1 rounded-lg border border-green-600 px-3 py-2 text-sm font-medium text-green-700">
             ✓ Erledigt erfassen
           </button>
           <button
@@ -202,7 +202,7 @@ function TaskCard({
             onClick={() => {
               if (confirm(`Plan «${task.title}» (${task.items.length} ${task.items.length === 1 ? 'Parzelle' : 'Parzellen'}) löschen? Bereits Erledigtes bleibt.`)) onDelete()
             }}
-            className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700"
+            className="min-h-11 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700"
           >
             Plan löschen
           </button>
@@ -296,11 +296,11 @@ export default function WorkPlan() {
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Arbeitsplan</h1>
         <span className="flex items-baseline gap-3">
-          <Link to="../maschinen" className="text-sm text-brand-700">
+          <Link to="../maschinen" className="link-btn text-sm text-brand-700">
             Maschinen
           </Link>
           {canWrite && (
-            <button type="button" onClick={() => setCreating(true)} className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white">
+            <button type="button" onClick={() => setCreating(true)} className="min-h-11 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white">
               + Arbeit planen
             </button>
           )}
@@ -329,16 +329,16 @@ export default function WorkPlan() {
           </ul>
           <div className="flex flex-wrap gap-2">
             {recording ? (
-              <button type="button" onClick={() => navigate('../tracking')} className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white">
+              <button type="button" onClick={() => navigate('../tracking')} className="min-h-11 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white">
                 🧭 Tracking öffnen
               </button>
             ) : (
               canTrack && (
                 <>
-                  <button type="button" onClick={() => record(active)} className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white">
+                  <button type="button" onClick={() => record(active)} className="min-h-11 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white">
                     ▶ Aufzeichnung fortsetzen
                   </button>
-                  <button type="button" onClick={() => setFinishing(true)} className="rounded border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium">
+                  <button type="button" onClick={() => setFinishing(true)} className="min-h-11 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium">
                     Ausführung abschliessen
                   </button>
                 </>
@@ -362,7 +362,7 @@ export default function WorkPlan() {
               key={d}
               type="button"
               onClick={() => setChosen(d)}
-              className={`rounded-full px-3 py-1 text-sm ${
+              className={`min-h-11 rounded-full px-3 py-1 text-sm ${
                 d === date ? 'bg-brand-700 text-white' : d < today ? 'bg-amber-100 text-amber-900' : 'bg-gray-100 text-gray-700'
               }`}
             >

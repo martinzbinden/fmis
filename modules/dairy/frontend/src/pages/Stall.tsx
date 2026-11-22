@@ -223,7 +223,7 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
       )}
 
       <details className="rounded-xl bg-white p-3 shadow-sm">
-        <summary className="cursor-pointer font-semibold text-gray-800">⚙️ Regeln für die Hinweise</summary>
+        <summary className="flex min-h-11 cursor-pointer items-center font-semibold text-gray-800">⚙️ Regeln für die Hinweise</summary>
         <RulesForm species={species} rules={rules} onChange={update} onReset={reset} />
       </details>
 

@@ -1288,7 +1288,7 @@ function BankTable({
                 <th className="px-1 py-0.5 text-right">
                   <span className="flex items-center justify-end gap-1">
                     {canWrite && slots.length > 0 && (
-                      <button type="button" onClick={startEdit} title="Reihenfolge ändern, Notiz, Zeile löschen" className="min-h-9 rounded px-2 text-xs font-medium text-brand-700">
+                      <button type="button" onClick={startEdit} title="Reihenfolge ändern, Notiz, Zeile löschen" className="min-h-11 rounded px-2 text-sm font-medium text-brand-700">
                         ✎ Bearbeiten
                       </button>
                     )}
@@ -1441,7 +1441,7 @@ function BankTable({
                     <button
                       type="button"
                       onClick={() => canWrite && openNote(s)}
-                      className="flex items-center gap-1 text-left text-xs text-gray-600"
+                      className="flex min-h-11 items-center gap-1 text-left text-xs text-gray-600"
                       title="Notiz zur Wägung (wird ins Journal des Tiers kopiert)"
                     >
                       <span className="text-gray-500">✎</span>

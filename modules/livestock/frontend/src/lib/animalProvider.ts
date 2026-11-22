@@ -29,4 +29,5 @@ export const livestockAnimalProvider: AnimalProvider = {
       fattening: true,
     }))
   },
+  searchLinks: (a) => ({ to: `/livestock/tiere/${a.id}` }),
 }

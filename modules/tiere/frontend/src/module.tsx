@@ -11,6 +11,7 @@ import History from './pages/History'
 import { herdLocator } from './lib/herds'
 import { tiereYearSummary } from './lib/yearSummary'
 import './theme.css'
+import { searchHerds } from './lib/search'
 
 function TiereDbProvider({ children }: { children: ReactNode }) {
   return <DbProvider getDb={getDb}>{children}</DbProvider>
@@ -31,6 +32,7 @@ const tiereModule: ModuleDescriptor = {
   ],
   pageTitles: { auslauf: 'Auslaufjournal', weide: 'Weidenutzung' },
   historyPermission: 'tiere:history:read',
+  search: searchHerds,
   importActions: [{ to: '/tiere?lesegeraet=gruppen', label: '📡 Gruppen vom Lesegerät', hint: 'Gruppen im APR600 ansehen, wählen und als Tiergruppen anlegen', permission: 'tiere:herden:write' }],
   routes: [
     { path: '', element: <Herds /> },
