@@ -189,6 +189,8 @@ export async function cancelWorkTask(t: WorkTask): Promise<void> {
 export interface Completion {
   date: string
   notes: string
+  /** Shop-Arbeit: Nummer des eben erstellten Lieferscheins */
+  deliveryNoteNo?: string | null
   /** Stalljournal (Tiere) */
   category?: string
   medication?: string
@@ -222,6 +224,12 @@ export async function completeWorkTask(t: WorkTask, c: Completion): Promise<stri
   const by = c.doneBy?.trim() || getCurrentUserEmail()
   const text = [t.title, c.notes.trim()].filter(Boolean).join(': ')
   const refs: string[] = []
+  // Shop-Arbeit: nach dem Abschluss bleibt nur der Verweis «Anfrage CODE», keine Kontaktdaten (der Shop löscht sie auch)
+  const shop = t.source === 'shop'
+  const shopRef = shop ? (t.notes ?? '').split('\n')[0].trim() || 'Shop-Anfrage' : null
+  const customer = shop ? [shopRef, c.deliveryNoteNo ? `Lieferschein ${c.deliveryNoteNo}` : null].filter(Boolean).join(' · ') : t.customer
+  const taskNotes = shop ? shopRef : t.notes
+  if (c.deliveryNoteNo) refs.push(`Lieferschein ${c.deliveryNoteNo} im Shop`)
   const rest: TaskTarget[] = t.targets.filter((x) => x.kind !== 'tier' && x.kind !== 'gruppe')
   const quantity = c.quantity !== undefined ? c.quantity : t.quantity
 
@@ -252,9 +260,9 @@ export async function completeWorkTask(t: WorkTask, c: Completion): Promise<stri
       targets: JSON.stringify(t.area === 'tiere' ? rest : t.targets),
       quantity,
       unit: t.unit,
-      notes: c.notes.trim() || t.notes,
+      notes: c.notes.trim() || taskNotes,
       task_id: t.id,
-      customer: t.customer,
+      customer,
       done_by: by,
       created_by: getCurrentUserEmail(),
       deleted_at: null,
@@ -273,7 +281,7 @@ export async function completeWorkTask(t: WorkTask, c: Completion): Promise<stri
       cost_chf: null,
       material: null,
       done_by: by,
-      notes: c.notes.trim() || t.notes,
+      notes: c.notes.trim() || taskNotes,
       deleted_at: null,
     } as never)
     refs.push(`Maschinenjournal ${m.label}`)
@@ -282,6 +290,8 @@ export async function completeWorkTask(t: WorkTask, c: Completion): Promise<stri
   await upsertRow('work_tasks', {
     ...t,
     targets: JSON.stringify(t.targets),
+    customer,
+    notes: taskNotes,
     quantity,
     status: 'erledigt',
     done_date: c.date,

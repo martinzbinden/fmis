@@ -6,6 +6,7 @@ import PhotoInput from '@fmis/core/PhotoInput'
 import PhotoStrip from '@fmis/core/PhotoStrip'
 import type { PreparedPhoto } from '@fmis/core/photos'
 import { addPhotos, PHOTO_MODULE } from '../lib/photoRefs'
+import { createDeliveryNote, searchShopCustomers, type ShopCustomer } from '../lib/shop'
 import { fmtDate, todayIso } from '../lib/format'
 import { activityByTitle, AREA_ICON, AREA_LABEL, cancelWorkTask, completeWorkTask, STABLE_CATEGORIES, targetIcon, type FarmJournalEntry, type FollowUpOrigin, type TaskArea, type WorkTask } from '../lib/workTasks'
 
@@ -50,7 +51,7 @@ export function WorkTaskCard({
           </div>
           {task.source === 'nachfolge' && <div className="text-sm font-medium text-amber-800">Pendenz{originTitle ? ` aus «${originTitle}»` : ''}</div>}
           {task.customer && <div className="text-sm text-gray-700">für {task.customer}</div>}
-          {task.notes && <div className="text-sm text-gray-600">{task.notes}</div>}
+          {task.notes && <div className="whitespace-pre-line text-sm text-gray-600">{task.notes}</div>}
         </div>
       </div>
       {task.targets.length > 0 && (
@@ -96,6 +97,12 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
   const [doneBy, setDoneBy] = useState(getCurrentUserEmail() ?? '')
   const [photos, setPhotos] = useState<PreparedPhoto[]>([])
   const [followUp, setFollowUp] = useState(false)
+  // Arbeit aus einer Shop-Anfrage: Lieferschein im Shop erstellen (auf einen Shop-Kunden, sonst den Sammelkunden)
+  const fromShop = task.source === 'shop'
+  const [withNote, setWithNote] = useState(fromShop)
+  const [custQ, setCustQ] = useState('')
+  const [custHits, setCustHits] = useState<ShopCustomer[] | null>(null)
+  const [cust, setCust] = useState<ShopCustomer | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   async function save() {
@@ -103,9 +110,15 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
     setErr(null)
     try {
       const q = quantity.trim() ? Number(quantity.replace(',', '.')) : null
+      // zuerst der Lieferschein (braucht Verbindung): schlägt er fehl, bleibt die Arbeit offen
+      let deliveryNoteNo: string | null = null
+      if (fromShop && withNote) {
+        const r = await createDeliveryNote(task.id, { customer_id: cust?.id ?? null, quantity: q != null && Number.isFinite(q) && q !== task.quantity ? q : null, delivered_on: date, note: notes.trim() || null })
+        deliveryNoteNo = r.delivery_note_no
+      }
       // Fotos gehören zur Arbeit: Betriebs- und Stalljournal zeigen sie über die Arbeit (task_id bzw. ref_id)
       if (photos.length) await addPhotos('work_task', task.id, photos)
-      const refs = await completeWorkTask(task, { date, notes, category, medication, dose, doneBy, quantity: q != null && Number.isFinite(q) ? q : null })
+      const refs = await completeWorkTask(task, { date, notes, category, medication, dose, doneBy, quantity: q != null && Number.isFinite(q) ? q : null, deliveryNoteNo })
       onDone(photos.length ? [...refs, `${photos.length} ${photos.length === 1 ? 'Foto' : 'Fotos'}`] : refs, followUp)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -156,6 +169,55 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
           <span className="text-gray-600">Was gemacht, Befund</span>
           <textarea className={`${field} w-full`} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
+        {fromShop && (
+          <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-2">
+            <label className="flex min-h-11 items-center gap-2 font-medium text-gray-900">
+              <input type="checkbox" className="h-5 w-5" checked={withNote} onChange={(e) => setWithNote(e.target.checked)} />
+              Lieferschein im Shop erstellen
+            </label>
+            {withNote && (
+              <>
+                <p className="text-xs text-gray-700">
+                  Auf: <b>{cust ? cust.company_name : 'Sammelkunde (Name und Adresse der Anfrage als Notiz)'}</b>
+                  {cust && (
+                    <button type="button" className="ml-2 underline" onClick={() => setCust(null)}>
+                      Sammelkunde
+                    </button>
+                  )}
+                </p>
+                <div className="flex gap-2">
+                  <input className={`${field} min-w-0 flex-1`} value={custQ} onChange={(e) => setCustQ(e.target.value)} placeholder="Shop-Kunde suchen (optional)" />
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-lg border border-gray-300 bg-white px-3"
+                    disabled={!custQ.trim()}
+                    onClick={() =>
+                      void searchShopCustomers(custQ.trim())
+                        .then(setCustHits)
+                        .catch((e: unknown) => setErr(e instanceof Error ? e.message : String(e)))
+                    }
+                  >
+                    Suchen
+                  </button>
+                </div>
+                {custHits && (
+                  <ul className="max-h-40 divide-y overflow-y-auto rounded-lg border bg-white">
+                    {custHits.length === 0 && <li className="px-2 py-2 text-gray-600">Kein Kunde gefunden.</li>}
+                    {custHits.filter((c) => c.active).map((c) => (
+                      <li key={c.id}>
+                        <button type="button" className="flex min-h-11 w-full flex-col justify-center px-2 text-left active:bg-gray-50" onClick={() => (setCust(c), setCustHits(null))}>
+                          <span className="font-medium">{c.company_name}</span>
+                          {c.delivery_address && <span className="truncate text-xs text-gray-600">{c.delivery_address.replace(/\n/g, ', ')}</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-gray-600">Braucht Verbindung. Ohne Empfang: Häkchen entfernen und den Lieferschein später im Shop-Backoffice erstellen.</p>
+              </>
+            )}
+          </div>
+        )}
         <PhotoInput photos={photos} onChange={setPhotos} />
         <label className="block">
           <span className="text-gray-600">Ausgeführt von</span>

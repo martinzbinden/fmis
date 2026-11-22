@@ -6,6 +6,7 @@ import { undoAction } from '@fmis/core/undo'
 import { getSyncedDb as getFieldsDb } from '@fmis/fields/db/access'
 import { useQuery } from '../hooks/useQuery'
 import { softDeleteRow, upsertRow } from '../db/write'
+import ShopSettings from '../components/ShopSettings'
 
 export interface FarmNumber {
   id: string
@@ -99,6 +100,7 @@ const empty = (): Omit<FarmNumber, 'id'> & { id: string | null } => ({ id: null,
 /** Betriebsdaten: Nummern für Formulare und Ämter an einem Ort, zum Kopieren. */
 export default function FarmData() {
   const { data, loading } = useQuery(load, [])
+  const canAdmin = useHasPermission('core:modules:manage')
   const canWrite = useHasPermission('betrieb:dienste:write')
   const [edit, setEdit] = useState<ReturnType<typeof empty> | null>(null)
   const numbers = data?.numbers ?? []
@@ -266,6 +268,7 @@ export default function FarmData() {
           <p className="text-xs text-gray-500">Kommt mit dem Import der GELAN-Raumdaten; hier nicht änderbar.</p>
         </section>
       )}
+      {canAdmin && <ShopSettings />}
     </div>
   )
 }

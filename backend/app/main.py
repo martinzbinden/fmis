@@ -28,6 +28,7 @@ from modules.livestock.backend.app import sync as livestock_sync
 from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
 from modules.betrieb.backend.app import machine_files as betrieb_machine_files
 from modules.betrieb.backend.app import photos as betrieb_photos
+from modules.betrieb.backend.app import shop as betrieb_shop
 from modules.betrieb.backend.app import school_timetable as betrieb_school
 from modules.betrieb.backend.app import sync as betrieb_sync
 from modules.tiere.backend.app import reader_database as tiere_reader_database
@@ -84,7 +85,10 @@ async def lifespan(app: FastAPI):
     proviande = asyncio.create_task(livestock_proviande.periodic())
     # Neue Gruppen im Speicher des Lesegeräts zum Import vorschlagen (modules/tiere/backend/app/reader_pools.py)
     reader_pools = asyncio.create_task(tiere_reader_pools.periodic())
+    # Shop-Anfragen abholen (modules/betrieb/backend/app/shop.py; nur wenn eingerichtet)
+    shop = asyncio.create_task(betrieb_shop.periodic())
     yield
+    shop.cancel()
     school.cancel()
     proviande.cancel()
     reader_pools.cancel()
@@ -173,6 +177,12 @@ app.include_router(
 )
 app.include_router(
     betrieb_machine_files.router,
+    prefix="/betrieb",
+    dependencies=[Depends(require_module_enabled("betrieb"))],
+)
+# Shop-Anbindung: Anfragen → Arbeiten, Lieferschein (modules/betrieb/backend/app/shop.py)
+app.include_router(
+    betrieb_shop.router,
     prefix="/betrieb",
     dependencies=[Depends(require_module_enabled("betrieb"))],
 )
