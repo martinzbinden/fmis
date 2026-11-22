@@ -22,6 +22,13 @@ Zwei Instanzen auf dem Server (192.168.0.73):
    prüfen. Startet Prod nicht, geht der Code auf den alten Stand zurück (die Datenbank
    bleibt, die Sicherung liegt bereit). Das Ergebnis steht auf der Seite Freigabe.
 
+Alte Sicherungen werden nach jedem erfolgreichen Deploy ausgedünnt (`fmis-deploy.sh sicherungen`
+zeigt, was wegfiele, `… sicherungen --los` führt es von Hand aus): jünger als 10 Tage bleiben alle,
+von 10 bis 100 Tagen die neueste je Kalenderwoche, danach die neueste je Monat. Die neueste
+Sicherung bleibt immer. Betroffen sind nur `fmis-*.sql`, `fmis-*.sql.gz`, `fmis-*.dump` in
+`~/backups` und, als eigene Reihe, `fmis-fotos-*.tgz`. Nach jedem Build entfernt das Skript
+ausserdem die alten, unbenannten Images des eigenen Compose-Projekts.
+
 Freigeben geht nur für den Commit, der gerade auf der Testumgebung läuft, und nur vorwärts
 (der Prod-Stand muss darin enthalten sein). Von Hand, ohne App:
 

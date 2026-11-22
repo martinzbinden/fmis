@@ -8,6 +8,8 @@
 #                                   genau diesen Commit einspielen, prüfen.
 #   fmis-deploy.sh freigeben SHA    Freigabe von Hand anfordern (wie der Knopf in der App)
 #   fmis-deploy.sh stand            Stand für die App neu schreiben (ohne Deploy)
+#   fmis-deploy.sh sicherungen [--los]  alte Sicherungen ausdünnen (ohne --los nur anzeigen;
+#                                   läuft nach jedem erfolgreichen Deploy automatisch mit --los)
 #
 # cron (Benutzer dev):
 #   */2 * * * * /opt/stacks/fmis-dev/tools/deploy/fmis-deploy.sh dev >> /opt/stacks/fmis-dev/deploy.log 2>&1
@@ -85,6 +87,64 @@ main() {
       log "Hinweis: alte Images von $projekt nicht entfernt"
   }
 
+  # Sicherungen in $BACKUPS ausdünnen: jünger als 10 Tage alle, 10 bis 100 Tage die neueste je
+  # Kalenderwoche, älter als 100 Tage die neueste je Monat. Die neueste jeder Reihe bleibt immer.
+  # Betrifft nur fmis-*.sql, fmis-*.sql.gz, fmis-*.dump (Datenbank) und fmis-fotos-*.tgz (Fotos, eigene Reihe).
+  # Das Datum kommt aus dem Namen (JJJJMMTT-HHMM), sonst aus der Änderungszeit der Datei.
+  # Ohne --los nur anzeigen. Ein Fehler hier bricht den Lauf nicht ab.
+  sicherungen_aufraeumen() { # [--los]
+    [ -d "$BACKUPS" ] || return 0
+    python3 - "$BACKUPS" "${1:-}" <<'PY' || log "Hinweis: Sicherungen nicht aufgeräumt"
+import datetime as dt, os, re, sys
+
+ordner, los = sys.argv[1], sys.argv[2] == "--los"
+jetzt = dt.datetime.now()
+reihen = {}
+for name in os.listdir(ordner):
+    pfad = os.path.join(ordner, name)
+    if os.path.islink(pfad) or not os.path.isfile(pfad):
+        continue
+    if re.fullmatch(r"fmis-fotos-.+\.tgz", name):
+        reihe = "fotos"
+    elif re.fullmatch(r"fmis-.+\.(sql|sql\.gz|dump)", name):
+        reihe = "datenbank"
+    else:
+        continue
+    zeit = None
+    m = re.search(r"(20\d{6})-?(\d{4})?", name)
+    if m:
+        try:
+            zeit = dt.datetime.strptime(m.group(1) + (m.group(2) or "0000"), "%Y%m%d%H%M")
+        except ValueError:
+            zeit = None
+    if zeit is None:
+        zeit = dt.datetime.fromtimestamp(os.path.getmtime(pfad))
+    reihen.setdefault(reihe, []).append((zeit, name))
+
+weg = []
+for reihe, dateien in reihen.items():
+    dateien.sort(reverse=True)  # neueste zuerst: je Woche/Monat bleibt die neueste
+    gesehen = set()
+    for i, (zeit, name) in enumerate(dateien):
+        alter = (jetzt - zeit).days
+        if i == 0 or alter < 10:
+            continue
+        fach = ("woche", *zeit.isocalendar()[:2]) if alter < 100 else ("monat", zeit.year, zeit.month)
+        if fach in gesehen:
+            weg.append(name)
+        else:
+            gesehen.add(fach)
+
+for name in sorted(weg):
+    if los:
+        os.remove(os.path.join(ordner, name))
+    print(("Sicherung entfernt: " if los else "würde entfernen: ") + name)
+behalten = sum(len(d) for d in reihen.values()) - len(weg)
+if weg or not los:
+    print(f"Sicherungen: {len(weg)} {'entfernt' if los else 'zu entfernen'}, {behalten} bleiben")
+PY
+  }
+
   write_stand() {
     local dev_sha prod_sha
     dev_sha="$(git -C "$DEV_DIR" rev-parse HEAD)"
@@ -155,6 +215,7 @@ main() {
     echo "$target" >"$BOX/dev_ok"
     write_stand
     aufraeumen "$DEV_DIR"
+    sicherungen_aufraeumen --los
     log "Testumgebung läuft auf ${target:0:7}"
   }
 
@@ -211,6 +272,7 @@ main() {
       result ok "Sicherung: $(basename "$backup")"
       write_stand
       aufraeumen "$PROD_DIR"
+      sicherungen_aufraeumen --los
       log "Prod läuft auf ${sha:0:7}"
       return 0
     fi
@@ -233,8 +295,9 @@ main() {
     freigabe) cmd_freigabe ;;
     freigeben) cmd_freigeben "${2:-}" ;;
     stand) write_stand ;;
+    sicherungen) sicherungen_aufraeumen "${2:-}" ;;
     *)
-      sed -n '2,12p' "$0"
+      sed -n '2,14p' "$0"
       exit 2
       ;;
   esac
