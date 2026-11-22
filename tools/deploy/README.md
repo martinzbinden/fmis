@@ -76,14 +76,14 @@ Ausserhalb dieses Repos (eingerichtet 2026-11-15, Details in `/opt/gateway/docs/
 
 Dann `fmis-deploy.sh dev --immer` und die zwei cron-Zeilen aus dem Kopf von `fmis-deploy.sh`.
 
-## Fotos (Volume `photos_data`)
+## Fotos (Volume `photos_data`, auf Prod `fmis-app_photos_data`)
 
 Fotos zu Arbeiten, Betriebs- und Stalljournal liegen als Dateien im Volume `photos_data` (im Container `/data/photos`,
 `core/backend/fmis_core/photo_files.py`), nicht in der Datenbank. Die Sicherung bei jeder Freigabe (`pg_dump`) enthält
 sie darum nicht: Fotos sind zweite Priorität und werden getrennt (oder gar nicht) gesichert.
 
 - Ablage: `/data/photos/<modul>/<JJJJ>/<MM>/<id>.webp` und Vorschau `<id>-t.webp`.
-- Sichern, z.B. wöchentlich: `docker run --rm -v fmis_photos_data:/p -v ~/backups:/b alpine tar czf /b/fmis-fotos-$(date +%Y%m%d).tgz -C /p .`
+- Sichern, z.B. wöchentlich: `docker run --rm -v fmis-app_photos_data:/p -v ~/backups:/b alpine tar czf /b/fmis-fotos-$(date +%Y%m%d).tgz -C /p .`
 - Archivieren: einen ganzen alten Ordner (z.B. `betrieb/2026`) aus dem Volume wegschieben. Die App zeigt dann
   «archiviert»; die Angaben (wer, wann, wozu) bleiben in der Datenbank.
 - Ältere Fotos der Milchtiere (vor 11.2026) liegen noch in der Datenbank (`journal_photo_data`), neue als Dateien.
