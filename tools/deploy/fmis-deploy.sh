@@ -73,6 +73,18 @@ main() {
     dc_in "$1" ps -q "$2"
   }
 
+  # Nach jedem Build bleiben die vorherigen Images unbenannt liegen ("dangling"). Entfernt nur
+  # solche Images mit dem Label des Compose-Projekts; laufende und benannte Images bleiben.
+  # Ein Fehler hier bricht den Lauf nicht ab.
+  aufraeumen() { # Projektverzeichnis
+    local projekt
+    projekt="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' \
+      "$(container_of "$1" postgres)" 2>/dev/null || true)"
+    [ -n "$projekt" ] || return 0
+    docker image prune -f --filter "label=com.docker.compose.project=$projekt" >/dev/null 2>&1 ||
+      log "Hinweis: alte Images von $projekt nicht entfernt"
+  }
+
   write_stand() {
     local dev_sha prod_sha
     dev_sha="$(git -C "$DEV_DIR" rev-parse HEAD)"
@@ -142,6 +154,7 @@ main() {
     fi
     echo "$target" >"$BOX/dev_ok"
     write_stand
+    aufraeumen "$DEV_DIR"
     log "Testumgebung läuft auf ${target:0:7}"
   }
 
@@ -197,6 +210,7 @@ main() {
     if dc_prod up --build -d && wait_healthy "$PROD_DIR"; then
       result ok "Sicherung: $(basename "$backup")"
       write_stand
+      aufraeumen "$PROD_DIR"
       log "Prod läuft auf ${sha:0:7}"
       return 0
     fi
