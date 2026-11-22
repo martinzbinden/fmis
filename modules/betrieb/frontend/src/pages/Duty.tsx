@@ -9,6 +9,7 @@ import TimeStrip, { TimeAxis } from '../components/TimeStrip'
 import Planning, { OfficeBar } from '../components/DutyPlanning'
 import AbsenceCalendar from '../components/AbsenceCalendar'
 import { isoDate } from '../lib/format'
+import { absencePartner, pairChanges } from '../lib/vacationPlan'
 import { GENERATE_AHEAD_WEEKS, weekStates } from '../lib/dutyPlan'
 import { getSyncedDb } from '../db/access'
 import { syncClient } from '../db/sync'
@@ -1401,7 +1402,14 @@ function Settings({ d }: { d: DutyData }) {
                     </select>
                     <span className="text-gray-500">(gleichzeitig weg ist keine Überschneidung im Ferienplan)</span>
                   </label>
-                  <button type="button" className={btn} onClick={() => void savePerson({ ...editPerson, name: editPerson.name.trim(), email: editPerson.email?.trim() || null, school_class: editPerson.school_class?.trim() || null }).then(() => setEditPerson(null))}>
+                  <button type="button" className={btn} onClick={() => {
+                      // «Ferien gemeinsam mit» bei beiden Personen eintragen (und alte Paare lösen)
+                      const pair = pairChanges(people, editPerson.id, editPerson.absence_with ?? null)
+                      const others = pair.filter(([id]) => id !== editPerson.id)
+                      void savePerson({ ...editPerson, name: editPerson.name.trim(), email: editPerson.email?.trim() || null, school_class: editPerson.school_class?.trim() || null })
+                        .then(() => Promise.all(others.map(([id, v]) => { const q = people.find((x) => x.id === id); return q ? savePerson({ ...q, absence_with: v }) : undefined })))
+                        .then(() => setEditPerson(null))
+                    }}>
                     Speichern
                   </button>
                   {confirmP === p.id ? (
@@ -1415,7 +1423,7 @@ function Settings({ d }: { d: DutyData }) {
                   )}
                 </>
               ) : (
-                <button type="button" className="flex-1 text-left" onClick={() => setEditPerson(p)}>
+                <button type="button" className="flex-1 text-left" onClick={() => setEditPerson({ ...p, absence_with: absencePartner(people, p.id) })}>
                   <b className={p.active ? '' : 'text-gray-500 line-through'}>{p.name}</b> <span className="text-xs text-gray-500">{p.email ?? 'ohne FMIS-Konto'}</span>
                   {p.companion && <span className="ml-1 text-xs text-teal-800">🤝 begleitet</span>}
                   {p.employment_pct != null && (
@@ -1423,7 +1431,7 @@ function Settings({ d }: { d: DutyData }) {
                       💼 {p.employment_pct} %{p.school_pct ? ` (davon ${p.school_pct} % Schule/ÜK)` : ''}
                     </span>
                   )}
-                  {p.absence_with && <span className="ml-1 text-xs text-sky-800">🏖 mit {people.find((q) => q.id === p.absence_with)?.name ?? '?'}</span>}
+                  {absencePartner(people, p.id) && <span className="ml-1 text-xs text-sky-800">🏖 mit {people.find((q) => q.id === absencePartner(people, p.id))?.name ?? '?'}</span>}
                   {p.school_class && (
                     <span className="ml-1 text-xs text-amber-800">
                       🎓 {p.school_class}

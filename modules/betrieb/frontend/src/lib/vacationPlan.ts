@@ -60,6 +60,32 @@ export function absenceUnits(people: { id: string; absence_with?: string | null 
   return find
 }
 
+/** Partner für «Ferien gemeinsam mit»: der eigene Eintrag oder wer auf diese Person zeigt. */
+export function absencePartner(people: { id: string; absence_with?: string | null }[], id: string): string | null {
+  return people.find((p) => p.id === id)?.absence_with ?? people.find((p) => p.absence_with === id)?.id ?? null
+}
+
+/** Änderungen, damit ein Paar bei beiden Personen eingetragen ist: `id` geht neu mit `partner` (oder mit niemandem).
+ * Der bisherige Partner von `id` und der bisherige Partner von `partner` werden gelöst. Liefert [Person, neuer Wert]
+ * für alle, die sich ändern, `id` selbst eingeschlossen. */
+export function pairChanges(people: { id: string; absence_with?: string | null }[], id: string, partner: string | null): [string, string | null][] {
+  const want = new Map<string, string | null>()
+  const old = absencePartner(people, id)
+  if (old && old !== partner) want.set(old, null)
+  if (partner) {
+    const theirs = absencePartner(people, partner)
+    if (theirs && theirs !== id) want.set(theirs, null)
+    want.set(partner, id)
+  }
+  want.set(id, partner)
+  // wer noch auf `id` oder `partner` zeigt, ohne dazuzugehören, wird gelöst
+  for (const p of people) {
+    if (want.has(p.id)) continue
+    if ((p.absence_with === id && p.id !== partner) || (partner && p.absence_with === partner && p.id !== id)) want.set(p.id, null)
+  }
+  return [...want].filter(([pid, v]) => pid === id || (people.find((p) => p.id === pid)?.absence_with ?? null) !== v)
+}
+
 /** Tage, an denen mindestens zwei Personen (bzw. Einheiten gemeinsam Abwesender) weg sind, zu Zeiträumen mit
  * gleicher Besetzung zusammengefasst. Ohne `withSchool` zählen Schultage nicht. */
 export function overlaps(entries: PlanEntry[], { withSchool = true, unitOf = (id: string) => id }: { withSchool?: boolean; unitOf?: (id: string) => string } = {}): Overlap[] {

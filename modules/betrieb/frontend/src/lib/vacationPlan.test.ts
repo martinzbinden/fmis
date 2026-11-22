@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absenceUnits, dayOfYear, daysInYear, overlaps, planEntries, vacationDays } from './vacationPlan'
+import { absencePartner, absenceUnits, dayOfYear, daysInYear, overlaps, pairChanges, planEntries, vacationDays } from './vacationPlan'
 import type { DutyAbsence, DutyRequest } from '../types'
 
 const abs = (person_id: string, from_date: string, to_date: string, kind: DutyAbsence['kind'] = 'ferien'): DutyAbsence =>
@@ -52,5 +52,37 @@ describe('Ferienplan', () => {
     expect(dayOfYear('2027-01-01')).toBe(0)
     expect(dayOfYear('2027-12-31')).toBe(364)
     expect(daysInYear(2028)).toBe(366)
+  })
+})
+
+describe('Ferien gemeinsam mit', () => {
+  it('trägt das Paar bei beiden ein und löst alte Paare', () => {
+    const people = [
+      { id: 'a', absence_with: null },
+      { id: 'b', absence_with: 'c' },
+      { id: 'c', absence_with: null },
+      { id: 'd', absence_with: null },
+    ]
+    expect(absencePartner(people, 'c')).toBe('b')
+    // a geht neu mit b: b zeigt neu auf a (c hatte keinen eigenen Eintrag, ist damit gelöst)
+    expect(new Map(pairChanges(people, 'a', 'b'))).toEqual(
+      new Map([
+        ['b', 'a'],
+        ['a', 'b'],
+      ]),
+    )
+    // c löst das Paar: b wird ebenfalls gelöst
+    expect(new Map(pairChanges(people, 'c', null))).toEqual(
+      new Map([
+        ['b', null],
+        ['c', null],
+      ]),
+    )
+    // schon beidseitig: nur die eigene Zeile
+    const pair = [
+      { id: 'a', absence_with: 'b' },
+      { id: 'b', absence_with: 'a' },
+    ]
+    expect(pairChanges(pair, 'a', 'b')).toEqual([['a', 'b']])
   })
 })
