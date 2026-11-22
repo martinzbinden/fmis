@@ -7,12 +7,32 @@ import PhotoStrip from '@fmis/core/PhotoStrip'
 import type { PreparedPhoto } from '@fmis/core/photos'
 import { addPhotos, PHOTO_MODULE } from '../lib/photoRefs'
 import { fmtDate, todayIso } from '../lib/format'
-import { activityByTitle, AREA_ICON, AREA_LABEL, cancelWorkTask, completeWorkTask, STABLE_CATEGORIES, targetIcon, type FarmJournalEntry, type WorkTask } from '../lib/workTasks'
+import { activityByTitle, AREA_ICON, AREA_LABEL, cancelWorkTask, completeWorkTask, STABLE_CATEGORIES, targetIcon, type FarmJournalEntry, type FollowUpOrigin, type TaskArea, type WorkTask } from '../lib/workTasks'
 
 const field = 'min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-base'
 
 /** Karte einer Arbeit (Tiere, Gebäude, Maschinen, Brennholz, frei) im Arbeitsplan. */
-export function WorkTaskCard({ task, personName, photoIds = [], canWrite, onComplete, onChanged }: { task: WorkTask; personName: string | null; photoIds?: string[]; canWrite: boolean; onComplete: () => void; onChanged: () => void }) {
+export function WorkTaskCard({
+  task,
+  personName,
+  photoIds = [],
+  originTitle,
+  canWrite,
+  onComplete,
+  onChanged,
+  onFollowUp,
+}: {
+  task: WorkTask
+  personName: string | null
+  /** Fotos der Arbeit und (bei einer Pendenz) ihrer Herkunft */
+  photoIds?: string[]
+  /** Pendenz: woraus sie entstand */
+  originTitle?: string | null
+  canWrite: boolean
+  onComplete: () => void
+  onChanged: () => void
+  onFollowUp?: (origin: FollowUpOrigin) => void
+}) {
   const [confirm, setConfirm] = useState(false)
   const overdue = task.due_date && task.due_date < todayIso()
   return (
@@ -28,6 +48,7 @@ export function WorkTaskCard({ task, personName, photoIds = [], canWrite, onComp
             {task.due_date ? <span className={overdue ? 'font-semibold text-red-700' : ''}> · bis {fmtDate(task.due_date)}</span> : null}
             {task.source === 'shop' ? ' · aus dem Shop' : ''}
           </div>
+          {task.source === 'nachfolge' && <div className="text-sm font-medium text-amber-800">Pendenz{originTitle ? ` aus «${originTitle}»` : ''}</div>}
           {task.customer && <div className="text-sm text-gray-700">für {task.customer}</div>}
           {task.notes && <div className="text-sm text-gray-600">{task.notes}</div>}
         </div>
@@ -42,7 +63,7 @@ export function WorkTaskCard({ task, personName, photoIds = [], canWrite, onComp
           ))}
         </ul>
       )}
-      <PhotoStrip moduleKey={PHOTO_MODULE} ids={photoIds} />
+      <PhotoStrip moduleKey={PHOTO_MODULE} ids={photoIds} onFollowUp={canWrite && onFollowUp ? () => onFollowUp({ kind: 'work_task', id: task.id, title: task.title, area: task.area, targets: task.targets }) : undefined} />
       {canWrite && (
         <div className="flex flex-wrap gap-2 border-t pt-3">
           <button type="button" onClick={onComplete} className="min-h-11 flex-1 rounded-lg border border-green-600 px-3 py-2 text-sm font-medium text-green-700">
@@ -64,7 +85,7 @@ export function WorkTaskCard({ task, personName, photoIds = [], canWrite, onComp
 }
 
 /** Arbeit abschliessen: Datum, was gemacht wurde; bei Tieren Kategorie im Stalljournal und allenfalls Medikament. */
-export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; onClose: () => void; onDone: (refs: string[]) => void }) {
+export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; onClose: () => void; onDone: (refs: string[], followUp: boolean) => void }) {
   const animals = task.targets.some((t) => t.kind === 'tier' || t.kind === 'gruppe')
   const [date, setDate] = useState(todayIso())
   const [notes, setNotes] = useState('')
@@ -74,6 +95,7 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
   const [quantity, setQuantity] = useState(task.quantity != null ? String(task.quantity) : '')
   const [doneBy, setDoneBy] = useState(getCurrentUserEmail() ?? '')
   const [photos, setPhotos] = useState<PreparedPhoto[]>([])
+  const [followUp, setFollowUp] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   async function save() {
@@ -84,7 +106,7 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
       // Fotos gehören zur Arbeit: Betriebs- und Stalljournal zeigen sie über die Arbeit (task_id bzw. ref_id)
       if (photos.length) await addPhotos('work_task', task.id, photos)
       const refs = await completeWorkTask(task, { date, notes, category, medication, dose, doneBy, quantity: q != null && Number.isFinite(q) ? q : null })
-      onDone(photos.length ? [...refs, `${photos.length} ${photos.length === 1 ? 'Foto' : 'Fotos'}`] : refs)
+      onDone(photos.length ? [...refs, `${photos.length} ${photos.length === 1 ? 'Foto' : 'Fotos'}`] : refs, followUp)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
       setBusy(false)
@@ -140,6 +162,10 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
           <input className={`${field} w-full`} value={doneBy} onChange={(e) => setDoneBy(e.target.value)} />
         </label>
         <p className="text-xs text-gray-600">Kommt ins {animals ? 'Stalljournal der Tiere (Gruppen: alle Tiere am Datum)' : 'Betriebsjournal'}{task.targets.some((t) => t.kind === 'maschine') ? ' und ins Maschinenjournal' : ''}.</p>
+        <label className="flex min-h-11 items-center gap-2">
+          <input type="checkbox" checked={followUp} onChange={(e) => setFollowUp(e.target.checked)} className="h-5 w-5" />
+          Danach Pendenz erfassen (z.B. Nachkontrolle)
+        </label>
         {err && <p className="text-red-700">{err}</p>}
         <button type="button" disabled={busy} onClick={() => void save()} className="min-h-12 w-full rounded-lg bg-green-700 font-semibold text-white disabled:opacity-40">
           Eintragen
@@ -150,7 +176,7 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
 }
 
 /** Betriebsjournal: erledigte Arbeiten an Gebäuden, Maschinen, Brennholz und weitere. */
-export function FarmJournalList({ entries, photos }: { entries: FarmJournalEntry[]; photos?: Map<string, string[]> }) {
+export function FarmJournalList({ entries, photos, onFollowUp }: { entries: FarmJournalEntry[]; photos?: Map<string, string[]>; onFollowUp?: (origin: FollowUpOrigin) => void }) {
   if (entries.length === 0) return <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">Noch keine Einträge. Erledigte Arbeiten (ausser Parzellen und Tiere mit Stalljournal) erscheinen hier.</p>
   return (
     <ul className="divide-y rounded-lg bg-white text-sm shadow-sm">
@@ -169,7 +195,19 @@ export function FarmJournalList({ entries, photos }: { entries: FarmJournalEntry
             </div>
             {e.notes && <div className="text-gray-600">{e.notes}</div>}
             {e.done_by && <div className="text-xs text-gray-500">{e.done_by}</div>}
-            <PhotoStrip moduleKey={PHOTO_MODULE} ids={[...(photos?.get(e.id) ?? []), ...(e.task_id ? (photos?.get(e.task_id) ?? []) : [])]} />
+            {(() => {
+              const origin: FollowUpOrigin = { kind: 'farm_journal', id: e.id, title: e.title, area: e.area as TaskArea, targets: e.targets }
+              return (
+                <div className="flex flex-wrap items-center gap-2">
+                  <PhotoStrip moduleKey={PHOTO_MODULE} ids={[...(photos?.get(e.id) ?? []), ...(e.task_id ? (photos?.get(e.task_id) ?? []) : [])]} onFollowUp={onFollowUp ? () => onFollowUp(origin) : undefined} />
+                  {onFollowUp && (
+                    <button type="button" onClick={() => onFollowUp(origin)} className="min-h-11 rounded-lg px-2 text-sm font-medium text-amber-800 active:bg-amber-50">
+                      ＋ Pendenz
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </li>
       ))}

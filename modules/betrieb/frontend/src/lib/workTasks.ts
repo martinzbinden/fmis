@@ -294,3 +294,50 @@ export async function completeWorkTask(t: WorkTask, c: Completion): Promise<stri
 
 export const targetIcon: Record<TaskTarget['kind'], string> = { tier: 'schaf', gruppe: 'gruppen', maschine: 'traktor', objekt: 'hof' }
 export const targetsText = (ts: TaskTarget[]) => ts.map((t) => t.label).join(', ')
+
+// ---- Pendenzen: Folgearbeiten aus Fotos, Journaleinträgen, erledigten Arbeiten (Etappe 3) ----
+
+/** Woraus eine Pendenz entsteht (Herkunft wird in source_ref festgehalten: «<art>:<id>»). */
+export interface FollowUpOrigin {
+  kind: 'work_task' | 'farm_journal' | 'stalljournal'
+  id: string
+  title: string
+  area: TaskArea
+  targets: TaskTarget[]
+}
+
+/** Vorschläge für den Titel einer Pendenz je Bereich. */
+export const FOLLOW_UP_TITLES: Record<TaskArea, string[]> = {
+  tiere: ['Nachkontrolle', 'Nachbehandlung', 'Tierarzt beiziehen', 'Klauen nachschauen'],
+  gebaeude: ['Nachkontrolle', 'Reparatur', 'Material bestellen'],
+  maschine: ['Service', 'Reparatur', 'Ersatzteil bestellen', 'Nachkontrolle'],
+  brennholz: ['Liefern', 'Nachschub rüsten'],
+  frei: ['Nachkontrolle', 'Erledigen'],
+}
+
+export const FOLLOW_UP_DAYS = [3, 7, 14, 30] as const
+
+/** Pendenz anlegen: eine offene Arbeit mit denselben Zielen, fällig am Datum, mit Verweis auf die Herkunft. */
+export async function createFollowUp(origin: FollowUpOrigin, f: { title: string; due: string; personId?: string | null; notes?: string | null }): Promise<string> {
+  return saveWorkTask({
+    title: f.title,
+    area: origin.area,
+    targets: origin.targets,
+    planned_date: f.due,
+    due_date: f.due,
+    person_id: f.personId ?? null,
+    quantity: null,
+    unit: null,
+    customer: null,
+    notes: f.notes ?? null,
+    source: 'nachfolge',
+    source_ref: `${origin.kind}:${origin.id}`,
+  })
+}
+
+/** Herkunft einer Pendenz: Art und id (null, wenn keine Pendenz). */
+export function followUpOf(t: Pick<WorkTask, 'source' | 'source_ref'>): { kind: FollowUpOrigin['kind']; id: string } | null {
+  if (t.source !== 'nachfolge' || !t.source_ref) return null
+  const [kind, id] = t.source_ref.split(':')
+  return kind && id ? { kind: kind as FollowUpOrigin['kind'], id } : null
+}

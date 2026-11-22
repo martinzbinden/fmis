@@ -15,8 +15,9 @@ import { deletePlanTask } from '../lib/workPlanEdit'
 import PlanCreateDialog from '../components/PlanCreateDialog'
 import CompletePlanDialog from '../components/CompletePlanDialog'
 import TaskCreateDialog from '../components/TaskCreateDialog'
+import FollowUpDialog from '../components/FollowUpDialog'
 import { CompleteTaskDialog, FarmJournalList, WorkTaskCard } from '../components/WorkTaskViews'
-import { loadFarmJournal, loadWorkTasks, type WorkTask } from '../lib/workTasks'
+import { followUpOf, loadFarmJournal, loadWorkTasks, type FollowUpOrigin, type WorkTask } from '../lib/workTasks'
 import { photoIdsByRef } from '../lib/photoRefs'
 import type { Machine, Track } from '../types'
 
@@ -49,8 +50,22 @@ async function load(pg: PGlite) {
     loadFarmJournal(pg, addDaysIso(todayIso(), -90)),
     pg.query<{ id: string; name: string }>('select id, name from duty_people where deleted_at is null').then((r) => r.rows),
   ])
-  const photos = await photoIdsByRef(pg, [...work.map((w) => w.id), ...journal.map((j) => j.id), ...journal.flatMap((j) => (j.task_id ? [j.task_id] : []))])
-  return { tasks, machines, flow, planTracks, planTanks, work, journal, people, photos }
+  const origins = work.flatMap((w) => {
+    const o = followUpOf(w)
+    if (!o) return []
+    // Herkunft Betriebsjournal: auch die Fotos der Arbeit dahinter
+    const j = o.kind === 'farm_journal' ? journal.find((x) => x.id === o.id) : undefined
+    return [o.id, ...(j?.task_id ? [j.task_id] : [])]
+  })
+  // Titel der Herkunft (Arbeit oder Journaleintrag), auch wenn schon erledigt
+  const originTitles = new Map<string, string>()
+  const ids = work.map(followUpOf).filter((o): o is NonNullable<typeof o> => !!o).map((o) => o.id)
+  if (ids.length) {
+    const { rows } = await pg.query<{ id: string; title: string }>('select id, title from work_tasks where id = any($1::uuid[]) union all select id, title from farm_journal where id = any($1::uuid[])', [ids])
+    for (const r of rows) originTitles.set(r.id, r.title)
+  }
+  const photos = await photoIdsByRef(pg, [...work.map((w) => w.id), ...journal.map((j) => j.id), ...journal.flatMap((j) => (j.task_id ? [j.task_id] : [])), ...origins])
+  return { tasks, machines, flow, planTracks, planTanks, work, journal, people, photos, originTitles }
 }
 
 function weekday(iso: string): string {
@@ -239,6 +254,7 @@ export default function WorkPlan() {
   const [completingWork, setCompletingWork] = useState<WorkTask | null>(null)
   const [doneNowId, setDoneNowId] = useState<string | null>(null)
   const [doneMsg, setDoneMsg] = useState<string | null>(null)
+  const [followUp, setFollowUp] = useState<FollowUpOrigin | null>(null)
   const [completing, setCompleting] = useState<PlanTask | null>(null)
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -354,7 +370,7 @@ export default function WorkPlan() {
         ))}
       </div>
       {doneMsg && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-900">✓ Eingetragen: {doneMsg}</p>}
-      {view === 'journal' && data && <FarmJournalList entries={data.journal} photos={data.photos} />}
+      {view === 'journal' && data && <FarmJournalList entries={data.journal} photos={data.photos} onFollowUp={canWork ? setFollowUp : undefined} />}
 
       {view === 'plan' && active && (
         <div className={`space-y-2 rounded-lg p-3 text-sm ${recording ? 'bg-green-50 text-green-900' : 'bg-amber-50 text-amber-900'}`}>
@@ -428,7 +444,16 @@ export default function WorkPlan() {
             key={w.id}
             task={w}
             personName={data?.people.find((p) => p.id === w.person_id)?.name ?? null}
-            photoIds={data?.photos.get(w.id) ?? []}
+            photoIds={(() => {
+              const o = followUpOf(w)
+              const j = o?.kind === 'farm_journal' ? data?.journal.find((x) => x.id === o.id) : undefined
+              return [...(data?.photos.get(w.id) ?? []), ...(o ? (data?.photos.get(o.id) ?? []) : []), ...(j?.task_id ? (data?.photos.get(j.task_id) ?? []) : [])]
+            })()}
+            originTitle={(() => {
+              const o = followUpOf(w)
+              return o ? (data?.originTitles.get(o.id) ?? null) : null
+            })()}
+            onFollowUp={setFollowUp}
             canWrite={canWork}
             onComplete={() => setCompletingWork(w)}
             onChanged={refresh}
@@ -481,13 +506,25 @@ export default function WorkPlan() {
           }}
         />
       )}
+      {followUp && (
+        <FollowUpDialog
+          origin={followUp}
+          onClose={() => setFollowUp(null)}
+          onSaved={(due) => {
+            setDoneMsg(`Pendenz fällig ${fmtDate(due)}`)
+            refresh()
+          }}
+        />
+      )}
       {completingWork && (
         <CompleteTaskDialog
           task={completingWork}
           onClose={() => setCompletingWork(null)}
-          onDone={(refs) => {
+          onDone={(refs, wantFollowUp) => {
+            const t = completingWork
             setCompletingWork(null)
             setDoneMsg(refs.join(', '))
+            if (wantFollowUp) setFollowUp({ kind: 'work_task', id: t.id, title: t.title, area: t.area, targets: t.targets })
             refresh()
           }}
         />

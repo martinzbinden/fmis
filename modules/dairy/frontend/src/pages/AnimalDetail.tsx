@@ -2,8 +2,10 @@ import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
 import PhotoThumbs from '../components/PhotoThumbs'
 import PhotoStrip from '@fmis/core/PhotoStrip'
 import { useWorkPhotos } from '../lib/workPhotos'
+// Pendenz als Folgearbeit im Arbeitsplan (Modul Betrieb), erst bei Bedarf geladen
+const FollowUpDialog = lazy(() => import('@fmis/betrieb/components/FollowUpDialog'))
 import { loadPhotos, uploadPendingPhotos, type JournalPhoto } from '../lib/photos'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
@@ -336,7 +338,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         </div>
       </Section>
 
-      <JournalSection animalId={a.id} journal={journal} />
+      <JournalSection animalId={a.id} animalLabelOf={[a.lauf_nr, a.name].filter(Boolean).join(' ') || a.ear_tag} journal={journal} />
 
       {claws.length > 0 && (
         <Section title="Klauen" id="klauen">
@@ -590,6 +592,7 @@ function JournalEntryRow({
   canDelete,
   onCorrect,
   onDelete,
+  onFollowUp,
   photos,
 }: {
   j: AnimalJournalEntry
@@ -599,6 +602,8 @@ function JournalEntryRow({
   canDelete: boolean
   onCorrect: () => void
   onDelete: () => Promise<void>
+  /** Pendenz (Folgearbeit im Arbeitsplan, Modul Betrieb) aus diesem Eintrag */
+  onFollowUp?: () => void
   photos?: ReactNode
 }) {
   const milk = correctedBy ? null : withdrawalUntil(j, 'milk')
@@ -642,6 +647,11 @@ function JournalEntryRow({
               Korrigieren
             </button>
           )}
+          {onFollowUp && !correctedBy && (
+            <button type="button" onClick={onFollowUp} className="link-btn rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-900" title="Pendenz im Arbeitsplan, z.B. Nachkontrolle">
+              ＋ Pendenz
+            </button>
+          )}
           {canDelete && <DeleteButton onConfirm={onDelete} />}
         </div>
       </div>
@@ -655,7 +665,7 @@ type JournalMode = { kind: 'new' } | { kind: 'case'; caseId: string } | { kind: 
  * Folgebehandlungen, Verlauf), älteste zuerst. Das Journal wird nur ergänzt:
  * Korrekturen und Folgeeinträge sind neue Einträge. Löschen nur kurz nach dem
  * Eintrag (ausser mit Recht «Korrektur»). */
-function JournalSection({ animalId, journal }: { animalId: string; journal: AnimalJournalEntry[] }) {
+function JournalSection({ animalId, animalLabelOf, journal }: { animalId: string; /** Anzeige des Tiers (Pendenz) */ animalLabelOf?: string; journal: AnimalJournalEntry[] }) {
   const db = useDb()
   const canCorrectLater = useHasPermission('core:korrektur:write')
   const [mode, setMode] = useState<JournalMode | null>(null)
@@ -672,6 +682,9 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
   }, [photos])
   // Fotos der Arbeit aus dem Arbeitsplan (Modul Betrieb), Eintrag mit ref_id
   const workPhotos = useWorkPhotos(journal.map((j) => j.ref_id))
+  // Pendenz aus einem Eintrag: Folgearbeit im Arbeitsplan (Modul Betrieb, nur mit dessen Recht)
+  const canPlan = useHasPermission('betrieb:tracking:write')
+  const [followUp, setFollowUp] = useState<AnimalJournalEntry | null>(null)
   // Fotos, die auf diesem Gerät noch warten, beim Öffnen nachschieben
   useEffect(() => void uploadPendingPhotos(), [])
   const now = Date.now()
@@ -699,6 +712,7 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
       canDelete={canChangeEntry(j, canCorrectLater, now)}
       onCorrect={() => setMode({ kind: 'correct', entry: j })}
       onDelete={() => softDeleteRow(db, 'animal_journal', j.id)}
+      onFollowUp={canPlan ? () => setFollowUp(j) : undefined}
       photos={
         photosByEntry.has(j.id) || (j.ref_id && workPhotos.has(j.ref_id)) ? (
           <>
@@ -711,6 +725,20 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
   )
   return (
     <Section title="Journal" id="journal">
+      {followUp && (
+        <Suspense fallback={null}>
+          <FollowUpDialog
+            origin={{
+              kind: 'stalljournal',
+              id: followUp.id,
+              title: [categoryLabel(followUp.category), followUp.diagnosis || null].filter(Boolean).join(': '),
+              area: 'tiere',
+              targets: [{ kind: 'tier', module: moduleKey, id: animalId, label: animalLabelOf ?? animalId }],
+            }}
+            onClose={() => setFollowUp(null)}
+          />
+        </Suspense>
+      )}
       {form ?? (
         <button type="button" onClick={() => setMode({ kind: 'new' })} className="mb-2 w-full rounded-lg border border-dashed border-brand-300 py-2.5 text-sm font-medium text-brand-700">
           ＋ Beobachtung / Behandlung erfassen

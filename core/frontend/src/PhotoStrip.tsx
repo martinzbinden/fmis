@@ -24,7 +24,7 @@ function Thumb({ moduleKey, id, onOpen }: { moduleKey: string; id: string; onOpe
   )
 }
 
-function Viewer({ moduleKey, id, onClose }: { moduleKey: string; id: string; onClose: () => void }) {
+function Viewer({ moduleKey, id, onClose, onFollowUp }: { moduleKey: string; id: string; onClose: () => void; onFollowUp?: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -42,7 +42,19 @@ function Viewer({ moduleKey, id, onClose }: { moduleKey: string; id: string; onC
       <button type="button" onClick={onClose} className="grid min-h-0 flex-1 place-items-center p-2" aria-label="Foto schliessen">
         {url ? <img src={url} alt="" className="max-h-full max-w-full object-contain" /> : <span className="text-white">{error ?? 'Lädt…'}</span>}
       </button>
-      <div className="flex justify-center p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+      <div className="flex flex-wrap justify-center gap-2 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+        {onFollowUp && (
+          <button
+            type="button"
+            onClick={() => {
+              onClose()
+              onFollowUp()
+            }}
+            className="min-h-12 rounded-lg bg-amber-300 px-4 text-sm font-semibold text-amber-950"
+          >
+            ＋ Pendenz daraus
+          </button>
+        )}
         <button type="button" onClick={onClose} className="min-h-12 rounded-lg bg-white/90 px-4 text-sm font-semibold text-gray-900">
           ✕ Schliessen
         </button>
@@ -51,8 +63,20 @@ function Viewer({ moduleKey, id, onClose }: { moduleKey: string; id: string; onC
   )
 }
 
-/** Fotos eines Eintrags: zuerst nur «📷 N» (lädt nichts), aufgeklappt die Vorschauen, angetippt das Foto. */
-export default function PhotoStrip({ moduleKey, ids, startOpen = false }: { moduleKey: string; ids: string[]; startOpen?: boolean }) {
+/** Fotos eines Eintrags: zuerst nur «📷 N» (lädt nichts), aufgeklappt die Vorschauen, angetippt das Foto (dort auf
+ * Wunsch «Pendenz daraus»). */
+export default function PhotoStrip({
+  moduleKey,
+  ids,
+  startOpen = false,
+  onFollowUp,
+}: {
+  moduleKey: string
+  ids: string[]
+  startOpen?: boolean
+  /** im grossen Foto: «Pendenz daraus» (z.B. Nachkontrolle, Service) */
+  onFollowUp?: () => void
+}) {
   const [open, setOpen] = useState(startOpen)
   const [big, setBig] = useState<string | null>(null)
   if (!ids.length) return null
@@ -68,7 +92,7 @@ export default function PhotoStrip({ moduleKey, ids, startOpen = false }: { modu
           ))}
         </div>
       )}
-      {big && <Viewer moduleKey={moduleKey} id={big} onClose={() => setBig(null)} />}
+      {big && <Viewer moduleKey={moduleKey} id={big} onClose={() => setBig(null)} onFollowUp={onFollowUp} />}
     </div>
   )
 }

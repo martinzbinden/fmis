@@ -16,3 +16,12 @@ describe('Arbeiten planen', () => {
     expect(ACTIVITIES.filter((a) => a.area === 'maschine').every((a) => a.logType)).toBe(true)
   })
 })
+
+describe('Pendenzen', () => {
+  it('Herkunft aus source_ref', async () => {
+    const { followUpOf } = await import('./workTasks')
+    expect(followUpOf({ source: 'nachfolge', source_ref: 'farm_journal:abc' })).toEqual({ kind: 'farm_journal', id: 'abc' })
+    expect(followUpOf({ source: 'manuell', source_ref: null })).toBeNull()
+    expect(followUpOf({ source: 'shop', source_ref: '123' })).toBeNull()
+  })
+})
