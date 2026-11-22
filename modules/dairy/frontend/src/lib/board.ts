@@ -360,3 +360,22 @@ export function buildColumns(groups: { id: string; name: string }[], lists: Watc
 export function cardsInColumn(col: BoardColumn, cards: BoardCard[], groupOf: (id: string) => string | null): BoardCard[] {
   return col.kind === 'group' ? cards.filter((c) => groupOf(c.id) === col.id) : cards.filter((c) => c.listIds.includes(col.id!))
 }
+
+export type BreedingBadge = { kind: 'belegt' | 'traechtig' | 'leer' | 'unsicher'; days: number | null; title: string }
+
+/** Badge auf der Karte, immer sichtbar: belegt (♥ Tage seit der Meldung) oder Trächtigkeitsstatus (trächtig mit
+ * Tagen seit der Meldung, leer, unsicher). Zählt nur, was seit der letzten Geburt gemeldet ist; ein «leer» vor einer
+ * neueren Belegung gilt nicht mehr. */
+export function breedingBadge(c: Pick<BoardCard, 'lastService' | 'lastBirth' | 'pregnancy'>, today: string): BreedingBadge | null {
+  const m = c.lastService && (!c.lastBirth || c.lastService.date > c.lastBirth) ? c.lastService : null
+  const p = c.pregnancy
+  const days = m ? daysBetween(m.date, today) : null
+  const mated = m ? `belegt ${m.date.slice(8, 10)}.${m.date.slice(5, 7)}.${m.date.slice(0, 4)}${m.sire ? ` mit ${m.sire}` : ''}, vor ${days} Tagen` : 'keine Belegung gemeldet'
+  const checked = p ? `Trächtigkeit ${p.result} am ${p.date.slice(8, 10)}.${p.date.slice(5, 7)}.${p.date.slice(0, 4)}` : ''
+  const after = p && (!m || p.date >= m.date)
+  if (p?.result === 'ja') return { kind: 'traechtig', days, title: `trächtig (${checked}); ${mated}` }
+  if (after && p?.result === 'nein') return { kind: 'leer', days: null, title: `${checked}; ${mated}` }
+  if (after && p?.result === 'unsicher') return { kind: 'unsicher', days, title: `${checked}; ${mated}` }
+  if (m) return { kind: 'belegt', days, title: `${mated}${p ? ` (${checked}, vor der Belegung)` : ''}` }
+  return null
+}

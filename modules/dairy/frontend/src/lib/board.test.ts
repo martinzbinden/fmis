@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyFilters, matchesFilter } from '@fmis/core/filters/filterModel'
-import { boardFields, boardPresets, buildColumns, cardsInColumn, columnKey, sortCards, type BoardCard } from './board'
+import { boardFields, boardPresets, breedingBadge, buildColumns, cardsInColumn, columnKey, sortCards, type BoardCard } from './board'
 import { clearTargets, draftSize, effectiveGroup, groupByTarget, pruneDraft, setTargets, summarizeDraft } from './boardDraft'
 
 const card = (p: Partial<BoardCard> = {}): BoardCard => ({
@@ -221,5 +221,24 @@ describe('Abgesetzte Lämmer letzter Wurf', () => {
     expect(weanedOfLastLitter({ litterAlive: 3, nursing: 2 })).toBe(1)
     expect(weanedOfLastLitter({ litterAlive: 1, nursing: 2 })).toBe(0)
     expect(weanedOfLastLitter({ litterAlive: null, nursing: 0 })).toBe(0)
+  })
+})
+
+describe('Badge Belegung / Trächtigkeit', () => {
+  const today = '2026-11-19'
+  const svc = (date: string) => ({ date, to: null, kind: 'natursprung' as const, sire: 'Testbock', daysAgo: 0 })
+  const preg = (result: 'ja' | 'nein' | 'unsicher', date: string) => ({ result, date, examiner: null, method: null, weeks: null })
+  it('belegt seit der letzten Geburt: Herz mit Tagen', () => {
+    expect(breedingBadge({ lastService: svc('2026-11-01'), lastBirth: '2026-03-01', pregnancy: null }, today)).toMatchObject({ kind: 'belegt', days: 18 })
+  })
+  it('Belegung vor der letzten Geburt zählt nicht', () => {
+    expect(breedingBadge({ lastService: svc('2025-10-01'), lastBirth: '2026-03-01', pregnancy: null }, today)).toBeNull()
+  })
+  it('trächtig: Tage seit der Meldung', () => {
+    expect(breedingBadge({ lastService: svc('2026-09-01'), lastBirth: null, pregnancy: preg('ja', '2026-10-20') }, today)).toMatchObject({ kind: 'traechtig', days: 79 })
+  })
+  it('leer nur, wenn nach der Belegung festgestellt', () => {
+    expect(breedingBadge({ lastService: svc('2026-09-01'), lastBirth: null, pregnancy: preg('nein', '2026-10-20') }, today)).toMatchObject({ kind: 'leer' })
+    expect(breedingBadge({ lastService: svc('2026-11-01'), lastBirth: null, pregnancy: preg('nein', '2026-10-20') }, today)).toMatchObject({ kind: 'belegt', days: 18 })
   })
 })

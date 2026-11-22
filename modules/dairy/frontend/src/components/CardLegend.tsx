@@ -114,8 +114,8 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
         <Item title="Kopf der Karte" sample={<span className="text-lg font-bold">123</span>}>
           Laufnummer, kurze Ohrmarke, Geschlecht, Alter. Das Kästchen wählt die Karte aus (mehrere gleichzeitig), am Griff ⠿ ziehen verschiebt sie in eine andere Spalte. Antippen klappt alle Angaben auf.
         </Item>
-        <Item title="Trächtigkeit, trocken" sample={<span className="flex flex-wrap gap-1">{chip('bg-sky-100 text-sky-900', 'trächtig')}{chip('bg-orange-100 text-orange-900', 'leer')}</span>}>
-          Ergebnis der letzten Untersuchung seit der letzten Geburt. «trocken» heisst nicht in Milch.
+        <Item title="Belegung, Trächtigkeit, trocken" sample={<span className="flex flex-wrap gap-1">{chip('bg-rose-100 text-rose-900', '♥ 18')}{chip('bg-sky-100 text-sky-900', '🤰 79')}{chip('bg-orange-100 text-orange-900', 'leer')}</span>}>
+          ♥ belegt, Zahl = Tage seit der Meldung. 🤰 trächtig (Untersuchung), Zahl = Tage seit der Belegung. «leer» nach der letzten Belegung festgestellt, ♥? unsicher. Es zählt nur, was seit der letzten Geburt gemeldet ist. «trocken» heisst nicht in Milch.
         </Item>
         <Item title="Ausmerzgründe" sample={chip('bg-red-100 text-red-900', '⚠ 1')}>
           Anzahl Gründe der Ausmerzliste (z.B. Zellzahl, Fruchtbarkeit). Aufgeklappt stehen sie im Klartext.

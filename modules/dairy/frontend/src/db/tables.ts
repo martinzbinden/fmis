@@ -37,7 +37,7 @@ export const SYNC_TABLES = {
   matings: [
     'id', 'animal_id', 'service_date', 'service_to', 'kind', 'seq', 'sire_key',
     'sire_ear_tag', 'sire_name', 'sire_breed', 'source', 'import_key', 'notes',
-    'updated_at', 'deleted_at',
+    'updated_at', 'deleted_at', 'marker_color',
   ],
   pregnancy_checks: [
     'id', 'animal_id', 'check_date', 'result', 'weeks', 'source', 'notes', 'recorded_at',

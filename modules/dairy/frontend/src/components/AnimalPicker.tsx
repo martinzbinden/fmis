@@ -22,6 +22,7 @@ export default function AnimalPicker({
   multiple = false,
   placeholder = 'Laufnummer, Name oder Ohrmarke',
   readerModule,
+  hideSelected = false,
 }: {
   animals: Animal[]
   selected: string[]
@@ -29,6 +30,8 @@ export default function AnimalPicker({
   multiple?: boolean
   placeholder?: string
   readerModule?: string
+  /** gewählte Tiere nicht als Chips zeigen (die Seite zeigt eine eigene Liste mit Entfernen) */
+  hideSelected?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [listOpen, setListOpen] = useState(false)
@@ -79,7 +82,7 @@ export default function AnimalPicker({
           <TagReaderButton reader={reader} hint={multiple ? 'jede Lesung kommt dazu' : undefined} />
         </div>
       )}
-      {selected.length > 0 && (
+      {!hideSelected && selected.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {selected.map((id) => {
             const a = byId.get(id)

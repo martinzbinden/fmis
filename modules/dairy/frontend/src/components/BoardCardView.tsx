@@ -1,7 +1,7 @@
 import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { colorOf } from '@fmis/core/filters/filterModel'
-import { areaLabel, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib/board'
+import { areaLabel, breedingBadge, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib/board'
 import { fmtAge, fmtDate } from '../lib/format'
 import { RESULT_LABEL, METHOD_LABEL } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
@@ -113,7 +113,7 @@ export default function BoardCardView({
   const terms = speciesTerms(moduleKey)
   const main = colors[0] ? colorOf(colors[0]) : null
   const age = card.birthDate ? fmtAge(card.birthDate, today) : null
-  const pregnant = card.pregnancy?.result
+  const badge = breedingBadge(card, today)
   const [picking, setPicking] = useState(false)
 
   return (
@@ -161,9 +161,26 @@ export default function BoardCardView({
                 {VERDICT_LABEL[verdict.verdict]}
               </span>
             )}
-            {pregnant === 'ja' && <span className="rounded bg-sky-100 px-1.5 py-0.5 text-sky-900">trächtig</span>}
-            {pregnant === 'nein' && <span className="rounded bg-orange-100 px-1.5 py-0.5 text-orange-900">leer</span>}
-            {pregnant === 'unsicher' && <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800">unsicher</span>}
+            {badge?.kind === 'belegt' && (
+              <span className="rounded bg-rose-100 px-1.5 py-0.5 text-rose-900" title={badge.title} aria-label={`belegt vor ${badge.days} Tagen`}>
+                <span aria-hidden className="text-rose-600">♥</span> {badge.days}
+              </span>
+            )}
+            {badge?.kind === 'traechtig' && (
+              <span className="rounded bg-sky-100 px-1.5 py-0.5 text-sky-900" title={badge.title} aria-label={`trächtig${badge.days != null ? `, belegt vor ${badge.days} Tagen` : ''}`}>
+                <span aria-hidden>🤰</span> {badge.days ?? 'trächtig'}
+              </span>
+            )}
+            {badge?.kind === 'leer' && (
+              <span className="rounded bg-orange-100 px-1.5 py-0.5 text-orange-900" title={badge.title}>
+                leer
+              </span>
+            )}
+            {badge?.kind === 'unsicher' && (
+              <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-800" title={badge.title} aria-label={`Trächtigkeit unsicher${badge.days != null ? `, belegt vor ${badge.days} Tagen` : ''}`}>
+                <span aria-hidden className="text-rose-600">♥</span>? {badge.days ?? ''}
+              </span>
+            )}
             {card.dry && <span className="rounded bg-gray-200 px-1.5 py-0.5 text-gray-800">trocken</span>}
             <NursingLambs count={card.nursing} young={terms.singular === 'Aue' ? 'Lämmer' : 'Kälber'} />
             {(card.bucketLambs ?? 0) > 0 && (
