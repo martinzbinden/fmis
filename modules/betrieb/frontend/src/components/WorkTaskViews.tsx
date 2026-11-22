@@ -2,13 +2,17 @@ import { useState } from 'react'
 import AppIcon from '@fmis/core/AppIcon'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 import Modal from './Modal'
+import PhotoInput from '@fmis/core/PhotoInput'
+import PhotoStrip from '@fmis/core/PhotoStrip'
+import type { PreparedPhoto } from '@fmis/core/photos'
+import { addPhotos, PHOTO_MODULE } from '../lib/photoRefs'
 import { fmtDate, todayIso } from '../lib/format'
 import { activityByTitle, AREA_ICON, AREA_LABEL, cancelWorkTask, completeWorkTask, STABLE_CATEGORIES, targetIcon, type FarmJournalEntry, type WorkTask } from '../lib/workTasks'
 
 const field = 'min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-base'
 
 /** Karte einer Arbeit (Tiere, Gebäude, Maschinen, Brennholz, frei) im Arbeitsplan. */
-export function WorkTaskCard({ task, personName, canWrite, onComplete, onChanged }: { task: WorkTask; personName: string | null; canWrite: boolean; onComplete: () => void; onChanged: () => void }) {
+export function WorkTaskCard({ task, personName, photoIds = [], canWrite, onComplete, onChanged }: { task: WorkTask; personName: string | null; photoIds?: string[]; canWrite: boolean; onComplete: () => void; onChanged: () => void }) {
   const [confirm, setConfirm] = useState(false)
   const overdue = task.due_date && task.due_date < todayIso()
   return (
@@ -38,6 +42,7 @@ export function WorkTaskCard({ task, personName, canWrite, onComplete, onChanged
           ))}
         </ul>
       )}
+      <PhotoStrip moduleKey={PHOTO_MODULE} ids={photoIds} />
       {canWrite && (
         <div className="flex flex-wrap gap-2 border-t pt-3">
           <button type="button" onClick={onComplete} className="min-h-11 flex-1 rounded-lg border border-green-600 px-3 py-2 text-sm font-medium text-green-700">
@@ -68,6 +73,7 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
   const [dose, setDose] = useState('')
   const [quantity, setQuantity] = useState(task.quantity != null ? String(task.quantity) : '')
   const [doneBy, setDoneBy] = useState(getCurrentUserEmail() ?? '')
+  const [photos, setPhotos] = useState<PreparedPhoto[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   async function save() {
@@ -75,8 +81,10 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
     setErr(null)
     try {
       const q = quantity.trim() ? Number(quantity.replace(',', '.')) : null
+      // Fotos gehören zur Arbeit: Betriebs- und Stalljournal zeigen sie über die Arbeit (task_id bzw. ref_id)
+      if (photos.length) await addPhotos('work_task', task.id, photos)
       const refs = await completeWorkTask(task, { date, notes, category, medication, dose, doneBy, quantity: q != null && Number.isFinite(q) ? q : null })
-      onDone(refs)
+      onDone(photos.length ? [...refs, `${photos.length} ${photos.length === 1 ? 'Foto' : 'Fotos'}`] : refs)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
       setBusy(false)
@@ -126,6 +134,7 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
           <span className="text-gray-600">Was gemacht, Befund</span>
           <textarea className={`${field} w-full`} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
+        <PhotoInput photos={photos} onChange={setPhotos} />
         <label className="block">
           <span className="text-gray-600">Ausgeführt von</span>
           <input className={`${field} w-full`} value={doneBy} onChange={(e) => setDoneBy(e.target.value)} />
@@ -141,7 +150,7 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
 }
 
 /** Betriebsjournal: erledigte Arbeiten an Gebäuden, Maschinen, Brennholz und weitere. */
-export function FarmJournalList({ entries }: { entries: FarmJournalEntry[] }) {
+export function FarmJournalList({ entries, photos }: { entries: FarmJournalEntry[]; photos?: Map<string, string[]> }) {
   if (entries.length === 0) return <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">Noch keine Einträge. Erledigte Arbeiten (ausser Parzellen und Tiere mit Stalljournal) erscheinen hier.</p>
   return (
     <ul className="divide-y rounded-lg bg-white text-sm shadow-sm">
@@ -160,6 +169,7 @@ export function FarmJournalList({ entries }: { entries: FarmJournalEntry[] }) {
             </div>
             {e.notes && <div className="text-gray-600">{e.notes}</div>}
             {e.done_by && <div className="text-xs text-gray-500">{e.done_by}</div>}
+            <PhotoStrip moduleKey={PHOTO_MODULE} ids={[...(photos?.get(e.id) ?? []), ...(e.task_id ? (photos?.get(e.task_id) ?? []) : [])]} />
           </div>
         </li>
       ))}

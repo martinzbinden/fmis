@@ -91,7 +91,8 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
             entry_date: e.date,
             source: 'manual',
             text: e.text,
-            ref_id: null,
+            // Arbeit aus dem Arbeitsplan (Modul Betrieb): deren Fotos zeigt die Tierseite beim Eintrag
+            ref_id: e.refId ?? null,
             category: e.category,
             medication: e.medication ?? null,
             dose: e.dose ?? null,

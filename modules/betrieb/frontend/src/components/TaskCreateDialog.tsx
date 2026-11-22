@@ -5,6 +5,9 @@ import { animalRank, textRank } from '@fmis/core/search'
 import { getSyncedDb as getWiesenjournalDb } from '@fmis/wiesenjournal/db/access'
 import { loadFertilizerTypes } from '@fmis/wiesenjournal/lib/fertilization'
 import Modal from './Modal'
+import PhotoInput from '@fmis/core/PhotoInput'
+import type { PreparedPhoto } from '@fmis/core/photos'
+import { addPhotos } from '../lib/photoRefs'
 import { useQuery } from '../hooks/useQuery'
 import { addDaysIso, num, todayIso, USAGE_TYPE_LABEL } from '../lib/format'
 import { loadMachines } from '../lib/machines'
@@ -81,6 +84,7 @@ export default function TaskCreateDialog({
   const [unit, setUnit] = useState('')
   const [customer, setCustomer] = useState('')
   const [notes, setNotes] = useState('')
+  const [photos, setPhotos] = useState<PreparedPhoto[]>([])
   const [busy, setBusy] = useState(false)
   const input = useRef<HTMLInputElement>(null)
 
@@ -163,6 +167,7 @@ export default function TaskCreateDialog({
         customer: customer.trim() || null,
         notes: notes.trim() || null,
       })
+      if (photos.length) await addPhotos('work_task', id, photos)
       if (doneNow) onDoneNow(id)
       else onSaved(date)
     } finally {
@@ -314,6 +319,9 @@ export default function TaskCreateDialog({
                 <span className="text-gray-600">Notiz</span>
                 <textarea className={`${field} w-full`} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
               </label>
+              <div className="col-span-2">
+                <PhotoInput photos={photos} onChange={setPhotos} />
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" disabled={!valid || busy} onClick={() => void save(false)} className="min-h-12 flex-1 rounded-lg bg-brand-700 px-4 font-semibold text-white disabled:opacity-40">

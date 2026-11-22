@@ -51,6 +51,10 @@ COPY modules/bau/schema ./modules/bau/schema
 # explizit, unabhängig davon wie uvicorn das Arbeitsverzeichnis handhabt.
 ENV PYTHONPATH=/app
 
+# Fotos als Dateien (core/backend/fmis_core/photo_files.py), Volume photos_data in docker-compose.yml
+ENV PHOTO_DIR=/data/photos
+RUN mkdir -p /data/photos
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

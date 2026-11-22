@@ -97,6 +97,10 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "entry_date", "area", "title", "targets", "quantity", "unit", "notes", "task_id", "customer",
         "done_by", "created_by", "updated_at", "deleted_at",
     ],
+    "photos": [
+        "id", "ref_kind", "ref_id", "taken_at", "content_type", "size_bytes", "width", "height", "caption",
+        "created_by", "archived_at", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at", "snapshot",
         "updated_at",
@@ -109,6 +113,7 @@ TABLE_AREA: dict[str, str] = {
     # Arbeiten planen und Betriebsjournal: wer Maschinen und Aufzeichnungen führt (auch Mitarbeit)
     "work_tasks": "betrieb:tracking",
     "farm_journal": "betrieb:tracking",
+    "photos": "betrieb:tracking",
     "machine_files": "betrieb:tracking",
     "maintenance_tasks": "betrieb:tracking",
     "maintenance_log": "betrieb:tracking",

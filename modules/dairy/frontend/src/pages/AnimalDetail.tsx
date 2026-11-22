@@ -1,5 +1,7 @@
 import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
 import PhotoThumbs from '../components/PhotoThumbs'
+import PhotoStrip from '@fmis/core/PhotoStrip'
+import { useWorkPhotos } from '../lib/workPhotos'
 import { loadPhotos, uploadPendingPhotos, type JournalPhoto } from '../lib/photos'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -668,6 +670,8 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
     for (const p of photos ?? []) if (p.journal_id) m.set(p.journal_id, [...(m.get(p.journal_id) ?? []), p])
     return m
   }, [photos])
+  // Fotos der Arbeit aus dem Arbeitsplan (Modul Betrieb), Eintrag mit ref_id
+  const workPhotos = useWorkPhotos(journal.map((j) => j.ref_id))
   // Fotos, die auf diesem Gerät noch warten, beim Öffnen nachschieben
   useEffect(() => void uploadPendingPhotos(), [])
   const now = Date.now()
@@ -695,7 +699,14 @@ function JournalSection({ animalId, journal }: { animalId: string; journal: Anim
       canDelete={canChangeEntry(j, canCorrectLater, now)}
       onCorrect={() => setMode({ kind: 'correct', entry: j })}
       onDelete={() => softDeleteRow(db, 'animal_journal', j.id)}
-      photos={photosByEntry.has(j.id) ? <PhotoThumbs moduleKey={moduleKey} photos={photosByEntry.get(j.id)!} /> : undefined}
+      photos={
+        photosByEntry.has(j.id) || (j.ref_id && workPhotos.has(j.ref_id)) ? (
+          <>
+            {photosByEntry.has(j.id) && <PhotoThumbs moduleKey={moduleKey} photos={photosByEntry.get(j.id)!} />}
+            {j.ref_id && workPhotos.has(j.ref_id) && <PhotoStrip moduleKey="betrieb" ids={workPhotos.get(j.ref_id)!} />}
+          </>
+        ) : undefined
+      }
     />
   )
   return (

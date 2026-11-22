@@ -45,6 +45,8 @@ export interface ReaderFacts {
 
 /** Eintrag ins Stalljournal eines Tiermoduls (je Tier eine Zeile). */
 export interface StableJournalEntry {
+  /** Arbeit im Modul Betrieb (work_tasks.id): Fotos der Arbeit erscheinen beim Eintrag */
+  refId?: string | null
   date: string
   /** notiz, beobachtung, behandlung, klauen, fuetterung … (Kategorien des Stalljournals) */
   category: string

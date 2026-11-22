@@ -1,4 +1,5 @@
-"""Fotos zu Journal-Einträgen (schema/0023_journal_photos.sql).
+"""Fotos zu Journal-Einträgen (schema/0023_journal_photos.sql). Inhalt seit 11.2026 als Datei
+(core/backend/fmis_core/photo_files.py), ältere Fotos weiter aus journal_photo_data.
 
 Die Angaben (journal_photos) legt das Gerät selbst an und synchronisiert sie
 normal; den Inhalt lädt es separat hoch, sobald es Verbindung hat — auch
@@ -15,6 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
+from core.backend.fmis_core import photo_files
 from core.backend.fmis_core.auth import CurrentUser, require_auth
 from core.backend.fmis_core.db import get_pool
 
@@ -44,18 +46,20 @@ def build_photo_router(key: str) -> APIRouter:
             raise HTTPException(status_code=400, detail="Leeres Foto")
         if len(data) > MAX_BYTES:
             raise HTTPException(status_code=413, detail="Foto zu gross (max. 15 MB)")
+        # Neu als Datei (eigenes Volume, nicht in der Datenbank-Sicherung); was schon in der Datenbank liegt, bleibt
         async with pool.connection() as conn:
-            await conn.execute(
-                """insert into journal_photo_data (id, data, content_type, created_by)
-                   values (%s, %s, %s, %s) on conflict (id) do nothing""",
-                (photo_id, data, content_type, user.email),
-            )
-            await conn.commit()
+            old = await (await conn.execute("select 1 from journal_photo_data where id = %s", (photo_id,))).fetchone()
+        if not old:
+            photo_files.save(key, str(photo_id), data, content_type)
         return Response(status_code=204)
 
     @router.get("/photos/{photo_id}")
     async def get_photo(photo_id: UUID, user: CurrentUser = Depends(require_auth)) -> Response:
         check(user, "read")
+        hit = photo_files.find(key, str(photo_id))
+        if hit:
+            path, ctype = hit
+            return Response(content=path.read_bytes(), media_type=ctype, headers={"Cache-Control": "private, max-age=31536000, immutable"})
         async with pool.connection() as conn:
             row = await (
                 await conn.execute("select content_type, data from journal_photo_data where id = %s", (photo_id,))

@@ -130,6 +130,8 @@ export function uploadPendingPhotos(): Promise<number> {
           // andere (kein Recht, Server noch nicht aktualisiert, Störung) später nochmals versuchen
           if (put.ok || put.status === 400 || put.status === 413 || put.status === 415) {
             writeQueue(readQueue().filter((q) => q.id !== item.id))
+            // hochgeladen: das Foto muss nicht auf dem Gerät bleiben (Ballast)
+            await cache?.delete(photoUrl(item.moduleKey, item.id))
           }
         } catch {
           break // kein Netz — später wieder
@@ -161,7 +163,7 @@ export function photoObjectUrl(moduleKey: string, id: string): Promise<string> {
       if (hit) return URL.createObjectURL(await hit.blob())
       const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } })
       if (!res.ok) throw new Error(res.status === 404 ? 'Foto noch nicht hochgeladen' : `Foto nicht verfügbar (${res.status})`)
-      await cache?.put(url, res.clone()).catch(() => undefined)
+      // angesehene Fotos nicht dauerhaft auf dem Gerät speichern (Ballast); der Browser hält sie im HTTP-Cache
       return URL.createObjectURL(await res.blob())
     })()
     p.catch(() => objectUrls.delete(id))

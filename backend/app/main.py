@@ -27,6 +27,7 @@ from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
 from modules.betrieb.backend.app import duty_feed as betrieb_duty_feed
 from modules.betrieb.backend.app import machine_files as betrieb_machine_files
+from modules.betrieb.backend.app import photos as betrieb_photos
 from modules.betrieb.backend.app import school_timetable as betrieb_school
 from modules.betrieb.backend.app import sync as betrieb_sync
 from modules.tiere.backend.app import reader_database as tiere_reader_database
@@ -172,6 +173,12 @@ app.include_router(
 )
 app.include_router(
     betrieb_machine_files.router,
+    prefix="/betrieb",
+    dependencies=[Depends(require_module_enabled("betrieb"))],
+)
+# Fotos zu Arbeiten und Betriebsjournal (Dateien, core/backend/fmis_core/photo_files.py)
+app.include_router(
+    betrieb_photos.router,
     prefix="/betrieb",
     dependencies=[Depends(require_module_enabled("betrieb"))],
 )

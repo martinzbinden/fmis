@@ -231,7 +231,7 @@ export async function completeWorkTask(t: WorkTask, c: Completion): Promise<stri
     for (const [module, ids] of byModule) {
       const p = providers.get(module)
       if (p?.addJournal) {
-        await p.addJournal(ids, { date: c.date, category: c.category ?? activityByTitle(t.title, 'tiere')?.category ?? 'notiz', text, medication: c.medication || null, dose: c.dose || null, administered_by: by })
+        await p.addJournal(ids, { refId: t.id, date: c.date, category: c.category ?? activityByTitle(t.title, 'tiere')?.category ?? 'notiz', text, medication: c.medication || null, dose: c.dose || null, administered_by: by })
         refs.push(`Stalljournal ${p.title}: ${ids.length} ${ids.length === 1 ? 'Tier' : 'Tiere'}`)
       } else {
         // Tiere ohne Stalljournal: als Ziel im Betriebsjournal

@@ -17,6 +17,7 @@ import CompletePlanDialog from '../components/CompletePlanDialog'
 import TaskCreateDialog from '../components/TaskCreateDialog'
 import { CompleteTaskDialog, FarmJournalList, WorkTaskCard } from '../components/WorkTaskViews'
 import { loadFarmJournal, loadWorkTasks, type WorkTask } from '../lib/workTasks'
+import { photoIdsByRef } from '../lib/photoRefs'
 import type { Machine, Track } from '../types'
 
 const UNIT: Record<string, string> = { m3: 'm³', t: 't', kg: 'kg' }
@@ -48,7 +49,8 @@ async function load(pg: PGlite) {
     loadFarmJournal(pg, addDaysIso(todayIso(), -90)),
     pg.query<{ id: string; name: string }>('select id, name from duty_people where deleted_at is null').then((r) => r.rows),
   ])
-  return { tasks, machines, flow, planTracks, planTanks, work, journal, people }
+  const photos = await photoIdsByRef(pg, [...work.map((w) => w.id), ...journal.map((j) => j.id), ...journal.flatMap((j) => (j.task_id ? [j.task_id] : []))])
+  return { tasks, machines, flow, planTracks, planTanks, work, journal, people, photos }
 }
 
 function weekday(iso: string): string {
@@ -352,7 +354,7 @@ export default function WorkPlan() {
         ))}
       </div>
       {doneMsg && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-900">✓ Eingetragen: {doneMsg}</p>}
-      {view === 'journal' && data && <FarmJournalList entries={data.journal} />}
+      {view === 'journal' && data && <FarmJournalList entries={data.journal} photos={data.photos} />}
 
       {view === 'plan' && active && (
         <div className={`space-y-2 rounded-lg p-3 text-sm ${recording ? 'bg-green-50 text-green-900' : 'bg-amber-50 text-amber-900'}`}>
@@ -426,6 +428,7 @@ export default function WorkPlan() {
             key={w.id}
             task={w}
             personName={data?.people.find((p) => p.id === w.person_id)?.name ?? null}
+            photoIds={data?.photos.get(w.id) ?? []}
             canWrite={canWork}
             onComplete={() => setCompletingWork(w)}
             onChanged={refresh}
