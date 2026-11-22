@@ -88,6 +88,15 @@ SYNC_TABLES: dict[str, list[str]] = {
     "farm_numbers": [
         "id", "farm", "label", "value", "notes", "sort_order", "updated_at", "deleted_at",
     ],
+    "work_tasks": [
+        "id", "title", "area", "targets", "planned_date", "due_date", "person_id", "quantity", "unit", "notes",
+        "source", "source_ref", "customer", "status", "done_date", "done_by", "result_notes", "journal_refs",
+        "created_by", "updated_at", "deleted_at",
+    ],
+    "farm_journal": [
+        "id", "entry_date", "area", "title", "targets", "quantity", "unit", "notes", "task_id", "customer",
+        "done_by", "created_by", "updated_at", "deleted_at",
+    ],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at", "snapshot",
         "updated_at",
@@ -97,6 +106,9 @@ SYNC_TABLES: dict[str, list[str]] = {
 # Berechtigungsbereich je Tabelle (siehe wiesenjournal/backend/app/tables.py)
 TABLE_AREA: dict[str, str] = {
     "machines": "betrieb:tracking",
+    # Arbeiten planen und Betriebsjournal: wer Maschinen und Aufzeichnungen führt (auch Mitarbeit)
+    "work_tasks": "betrieb:tracking",
+    "farm_journal": "betrieb:tracking",
     "machine_files": "betrieb:tracking",
     "maintenance_tasks": "betrieb:tracking",
     "maintenance_log": "betrieb:tracking",

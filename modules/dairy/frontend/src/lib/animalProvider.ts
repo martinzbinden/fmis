@@ -81,6 +81,26 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
       }
       return out
     },
+    async addJournal(animalIds, e) {
+      const pg = await getDb(moduleKey)
+      await inTransaction(pg, async (tx) => {
+        for (const id of animalIds) {
+          await upsertRow(tx, 'animal_journal', {
+            id: crypto.randomUUID(),
+            animal_id: id,
+            entry_date: e.date,
+            source: 'manual',
+            text: e.text,
+            ref_id: null,
+            category: e.category,
+            medication: e.medication ?? null,
+            dose: e.dose ?? null,
+            administered_by: e.administered_by ?? null,
+          })
+        }
+      })
+      void getDairySyncClient(moduleKey).syncNow()
+    },
     async dryOff(animalIds, date, note) {
       const pg = await getDb(moduleKey)
       await inTransaction(pg, async (tx) => {

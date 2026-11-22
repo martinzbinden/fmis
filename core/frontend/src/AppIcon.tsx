@@ -92,6 +92,7 @@ const ICONS: Record<string, { theme: IconTheme; parts: Part[] }> = {
   weide: { theme: 'flaechen', parts: [['m', 'M3 20h18M15 20v-9M20 20v-9M14 13.5h7M14 17h7'], ['l', 'M5 20c0-3 .8-5 2-6.5M8 20c0-2.5-.5-4.5-1.7-6M10.5 20c0-2 .4-3.6 1.3-4.8']] },
   sonne: { theme: 'flaechen', parts: [['a', c(12, 12, 4)], ['l', 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4']] },
   raster: { theme: 'flaechen', parts: [['m', 'M4 4h16v16H4zM4 10h16M4 15h16M10 4v16M15 4v16'], ['a', 'M10 10h5v5h-5z']] },
+  holz: { theme: 'flaechen', parts: [['m', `${c(7.5, 16.5, 3.5)}${c(16.5, 16.5, 3.5)}${c(12, 9, 3.5)}`], ['a', `${c(7.5, 16.5, 1.2)}${c(16.5, 16.5, 1.2)}${c(12, 9, 1.2)}`]] },
   // Bau
   bau: { theme: 'bau', parts: [['m', 'M4 21h16M6 21V11h7v10'], ['l', 'M15 21V4M10 4h9.5M18 4v3'], ['a', 'M8 13.5h3v3H8z']] },
 }

@@ -43,6 +43,17 @@ export interface ReaderFacts {
   performanceRel?: number | null
 }
 
+/** Eintrag ins Stalljournal eines Tiermoduls (je Tier eine Zeile). */
+export interface StableJournalEntry {
+  date: string
+  /** notiz, beobachtung, behandlung, klauen, fuetterung … (Kategorien des Stalljournals) */
+  category: string
+  text: string
+  medication?: string | null
+  dose?: string | null
+  administered_by?: string | null
+}
+
 export interface AnimalProvider {
   title: string
   species: HerdSpecies
@@ -54,6 +65,9 @@ export interface AnimalProvider {
   dryOff?(animalIds: string[], date: string, note: string): Promise<void>
   /** Offene Merklisten mit ihren Tieren (z.B. um sie einer Tiergruppe zuzuteilen). */
   listWatchlists?(): Promise<{ id: string; name: string; animalIds: string[] }[]>
+  /** Stalljournal: erledigte Arbeit an Tieren eintragen (Arbeitsplan, Modul Betrieb). Ohne diese Funktion landet die
+   * Arbeit im Betriebsjournal. */
+  addJournal?(animalIds: string[], entry: StableJournalEntry): Promise<void>
   /** Suche über alles: wohin ein Tier-Treffer führt und welche Direktknöpfe er hat (z.B. Behandlung, Belegung). */
   searchLinks?(a: AnimalRef): { to: string; actions?: SearchAction[] }
 }

@@ -23,12 +23,17 @@ export default function PlanCreateDialog({
   onClose,
   onSaved,
   initialDate,
+  initialWorkKey,
+  initialParcels,
 }: {
   seasonYear: number
   onClose: () => void
   onSaved: (date: string) => void
   /** z.B. aus dem Dienstplan-Kalender: der angetippte Tag */
   initialDate?: string
+  /** aus der Suche im Dialog «Arbeit planen»: Düngerart (f:id) oder Nutzung (u:typ) und Parzellen vorwählen */
+  initialWorkKey?: string
+  initialParcels?: string[]
 }) {
   const { data } = useQuery(
     async () => {
@@ -42,12 +47,12 @@ export default function PlanCreateDialog({
     [seasonYear],
   )
   const [date, setDate] = useState(initialDate ?? addDaysIso(todayIso(), 1))
-  const [workKey, setWorkKey] = useState('')
+  const [workKey, setWorkKey] = useState(initialWorkKey ?? '')
   const [label, setLabel] = useState('')
   const [rate, setRate] = useState('')
   const [dilution, setDilution] = useState('')
   const [notes, setNotes] = useState('')
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialParcels ?? []))
   const [overrides, setOverrides] = useState<Record<string, string>>({})
   const [tab, setTab] = useState<'liste' | 'karte'>('liste')
   const [q, setQ] = useState('')

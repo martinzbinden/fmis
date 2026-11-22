@@ -14,6 +14,9 @@ import { loadTrackTanks } from '../lib/slurryData'
 import { deletePlanTask } from '../lib/workPlanEdit'
 import PlanCreateDialog from '../components/PlanCreateDialog'
 import CompletePlanDialog from '../components/CompletePlanDialog'
+import TaskCreateDialog from '../components/TaskCreateDialog'
+import { CompleteTaskDialog, FarmJournalList, WorkTaskCard } from '../components/WorkTaskViews'
+import { loadFarmJournal, loadWorkTasks, type WorkTask } from '../lib/workTasks'
 import type { Machine, Track } from '../types'
 
 const UNIT: Record<string, string> = { m3: 'm³', t: 't', kg: 'kg' }
@@ -39,7 +42,13 @@ async function load(pg: PGlite) {
     flow.set(m.id, calibrate(ev, m.flow_m3_min ?? null).flowM3Min)
   }
   const planTanks = planTracks.length ? await loadTrackTanks(pg, planTracks.map((t) => t.id)) : []
-  return { tasks, machines, flow, planTracks, planTanks }
+  // Arbeiten an Tieren, Gebäuden, Maschinen, Brennholz (lib/workTasks.ts) und das Betriebsjournal
+  const [work, journal, people] = await Promise.all([
+    loadWorkTasks(pg),
+    loadFarmJournal(pg, addDaysIso(todayIso(), -90)),
+    pg.query<{ id: string; name: string }>('select id, name from duty_people where deleted_at is null').then((r) => r.rows),
+  ])
+  return { tasks, machines, flow, planTracks, planTanks, work, journal, people }
 }
 
 function weekday(iso: string): string {
@@ -221,7 +230,13 @@ export default function WorkPlan() {
   const canFert = useHasPermission('wiesenjournal:duengung:write')
   const canUsage = useHasPermission('wiesenjournal:nutzung:write')
   const canWrite = canFert || canUsage
+  const canWork = useHasPermission('betrieb:tracking:write')
   const [creating, setCreating] = useState(false)
+  // Parzellen-Arbeit aus dem Dialog «Arbeit planen» (Suche): Vorwahl für den Wiesenjournal-Dialog
+  const [parcelPlan, setParcelPlan] = useState<{ workKey: string; parcels: string[]; date: string } | null>(null)
+  const [completingWork, setCompletingWork] = useState<WorkTask | null>(null)
+  const [doneNowId, setDoneNowId] = useState<string | null>(null)
+  const [doneMsg, setDoneMsg] = useState<string | null>(null)
   const [completing, setCompleting] = useState<PlanTask | null>(null)
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -274,10 +289,32 @@ export default function WorkPlan() {
     navigate('../tracking')
   }
 
-  const dates = useMemo(() => [...new Set((data?.tasks ?? []).map((t) => t.date))].sort(), [data])
+  const workDate = (w: WorkTask) => w.planned_date ?? today
+  const dates = useMemo(() => [...new Set([...(data?.tasks ?? []).map((t) => t.date), ...(data?.work ?? []).map(workDate)])].sort(), [data, today])
   const [chosen, setChosen] = useState<string | null>(null)
   const date = chosen ?? dates.find((d) => d >= today) ?? dates.at(-1) ?? null
   const tasks = (data?.tasks ?? []).filter((t) => t.date === date)
+  const work = (data?.work ?? []).filter((w) => workDate(w) === date)
+  const view = params.get('ansicht') === 'journal' ? 'journal' : 'plan'
+  const setView = (v: 'plan' | 'journal') =>
+    setParams(
+      (p) => {
+        const n = new URLSearchParams(p)
+        if (v === 'journal') n.set('ansicht', 'journal')
+        else n.delete('ansicht')
+        return n
+      },
+      { replace: true },
+    )
+  // «Schon erledigt → eintragen»: die eben gespeicherte Arbeit gleich abschliessen
+  useEffect(() => {
+    if (!doneNowId || !data) return
+    const w = data.work.find((x) => x.id === doneNowId)
+    if (w) {
+      setCompletingWork(w)
+      setDoneNowId(null)
+    }
+  }, [doneNowId, data])
 
   function start(task: PlanTask, machine: Machine | null, tractor: Machine | null) {
     record({
@@ -294,12 +331,12 @@ export default function WorkPlan() {
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4 pb-24">
       <div className="flex items-baseline justify-between gap-2">
-        <h1 className="text-xl font-bold text-gray-800">Arbeitsplan</h1>
+        <h1 className="text-xl font-bold text-gray-800">{view === 'journal' ? 'Betriebsjournal' : 'Arbeitsplan'}</h1>
         <span className="flex items-baseline gap-3">
           <Link to="../maschinen" className="link-btn text-sm text-brand-700">
             Maschinen
           </Link>
-          {canWrite && (
+          {(canWrite || canWork) && (
             <button type="button" onClick={() => setCreating(true)} className="min-h-11 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white">
               + Arbeit planen
             </button>
@@ -307,7 +344,17 @@ export default function WorkPlan() {
         </span>
       </div>
 
-      {active && (
+      <div className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-sm" role="tablist">
+        {(['plan', 'journal'] as const).map((v) => (
+          <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)} className={`min-h-11 px-4 ${view === v ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
+            {v === 'plan' ? 'Plan' : 'Betriebsjournal'}
+          </button>
+        ))}
+      </div>
+      {doneMsg && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-900">✓ Eingetragen: {doneMsg}</p>}
+      {view === 'journal' && data && <FarmJournalList entries={data.journal} />}
+
+      {view === 'plan' && active && (
         <div className={`space-y-2 rounded-lg p-3 text-sm ${recording ? 'bg-green-50 text-green-900' : 'bg-amber-50 text-amber-900'}`}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="font-semibold">
@@ -349,13 +396,13 @@ export default function WorkPlan() {
       )}
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
-      {data && dates.length === 0 && (
+      {view === 'plan' && data && dates.length === 0 && (
         <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
           Nichts geplant. Mit «+ Arbeit planen» hier planen — oder im Raster einen Tag ab heute öffnen und «Arbeit planen» wählen.
         </p>
       )}
 
-      {dates.length > 0 && (
+      {view === 'plan' && dates.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {dates.map((d) => (
             <button
@@ -373,7 +420,18 @@ export default function WorkPlan() {
         </div>
       )}
 
-      {tasks.map((t) => (
+      {view === 'plan' &&
+        work.map((w) => (
+          <WorkTaskCard
+            key={w.id}
+            task={w}
+            personName={data?.people.find((p) => p.id === w.person_id)?.name ?? null}
+            canWrite={canWork}
+            onComplete={() => setCompletingWork(w)}
+            onChanged={refresh}
+          />
+        ))}
+      {view === 'plan' && tasks.map((t) => (
         <TaskCard
           flow={data?.flow ?? new Map()}
           key={t.key}
@@ -388,12 +446,45 @@ export default function WorkPlan() {
       ))}
 
       {creating && (
-        <PlanCreateDialog
-          seasonYear={Number(today.slice(0, 4))}
+        <TaskCreateDialog
           onClose={() => setCreating(false)}
           onSaved={(d) => {
             setCreating(false)
             setChosen(d)
+            refresh()
+          }}
+          onParcelWork={(workKey, parcels, d) => {
+            setCreating(false)
+            setParcelPlan({ workKey, parcels, date: d })
+          }}
+          onDoneNow={(id) => {
+            setCreating(false)
+            setDoneNowId(id)
+            refresh()
+          }}
+        />
+      )}
+      {parcelPlan && (
+        <PlanCreateDialog
+          seasonYear={Number(today.slice(0, 4))}
+          initialDate={parcelPlan.date}
+          initialWorkKey={parcelPlan.workKey || undefined}
+          initialParcels={parcelPlan.parcels}
+          onClose={() => setParcelPlan(null)}
+          onSaved={(d) => {
+            setParcelPlan(null)
+            setChosen(d)
+            refresh()
+          }}
+        />
+      )}
+      {completingWork && (
+        <CompleteTaskDialog
+          task={completingWork}
+          onClose={() => setCompletingWork(null)}
+          onDone={(refs) => {
+            setCompletingWork(null)
+            setDoneMsg(refs.join(', '))
             refresh()
           }}
         />
