@@ -11,6 +11,7 @@ import { pendingPhotoCount, uploadPendingPhotos } from '../lib/photos'
 import { loadToday, type TodayAnimal } from '../lib/today'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf } from '../lib/species'
+import { useHandoverOpen } from '../components/HandoverPanel'
 
 const who = (a: TodayAnimal) => `${a.lauf_nr ? `${a.lauf_nr} · ` : ''}${shortEarTag(a.ear_tag)}${a.name ? ` ${a.name}` : ''}`
 
@@ -42,6 +43,8 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
   useEffect(() => {
     void uploadPendingPhotos().then(setWaitingPhotos)
   }, [])
+  // Übergabe-Checkliste zwischen den Diensten (Stall → Übergabe)
+  const handoverOpen = useHandoverOpen(sheep, today)
   const todo: ReactNode[] = []
   if (waitingPhotos > 0)
     todo.push(
@@ -92,6 +95,9 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
   }
   if (pregnancy) todo.push(<Row key="preg" to="traechtigkeit" icon="🤰" title="Trächtigkeits-Durchgang läuft" detail={[pregnancy.date && fmtDate(pregnancy.date), pregnancy.examiner].filter(Boolean).join(' · ')} />)
   if (claws) todo.push(<Row key="claw" to="klauen" icon="🐾" title="Klauen-Durchgang läuft" detail={[claws.date && fmtDate(claws.date), claws.examiner].filter(Boolean).join(' · ')} />)
+  if (handoverOpen > 0) {
+    todo.push(<Row key="handover" to="stall?fokus=uebergabe" icon="📋" title={`${handoverOpen} Übergabe-${handoverOpen === 1 ? 'Punkt' : 'Punkte'} offen`} detail="vom letzten Dienst" badge={handoverOpen} />)
+  }
   if (data && data.pendingEarTags > 0) {
     todo.push(<Row key="tags" to="ohrmarken" icon="🏷️" title={`${data.pendingEarTags} ${data.pendingEarTags === 1 ? (sheep ? 'Lamm' : 'Kalb') : word.young} ohne Ohrmarke`} detail="nachtragen" badge={data.pendingEarTags} />)
   }

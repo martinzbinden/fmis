@@ -21,14 +21,17 @@ import PregnancyEntry from './PregnancyEntry'
 import TreatmentJournal from './TreatmentJournal'
 import { loadVet, type VetData } from '../lib/vetVisit'
 import { loadMilk, sortMilkRows, summarize, type MilkRow, type MilkSort } from '../lib/milkAmounts'
+import HandoverPanel from '../components/HandoverPanel'
 
 // Stallkalender mit Arbeitsfokus: Jungtiere (Hinweise + Tränkeplan), Melken, Tierarzt, Milchwägung.
 // Jeder Fokus hat unten seine Werkzeugleiste; die Tier-Info lässt sich über jeden Fokus ein- und
 // ausblenden und zeigt das Tier im Fokus, solange nichts im Suchfeld steht.
 
-type Focus = 'jungtiere' | 'melken' | 'tierarzt' | 'milchwaegung'
+type Focus = 'jungtiere' | 'uebergabe' | 'melken' | 'tierarzt' | 'milchwaegung'
 const FOCI: { key: Focus; icon: string; label: string }[] = [
   { key: 'jungtiere', icon: '🍼', label: 'Jungtiere' },
+  // Übergabe-Checkliste zwischen den Diensten (components/HandoverPanel.tsx, Daten im Modul Betrieb)
+  { key: 'uebergabe', icon: '📋', label: 'Übergabe' },
   { key: 'melken', icon: '🥛', label: 'Melken' },
   { key: 'tierarzt', icon: '🩺', label: 'Tierarzt' },
   { key: 'milchwaegung', icon: '⚖️', label: 'Milchwägung' },
@@ -116,6 +119,13 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
         <ToolLink {...mod(`laemmer?aktion=fuetterung${tier ? `&tier=${tier}` : ''}`)} icon="🍼" label="Schoppen" />
         <ToolLink {...mod(`laemmer?aktion=behandlung${tier ? `&tier=${tier}` : ''}`)} icon="💉" label="Behandlung" />
         <ToolLink {...mod('geburt')} icon={sheep ? '🐑' : '🐄'} label={sheep ? 'Ablammung' : 'Abkalbung'} />
+      </>
+    ),
+    uebergabe: (
+      <>
+        <ToolLink {...mod('journal')} icon="💉" label="Behandlung" />
+        <ToolLink {...mod('laemmer?aktion=fuetterung')} icon="🍼" label="Schoppen" />
+        <ToolLink to="/betrieb/dienste?tab=meine" relative="path" icon="🗓️" label="Meine Dienste" />
       </>
     ),
     melken: (
@@ -212,6 +222,7 @@ export default function Stall({ moduleKey }: { moduleKey: string }) {
         </>
       )}
 
+      {focus === 'uebergabe' && <HandoverPanel moduleKey={moduleKey} sheep={sheep} today={today} />}
       {data && focus === 'melken' && <Melken data={data} milk={milk} today={today} tier={tier} onFocus={focusAnimal} />}
       {data && focus === 'tierarzt' && (
         <Tierarzt data={data} vet={vet} today={today} moduleKey={moduleKey} view={vetView} onView={(v) => setParam('ansicht', v === 'besuch' ? null : v)} onFocus={focusAnimal} tier={tier} />

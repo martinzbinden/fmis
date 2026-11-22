@@ -9,6 +9,9 @@ import TimeStrip, { TimeAxis } from '../components/TimeStrip'
 import Planning, { OfficeBar } from '../components/DutyPlanning'
 import AbsenceCalendar from '../components/AbsenceCalendar'
 import AbsenceGaps from '../components/AbsenceGaps'
+import HandoverList from '../components/HandoverList'
+import HandoverForm from '../components/HandoverForm'
+import { itemsFor, loadHandover } from '../lib/handover'
 import { isoDate } from '../lib/format'
 import { absencePartner, pairChanges } from '../lib/vacationPlan'
 import { GENERATE_AHEAD_WEEKS, weekStates } from '../lib/dutyPlan'
@@ -613,6 +616,10 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
   const [to, setTo] = useState('')
   const [back, setBack] = useState('')
   const [note, setNote] = useState('')
+  // Übergabe-Checkliste je Dienst (lib/handover.ts)
+  const { data: handover } = useQuery((pg) => loadHandover(pg, addDays(today, -1)), [today])
+  const [handoverFor, setHandoverFor] = useState<string | null>(null)
+  const peopleByEmail = useMemo(() => new Map(d.people.filter((p) => p.email).map((p) => [p.email!.toLowerCase(), p.name])), [d.people])
   if (!self) return <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Dein Konto ist noch keiner Person zugeordnet. Unter «Einstellungen» bei deiner Person die E-Mail deines FMIS-Kontos eintragen.</p>
   const mine = slots.filter((s) => s.shift?.person_id === self.id)
   // Wer den Plan nicht führt, schlägt nur vor; das Büro bestätigt (Tab «Anträge»)
@@ -678,6 +685,23 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
                   </button>
                 )}
               </div>
+              {handover && s.date <= addDays(today, 1) && (
+                <HandoverList rows={itemsFor(handover.items, handover.checks, { date: s.date, type: s.type })} occasion={{ date: s.date, type: s.type }} people={peopleByEmail} />
+              )}
+              {handoverFor === s.id ? (
+                <HandoverForm
+                  types={d.types.filter((t) => !t.deleted_at && (!s.type.animal || t.animal === s.type.animal)).map((t) => ({ id: t.id, label: typeLabel(t) }))}
+                  animal={s.type.animal}
+                  onSaved={() => setHandoverFor(null)}
+                  onCancel={() => setHandoverFor(null)}
+                />
+              ) : (
+                s.date === today && (
+                  <button type="button" className="min-h-11 rounded-lg px-2 text-sm font-medium text-amber-800 active:bg-amber-50" onClick={() => setHandoverFor(s.id)}>
+                    ＋ Übergabe an nächste Dienste
+                  </button>
+                )
+              )}
               {openId === s.id && (
                 <div className="space-y-2 rounded-lg bg-gray-50 p-2 text-sm">
                   <label className="flex flex-wrap items-center gap-2">

@@ -14,7 +14,7 @@ export function useWorkPhotos(refIds: (string | null | undefined)[]): Map<string
     let live = true
     void (async () => {
       try {
-        const [{ getDb }, { photoIdsByRef }] = await Promise.all([import('@fmis/betrieb/db/pglite'), import('@fmis/betrieb/lib/photoRefs')])
+        const [{ getSyncedDb: getDb }, { photoIdsByRef }] = await Promise.all([import('@fmis/betrieb/db/access'), import('@fmis/betrieb/lib/photoRefs')])
         const m = await photoIdsByRef(await getDb(), key.split(','))
         if (live) setMap(m)
       } catch {

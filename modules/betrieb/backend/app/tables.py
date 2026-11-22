@@ -101,6 +101,11 @@ SYNC_TABLES: dict[str, list[str]] = {
         "id", "ref_kind", "ref_id", "taken_at", "content_type", "size_bytes", "width", "height", "caption",
         "created_by", "archived_at", "updated_at", "deleted_at",
     ],
+    "handover_items": [
+        "id", "text", "targets", "type_id", "animal", "from_date", "until_date", "recurring", "created_by",
+        "created_at", "closed_at", "closed_by", "updated_at", "deleted_at",
+    ],
+    "handover_checks": ["id", "item_id", "date", "type_id", "done_by", "done_at", "note", "updated_at", "deleted_at"],
     "data_history": [
         "id", "table_name", "row_id", "action", "changed_by", "changed_at", "snapshot",
         "updated_at",
@@ -114,6 +119,9 @@ TABLE_AREA: dict[str, str] = {
     "work_tasks": "betrieb:tracking",
     "farm_journal": "betrieb:tracking",
     "photos": "betrieb:tracking",
+    # Übergabe zwischen den Diensten: wer Dienste leistet (Mitarbeit hat tracking:write)
+    "handover_items": "betrieb:tracking",
+    "handover_checks": "betrieb:tracking",
     "machine_files": "betrieb:tracking",
     "maintenance_tasks": "betrieb:tracking",
     "maintenance_log": "betrieb:tracking",

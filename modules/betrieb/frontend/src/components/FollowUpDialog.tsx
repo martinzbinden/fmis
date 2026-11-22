@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Modal from './Modal'
-import { getDb } from '../db/pglite'
+// mit Sync: wird auch von Seiten anderer Module aufgerufen (Stall, Tierseite)
+import { getSyncedDb as getDb } from '../db/access'
 import { addDaysIso, todayIso } from '../lib/format'
 import { createFollowUp, FOLLOW_UP_DAYS, FOLLOW_UP_TITLES, type FollowUpOrigin } from '../lib/workTasks'
 
