@@ -33,14 +33,14 @@ function BetriebDbProvider({ children }: { children: ReactNode }) {
 const betriebModule: ModuleDescriptor = {
   key: 'betrieb',
   title: 'Betrieb',
-  icon: '🏠',
+  icon: 'hof',
   group: 'betrieb',
   navItems: [
-    { to: 'dienste', label: 'Dienste', icon: '🗓️' },
-    { to: 'arbeitsplan', label: 'Plan', icon: '📝' },
-    { to: 'tracking', label: 'Tracking', icon: '🛰️' },
-    { to: 'maschinen', label: 'Maschinen', icon: '🚜' },
-    { to: 'wartung', label: 'Wartung', icon: '🔧' },
+    { to: 'dienste', label: 'Dienste', icon: 'dienste' },
+    { to: 'arbeitsplan', label: 'Plan', icon: 'plan' },
+    { to: 'tracking', label: 'Tracking', icon: 'tracking' },
+    { to: 'maschinen', label: 'Maschinen', icon: 'traktor' },
+    { to: 'wartung', label: 'Wartung', icon: 'wartung' },
   ],
   historyPermission: 'betrieb:history:read',
   search: searchBetrieb,
@@ -66,7 +66,7 @@ const betriebModule: ModuleDescriptor = {
     { Tile: FarmDataTile, section: 'maschinen' },
   ],
   // Tracking & Fahrhilfe: Symbol oben neben dem Import statt grosser Kachel
-  quickLinks: [{ to: '/betrieb/tracking', icon: '🧭', title: 'Tracking & Fahrhilfe', permission: 'betrieb:tracking:write' }],
+  quickLinks: [{ to: '/betrieb/tracking', icon: 'tracking', title: 'Tracking & Fahrhilfe', permission: 'betrieb:tracking:write' }],
   globalOverlay: TrackingBadge,
   pasteImporters: [maintenancePasteImporter, dutyPasteImporter, absencePasteImporter],
 }

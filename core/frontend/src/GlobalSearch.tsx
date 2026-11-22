@@ -7,6 +7,7 @@ import { animalProviders } from './animals'
 import { readDigits, useTagReader } from './tagReader'
 import TagReaderButton from './TagReaderButton'
 import { clearSearchCache, readRecent, recordRecent, searchAll, SEARCH_GROUPS, type SearchGroup, type SearchHit } from './search'
+import AppIcon from './AppIcon'
 
 export const openSearch = () => openPanel('suche')
 
@@ -23,7 +24,7 @@ export function SearchButton({ className = '' }: { className?: string }) {
       title="Suchen"
       className={`grid min-h-12 min-w-10 place-items-center rounded-full text-xl active:bg-gray-100 sm:min-w-12 ${open ? 'bg-gray-200' : ''} ${className}`}
     >
-      🔍
+      <AppIcon icon="suche" size={30} />
     </button>
   )
 }
@@ -36,9 +37,7 @@ export function SearchField() {
       onClick={openSearch}
       className="flex min-h-14 w-full items-center gap-3 rounded-xl border-2 border-gray-300 bg-white px-4 text-left text-base text-gray-500 shadow-sm active:bg-gray-50"
     >
-      <span className="text-xl" aria-hidden>
-        🔍
-      </span>
+      <AppIcon icon="suche" size={30} />
       Suchen: Tier, Funktion, Gruppe, Parzelle …
     </button>
   )
@@ -167,9 +166,7 @@ function SearchBody({ modules }: { modules: ModuleDescriptor[] }) {
                     }}
                     className="flex min-h-14 items-center gap-2 rounded-xl bg-white px-3 py-1 shadow-sm active:bg-gray-50"
                   >
-                    <span className="text-xl" aria-hidden>
-                      {r.icon ?? '•'}
-                    </span>
+                    <AppIcon icon={r.icon ?? 'mehr'} size={30} />
                     <span className="min-w-0 leading-tight">
                       <span className="block truncate text-sm font-semibold text-gray-800">{r.title}</span>
                       {r.sub && <span className="block truncate text-xs text-gray-600">{r.sub}</span>}
@@ -202,9 +199,7 @@ function SearchBody({ modules }: { modules: ModuleDescriptor[] }) {
                       }}
                       className="flex min-h-14 items-center gap-3 px-3 py-2 active:bg-gray-50"
                     >
-                      <span className="text-2xl" aria-hidden>
-                        {h.icon ?? '•'}
-                      </span>
+                      <AppIcon icon={h.icon ?? 'mehr'} size={36} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-base font-semibold text-gray-900">{h.title}</span>
                         {h.subtitle && <span className="block truncate text-sm text-gray-600">{h.subtitle}</span>}
@@ -223,7 +218,7 @@ function SearchBody({ modules }: { modules: ModuleDescriptor[] }) {
                             }}
                             className="flex min-h-12 items-center gap-1.5 rounded-lg border border-gray-300 px-3 text-sm font-semibold text-gray-800 active:bg-gray-100"
                           >
-                            <span aria-hidden>{a.icon}</span>
+                            <AppIcon icon={a.icon} size={24} />
                             {a.label}
                           </Link>
                         ))}

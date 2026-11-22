@@ -72,20 +72,20 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     key,
     title,
     // Kühe und Schafe auf der Übersicht unterscheidbar
-    icon: sheep ? '🐑' : '🐄',
+    icon: sheep ? 'schaf' : 'kuh',
     group: 'tiere',
     // Fussleiste: höchstens 5 Punkte (Handy). Zwei Ansichten teilen sich je einen Punkt (Umschalter oben, ViewSwitch).
     navItems: [
       // Heute + Kalender (Stall)
-      { to: '', label: 'Heute', icon: '🏠', also: ['stall'] },
+      { to: '', label: 'Heute', icon: 'home', also: ['stall'] },
       // nur Tier-Info; vom Einzeltier führt ein Sprung in seine Gruppe (components/GroupJump.tsx), die Tierliste steht unter «Mehr»
-      { to: 'tierinfo', label: 'Tier', icon: sheep ? '🐑' : '🐄', also: ['tiere', 'kuehe'] },
+      { to: 'tierinfo', label: 'Tier', icon: sheep ? 'schaf' : 'kuh', also: ['tiere', 'kuehe'] },
       // Karten + Vergleich: öffnet die zuletzt benutzte Ansicht
       { ...groupsNavItem(key), resolve: () => groupsNavItem(key) },
       // zuletzt benutzte Erfassungsfunktion (lib/lastCapture.ts)
       { ...captureNavItem(key, sheep), resolve: () => captureNavItem(key, sheep) },
       // alle weiteren Funktionen und Seiten
-      { to: 'mehr', label: 'Mehr', icon: '☰', also: ['erfassen', 'leistung', 'laemmer', 'ausmerzen', 'behandlungen', 'anpaarung', 'selektion', 'merklisten', 'pruefbericht', 'stammbaum'] },
+      { to: 'mehr', label: 'Mehr', icon: 'mehr', also: ['erfassen', 'leistung', 'laemmer', 'ausmerzen', 'behandlungen', 'anpaarung', 'selektion', 'merklisten', 'pruefbericht', 'stammbaum'] },
     ],
     historyPermission: `${key}:history:read`,
     pageTitles: {
@@ -159,9 +159,9 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     // Suche über alles: alle Funktionen aus «Mehr» plus die Ansichten, die dort nicht stehen
     functions: [
       ...menuItems(sheep, WEAN_FROM_DAYS),
-      { to: 'dashboard', label: 'Karten', icon: '🃏', keywords: 'dashboard gruppen tiere' },
-      { to: 'stall', label: 'Kalender', icon: '📅', keywords: 'stall hinweise tränkeplan' },
-      { to: 'pruefbericht', label: 'Prüfbericht', icon: '🧾', keywords: 'milchprüfung' },
+      { to: 'dashboard', label: 'Karten', icon: 'karten', keywords: 'dashboard gruppen tiere' },
+      { to: 'stall', label: 'Kalender', icon: 'kalender', keywords: 'stall hinweise tränkeplan' },
+      { to: 'pruefbericht', label: 'Prüfbericht', icon: 'beleg', keywords: 'milchprüfung' },
     ],
     search: (q) => searchWatchlists(key, title, q),
     yearSummary: (year) => {
@@ -174,7 +174,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
 
 /** Fussleisten-Punkt «Gruppen»: öffnet die zuletzt benutzte Ansicht (Vorgabe Karten). */
 function groupsNavItem(moduleKey: string): NavItem {
-  return { to: lastGroupView(moduleKey), label: 'Gruppen', icon: '📊', also: GROUP_VIEWS.map((v) => v.to) }
+  return { to: lastGroupView(moduleKey), label: 'Gruppen', icon: 'gruppen', also: GROUP_VIEWS.map((v) => v.to) }
 }
 
 /** /<herde>/kuehe[/id] → /<herde>/tiere[/id], mit Suchparametern und Sprungmarke. */

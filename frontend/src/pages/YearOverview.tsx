@@ -6,6 +6,7 @@ import { localTodayIso } from '@fmis/core/dates'
 import { errorText } from '@fmis/core/toast'
 import type { YearSection } from '@fmis/core/yearSummary'
 import YearCompare from './YearCompare'
+import AppIcon from '@fmis/core/AppIcon'
 
 type Loaded = { key: string; section: YearSection | null; error?: string }
 
@@ -92,7 +93,7 @@ export default function YearOverview({ modules }: { modules: ModuleDescriptor[] 
           <section key={key} className="min-w-0 space-y-3 rounded-xl bg-white p-4 shadow-sm">
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="text-base font-bold text-gray-800">
-                <span className="mr-1">{section!.icon}</span>
+                <AppIcon icon={section!.icon} size={24} className="mr-1.5 inline-block align-[-5px]" />
                 {section!.title}
               </h2>
               {section!.to && (

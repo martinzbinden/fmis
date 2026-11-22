@@ -7,6 +7,7 @@ import { todayIso } from '../lib/format'
 import { openTodos, todoOverdue } from '../lib/maintenance'
 import { loadMaintenanceData } from '../lib/maintenanceData'
 import { machineStatuses } from './MachineMaintenance'
+import AppIcon from '@fmis/core/AppIcon'
 
 /** Kachel auf der Übersicht: Maschinen und Wartung mit Anzahl fälliger
  * Aufgaben (Stand der Daten auf diesem Gerät). */
@@ -49,12 +50,12 @@ export default function MaintenanceTile() {
   return (
     <div className="mt-3 grid grid-cols-2 overflow-hidden first:mt-0 rounded-xl bg-white text-center text-sm shadow-sm">
       <Link to="/betrieb/maschinen" className="p-4 active:bg-gray-100">
-        <span className="block text-2xl">🚜</span>
+        <AppIcon icon="traktor" size={36} className="mx-auto block" />
         <span className="font-semibold text-gray-800">Maschinen</span>
         {due && <span className="block text-xs text-gray-500">{due.machines} aktiv</span>}
       </Link>
       <Link to="/betrieb/wartung" className="border-l p-4 active:bg-gray-100">
-        <span className="block text-2xl">🔧</span>
+        <AppIcon icon="wartung" size={36} className="mx-auto block" />
         <span className="font-semibold text-gray-800">Wartung</span>
         {due && (
           <span className="mt-0.5 flex flex-wrap justify-center gap-1 text-xs">

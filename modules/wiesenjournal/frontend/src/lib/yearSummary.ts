@@ -27,7 +27,7 @@ export async function wiesenjournalYearSummary(year: number): Promise<YearSectio
   const nTotal = [...nByType.values()].reduce((s, v) => s + v, 0)
   return {
     title: 'Wiesenjournal',
-    icon: '🌾',
+    icon: 'wiese',
     to: '/wiesenjournal',
     figures: [
       { label: 'Schnitte', value: fmtNum(cuts.length), detail: 'Einträge eingrasen, Silage, Dürrfutter' },

@@ -17,6 +17,7 @@ import { openPanel } from './headerPanel'
 import { LockButton } from './StallLock'
 import { useStallMode } from './stallMode'
 import { recordRecent, type FunctionEntry } from './search'
+import AppIcon from './AppIcon'
 
 export default function Layout({
   children,
@@ -102,7 +103,7 @@ export default function Layout({
       <header data-app-header className={`sticky top-0 z-20 flex items-center transition-transform duration-200 ${headerHidden ? '-translate-y-full' : ''} justify-between gap-1 border-b bg-white px-2 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))] sm:px-3`}>
         <div className="flex min-w-0 items-center gap-1 sm:gap-2">
           <NavLink to="/dashboard" className="grid min-h-12 min-w-10 shrink-0 place-items-center rounded-full text-xl active:bg-gray-100 sm:min-w-12" title="Zur Übersicht" aria-label="Zur Übersicht">
-            🏠
+            <AppIcon icon="home" size={30} />
           </NavLink>
           {/* Modul klein (führt zu dessen Startseite), darunter die Seite — auch
               nach einem Link aus einer anderen Seite sieht man, wo man ist */}
@@ -163,7 +164,7 @@ export default function Layout({
                   isActive ? 'text-brand-700 font-semibold lg:bg-brand-50' : 'text-gray-500 lg:hover:bg-gray-50'
                 }`}
               >
-                <span className="text-xl leading-none">{item.icon}</span>
+                <AppIcon icon={item.icon} size={26} muted={!isActive} />
                 <span className="max-w-full truncate px-0.5">{item.label}</span>
               </Link>
             )

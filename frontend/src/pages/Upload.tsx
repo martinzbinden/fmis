@@ -5,6 +5,7 @@ import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import { expandUploads, type ImportClaim, type ImportStatus, type UploadFile } from '@fmis/core/upload'
 import PasteImport from './PasteImport'
 import { closeImport, setImportBusy } from '@fmis/core/importModal'
+import AppIcon from '@fmis/core/AppIcon'
 
 interface Run {
   id: string
@@ -322,7 +323,7 @@ export default function Upload({ modules, inModal = false }: { modules: ModuleDe
                     )}
                     <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                       <div className="font-medium text-gray-800">
-                        {r.mod.icon} {r.claim.format}
+                        <AppIcon icon={r.mod.icon} size={20} className="inline-block align-[-4px]" /> {r.claim.format}
                       </div>
                       <div className="text-xs text-gray-500">
                         {r.claim.detail ?? `→ ${r.mod.title}`} · {r.claim.files.length} {r.claim.files.length === 1 ? 'Datei' : 'Dateien'}
@@ -408,7 +409,7 @@ export default function Upload({ modules, inModal = false }: { modules: ModuleDe
           {importers.map((m) => (
             <li key={m.key}>
               <span className="font-medium">
-                {m.icon} {m.title}
+                <AppIcon icon={m.icon} size={20} className="inline-block align-[-4px]" /> {m.title}
               </span>
               <ul className="list-disc pl-6 text-xs text-gray-600">
                 {m.importer!.formats.map((f) => (

@@ -10,6 +10,6 @@ export async function searchProjects(q: string): Promise<SearchHit[]> {
   return rows.flatMap((p) => {
     const rank = textRank(q, p.name, p.location, p.contractor)
     if (rank == null) return []
-    return [{ key: `bp:${p.id}`, group: 'bau' as const, title: p.name, subtitle: p.location ?? undefined, icon: '🏗️', to: `/bau/projekt/${p.id}`, rank }]
+    return [{ key: `bp:${p.id}`, group: 'bau' as const, title: p.name, subtitle: p.location ?? undefined, icon: 'bau', to: `/bau/projekt/${p.id}`, rank }]
   })
 }

@@ -16,7 +16,7 @@ export async function searchWatchlists(moduleKey: string, title: string, q: stri
   return rows.flatMap((l) => {
     const rank = textRank(q, l.name)
     if (rank == null) return []
-    return [{ key: `w:${moduleKey}:${l.id}`, group: 'gruppen' as const, title: l.name, subtitle: `Merkliste · ${l.n} Tiere · ${title}`, icon: '🔖', to: `/${moduleKey}/merklisten`, rank }]
+    return [{ key: `w:${moduleKey}:${l.id}`, group: 'gruppen' as const, title: l.name, subtitle: `Merkliste · ${l.n} Tiere · ${title}`, icon: 'merkliste', to: `/${moduleKey}/merklisten`, rank }]
   })
 }
 
@@ -26,10 +26,10 @@ export function animalSearchLinks(moduleKey: string, id: string) {
   return {
     to: at('tierinfo'),
     actions: [
-      { label: 'Behandlung', icon: '💉', to: at('journal') },
-      { label: 'Belegung', icon: '❤️', to: at('belegung') },
-      { label: 'Geburt', icon: '🐣', to: at('geburt') },
-      { label: 'Leistung', icon: '🥛', to: at('leistung') },
+      { label: 'Behandlung', icon: 'behandlung', to: at('journal') },
+      { label: 'Belegung', icon: 'belegung', to: at('belegung') },
+      { label: 'Geburt', icon: 'geburt', to: at('geburt') },
+      { label: 'Leistung', icon: 'milch', to: at('leistung') },
     ],
   }
 }

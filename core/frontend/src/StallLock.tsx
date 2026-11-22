@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import HoldButton from './HoldButton'
 import { READER_FEEDBACK_EVENT, type ReaderFeedback } from './tagReader'
+import AppIcon from './AppIcon'
 
 // Sperre gegen Fehlberührungen (Stallmodus): 🔒 in der Kopfzeile legt eine Scheibe über die Seite. Die Seite bleibt
 // sichtbar und arbeitet weiter (Lesegerät, Zähler), Antippen bewirkt nichts. Entsperren nur durch Halten (1 s).
@@ -33,7 +34,7 @@ export function LockButton() {
       title="Sperren"
       className="grid min-h-12 min-w-10 place-items-center rounded-full text-xl active:bg-gray-100 sm:min-w-12"
     >
-      🔒
+      <AppIcon icon="sperre" size={30} />
     </button>
   )
 }

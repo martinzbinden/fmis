@@ -5,6 +5,7 @@ import { getSyncedDb as getDb } from '../db/access'
 import { subscribeDataChanged } from '../db/write'
 import { addDays, localToday as todayIso, slotsFor, timeText, typeLabel } from '../lib/duty'
 import { loadDuty, me } from '../lib/dutyData'
+import AppIcon from '@fmis/core/AppIcon'
 
 interface TileData {
   today: { time: string; name: string; person: string | null; color: string | null; mine: boolean }[]
@@ -49,7 +50,7 @@ export default function DutyTile() {
   return (
     <Link to="/betrieb/dienste" className="mt-3 block rounded-xl first:mt-0 bg-white p-4 text-sm shadow-sm active:bg-gray-100">
       <div className="mb-1 flex items-center justify-between">
-        <span className="font-semibold text-gray-800">👥 Heute im Dienst</span>
+        <span className="flex items-center gap-2 font-semibold text-gray-800"><AppIcon icon="dienste" size={28} /> Heute im Dienst</span>
         {d.open7 > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">{d.open7} offen (7 Tage)</span>}
       </div>
       <ul className="space-y-0.5">

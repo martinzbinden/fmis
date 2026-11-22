@@ -5,6 +5,7 @@ import Switch from './Switch'
 import { closePanel, useOpenPanel } from './headerPanel'
 import { markNotificationsRead, refreshNotifications, setNotifyEmail, useNotifications } from './notifications'
 import { errorText, notifyError } from './toast'
+import AppIcon from './AppIcon'
 
 const when = (iso: string) => {
   const d = new Date(iso)
@@ -27,7 +28,7 @@ export default function NotificationBell() {
         ) : undefined
       }
     >
-      🔔
+      <AppIcon icon="glocke" size={30} />
     </PanelButton>
   )
 }

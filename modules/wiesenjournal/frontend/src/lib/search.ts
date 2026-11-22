@@ -12,6 +12,6 @@ export async function searchParcels(q: string): Promise<SearchHit[]> {
     const rank = textRank(q, p.name, p.kultur_name_de)
     if (rank == null) return []
     const area = p.area_a == null ? null : `${(Number(p.area_a) / 100).toLocaleString('de-CH', { maximumFractionDigits: 2 })} ha`
-    return [{ key: `pz:${p.id}`, group: 'flaechen' as const, title: p.name, subtitle: [area, p.kultur_name_de].filter(Boolean).join(' · ') || undefined, icon: '🌿', to: `/wiesenjournal/parzelle/${p.id}`, rank }]
+    return [{ key: `pz:${p.id}`, group: 'flaechen' as const, title: p.name, subtitle: [area, p.kultur_name_de].filter(Boolean).join(' · ') || undefined, icon: 'parzelle', to: `/wiesenjournal/parzelle/${p.id}`, rank }]
   })
 }

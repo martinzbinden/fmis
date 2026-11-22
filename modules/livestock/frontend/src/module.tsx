@@ -34,14 +34,14 @@ const livestockModule: ModuleDescriptor = {
   key: 'livestock',
   title: 'Mastplaner',
   // 🐑 = Milchschafe auf der Übersicht
-  icon: '📈',
+  icon: 'mast',
   group: 'tiere',
   navItems: [
-    { to: '', label: 'Dashboard', icon: '🏠' },
-    { to: 'tiere', label: 'Tiere', icon: '🐑' },
-    { to: 'gruppen', label: 'Gruppen', icon: '📋' },
-    { to: 'erfassen', label: 'Erfassen', icon: '✏️' },
-    { to: 'wirtschaftlichkeit', label: 'Erlös', icon: '💰' },
+    { to: '', label: 'Dashboard', icon: 'home' },
+    { to: 'tiere', label: 'Tiere', icon: 'schaf' },
+    { to: 'gruppen', label: 'Gruppen', icon: 'gruppen' },
+    { to: 'erfassen', label: 'Erfassen', icon: 'erfassen' },
+    { to: 'wirtschaftlichkeit', label: 'Erlös', icon: 'geld' },
   ],
   historyPermission: 'livestock:history:read',
   pageTitles: {

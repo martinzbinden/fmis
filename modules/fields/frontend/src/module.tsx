@@ -21,12 +21,12 @@ function FieldsDbProvider({ children }: { children: ReactNode }) {
 const fieldsModule: ModuleDescriptor = {
   key: 'fields',
   title: 'Kulturen',
-  icon: '🗺️',
+  icon: 'karte',
   group: 'flaechen',
   navItems: [
-    { to: '', label: 'Karte', icon: '🗺️' },
-    { to: 'fruchtfolge', label: 'Fruchtfolge', icon: '🔄' },
-    { to: 'direktzahlungen', label: 'Direktzahlungen', icon: '💰' },
+    { to: '', label: 'Karte', icon: 'karte' },
+    { to: 'fruchtfolge', label: 'Fruchtfolge', icon: 'fruchtfolge' },
+    { to: 'direktzahlungen', label: 'Direktzahlungen', icon: 'geld' },
   ],
   historyPermission: 'fields:history:read',
   routes: [

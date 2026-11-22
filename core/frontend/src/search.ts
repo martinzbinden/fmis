@@ -165,7 +165,7 @@ export async function animalHits(q: string): Promise<SearchHit[]> {
         group: 'tiere',
         title: [a.lauf_nr, a.name].filter(Boolean).join(' ') || a.label,
         subtitle: [a.label, a.sex === 'm' ? '♂' : a.sex === 'w' ? '♀' : null, several ? title : null].filter(Boolean).join(' · '),
-        icon: a.species === 'schafe' ? '🐑' : '🐄',
+        icon: a.species === 'schafe' ? 'schaf' : 'kuh',
         to: link?.to ?? `/${moduleKey}`,
         actions: link?.actions,
         rank,

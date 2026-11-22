@@ -22,9 +22,9 @@ function BauDbProvider({ children }: { children: ReactNode }) {
 const bauModule: ModuleDescriptor = {
   key: 'bau',
   title: 'Bauprojekte',
-  icon: '🏗️',
+  icon: 'bau',
   group: 'betrieb',
-  navItems: [{ to: '', label: 'Projekte', icon: '🏗️' }],
+  navItems: [{ to: '', label: 'Projekte', icon: 'bau' }],
   historyPermission: 'bau:history:read',
   search: searchProjects,
   pageTitles: { 'projekt/:id': 'Projekt' },

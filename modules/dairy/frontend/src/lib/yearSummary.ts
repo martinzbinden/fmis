@@ -47,7 +47,7 @@ export async function dairyYearSummary(moduleKey: string, title: string, year: n
   const bornF = born.filter((b) => b.sex === 'w').length
   return {
     title,
-    icon: moduleKey === 'dairy_schafe' ? '🐑' : '🐄',
+    icon: moduleKey === 'dairy_schafe' ? 'schaf' : 'kuh',
     to: `/${moduleKey}/tiere`,
     figures: [
       { label: cutoff === today ? 'Bestand heute' : 'Bestand 31.12.', value: fmtNum(total), detail: `${female} weiblich · ${male} männlich` },

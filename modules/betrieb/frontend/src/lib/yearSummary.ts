@@ -22,7 +22,7 @@ export async function betriebYearSummary(year: number): Promise<YearSection | nu
   const hours = [...hoursBy.values()].reduce((s, v) => s + v, 0)
   return {
     title: 'Maschinen',
-    icon: '🚜',
+    icon: 'traktor',
     to: '/betrieb/wartung',
     figures: [
       { label: 'Wartungen', value: fmtNum(log.length), detail: 'Einträge im Wartungsjournal' },

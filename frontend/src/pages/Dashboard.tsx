@@ -10,6 +10,7 @@ import { useStallMode } from '@fmis/core/stallMode'
 import ProfileMenu from '@fmis/core/ProfileMenu'
 import { refreshMyLinks, useMyLinks } from '@fmis/core/myLinks'
 import type { ModuleDescriptor, ModuleGroup, QuickLink } from '@fmis/core/ModuleDescriptor'
+import AppIcon from '@fmis/core/AppIcon'
 
 // Reihenfolge der Übersicht: Dienste (Kachel) → Tiere → Maschinen & Betrieb → Weitere → Flächen
 const GROUPS: { key: ModuleGroup | undefined; title: string }[] = [
@@ -24,7 +25,7 @@ function QuickLinkIcon({ link }: { link: QuickLink }) {
   if (!allowed) return null
   return (
     <Link to={link.to} className="grid min-h-12 min-w-12 place-items-center rounded-full text-xl active:bg-gray-100" title={link.title} aria-label={link.title}>
-      {link.icon}
+      <AppIcon icon={link.icon} size={30} />
     </Link>
   )
 }
@@ -103,7 +104,7 @@ export default function Dashboard({
                         to={`/${mod.key}`}
                         className="flex flex-col items-center justify-center gap-1.5 rounded-xl bg-white p-4 text-center shadow-sm active:bg-gray-100"
                       >
-                        <span className="text-3xl">{mod.icon}</span>
+                        <AppIcon icon={mod.icon} size={44} />
                         <span className="font-semibold text-gray-800">{mod.title}</span>
                       </Link>
                     ))}
@@ -115,7 +116,7 @@ export default function Dashboard({
         )}
         {modules.some((m) => m.yearSummary) && (
           <Link to="/jahr" className="mt-5 flex items-center gap-3 rounded-xl bg-white p-4 shadow-sm active:bg-gray-100">
-            <span className="text-3xl">📊</span>
+            <AppIcon icon="vergleich" size={40} />
             <span>
               <span className="block font-semibold text-gray-800">Jahresübersicht</span>
               <span className="block text-xs text-gray-500">Flächen, Tiere, Düngung, Schnitte, Maschinen – Jahr für Jahr</span>

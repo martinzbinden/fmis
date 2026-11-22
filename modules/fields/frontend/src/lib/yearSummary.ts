@@ -55,7 +55,7 @@ export async function fieldsYearSummary(year: number): Promise<YearSection | nul
   const planned = main.filter((r) => r.source === 'plan').length
   return {
     title: 'Kulturen',
-    icon: '🗺️',
+    icon: 'karte',
     to: '/fields/fruchtfolge',
     figures,
     charts: [{ title: 'Fläche je Kultur, ohne Gehölze', unit: 'ha', kind: 'ranking', data: ranking(byCrop, 10) }],

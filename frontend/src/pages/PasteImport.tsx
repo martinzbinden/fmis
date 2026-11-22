@@ -3,6 +3,7 @@ import { useAuthUser } from '@fmis/core/AuthContext'
 import { useDb } from '@fmis/core/DbContext'
 import type { ModuleDescriptor } from '@fmis/core/ModuleDescriptor'
 import { formatSpec, parsePaste, resolveArea, type CheckedRow, type CheckStatus, type PasteBlock, type PasteImporter } from '@fmis/core/pasteImport'
+import AppIcon from '@fmis/core/AppIcon'
 
 const STATUS: Record<CheckStatus, { label: string; chip: string; row: string }> = {
   neu: { label: 'neu', chip: 'bg-green-100 text-green-800', row: '' },
@@ -246,7 +247,7 @@ export default function PasteImport({ modules }: { modules: ModuleDescriptor[] }
         <div key={c.id} className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
           <div className="text-sm">
             <span className="font-medium text-gray-800">
-              {c.mod.icon} {c.importer.label}
+              <AppIcon icon={c.mod.icon} size={20} className="inline-block align-[-4px]" /> {c.importer.label}
             </span>{' '}
             <span className="text-xs text-gray-500">
               → {c.mod.title} · {c.block.daten.length} Datensätze{c.block.quelle ? ` · Quelle: ${c.block.quelle}` : ''}
@@ -270,7 +271,7 @@ export default function PasteImport({ modules }: { modules: ModuleDescriptor[] }
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <span>
                       <span className="font-medium">
-                        {m.icon} {p.label}
+                        <AppIcon icon={m.icon} size={20} className="inline-block align-[-4px]" /> {p.label}
                       </span>{' '}
                       <code className="text-xs text-gray-500">{key}</code>
                     </span>

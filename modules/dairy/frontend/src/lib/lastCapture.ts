@@ -8,21 +8,21 @@ import { notifyNavChanged } from '@fmis/core/navItems'
 export function captureInfo(path: string, _sheep: boolean): { label: string; icon: string } | null {
   switch (path) {
     case 'geburt':
-      return { label: 'Geburt', icon: '🐣' }
+      return { label: 'Geburt', icon: 'geburt' }
     case 'belegung':
-      return { label: 'Belegung', icon: '❤️' }
+      return { label: 'Belegung', icon: 'belegung' }
     case 'traechtigkeit':
-      return { label: 'Trächtigkeit', icon: '🤰' }
+      return { label: 'Trächtigkeit', icon: 'traechtig' }
     case 'klauen':
-      return { label: 'Klauen', icon: '🐾' }
+      return { label: 'Klauen', icon: 'klauen' }
     case 'journal':
-      return { label: 'Behandlung', icon: '💉' }
+      return { label: 'Behandlung', icon: 'behandlung' }
     case 'ohrmarken':
-      return { label: 'Ohrmarken', icon: '🏷️' }
+      return { label: 'Ohrmarken', icon: 'ohrmarke' }
     case 'milchwaegung':
-      return { label: 'Milchwägung', icon: '⚖️' }
+      return { label: 'Milchwägung', icon: 'waage' }
     case 'tvd':
-      return { label: 'TVD', icon: '📨' }
+      return { label: 'TVD', icon: 'tvd' }
     default:
       return null
   }
@@ -55,6 +55,6 @@ export function writeLastCapture(moduleKey: string, path: string): void {
 /** Der Fussleisten-Punkt «zuletzt benutzte Erfassung». */
 export function captureNavItem(moduleKey: string, sheep: boolean): NavItem {
   const path = readLastCapture(moduleKey)
-  const info = captureInfo(path, sheep) ?? { label: 'Erfassen', icon: '✏️' }
+  const info = captureInfo(path, sheep) ?? { label: 'Erfassen', icon: 'erfassen' }
   return { to: path, label: info.label, icon: info.icon, also: CAPTURE_PATHS }
 }

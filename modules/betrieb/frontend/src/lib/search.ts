@@ -14,12 +14,12 @@ export async function searchBetrieb(q: string): Promise<SearchHit[]> {
   for (const m of machines.rows) {
     const rank = textRank(q, m.name, m.manufacturer, m.model, m.category)
     if (rank == null) continue
-    hits.push({ key: `m:${m.id}`, group: 'maschinen', title: m.name, subtitle: [m.manufacturer, m.model].filter(Boolean).join(' ') || undefined, icon: '🚜', to: `/betrieb/maschinen/${m.id}`, rank: m.active ? rank : rank + 2 })
+    hits.push({ key: `m:${m.id}`, group: 'maschinen', title: m.name, subtitle: [m.manufacturer, m.model].filter(Boolean).join(' ') || undefined, icon: 'traktor', to: `/betrieb/maschinen/${m.id}`, rank: m.active ? rank : rank + 2 })
   }
   for (const p of people.rows) {
     const rank = textRank(q, p.name)
     if (rank == null) continue
-    hits.push({ key: `p:${p.id}`, group: 'personen', title: p.name, subtitle: 'Dienstplan', icon: '🧑‍🌾', to: '/betrieb/dienste?tab=woche', rank: p.active ? rank : rank + 2 })
+    hits.push({ key: `p:${p.id}`, group: 'personen', title: p.name, subtitle: 'Dienstplan', icon: 'person', to: '/betrieb/dienste?tab=woche', rank: p.active ? rank : rank + 2 })
   }
   return hits
 }

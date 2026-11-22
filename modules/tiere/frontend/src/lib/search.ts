@@ -10,6 +10,6 @@ export async function searchHerds(q: string): Promise<SearchHit[]> {
   return rows.flatMap((g) => {
     const rank = textRank(q, g.name)
     if (rank == null) return []
-    return [{ key: `h:${g.id}`, group: 'gruppen' as const, title: g.name, subtitle: `Tiergruppe${g.active ? '' : ' (aufgelöst)'}`, icon: g.species === 'rinder' ? '🐄' : '🐾', to: '/tiere', rank: g.active ? rank : rank + 2 }]
+    return [{ key: `h:${g.id}`, group: 'gruppen' as const, title: g.name, subtitle: `Tiergruppe${g.active ? '' : ' (aufgelöst)'}`, icon: 'gruppen', to: '/tiere', rank: g.active ? rank : rank + 2 }]
   })
 }

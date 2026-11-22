@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom'
+import AppIcon from '@fmis/core/AppIcon'
 
 const items = [
-  { to: '/gewichte', icon: '⚖️', label: 'Gewichte erfassen', desc: 'Schnellerfassung pro Gruppe' },
-  { to: '/medikamente', icon: '💊', label: 'Medikamente erfassen', desc: 'Pro Tier oder ganze Gruppe' },
-  { to: '/futter', icon: '🌾', label: 'Futter erfassen', desc: 'Pro Gruppe' },
-  { to: '/schlachtung', icon: '🔪', label: 'Schlachtung erfassen', desc: 'Pro Ohrmarke' },
-  { to: '/schlachtungen', icon: '🧾', label: 'Schlachtungen', desc: 'Alle Tiere aus den Abrechnungen: Gewicht nach Alter, Jahreszeit, Taxation' },
+  { to: '/gewichte', icon: 'waage', label: 'Gewichte erfassen', desc: 'Schnellerfassung pro Gruppe' },
+  { to: '/medikamente', icon: 'behandlung', label: 'Medikamente erfassen', desc: 'Pro Tier oder ganze Gruppe' },
+  { to: '/futter', icon: 'wiese', label: 'Futter erfassen', desc: 'Pro Gruppe' },
+  { to: '/schlachtung', icon: 'beleg', label: 'Schlachtung erfassen', desc: 'Pro Ohrmarke' },
+  { to: '/schlachtungen', icon: 'beleg', label: 'Schlachtungen', desc: 'Alle Tiere aus den Abrechnungen: Gewicht nach Alter, Jahreszeit, Taxation' },
 ]
 
 export default function Erfassen() {
@@ -18,7 +19,7 @@ export default function Erfassen() {
           to={item.to}
           className="flex items-center gap-4 rounded-xl bg-white p-5 shadow-sm active:bg-gray-50"
         >
-          <span className="text-3xl">{item.icon}</span>
+          <AppIcon icon={item.icon} size={40} />
           <span>
             <span className="block text-base font-semibold text-gray-800">{item.label}</span>
             <span className="block text-sm text-gray-500">{item.desc}</span>

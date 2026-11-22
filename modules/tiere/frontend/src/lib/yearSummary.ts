@@ -29,7 +29,7 @@ export async function tiereYearSummary(year: number): Promise<YearSection | null
   const total = monthly.reduce((s, v) => s + v, 0)
   return {
     title: 'Tiergruppen: Weide und Auslauf',
-    icon: '🐾',
+    icon: 'gruppen',
     to: `/tiere/weide?jahr=${year}`,
     figures: [
       { label: 'Tier-Weidetage', value: fmtNum(total), detail: 'Tiere × Tage auf der Weide' },

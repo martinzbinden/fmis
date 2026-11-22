@@ -6,6 +6,7 @@ import { notifyError, errorText } from './toast'
 import { startViewAs, useViewAs } from './viewAs'
 import { usePageSettingsEntry } from './pageSettings'
 import HeaderMenu, { MenuItem } from './HeaderMenu'
+import AppIcon from './AppIcon'
 
 /** Zahnrad-Menü für Admins: Verwaltung (Module, Benutzer) und schneller
  * Wechsel in die Ansicht eines anderen Nutzers. */
@@ -53,7 +54,7 @@ export default function AdminMenu() {
 
   const label = pageSettings ? `Einstellungen ${pageSettings.title} und Verwaltung` : 'Verwaltung'
   return (
-    <HeaderMenu label={label} icon="⚙️" width="w-80">
+    <HeaderMenu label={label} icon={<AppIcon icon="einstellungen" size={30} />} width="w-80">
       {(close) => (
         <>
           <LoadUsers onOpen={() => setLoadUsers(true)} />

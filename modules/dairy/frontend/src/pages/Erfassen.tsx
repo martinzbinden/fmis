@@ -9,6 +9,7 @@ import { loadPendingOffspring } from '../lib/earTagPending'
 import { loadTvdBirths, reportable } from '../lib/tvdBirths'
 import { loadLambs, WEAN_FROM_DAYS } from '../lib/lambs'
 import { localTodayIso } from '../lib/format'
+import AppIcon from '@fmis/core/AppIcon'
 
 export default function Erfassen({ moduleKey }: { moduleKey: string }) {
   const sheep = speciesOf(moduleKey) === 'sheep'
@@ -42,9 +43,7 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
               onClick={onImport(item.to)}
               className="relative flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl bg-brand-50 p-3 shadow-sm ring-1 ring-brand-200 active:bg-brand-100"
             >
-              <span className="text-3xl" aria-hidden>
-                {item.icon}
-              </span>
+              <AppIcon icon={item.icon} size={44} />
               <span className="text-base font-semibold text-gray-900">{item.short}</span>
               {badge(item.to) > 0 && <span className="absolute right-2 top-2 rounded-full bg-amber-700 px-2 py-0.5 text-sm font-bold text-white">{badge(item.to)}</span>}
             </Link>
@@ -60,9 +59,7 @@ export default function Erfassen({ moduleKey }: { moduleKey: string }) {
           onClick={onImport(item.to)}
           className="flex items-center gap-4 rounded-xl bg-white p-4 shadow-sm active:bg-gray-50"
         >
-          <span className="text-3xl" aria-hidden>
-            {item.icon}
-          </span>
+          <AppIcon icon={item.icon} size={40} />
           <span className="min-w-0 flex-1">
             <span className="block text-base font-semibold text-gray-800">{item.label}</span>
             <span className="block text-sm text-gray-600">{item.desc}</span>

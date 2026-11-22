@@ -23,12 +23,12 @@ const tiereModule: ModuleDescriptor = {
   key: 'tiere',
   // «Tiergruppen»: der Reiter «Tiere» in Milchkühe/Milchschafe ist etwas anderes
   title: 'Tiergruppen',
-  icon: '🐾',
+  icon: 'gruppen',
   group: 'tiere',
   navItems: [
-    { to: '', label: 'Gruppen', icon: '🐾' },
-    { to: 'auslauf', label: 'Auslauf', icon: '🌤️' },
-    { to: 'weide', label: 'Weide', icon: '🌿' },
+    { to: '', label: 'Gruppen', icon: 'gruppen' },
+    { to: 'auslauf', label: 'Auslauf', icon: 'auslauf' },
+    { to: 'weide', label: 'Weide', icon: 'weide' },
   ],
   pageTitles: { auslauf: 'Auslaufjournal', weide: 'Weidenutzung' },
   historyPermission: 'tiere:history:read',
