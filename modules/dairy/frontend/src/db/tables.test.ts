@@ -16,6 +16,7 @@ describe('SYNC_TABLES: Reihenfolge nach Fremdschlüsseln', () => {
     before('birth_offspring', 'stall_decisions')
     before('animals', 'stall_decisions')
     before('animals', 'culling_marks')
+    before('animals', 'carcass_estimates')
   })
 
   it('Journal vor seinen Fotos', () => {

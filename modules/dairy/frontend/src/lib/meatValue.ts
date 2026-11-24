@@ -58,15 +58,17 @@ export interface MeatPrices {
 export const FALLBACK_MEAT_PRICES: MeatPrices = { lamb: 13.4, sheep: 6.3 }
 
 /** Bereiche für die Grafik: Schaf (ein Bereich) und Lamm nach Alter (wie die Gewichtsstufen). */
-export type MeatBand = 'lamm1' | 'lamm2' | 'lamm3' | 'schaf'
-export const MEAT_BANDS: MeatBand[] = ['lamm1', 'lamm2', 'lamm3', 'schaf']
-export const MEAT_BAND_LABEL: Record<MeatBand, string> = { lamm1: 'Lamm bis 120 T.', lamm2: 'Lamm bis 210 T.', lamm3: 'Lamm älter', schaf: 'Schaf' }
+export type MeatBand = 'lamm1' | 'lamm2' | 'lamm3' | 'schaf' | 'kalb' | 'rind' | 'kuh'
+export const MEAT_BANDS: MeatBand[] = ['lamm1', 'lamm2', 'lamm3', 'schaf', 'kalb', 'rind', 'kuh']
+export const MEAT_BAND_LABEL: Record<MeatBand, string> = { lamm1: 'Lamm bis 120 T.', lamm2: 'Lamm bis 210 T.', lamm3: 'Lamm älter', schaf: 'Schaf', kalb: 'Kalb', rind: 'Rind, Muni, Ochse', kuh: 'Kuh' }
 /** Tailwind-Klassen je Bereich (Balken); helle bis dunkle Grüntöne für die Lämmer, Grau für Schafe */
-export const MEAT_BAND_BAR: Record<MeatBand, string> = { lamm1: 'bg-lime-300', lamm2: 'bg-green-500', lamm3: 'bg-green-800', schaf: 'bg-stone-500' }
+export const MEAT_BAND_BAR: Record<MeatBand, string> = { lamm1: 'bg-lime-300', lamm2: 'bg-green-500', lamm3: 'bg-green-800', schaf: 'bg-stone-500', kalb: 'bg-lime-300', rind: 'bg-green-600', kuh: 'bg-stone-500' }
+/** Rindvieh (lib/carcassValue.ts) */
+export const CATTLE_BANDS: ReadonlySet<MeatBand> = new Set(['kalb', 'rind', 'kuh'])
 
 export interface MeatValue {
   band: MeatBand
-  kind: 'Lamm' | 'Schaf'
+  kind: 'Lamm' | 'Schaf' | 'Kalb' | 'Rind' | 'Muni' | 'Ochse' | 'Kuh'
   ageDays: number
   kg: number
   pricePerKg: number
@@ -100,7 +102,9 @@ export function meatValue(birthDate: string | null, date: string, s: MeatSetting
 }
 
 export interface MeatSum {
+  /** Jungtiere (Lämmer, Kälber) */
   lambs: number
+  /** ältere Tiere (Schafe; Rinder, Muni, Ochsen, Kühe) */
   sheep: number
   unknown: number
   gross: number
@@ -110,11 +114,11 @@ export interface MeatSum {
 }
 
 export function sumMeat(values: (MeatValue | null)[]): MeatSum {
-  const out: MeatSum = { lambs: 0, sheep: 0, unknown: 0, gross: 0, net: 0, byBand: { lamm1: { n: 0, net: 0 }, lamm2: { n: 0, net: 0 }, lamm3: { n: 0, net: 0 }, schaf: { n: 0, net: 0 } } }
+  const out: MeatSum = { lambs: 0, sheep: 0, unknown: 0, gross: 0, net: 0, byBand: Object.fromEntries(MEAT_BANDS.map((b) => [b, { n: 0, net: 0 }])) as MeatSum['byBand'] }
   for (const v of values) {
     if (!v) out.unknown++
     else {
-      if (v.kind === 'Lamm') out.lambs++
+      if (v.kind === 'Lamm' || v.kind === 'Kalb') out.lambs++
       else out.sheep++
       out.gross += v.gross
       out.net += v.net
@@ -163,6 +167,9 @@ export function saveMeatSettings(moduleKey: string, s: MeatSettings): void {
 
 /** Ende der Skala (Fr.): schweres Lamm, 21 kg SG, Klasse C3. Darüber ist der Balken voll. */
 export const MEAT_BAR_MAX = 330
+/** Rindvieh: schwere Kuh bzw. Muni (etwa 350 kg SG × 12 Fr.) */
+export const CATTLE_BAR_MAX = 4500
+export const meatBarMax = (v: Pick<MeatValue, 'band'>) => (CATTLE_BANDS.has(v.band) ? CATTLE_BAR_MAX : MEAT_BAR_MAX)
 /** Schlachtgewichte der Vergleichswerte: schweres Lamm und schwere Aue (kg SG). */
 export const MEAT_HEAVY_LAMB_KG = 21
 export const MEAT_HEAVY_EWE_KG = 36
@@ -192,12 +199,12 @@ export function meatLimits(s: MeatSettings, p: MeatPrices): MeatLimit[] {
 }
 
 /** Farbe des Balkens nach Wert: von Orange (wenig) über Gelb zu Grün (viel), stufenlos auf der festen Skala. */
-export function meatBarColor(net: number): string {
-  const t = Math.max(0, Math.min(1, net / MEAT_BAR_MAX))
+export function meatBarColor(net: number, max = MEAT_BAR_MAX): string {
+  const t = Math.max(0, Math.min(1, net / max))
   return `hsl(${Math.round(15 + t * 125)} 65% ${Math.round(46 - t * 8)}%)`
 }
 
 /** Länge des Balkens in Prozent der festen Skala (mindestens ein Rest, damit auch kleine Werte sichtbar sind). */
-export function meatBarPercent(net: number): number {
-  return Math.max(3, Math.min(100, (net / MEAT_BAR_MAX) * 100))
+export function meatBarPercent(net: number, max = MEAT_BAR_MAX): number {
+  return Math.max(3, Math.min(100, (net / max) * 100))
 }

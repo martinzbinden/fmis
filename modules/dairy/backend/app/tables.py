@@ -106,6 +106,10 @@ SYNC_TABLES: dict[str, list[str]] = {
     "lamb_selection": [
         "id", "animal_key", "offspring_id", "leaning", "purpose", "decided_on", "notes", "updated_at", "deleted_at",
     ],
+    "carcass_estimates": [
+        "id", "animal_id", "estimate_date", "kind", "method", "basis", "weight_kg", "girth_cm", "fleshiness", "fat_class",
+        "notes", "created_by", "updated_at", "deleted_at",
+    ],
     "yogurt_batches": [
         "id", "batch_date", "target_kg", "factor", "criterion", "milk_kg", "fat_pct", "protein_pct", "cell_count",
         "cows", "notes", "created_by", "updated_at", "deleted_at",
@@ -160,6 +164,7 @@ def table_area(key: str) -> dict[str, str]:
         "pedigree_info": f"{key}:animals",
         "conformation_scores": f"{key}:animals",
         "pedigree_performance": f"{key}:animals",
+        "carcass_estimates": f"{key}:animals",
         "yogurt_batches": f"{key}:milk",
         "board_views": f"{key}:animals",
         "data_history": f"{key}:history",
@@ -170,7 +175,7 @@ def table_area(key: str) -> dict[str, str]:
 # in den ersten 10 Minuten nach dem Eintrag. Bewusst nur einmalige Einträge, nicht
 # Stammdaten und nicht Zeilen, die im Alltag laufend nachgeführt werden (Tagesmeldung,
 # Wägesitzung, Spuren).
-FRIST_TABLES: set[str] = {"matings", "births", "birth_offspring", "animal_journal", "pregnancy_checks", "claw_exams", "claw_findings", "weanings", "animal_weights"}
+FRIST_TABLES: set[str] = {"matings", "births", "birth_offspring", "animal_journal", "pregnancy_checks", "claw_exams", "claw_findings", "weanings", "animal_weights", "carcass_estimates"}
 # Im Journal nur selbst erfasste Einträge: Notizen der Milchwägung (source 'milchwaegung')
 # werden dort bei jeder Änderung der Wägenotiz nachgeführt, Importe sind dem Büro vorbehalten.
 FRIST_FILTERS: dict[str, str] = {"animal_journal": "source = 'manual'"}

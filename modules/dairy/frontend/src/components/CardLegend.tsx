@@ -68,6 +68,7 @@ const SAMPLE: BoardCard = {
 }
 
 const SAMPLE_MEAT: MeatValue = { band: 'schaf', kind: 'Schaf', ageDays: 2087, kg: 27, pricePerKg: 6.3, gross: 170.1, net: 158.9 }
+const SAMPLE_CATTLE_MEAT: MeatValue = { band: 'kuh', kind: 'Kuh', ageDays: 2087, kg: 300, pricePerKg: 10, gross: 3000, net: 3000 }
 const ALL_FIELDS: CardFieldKey[] = ['weaned', 'lambMilk', 'milk', 'scc', 'spark', 'ltl', 'zw', 'litter', 'interval', 'meat']
 
 function Item({ sample, title, children }: { sample: ReactNode; title: string; children: ReactNode }) {
@@ -105,8 +106,8 @@ export default function CardLegend({ species, onClose }: { species: 'sheep' | 'c
           onToggle={() => undefined}
           onDragCard={() => undefined}
           onDragHandle={() => undefined}
-          meat={sheep ? SAMPLE_MEAT : null}
-          fields={ALL_FIELDS.filter((k) => sheep || (k !== 'meat' && k !== 'litter' && k !== 'lambMilk'))}
+          meat={sheep ? SAMPLE_MEAT : SAMPLE_CATTLE_MEAT}
+          fields={ALL_FIELDS.filter((k) => sheep || (k !== 'litter' && k !== 'lambMilk'))}
         />
       </div>
 

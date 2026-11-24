@@ -26,7 +26,7 @@ export const CARD_FIELDS: CardFieldDef[] = [
   { key: 'weighings', label: 'Letzte Wägung', hint: 'Zuletzt gewogene Milch (auch private Milchwägung ohne Labor), Zellzahl der letzten Prüfung und Anzahl offizieller Prüfungen (mit Gehalten, SMG) dieser Laktation' },
   { key: 'dailyMilk', label: 'Tagesmilch, korrigiert um die Lämmer', hint: 'Gemolken (letzte Wägung) plus Milch der saugenden Lämmer; Lämmer am Eimer zählen nicht' },
   { key: 'milkFeed', label: 'Milch gegen Futter bis Geburt', hint: 'Milchgeld bis zum Trockenstellen minus Futterkosten bis zur nächsten Geburt (Einstellungen erscheinen oben, wenn gewählt)' },
-  { key: 'meat', label: 'Geschätzter Fleischwert', hint: 'Schlachterlös nach Alter am Schlachttermin und Proviande-Preis, nach Abzügen (Einstellungen: «⚙️ Einstellungen»)', species: 'sheep' },
+  { key: 'meat', label: 'Geschätzter Fleischwert', hint: 'Schlachterlös am Schlachttermin mit Proviande-Preis, nach Abzügen: Schafe nach Alter, Rindvieh nach Gewicht (eigene Schätzung, Wägung oder Alter/Rasse) und CH-TAX (sonst T3) – Einstellungen: «⚙️ Einstellungen»' },
 ]
 
 export const DEFAULT_CARD_FIELDS: CardFieldKey[] = ['weaned', 'milk', 'scc', 'spark']

@@ -94,6 +94,7 @@ export const SYNC_TABLES = {
   stall_decisions: ['id', 'step', 'offspring_id', 'animal_id', 'decision', 'decided_on', 'until', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   culling_marks: ['id', 'animal_id', 'mark', 'marked_on', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   lamb_selection: ['id', 'animal_key', 'offspring_id', 'leaning', 'purpose', 'decided_on', 'notes', 'updated_at', 'deleted_at'],
+  carcass_estimates: ['id', 'animal_id', 'estimate_date', 'kind', 'method', 'basis', 'weight_kg', 'girth_cm', 'fleshiness', 'fat_class', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   yogurt_batches: [
     'id', 'batch_date', 'target_kg', 'factor', 'criterion', 'milk_kg', 'fat_pct', 'protein_pct', 'cell_count',
     'cows', 'notes', 'created_by', 'updated_at', 'deleted_at',
@@ -125,6 +126,7 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   birth_offspring: new Set(['died_on', 'tvd_reported_on']),
   weanings: new Set(['wean_date']),
   animal_weights: new Set(['weigh_date']),
+  carcass_estimates: new Set(['estimate_date']),
   ear_tag_stock: new Set(['stock_date']),
   watchlists: new Set(),
   watchlist_entries: new Set(),

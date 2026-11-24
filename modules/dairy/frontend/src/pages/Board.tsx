@@ -20,6 +20,8 @@ import { useQuery } from '../hooks/useQuery'
 import BoardCardView, { type CardLambValue } from '../components/BoardCardView'
 import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatLimits as buildMeatLimits, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, MEAT_BAR_MAX, type MeatLimit, type MeatSettings, type MeatValue } from '../lib/meatValue'
+import { asMeatValue, cattleValue, DEFAULT_CATTLE_SETTINGS, loadCattleSettings, saveCattleSettings, type CattleSettings } from '../lib/carcassValue'
+import { loadCattleData, useCattlePrices } from '../lib/carcassData'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
 import BoardViewsMenu from '../components/BoardViewsMenu'
@@ -200,12 +202,6 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   const proviande = useProviandePrices(species)
   const meatPrices = useMemo(() => ({ lamb: proviande?.young ?? FALLBACK_MEAT_PRICES.lamb, sheep: proviande?.adult ?? FALLBACK_MEAT_PRICES.sheep }), [proviande])
   const meatDate = meatSettings.slaughterDate || today
-  // Fleischwert aller Karten (Schafe): für die Karten, die Spaltensummen und die Formel «Fleischwert > 150»
-  const meatAll = useMemo(() => {
-    const m = new Map<string, ReturnType<typeof meatValue>>()
-    if (species === 'sheep') for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices, c.lastBirth))
-    return m
-  }, [cards, species, meatDate, meatSettings, meatPrices])
   // Milch gegen Futter bis zur nächsten Geburt: Kartenfeld und Formelsuche («Bilanz < 0», «Tagesmilch < 0.8»)
   const milkFeedSettings = useMilkFeedSettings(moduleKey, species)
   const milkFeedOn = cardFields.includes('milkFeed')
@@ -223,6 +219,24 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   }, [milkData, cards, species, today, milkFeedSettings, weanDay])
   // Summen je Spalte (Σ Summen): Milch und Futter jedes Tiers für den gewählten Zeitraum
   const [totals, setTotals] = useState<ColumnTotalsSettings>(() => loadColumnTotals(moduleKey))
+  // Rindvieh: Schlachtwert nach Gewicht und CH-TAX (lib/carcassValue.ts), nur geladen, wenn Karte oder Summe ihn zeigt
+  const [cattleSettings, setCattleSettings] = useState<CattleSettings>(() => loadCattleSettings(moduleKey))
+  const cattlePrices = useCattlePrices()
+  const cattleOn = species === 'cattle' && (cardFields.includes('meat') || totals.meat)
+  const cattleData = useQuery((pg) => (cattleOn ? loadCattleData(pg, cattlePrices.prices) : Promise.resolve(null)), [cattleOn, cattlePrices.prices]).data
+  const cattleDate = cattleSettings.slaughterDate || today
+  // Fleischwert aller Karten: für die Karten, die Spaltensummen und die Formel «Fleischwert > 150»
+  const meatAll = useMemo(() => {
+    const m = new Map<string, MeatValue | null>()
+    if (species === 'sheep') for (const c of cards) m.set(c.id, meatValue(c.birthDate, meatDate, meatSettings, meatPrices, c.lastBirth))
+    else if (cattleData)
+      for (const c of cards) {
+        const input = cattleData.inputs.get(c.id)
+        const v = input ? cattleValue(input, cattleDate, cattlePrices.prices, cattleSettings, cattleData.calibration) : null
+        m.set(c.id, v ? asMeatValue(v) : null)
+      }
+    return m
+  }, [cards, species, meatDate, meatSettings, meatPrices, cattleData, cattleDate, cattlePrices.prices, cattleSettings])
   const windowById = useMemo(() => {
     const m = new Map<string, MilkFeedWindow>()
     if (!milkData || (!totals.milk && !totals.feed)) return m
@@ -233,9 +247,9 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
       )
     return m
   }, [milkData, cards, species, today, weanDay, milkFeedSettings, totals])
-  const meatById = useMemo(() => (cardFields.includes('meat') ? meatAll : new Map<string, ReturnType<typeof meatValue>>()), [meatAll, cardFields])
+  const meatById = useMemo(() => (cardFields.includes('meat') ? meatAll : new Map<string, MeatValue | null>()), [meatAll, cardFields])
   // Fleischwert in Gebrauch (Karte oder Spaltensumme): dann stehen seine Einstellungen unter «⚙️ Einstellungen»
-  const meatUsed = species === 'sheep' && (cardFields.includes('meat') || totals.meat)
+  const meatUsed = cardFields.includes('meat') || totals.meat
 
   // Suchfeld: Freitext und Formeln wie «ZZ > 200» (lib/boardQuery.ts), Sortierung nach dem Filter vorschlagen (core/query)
   const queryCtx = useMemo<QueryContext>(
@@ -450,7 +464,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
     const list = columnCards(col)
     const isCollapsed = collapsed.has(col.key)
     const dropTarget = colDrag.target?.key === col.key ? colDrag.target : null
-    const meatSum = totals.meat && species === 'sheep' && list.length > 0 ? sumMeat(list.map((c) => meatAll.get(c.id) ?? null)) : null
+    const meatSum = totals.meat && list.length > 0 ? sumMeat(list.map((c) => meatAll.get(c.id) ?? null)) : null
     const icon = col.kind === 'list' ? '🔖' : species === 'sheep' ? '🐑' : '🐄'
     return (
       <section
@@ -514,9 +528,16 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         {isCollapsed ? (
           meatSum && (
             <div className="ml-[3.75rem] text-xs text-emerald-900">
-              ≈ {Math.round(meatSum.net).toLocaleString('de-CH')} Fr. · {meatSum.lambs > 0 ? `${meatSum.lambs} L.` : ''}
-              {meatSum.lambs > 0 && meatSum.sheep > 0 ? ' · ' : ''}
-              {meatSum.sheep > 0 ? `${meatSum.sheep} S.` : ''}
+              ≈ {Math.round(meatSum.net).toLocaleString('de-CH')} Fr. ·{' '}
+              {species === 'sheep' ? (
+                <>
+                  {meatSum.lambs > 0 ? `${meatSum.lambs} L.` : ''}
+                  {meatSum.lambs > 0 && meatSum.sheep > 0 ? ' · ' : ''}
+                  {meatSum.sheep > 0 ? `${meatSum.sheep} S.` : ''}
+                </>
+              ) : (
+                `${meatSum.lambs + meatSum.sheep} Tiere`
+              )}
             </div>
           )
         ) : (
@@ -545,7 +566,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
                   milkFeed={milkFeedOn || cardFields.includes('dailyMilk') ? (milkFeedById.get(c.id) ?? null) : null}
                   lastMilk={milkData?.samples.get(c.id) ?? null}
                   lambValue={lambValueById.get(c.id) ?? null}
-                  meatLimits={meatLimitList}
+                  meatLimits={species === 'sheep' ? meatLimitList : undefined}
                   fields={shownFields}
                   verdict={verdictById.get(c.id)?.verdict ?? null}
                   money={verdictById.get(c.id)?.money ?? null}
@@ -687,7 +708,49 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
 
       <QueryChips parsed={q.parsed} />
 
-      {showSettings && meatUsed && (
+      {showSettings && meatUsed && species === 'cattle' && (
+        <div className={toolsOpen ? '' : 'hidden sm:block'}>
+          <SettingsEditor
+            value={cattleSettings}
+            onSave={(v) => {
+              setCattleSettings(v)
+              saveCattleSettings(moduleKey, v)
+            }}
+            onReset={() => DEFAULT_CATTLE_SETTINGS}
+            label="Schlachtwert"
+            className="rounded-lg bg-white p-3 shadow-sm"
+            title={
+              <>
+                Schlachtwert am <b>{cattleDate.split('-').reverse().join('.')}</b>
+                {cattleSettings.slaughterDate ? '' : ' (heute)'} · Proviande {cattlePrices.week ? `Woche ${cattlePrices.week}` : 'Woche 48/2026 (Ersatz, bis die Wochenpreise geladen sind)'}. Gewicht: jüngste eigene Schätzung oder Wägung, sonst nach Alter, Geschlecht und Rasse
+                {cattleData?.calibration.adult || cattleData?.calibration.calf ? ', angepasst an die eigenen Abrechnungen' : ''}; CH-TAX: jüngste eigene Schätzung, sonst T3. Schätzen auf der Tierseite.
+              </>
+            }
+          >
+            {({ value, set, editing }) => {
+              const num = (key: Exclude<keyof CattleSettings, 'slaughterDate'>, label: string, step = 1) => (
+                <label key={key} className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                  {label}
+                  {editing ? <NumberInput step={step} value={value[key]} onChange={(e) => set({ ...value, [key]: Number(e.target.value) })} className="w-24 rounded border border-gray-300 px-2 py-1 text-right text-sm" /> : <ReadValue>{value[key]}</ReadValue>}
+                </label>
+              )
+              return (
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <label className="flex items-center justify-between gap-2 text-xs text-gray-600">
+                    Schlachttermin (leer = heute)
+                    {editing ? <input type="date" value={value.slaughterDate} onChange={(e) => set({ ...value, slaughterDate: e.target.value })} className="rounded border border-gray-300 px-2 py-1 text-sm" /> : <ReadValue>{value.slaughterDate ? value.slaughterDate.split('-').reverse().join('.') : 'heute'}</ReadValue>}
+                  </label>
+                  {num('priceFactor', 'Preis im Verhältnis zum Wochenpreis', 0.01)}
+                  {num('feePerAnimal', 'Abzüge je Tier (Fr.)', 1)}
+                  {num('transportPerAnimal', 'Transport je Tier (Fr.)', 5)}
+                </div>
+              )
+            }}
+          </SettingsEditor>
+        </div>
+      )}
+
+      {showSettings && meatUsed && species === 'sheep' && (
         <div className={toolsOpen ? '' : 'hidden sm:block'}>
         <SettingsEditor
           value={meatSettings}
@@ -1053,7 +1116,7 @@ function ColumnTotals({
   if (totals.feed && w.length) {
     rows.push({ icon: '🌾', label: `Futter ${period}`, value: `${kg(w.reduce((t, x) => t + x.feedKg, 0))} kg ≈ ${fr(w.reduce((t, x) => t + x.feedCost, 0))} Fr.` })
   }
-  const meat = sheep && totals.meat ? sumMeat(list.map((c) => meatAll.get(c.id) ?? null)) : null
+  const meat = totals.meat ? sumMeat(list.map((c) => meatAll.get(c.id) ?? null)) : null
   if (rows.length === 0 && !meat) return null
   const bandTotal = meat ? MEAT_BANDS.reduce((t, b) => t + Math.max(0, meat.byBand[b].net), 0) : 0
   const used = meat ? MEAT_BANDS.filter((b) => meat.byBand[b].n > 0) : []

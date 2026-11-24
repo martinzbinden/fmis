@@ -100,6 +100,8 @@ function describeEntry(entry: DataHistory, moduleKey: string, lk?: Lookup): { la
       return { label: `Absetzen: ${tier(snap.animal_id)} am ${day(snap.wean_date)}`, link: tierLink(snap.animal_id) }
     case 'animal_weights':
       return { label: `Gewicht: ${tier(snap.animal_id)} ${kg(snap.weight_kg) ?? ''} am ${day(snap.weigh_date)}`, link: tierLink(snap.animal_id) }
+    case 'carcass_estimates':
+      return { label: `Schlachtwert: ${tier(snap.animal_id)} ${snap.kind === 'chtax' ? `CH-TAX ${s(snap.fleshiness) ?? ''}${s(snap.fat_class) ?? ''}` : `${kg(snap.weight_kg) ?? ''} ${snap.basis === 'sg' ? 'SG' : 'lebend'} (${s(snap.method) ?? ''})`} am ${day(snap.estimate_date)}`, link: tierLink(snap.animal_id) }
     case 'watchlists':
       return { label: `Merkliste «${s(snap.name) ?? '?'}»`, link: `/${moduleKey}/merklisten` }
     case 'watchlist_entries':

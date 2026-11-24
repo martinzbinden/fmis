@@ -6,7 +6,7 @@ import { areaLabel, breedingBadge, SEX_LABEL, weanedOfLastLitter, type BoardCard
 import { fmtAge, fmtDate } from '../lib/format'
 import { RESULT_LABEL, METHOD_LABEL } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
-import { meatBarColor, meatBarPercent, MEAT_BAND_LABEL, type MeatLimit, type MeatValue, MEAT_BAR_MAX } from '../lib/meatValue'
+import { meatBarColor, meatBarMax, meatBarPercent, MEAT_BAND_LABEL, type MeatLimit, type MeatValue } from '../lib/meatValue'
 import type { CardFieldKey } from '../lib/cardFields'
 import LactationSpark from './LactationSpark'
 import SearchPick from '@fmis/core/SearchPick'
@@ -197,7 +197,7 @@ export default function BoardCardView({
             {card.reasons.length > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-900">⚠ {card.reasons.length}</span>}
             {pendingTo && <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-950">→ {pendingTo} (Entwurf)</span>}
             {meat && !fields.includes('meat') && (
-              <span className={`rounded px-1.5 py-0.5 ${meat.kind === 'Lamm' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-900'}`} title={`${meat.kind}, ${meat.ageDays} Tage am Schlachttermin, ca. ${meat.kg} kg SG, ${meat.pricePerKg.toFixed(2)} Fr./kg, nach Abzügen`}>
+              <span className={`rounded px-1.5 py-0.5 ${meat.kind === 'Lamm' || meat.kind === 'Kalb' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-900'}`} title={`${meat.kind}, ${meat.ageDays} Tage am Schlachttermin, ca. ${meat.kg} kg SG, ${meat.pricePerKg.toFixed(2)} Fr./kg, nach Abzügen`}>
                 ≈ {Math.round(meat.net)} Fr. · {meat.kind}
               </span>
             )}
@@ -526,6 +526,7 @@ function CardProps({
   }
   if (has('meat')) rows.push(line('Fleischwert', meat ? `≈ ${Math.round(meat.net)} Fr. · ${meat.kind} ${meat.kg} kg` : card.birthDate ? '–' : 'ohne Geburtsdatum', 'meat'))
   if (has('meat') && meat) {
+    const MEAT_BAR_MAX = meatBarMax(meat)
     const limits = (meatLimits ?? []).filter((l) => l.net > 0 && l.net <= MEAT_BAR_MAX)
     const limitText = limits.map((l) => `${l.title}: ${Math.round(l.net)} Fr.`).join(' · ')
     rows.push(
@@ -536,7 +537,7 @@ function CardProps({
         aria-label={`Fleischwert ${Math.round(meat.net)} Fr., ${MEAT_BAND_LABEL[meat.band]}. Skala bis ${MEAT_BAR_MAX} Fr.`}
         title={`${MEAT_BAND_LABEL[meat.band]}, ${meat.ageDays} Tage, ${meat.kg} kg SG. Skala 0–${MEAT_BAR_MAX} Fr.${limitText ? ` Grenzen: ${limitText}` : ''}`}
       >
-        <div className="h-full rounded-full" style={{ width: `${meatBarPercent(meat.net)}%`, backgroundColor: meatBarColor(meat.net) }} />
+        <div className="h-full rounded-full" style={{ width: `${meatBarPercent(meat.net, MEAT_BAR_MAX)}%`, backgroundColor: meatBarColor(meat.net, MEAT_BAR_MAX) }} />
         {limits.map((l) => (
           <span key={l.key} aria-hidden className="absolute -top-0.5 h-3 w-px bg-gray-800/70" style={{ left: `${(l.net / MEAT_BAR_MAX) * 100}%` }} title={`${l.title}: ${Math.round(l.net)} Fr.`} />
         ))}

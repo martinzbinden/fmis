@@ -28,6 +28,7 @@ import { useCullingThresholds } from '../lib/cullingSettings'
 import { animalKey, animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { TRAIT_LABEL, TRAIT_ORDER } from '../lib/breedingTraits'
 import { fmtInbreeding, inbreedingClass } from '../lib/inbreeding'
+import CarcassSection from '../components/CarcassSection'
 import PedigreeTree, { loadPedigreeData, pedigreeLink } from '../components/PedigreeTree'
 import CertificateDetailsView from '../components/CertificateDetails'
 import { hasCertificateDetails, loadCertificateDetails } from '../lib/certificateData'
@@ -296,6 +297,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
           ['milchproben', 'Milchproben'],
           ...(claws.length > 0 ? [['klauen', 'Klauen'] as [string, string]] : []),
           ['kennzahlen', 'Kennzahlen'],
+          ...(species === 'cattle' ? [['schlachtwert', 'Schlachtwert'] as [string, string]] : []),
           ['zuchtwerte', 'Zuchtwerte'],
           ['laktationen', 'Laktationen'],
         ]}
@@ -338,6 +340,12 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
           <Field label="Datenbasis" value={p?.data_basis === 'duenn' ? 'dünn' : p?.data_basis ?? '–'} />
         </div>
       </Section>
+
+      {species === 'cattle' && (
+        <Section title="Schlachtwert (Schätzung)" id="schlachtwert">
+          <CarcassSection moduleKey={moduleKey} animalId={a.id} />
+        </Section>
+      )}
 
       <JournalSection animalId={a.id} animalLabelOf={[a.lauf_nr, a.name].filter(Boolean).join(' ') || a.ear_tag} journal={journal} />
       <UnmarkedYoungJournal damId={a.id} />
