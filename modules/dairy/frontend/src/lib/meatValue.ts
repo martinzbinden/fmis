@@ -76,6 +76,8 @@ export interface MeatValue {
   gross: number
   /** nach Waagschein-Abzügen und Transport */
   net: number
+  /** Rindvieh: nächste Preisgrenze (Alter, Abkalbung) bald — Hinweis auf der Karte */
+  boundary?: { days: number; loss: number; text: string } | null
 }
 
 const DAY = 86_400_000

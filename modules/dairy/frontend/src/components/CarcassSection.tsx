@@ -7,7 +7,7 @@ import { useQuery } from '../hooks/useQuery'
 import { upsertRow } from '../db/write'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadCattleData, loadEstimates, useCattlePrices, type EstimateRow } from '../lib/carcassData'
-import { CATEGORY_LABEL, cattleValue, chtaxLabel, FAT_CLASSES, FLESHINESS, girthToLiveKg, loadCattleSettings, METHOD_LABEL, type FatClass, type Fleshiness, type WeightMethod } from '../lib/carcassValue'
+import { CATEGORY_LABEL, cattleBoundary, cattleValue, chtaxLabel, FAT_CLASSES, FLESHINESS, girthToLiveKg, loadCattleSettings, METHOD_LABEL, type FatClass, type Fleshiness, type WeightMethod } from '../lib/carcassValue'
 import { FAT_TEXT, FatPicture, FLESH_TEXT, FleshPicture } from './ChTaxPictures'
 
 const field = 'min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-base'
@@ -25,6 +25,7 @@ export default function CarcassSection({ moduleKey, animalId }: { moduleKey: str
   const [cattle, history] = data
   const input = cattle.inputs.get(animalId)
   const v = input ? cattleValue(input, date, prices, settings, cattle.calibration) : null
+  const limit = input ? cattleBoundary(input, localTodayIso(), prices, settings, cattle.calibration) : null
   return (
     <div className="space-y-3 text-sm">
       {!v ? (
@@ -37,6 +38,11 @@ export default function CarcassSection({ moduleKey, animalId }: { moduleKey: str
               {CATEGORY_LABEL[v.category]} · {chtaxLabel(v.fleshiness, v.fat)}
             </span>
           </div>
+          {limit && (
+            <p className="rounded-lg bg-amber-100 px-3 py-2 font-medium text-amber-950" role="note">
+              ⏳ Preisgrenze: {limit.text}
+            </p>
+          )}
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-gray-700">
             <dt className="text-gray-500">Schlachtgewicht</dt>
             <dd>

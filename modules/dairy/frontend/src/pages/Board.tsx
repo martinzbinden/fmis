@@ -20,7 +20,7 @@ import { useQuery } from '../hooks/useQuery'
 import BoardCardView, { type CardLambValue } from '../components/BoardCardView'
 import { DragGhost, useBoardDrag } from '../components/boardDrag'
 import { DEFAULT_MEAT_SETTINGS, FALLBACK_MEAT_PRICES, loadMeatSettings, meatLimits as buildMeatLimits, meatValue, saveMeatSettings, sumMeat, MEAT_BANDS, MEAT_BAND_BAR, MEAT_BAND_LABEL, MEAT_BAR_MAX, type MeatLimit, type MeatSettings, type MeatValue } from '../lib/meatValue'
-import { asMeatValue, cattleValue, DEFAULT_CATTLE_SETTINGS, loadCattleSettings, saveCattleSettings, type CattleSettings } from '../lib/carcassValue'
+import { asMeatValue, cattleBoundary, cattleValue, DEFAULT_CATTLE_SETTINGS, loadCattleSettings, saveCattleSettings, type CattleSettings } from '../lib/carcassValue'
 import { loadCattleData, useCattlePrices } from '../lib/carcassData'
 import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
@@ -233,10 +233,10 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
       for (const c of cards) {
         const input = cattleData.inputs.get(c.id)
         const v = input ? cattleValue(input, cattleDate, cattlePrices.prices, cattleSettings, cattleData.calibration) : null
-        m.set(c.id, v ? asMeatValue(v) : null)
+        m.set(c.id, v ? asMeatValue(v, input ? cattleBoundary(input, today, cattlePrices.prices, cattleSettings, cattleData.calibration) : null) : null)
       }
     return m
-  }, [cards, species, meatDate, meatSettings, meatPrices, cattleData, cattleDate, cattlePrices.prices, cattleSettings])
+  }, [cards, species, meatDate, meatSettings, meatPrices, cattleData, cattleDate, cattlePrices.prices, cattleSettings, today])
   const windowById = useMemo(() => {
     const m = new Map<string, MilkFeedWindow>()
     if (!milkData || (!totals.milk && !totals.feed)) return m

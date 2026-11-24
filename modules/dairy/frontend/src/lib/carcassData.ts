@@ -8,6 +8,7 @@ import { animalKey } from '@fmis/core/earTag'
 import { getSyncedDb as getLivestockDb } from '@fmis/livestock/db/access'
 import { latestProviande } from '@fmis/livestock/lib/proviande'
 import { daysBetween, isoDate } from './format'
+import { GESTATION_DAYS } from './fertility'
 import { breedMature, calibrate, carcassYield, cattleCategory, FALLBACK_CATTLE_PRICES, type Calibration, type CattleInput, type ChtaxObs, type FatClass, type Fleshiness, type PriceTable, type Sex, type WeightObs } from './carcassValue'
 
 export interface EstimateRow {
@@ -73,6 +74,7 @@ export async function loadCattleData(pg: PGlite, prices: PriceTable): Promise<Ca
     pg.query<Record<string, unknown>>('select animal_id, weigh_date, weight_kg from animal_weights where deleted_at is null and animal_id is not null').then((r) => r.rows),
     loadEstimates(pg),
   ])
+  const expected = await loadExpectedCalving(pg, calved)
   const scaleBy = new Map<string, { date: string; kg: number }[]>()
   for (const w of scale) {
     const id = String(w.animal_id)
@@ -96,11 +98,29 @@ export async function loadCattleData(pg: PGlite, prices: PriceTable): Promise<Ca
       sireBreed: ped?.sire_key ? (pedigree.get(ped.sire_key)?.breed_code ?? null) : null,
       damBreed: ped?.dam_key ? (pedigree.get(ped.dam_key)?.breed_code ?? null) : null,
       ...obs,
+      expectedCalving: expected.get(id) ?? null,
     }
     inputs.set(id, input)
     byKey.set(key, input)
   }
   return { inputs, calibration: await loadCalibration(byKey, prices) }
+}
+
+/** Erste Abkalbung der Rinder: letzte Belegung + Tragzeit (283 Tage), ausser eine spätere Untersuchung sagt «leer». */
+async function loadExpectedCalving(pg: PGlite, calved: Set<string>): Promise<Map<string, string>> {
+  const [services, empty] = await Promise.all([
+    pg.query<{ animal_id: string; service_date: unknown }>('select animal_id, max(service_date) as service_date from matings where deleted_at is null group by animal_id').then((r) => r.rows),
+    pg.query<{ animal_id: string; check_date: unknown }>("select animal_id, max(check_date) as check_date from pregnancy_checks where deleted_at is null and result = 'nein' group by animal_id").then((r) => new Map(r.rows.map((x) => [x.animal_id, isoDate(x.check_date)]))),
+  ])
+  const out = new Map<string, string>()
+  for (const m of services) {
+    const date = isoDate(m.service_date)
+    if (!date || calved.has(m.animal_id)) continue
+    const leer = empty.get(m.animal_id)
+    if (leer && leer >= date) continue
+    out.set(m.animal_id, new Date(Date.parse(`${date}T00:00:00Z`) + GESTATION_DAYS.cattle * 86_400_000).toISOString().slice(0, 10))
+  }
+  return out
 }
 
 /** Frühere Abrechnungen (Kalb, Rind, Kuh) mit Schlachtgewicht, über die Ohrmarke mit den eigenen Tieren verknüpft. */

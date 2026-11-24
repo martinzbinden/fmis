@@ -212,6 +212,8 @@ export interface CattleInput {
   damBreed: string | null
   weights: WeightObs[]
   chtax: ChtaxObs[]
+  /** erwartete erste Abkalbung (letzte Belegung + Tragzeit, ohne «leer» danach): ab dann Kuh-Preis */
+  expectedCalving?: string | null
 }
 
 export interface CattleSettings {
@@ -331,8 +333,8 @@ export function calibrate(records: { carcassKg: number; ageDays: number; sex: Se
 }
 
 /** Für Dashboard-Karten und Spaltensummen (gleiche Form wie der Fleischwert der Schafe). */
-export function asMeatValue(v: CattleValue): MeatValue {
-  return { band: v.category === 'KV' ? 'kalb' : v.category === 'VK' ? 'kuh' : 'rind', kind: CATEGORY_SHORT[v.category], ageDays: v.ageDays, kg: v.kg, pricePerKg: v.pricePerKg, gross: v.gross, net: v.net }
+export function asMeatValue(v: CattleValue, boundary?: CattleBoundary | null): MeatValue {
+  return { boundary: boundary ? { days: boundary.days, loss: boundary.loss, text: boundary.text } : null, band: v.category === 'KV' ? 'kalb' : v.category === 'VK' ? 'kuh' : 'rind', kind: CATEGORY_SHORT[v.category], ageDays: v.ageDays, kg: v.kg, pricePerKg: v.pricePerKg, gross: v.gross, net: v.net }
 }
 
 export function loadCattleSettings(moduleKey: string): CattleSettings {
@@ -357,4 +359,66 @@ export function saveCattleSettings(moduleKey: string, s: CattleSettings): void {
   } catch {
     // nur bis zum Neuladen
   }
+}
+
+// ---- Preisgrenzen ----
+
+/** So weit voraus (Tage) warnt der Hinweis vor einer Preisgrenze, mindestens bis zum Schlachttermin. */
+export const BOUNDARY_HORIZON_DAYS = 60
+
+/** Nächste Preisgrenze: Kalb → Muni/Rind (241 Tage), Muni → Muni über 600 Tage (601), Ochse → Kuh-Preis (841),
+ * Rind → Kuh-Preis (901 Tage oder erwartete Abkalbung, was früher kommt). */
+export interface CattleBoundary {
+  /** erster Tag in der neuen Kategorie */
+  date: string
+  /** Tage ab heute */
+  days: number
+  from: CattleCategory
+  to: CattleCategory
+  reason: 'alter' | 'abkalbung'
+  /** Mindererlös am ersten Tag der neuen Kategorie (Fr., gleiches Schlachtgewicht) */
+  loss: number
+  /** ausgeschrieben, z.B. «ab 12.12.2026 Kuh-Preis (in 18 Tagen): ca. −450 Fr.» */
+  text: string
+}
+
+const LIMIT_AGE: Partial<Record<CattleCategory, number>> = { KV: 241, MT: 601, OB: 841, RG: 901 }
+
+const addDaysIso = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10)
+
+export function cattleBoundary(
+  input: CattleInput,
+  today: string,
+  prices: PriceTable,
+  settings: CattleSettings = DEFAULT_CATTLE_SETTINGS,
+  calib: Calibration | null = null,
+): CattleBoundary | null {
+  if (!input.birthDate) return null
+  const age = days(input.birthDate, today)
+  if (age < 0) return null
+  const from = cattleCategory(input.sex, age, input.calved)
+  const limit = LIMIT_AGE[from]
+  if (limit == null) return null
+  let date = addDaysIso(input.birthDate, limit)
+  let reason: CattleBoundary['reason'] = 'alter'
+  if (from === 'RG' && input.expectedCalving && input.expectedCalving > today && input.expectedCalving < date) {
+    date = input.expectedCalving
+    reason = 'abkalbung'
+  }
+  const d = days(today, date)
+  const horizon = Math.max(BOUNDARY_HORIZON_DAYS, settings.slaughterDate ? days(today, settings.slaughterDate) : 0)
+  if (d <= 0 || d > horizon) return null
+  const before = cattleValue(input, addDaysIso(date, -1), prices, settings, calib)
+  const after = cattleValue(reason === 'abkalbung' ? { ...input, calved: true } : input, date, prices, settings, calib)
+  if (!before || !after || after.category === before.category) return null
+  const loss = Math.round(before.kg * (before.pricePerKg - after.pricePerKg))
+  if (loss <= 0) return null
+  const to = after.category
+  const toLabel = to === 'MA' ? 'Preis Muni über 600 Tage' : `${CATEGORY_SHORT[to]}-Preis`
+  const when = `in ${d} ${d === 1 ? 'Tag' : 'Tagen'}`
+  const text =
+    reason === 'abkalbung'
+      ? `Abkalbung erwartet ${fmt(date)} (${when}), danach ${toLabel}: ca. −${loss.toLocaleString('de-CH')} Fr.`
+      : `ab ${fmt(date)} ${toLabel} (${when}): ca. −${loss.toLocaleString('de-CH')} Fr.`
+  return { date, days: d, from, to, reason, loss, text }
 }

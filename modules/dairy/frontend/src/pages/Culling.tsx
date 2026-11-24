@@ -25,6 +25,8 @@ import { loadMilkFeedData, milkFeed, milkFeedInputFor, milkFeedPoints, useMilkFe
 import { loadLambMilkSettings } from '../lib/lambMilk'
 import { loadRules } from '../lib/stallRules'
 import { MilkFeedChip, MilkFeedSettingsPanel } from '../components/MilkFeedChip'
+import { loadCattleData, useCattlePrices } from '../lib/carcassData'
+import { cattleBoundary, loadCattleSettings, type CattleBoundary } from '../lib/carcassValue'
 
 const THRESHOLD_FIELDS: { key: keyof CullingThresholds; label: string; step?: number }[] = [
   { key: 'intervalDays', label: 'Zwischengeburtszeit über (Tage)' },
@@ -75,6 +77,7 @@ interface Row {
   milkFeedPoints: number
   /** Zellzahl je Laktation (rote Linie in der Minigrafik) */
   sccLevels: SccLevel[]
+  limit: CattleBoundary | null
 }
 
 /** «2·1·3 (Ø 2.0)» – die letzten vier Würfe, Mittel über alle. */
@@ -118,9 +121,17 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
   const [planN, setPlanN] = useStoredNumber(`${moduleKey}_culling_n`, 5)
   const [valueThreshold, setValueThreshold] = useStoredNumber(`${moduleKey}_culling_value`, 110)
   const { data, loading } = useQuery((pg) => loadHerdContext(pg, species, todayIso()), [species])
+  // Rindvieh: Preisgrenze bald (Rind → Kuh-Preis bei Abkalbung oder 900 Tagen, Muni, Ochse)
+  const cattlePrices = useCattlePrices()
+  const cattle = useQuery((pg) => (species === 'cattle' ? loadCattleData(pg, cattlePrices.prices) : Promise.resolve(null)), [species, cattlePrices.prices]).data
 
   const rows = useMemo<Row[]>(() => {
     if (!data) return []
+    const settings = loadCattleSettings(moduleKey)
+    const limitOf = (id: string, expectedBirth: string | null): CattleBoundary | null => {
+      const input = cattle?.inputs.get(id)
+      return input ? cattleBoundary({ ...input, expectedCalving: input.calved ? null : expectedBirth }, todayIso(), cattlePrices.prices, settings, cattle?.calibration) : null
+    }
     const contexts = [...data.values()].filter((c) => c.animal.status === 'aktiv' && c.animal.sex !== 'm' && ((c.lactationNumber ?? 0) > 0 || c.pregnancy != null))
     const totalBvOf = (c: (typeof contexts)[number]) => {
       const bv = latestValues(c.breedingValues)
@@ -161,6 +172,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
           birthDate: c.animal.birth_date ? String(c.animal.birth_date).slice(0, 10) : null,
           lastBirth: c.births.map((b) => b.birth_date).sort().at(-1) ?? null,
           sccLevels: c.sccByLactation,
+          limit: limitOf(c.animal.id, c.fertility.expected_birth),
           milkFeed: milkFeed(
             milkData
               ? milkFeedInputFor(milkData, { id: c.animal.id, lastBirth: c.fertility.last_birth, expectedBirth: c.fertility.expected_birth, pregnancy: c.pregnancy }, species, todayIso(), weanDay)
@@ -171,7 +183,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
       })
       .map((r) => ({ ...r, milkFeedPoints: milkFeedPoints(r.milkFeed.balance, milkFeedSettings.frPerPoint) }))
       .sort((a, b) => b.score - a.score || b.reasons.length - a.reasons.length || a.label.localeCompare(b.label))
-  }, [data, thresholds, species, milkData, milkFeedSettings, weanDay])
+  }, [data, thresholds, species, milkData, milkFeedSettings, weanDay, cattle, cattlePrices.prices, moduleKey])
 
   const flagged = rows.filter((r) => r.reasons.some((x) => x.weight > 0))
   const visible = showAll || (jumpTo && !flagged.some((r) => r.id === jumpTo)) ? rows : flagged
@@ -341,6 +353,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
                 <ReasonChips reasons={r.reasons} />
               </div>
             )}
+            {r.limit && <LimitNote limit={r.limit} />}
           </li>
         ))}
       </ul>
@@ -503,6 +516,7 @@ function CullingPlanView({
                       <ReasonChips reasons={r.reasons} />
                     </div>
                   )}
+                  {r.limit && <LimitNote limit={r.limit} />}
                 </div>
                 {species === 'sheep' && ((r.trend?.levels.length ?? 0) > 0 || r.sccLevels.length > 0) && <LactationSpark levels={r.trend?.levels ?? []} scc={r.sccLevels} />}
               </div>
@@ -532,4 +546,9 @@ function CullingPlanView({
       </ul>
     </div>
   )
+}
+
+/** Rindvieh: Preisgrenze in den nächsten Wochen (lib/carcassValue.ts, cattleBoundary). */
+function LimitNote({ limit }: { limit: CattleBoundary }) {
+  return <p className="mt-2 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-950">⏳ Preisgrenze: {limit.text}</p>
 }

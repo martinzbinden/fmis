@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { breedMature, calibrate, cattleCategory, cattlePrice, cattleValue, carcassYield, chtaxLabel, FALLBACK_CATTLE_PRICES, girthToLiveKg, modelLiveKg, type CattleInput } from './carcassValue'
+import { breedMature, calibrate, cattleBoundary, cattleCategory, cattlePrice, cattleValue, carcassYield, chtaxLabel, FALLBACK_CATTLE_PRICES, girthToLiveKg, modelLiveKg, type CattleInput } from './carcassValue'
 
 const base: CattleInput = { birthDate: '2024-01-01', sex: 'w', calved: false, breed: 'HO', sireBreed: null, damBreed: null, weights: [], chtax: [] }
 
@@ -98,5 +98,34 @@ describe('Schlachtwert', () => {
     expect(cal.adult?.factor).toBeCloseTo(0.93, 2)
     const v = cattleValue({ ...base, breed: null }, '2030-01-01', FALLBACK_CATTLE_PRICES, undefined, cal)!
     expect(v.weightBasis).toContain('Abrechnungen ×0.93 (2)')
+  })
+})
+
+describe('Preisgrenze', () => {
+  const heifer: CattleInput = { ...base, birthDate: '2024-01-01', weights: [{ date: '2026-05-01', method: 'auge', carcassKg: 300 }] }
+  it('Rind mit 900 Tagen: Kuh-Preis, Mindererlös bei gleichem Gewicht', () => {
+    // 901 Tage alt am 2026-06-20
+    const b = cattleBoundary(heifer, '2026-06-01', FALLBACK_CATTLE_PRICES)!
+    expect(b.date).toBe('2026-06-20')
+    expect(b.days).toBe(19)
+    expect(b.to).toBe('VK')
+    expect(b.loss).toBeGreaterThan(300)
+    expect(b.text).toContain('Kuh-Preis')
+  })
+  it('erwartete Abkalbung vor 900 Tagen zählt zuerst', () => {
+    const b = cattleBoundary({ ...heifer, expectedCalving: '2026-06-10' }, '2026-06-01', FALLBACK_CATTLE_PRICES)!
+    expect(b.reason).toBe('abkalbung')
+    expect(b.date).toBe('2026-06-10')
+  })
+  it('weit weg oder schon Kuh: kein Hinweis; Schlachttermin verlängert den Blick', () => {
+    expect(cattleBoundary(heifer, '2026-01-01', FALLBACK_CATTLE_PRICES)).toBeNull()
+    expect(cattleBoundary({ ...heifer, calved: true }, '2026-06-01', FALLBACK_CATTLE_PRICES)).toBeNull()
+    expect(cattleBoundary(heifer, '2026-01-01', FALLBACK_CATTLE_PRICES, { slaughterDate: '2026-07-01', feePerAnimal: 0, transportPerAnimal: 0, priceFactor: 1 })?.days).toBe(170)
+  })
+  it('Muni mit 600 Tagen', () => {
+    const b = cattleBoundary({ ...base, sex: 'm', breed: 'LM' }, '2025-08-10', FALLBACK_CATTLE_PRICES)!
+    expect(b.from).toBe('MT')
+    expect(b.to).toBe('MA')
+    expect(b.text).toContain('Muni über 600 Tage')
   })
 })

@@ -201,6 +201,11 @@ export default function BoardCardView({
                 ≈ {Math.round(meat.net)} Fr. · {meat.kind}
               </span>
             )}
+            {meat?.boundary && !fields.includes('meat') && (
+              <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-950" title={`Preisgrenze: ${meat.boundary.text}`}>
+                ⏳ {meat.boundary.days} T. −{Math.round(meat.boundary.loss)} Fr.
+              </span>
+            )}
           </span>
         </button>
         {/* rechts übereinander: Griff (ziehen), darunter ⇄ Gruppe wechseln bzw. ✕ von der Liste — so bleibt der Name breit */}
@@ -525,6 +530,12 @@ function CardProps({
     )
   }
   if (has('meat')) rows.push(line('Fleischwert', meat ? `≈ ${Math.round(meat.net)} Fr. · ${meat.kind} ${meat.kg} kg` : card.birthDate ? '–' : 'ohne Geburtsdatum', 'meat'))
+  if (has('meat') && meat?.boundary)
+    rows.push(
+      <div key="meatlimit" className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-950">
+        ⏳ {meat.boundary.text}
+      </div>,
+    )
   if (has('meat') && meat) {
     const MEAT_BAR_MAX = meatBarMax(meat)
     const limits = (meatLimits ?? []).filter((l) => l.net > 0 && l.net <= MEAT_BAR_MAX)
