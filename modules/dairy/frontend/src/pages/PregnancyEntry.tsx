@@ -20,6 +20,7 @@ import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { examiners, fmtDuration, fmtTimeRange, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, tagDigits, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
 import HoldButton from '../components/HoldButton'
+import FertalysPaste from '../components/FertalysPaste'
 import PersonPicker from '../components/PersonPicker'
 import PresetHint from '../components/PresetHint'
 import ResumeGate, { RESUME_HOLD_MS } from '../components/ResumeGate'
@@ -132,6 +133,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rounds.length])
   const [editRound, setEditRound] = useState(false)
+  const [fertalysOpen, setFertalysOpen] = useState(false)
   // früheren Durchgang nur ansehen (?durchgang=…), ohne ihn fortzusetzen — bleibt beim Zurück aus der Tierseite
   const [params, setParams] = useSearchParams()
   const viewing = params.get('durchgang')
@@ -502,7 +504,12 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
       <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
         <h1 className="text-xl font-bold text-gray-900">Trächtigkeit</h1>
         {picked && !editRound && byId.get(picked) && <PresetHint animal={byId.get(picked)!} next={cattle ? 'Methode wählen, dann «Einzelbefund»' : undefined} />}
-        {roundForm}
+        {cattle && !editRound && fertalysOpen ? <FertalysPaste onDone={() => setFertalysOpen(false)} /> : roundForm}
+        {cattle && !editRound && !fertalysOpen && (
+          <button type="button" onClick={() => setFertalysOpen(true)} className="min-h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-3 text-base font-medium text-gray-800">
+            🧪 FERTALYS-Mail einfügen
+          </button>
+        )}
         {!editRound && rounds.length > 0 && (
           <section className="space-y-1">
             <h2 className="px-1 text-sm font-semibold text-gray-700">Frühere Durchgänge</h2>
