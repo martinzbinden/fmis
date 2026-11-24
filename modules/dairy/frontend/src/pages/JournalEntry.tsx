@@ -4,6 +4,7 @@ import { useQuery } from '../hooks/useQuery'
 import AnimalPicker from '../components/AnimalPicker'
 import JournalForm from '../components/JournalForm'
 import { speciesTerms } from '../lib/species'
+import { JOURNAL_CATEGORIES } from '../lib/journal'
 import type { Animal } from '../types'
 import { asPickerAnimal, isProvisional, loadProvisionalYoung, offspringIdOf } from '../lib/provisional'
 import { useOnUndo } from '@fmis/core/undo'
@@ -24,6 +25,11 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
   const [ids, setIds] = useState<string[]>(() => {
     const t = new URLSearchParams(window.location.search).get('tier')
     return t ? [t] : []
+  })
+  // ?art=<Kategorie> (Menü «Erfassen» in der Tier-Info) wählt die Art vor, z.B. behandlung
+  const [art] = useState(() => {
+    const k = new URLSearchParams(window.location.search).get('art')
+    return JOURNAL_CATEGORIES.find((c) => c.key === k)?.key
   })
   const [saved, setSaved] = useState<string[] | null>(null)
   // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
@@ -54,6 +60,7 @@ export default function JournalEntry({ moduleKey }: { moduleKey: string }) {
       </div>
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <JournalForm
+          defaultCategory={art}
           animalIds={ids.filter((id) => !isProvisional(id))}
           unmarked={ids.filter(isProvisional).map((id) => {
             const y = all?.young.find((x) => x.offspringId === offspringIdOf(id))

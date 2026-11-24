@@ -20,6 +20,7 @@ import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { examiners, fmtDuration, fmtTimeRange, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, tagDigits, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
 import HoldButton from '../components/HoldButton'
+import PresetHint from '../components/PresetHint'
 import ResumeGate, { RESUME_HOLD_MS } from '../components/ResumeGate'
 import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
@@ -139,7 +140,9 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     )
 
   // Einzeln: Tier → Ergebnis. Liste: mehrere Tiere sammeln (+ oder Lesegerät), dann ein Ergebnis für alle.
-  const [mode, setModeState] = useState<'einzeln' | 'liste'>(() => (readJson<string>(modeKey(moduleKey)) === 'liste' ? 'liste' : 'einzeln'))
+  // ?tier=<id> (Menü «Erfassen» in der Tier-Info): dieses Tier einzeln vorgewählt, sobald der Durchgang läuft
+  const [preset] = useState(() => new URLSearchParams(window.location.search).get('tier'))
+  const [mode, setModeState] = useState<'einzeln' | 'liste'>(() => (!preset && readJson<string>(modeKey(moduleKey)) === 'liste' ? 'liste' : 'einzeln'))
   function setMode(m: 'einzeln' | 'liste') {
     setModeState(m)
     writeJson(modeKey(moduleKey), m)
@@ -163,7 +166,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     events && round ? animalWarnings(id, eventsOf(events, id), { kind: 'pregnancy', date: round.date, result, roundId: round.id }, speciesOf(moduleKey)) : []
 
   const [query, setQuery] = useState('')
-  const [picked, setPicked] = useState<string | null>(null)
+  const [picked, setPicked] = useState<string | null>(preset)
   const [weeks, setWeeks] = useState('')
   const [fromReader, setFromReader] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -463,7 +466,11 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         title2={roundTitle(round)}
         info={`${ofRound.length} ${ofRound.length === 1 ? 'Tier' : 'Tiere'} erfasst · noch offen ${Math.max(0, animals.length - ofRound.length)}`}
         onResume={() => setArmedId(round.id)}
-        onEnd={stop}
+        onEnd={() => {
+          stop()
+          // vorgewähltes Tier (?tier=) bleibt für den neuen Durchgang
+          setPicked(picked)
+        }}
       />
     )
   }
@@ -472,6 +479,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     return (
       <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
         <h1 className="text-xl font-bold text-gray-900">Trächtigkeit</h1>
+        {picked && !editRound && byId.get(picked) && <PresetHint animal={byId.get(picked)!} />}
         {roundForm}
         {!editRound && rounds.length > 0 && (
           <section className="space-y-1">

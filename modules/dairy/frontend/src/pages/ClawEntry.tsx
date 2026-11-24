@@ -38,6 +38,7 @@ import { speciesOf } from '../lib/species'
 import { savePhotos, type PreparedPhoto } from '../lib/photos'
 import PhotoPicker from '../components/PhotoPicker'
 import HoldButton from '../components/HoldButton'
+import PresetHint from '../components/PresetHint'
 import ResumeGate, { RESUME_HOLD_MS } from '../components/ResumeGate'
 import { undoAction } from '@fmis/core/undo'
 import type { Animal } from '../types'
@@ -124,7 +125,8 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
 
   // ---- Tier wählen
   const [query, setQuery] = useState('')
-  const [picked, setPicked] = useState<string | null>(null)
+  // ?tier=<id> (Menü «Erfassen» in der Tier-Info): dieses Tier vorgewählt, sobald der Durchgang läuft
+  const [picked, setPicked] = useState<string | null>(() => new URLSearchParams(window.location.search).get('tier'))
   const [viaReader, setViaReader] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const matches = useMemo(() => (picked ? [] : matchAnimals(animals, query)), [animals, query, picked])
@@ -329,6 +331,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
     return (
       <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
         <h1 className="text-xl font-bold text-gray-900">Klauen</h1>
+        {picked && byId.get(picked) && <PresetHint animal={byId.get(picked)!} />}
         <section className="space-y-3 rounded-2xl border-2 border-brand-700 bg-white p-3 shadow-lg">
           <h2 className="text-lg font-bold text-gray-900">Neuer Durchgang</h2>
           <label className="flex items-center justify-between gap-2 text-sm font-medium text-gray-800">
@@ -443,6 +446,8 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
           reader.setOn(false)
           setRound(null)
           reset()
+          // vorgewähltes Tier (?tier=) bleibt für den neuen Durchgang
+          setPicked(picked)
           setAfter(null)
         }}
       />

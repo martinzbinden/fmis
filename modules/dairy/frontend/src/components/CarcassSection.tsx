@@ -102,7 +102,7 @@ function History({ rows }: { rows: EstimateRow[] }) {
   )
 }
 
-function WeightDialog({ animalId, onClose }: { animalId: string; onClose: () => void }) {
+export function WeightDialog({ animalId, onClose }: { animalId: string; onClose: () => void }) {
   const db = useDb()
   const [method, setMethod] = useState<WeightMethod>('messband')
   const [date, setDate] = useState(localTodayIso())
@@ -179,7 +179,7 @@ function WeightDialog({ animalId, onClose }: { animalId: string; onClose: () => 
   )
 }
 
-function ChTaxDialog({ animalId, current, onClose }: { animalId: string; current: { f: Fleshiness; fat: FatClass } | null; onClose: () => void }) {
+export function ChTaxDialog({ animalId, current, onClose }: { animalId: string; current: { f: Fleshiness; fat: FatClass } | null; onClose: () => void }) {
   const db = useDb()
   const [f, setF] = useState<Fleshiness>(current?.f ?? 'T')
   const [fat, setFat] = useState<FatClass>(current?.fat ?? 3)

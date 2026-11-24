@@ -14,6 +14,7 @@ import { cullingReasons, fmtCells } from '../lib/culling'
 import { useCullingThresholds } from '../lib/cullingSettings'
 import { cullingInput } from '../lib/herdContext'
 import GroupJump from '../components/GroupJump'
+import CaptureMenu from '../components/CaptureMenu'
 import { fmtInbreeding, inbreedingClass } from '../lib/inbreeding'
 import { rankLambs } from '../lib/lambSelection'
 import { loadLambSelection } from '../lib/lambSelectionData'
@@ -99,6 +100,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
       { replace: true },
     )
   const [picking, setPicking] = useState(false)
+  const [capturing, setCapturing] = useState(false)
   const [listOpen, setListOpen] = useState(false)
   const [listMsg, setListMsg] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -118,6 +120,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
   function show(animalId: string) {
     setId(animalId)
     setPicking(false)
+    setCapturing(false)
     setListMsg(null)
     input.current?.blur()
   }
@@ -376,13 +379,15 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
               </Tile>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Link to={`../tiere/${a.id}`} relative="path" className="flex min-h-11 flex-1 items-center justify-center rounded-lg border-2 border-gray-300 bg-white font-semibold text-brand-800">
                 Details ›
               </Link>
               <button type="button" onClick={() => setPicking((v) => !v)} className="min-h-11 flex-1 rounded-lg border-2 border-brand-700 bg-white font-semibold text-brand-800">
                 + Merkliste
               </button>
+              {/* Erfassungen mit diesem Tier (Geburt, Trächtigkeit, Behandlung …), nur für Tiere im Bestand */}
+              {!inactive && <CaptureMenu moduleKey={moduleKey} animal={a} open={capturing} onToggle={() => setCapturing((v) => !v)} />}
             </div>
             {listMsg && <p className="text-sm font-semibold text-green-800">✓ {listMsg}</p>}
             {picking && (
