@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useKeepAwake } from '@fmis/core/stallMode'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
 import AnimalOption from '@fmis/core/AnimalOption'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
-import { notifyError, errorText } from '@fmis/core/toast'
+import { notifyError, notifySuccess, errorText } from '@fmis/core/toast'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
 import TagReaderButton from '@fmis/core/TagReaderButton'
 import { inTransaction } from '../db/transaction'
@@ -38,6 +38,7 @@ import { speciesOf } from '../lib/species'
 import { savePhotos, type PreparedPhoto } from '../lib/photos'
 import PhotoPicker from '../components/PhotoPicker'
 import HoldButton from '../components/HoldButton'
+import PersonPicker from '../components/PersonPicker'
 import PresetHint from '../components/PresetHint'
 import ResumeGate, { RESUME_HOLD_MS } from '../components/ResumeGate'
 import { undoAction } from '@fmis/core/undo'
@@ -55,6 +56,8 @@ interface Round {
   id: string
   date: string
   examiner: string | null
+  /** Einzeltier (Rindvieh): kein Durchgang, Einträge ohne round_id, id = «tag:<Datum>»; nicht gespeichert */
+  single?: boolean
 }
 interface Finding {
   foot: Foot | null
@@ -85,6 +88,7 @@ const EMPTY_MH: Record<Foot, number | null> = { VL: null, VR: null, HL: null, HR
  * Lahmheit, geschnitten, Behandlung. Schafe: Moderhinke-Score je Fuss; Rinder: ICAR-Befunde. */
 export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
+  const navigate = useNavigate()
   const species = speciesOf(moduleKey)
   const sheep = species === 'sheep'
   const { data } = useQuery(loadData)
@@ -93,18 +97,25 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
   const byId = useMemo(() => new Map(animals.map((a) => [a.id, a])), [animals])
   const today = localTodayIso()
 
-  const [round, setRoundState] = useState<Round | null>(() => readRound(moduleKey))
+  // ?tier=<id> (Menü «Erfassen» in der Tier-Info): beim Rindvieh gleich als Einzeltier erfassen, ohne Durchgang
+  const [preset] = useState(() => new URLSearchParams(window.location.search).get('tier'))
+  const [round, setRoundState] = useState<Round | null>(() => readRound(moduleKey) ?? (preset && !sheep ? { id: `tag:${today}`, date: today, examiner: null, single: true } : null))
   // laufender Durchgang: Bildschirm bleibt an
   useKeepAwake(round != null)
   const setRound = (r: Round | null) => {
     setRoundState(r)
-    writeRound(moduleKey, r)
+    // Einzeltiere laufen nicht weiter (kein «Weiter mit Durchgang» beim nächsten Öffnen)
+    writeRound(moduleKey, r?.single ? null : r)
   }
   // Ein gespeicherter oder wieder gewählter Durchgang läuft erst nach 1 s Gedrückthalten weiter (ResumeGate)
-  const [armedId, setArmedId] = useState<string | null>(null)
+  const [armedId, setArmedId] = useState<string | null>(() => (round?.single ? round.id : null))
   const [startDate, setStartDate] = useState(today)
   const [startExaminer, setStartExaminer] = useState('')
-  const examiners = useMemo(() => [...new Set(exams.map((e) => e.examiner).filter((x): x is string => !!x))].slice(0, 5), [exams])
+  // zuletzt eingesetzte zuerst (Schnellauswahl in PersonPicker)
+  const examiners = useMemo(
+    () => [...new Set([...exams].sort((a, b) => b.exam_date.localeCompare(a.exam_date)).map((e) => e.examiner?.trim()).filter((x): x is string => !!x))],
+    [exams],
+  )
   const rounds = useMemo(() => {
     const m = new Map<string, { id: string; date: string; examiner: string | null; n: number; affected: number }>()
     for (const e of exams) {
@@ -120,13 +131,13 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
   const [params, setParams] = useSearchParams()
   const viewing = params.get('durchgang')
   const setViewing = (id: string | null) => setParams(id ? { durchgang: id } : {}, { replace: !id })
-  const ofRound = round ? exams.filter((e) => e.round_id === round.id) : []
+  const ofRound = round ? exams.filter((e) => (round.single ? !e.round_id && e.exam_date === round.date : e.round_id === round.id)) : []
   const inRound = useMemo(() => new Map(ofRound.map((e) => [e.animal_id, e])), [ofRound])
 
   // ---- Tier wählen
   const [query, setQuery] = useState('')
   // ?tier=<id> (Menü «Erfassen» in der Tier-Info): dieses Tier vorgewählt, sobald der Durchgang läuft
-  const [picked, setPicked] = useState<string | null>(() => new URLSearchParams(window.location.search).get('tier'))
+  const [picked, setPicked] = useState<string | null>(preset)
   const [viaReader, setViaReader] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const matches = useMemo(() => (picked ? [] : matchAnimals(animals, query)), [animals, query, picked])
@@ -225,7 +236,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
             id,
             animal_id: animal.id,
             exam_date: round.date,
-            round_id: round.id,
+            round_id: round.single ? null : round.id,
             examiner: round.examiner,
             locomotion,
             trimmed,
@@ -244,6 +255,12 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
         })
         await savePhotos(db, moduleKey, photos, { animalId: animal.id, clawExamId: id })
       })
+      // aus der Tier-Info gekommen: nach dem Speichern gleich zurück (ausser es gibt Hinweise)
+      if (round.single && preset === animal.id && warnings.length === 0 && window.history.length > 1) {
+        notifySuccess(`Klauen ${label(animal)} gespeichert`)
+        navigate(-1)
+        return
+      }
       setFlash(`${label(animal)} gespeichert${prev ? ' (korrigiert)' : ''}`)
       setTimeout(() => setFlash(null), 3000)
       setAfter(warnings.length ? { animalId: animal.id, warnings: warnings.map((w) => ({ ...w, tone: 'warn' as const })) } : null)
@@ -331,38 +348,48 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
     return (
       <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
         <h1 className="text-xl font-bold text-gray-900">Klauen</h1>
-        {picked && byId.get(picked) && <PresetHint animal={byId.get(picked)!} />}
+        {picked && byId.get(picked) && <PresetHint animal={byId.get(picked)!} next={sheep ? undefined : '«Einzeltier» oder Durchgang starten'} />}
         <section className="space-y-3 rounded-2xl border-2 border-brand-700 bg-white p-3 shadow-lg">
-          <h2 className="text-lg font-bold text-gray-900">Neuer Durchgang</h2>
+          <h2 className="text-lg font-bold text-gray-900">{sheep ? 'Neuer Durchgang' : 'Klauen beurteilen'}</h2>
           <label className="flex items-center justify-between gap-2 text-sm font-medium text-gray-800">
             Datum
             <input type="date" className="min-h-11 rounded-lg border-2 border-gray-400 px-2 text-base" value={startDate} onChange={(e) => e.target.value && setStartDate(e.target.value)} />
           </label>
-          <label className="block text-sm font-medium text-gray-800">
-            Wer schneidet / beurteilt?
-            <input className="mt-1 min-h-12 w-full rounded-lg border-2 border-gray-400 px-3 text-base" value={startExaminer} onChange={(e) => setStartExaminer(e.target.value)} placeholder="z.B. Klauenpfleger Muster" />
-          </label>
-          {examiners.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {examiners.map((e) => (
-                <button key={e} type="button" className={chip(startExaminer.trim() === e)} onClick={() => setStartExaminer(e)}>
-                  {e}
-                </button>
-              ))}
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              const id = crypto.randomUUID()
-              setRound({ id, date: startDate, examiner: startExaminer.trim() || null })
-              setArmedId(id)
-              setTimeout(() => input.current?.focus(), 0)
-            }}
-            className="min-h-12 w-full rounded-xl bg-brand-700 text-lg font-bold text-white"
-          >
-            Durchgang starten
-          </button>
+          <div>
+            <label htmlFor="claw-examiner" className="mb-1 block text-sm font-medium text-gray-800">
+              Wer schneidet / beurteilt?
+            </label>
+            <PersonPicker id="claw-examiner" value={startExaminer} onChange={setStartExaminer} recent={examiners} placeholder="z.B. Klauenpfleger Muster" />
+          </div>
+          <div className="flex gap-2">
+            {/* Rindvieh: einzelne Tiere ohne Durchgang (z.B. lahme Kuh im Klauenstand), Durchgang nur auf Wunsch */}
+            {!sheep && (
+              <button
+                type="button"
+                onClick={() => {
+                  const id = `tag:${startDate}`
+                  setRound({ id, date: startDate, examiner: startExaminer.trim() || null, single: true })
+                  setArmedId(id)
+                  setTimeout(() => input.current?.focus(), 0)
+                }}
+                className="min-h-12 flex-1 rounded-xl bg-brand-700 text-lg font-bold text-white"
+              >
+                Einzeltier
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                const id = crypto.randomUUID()
+                setRound({ id, date: startDate, examiner: startExaminer.trim() || null })
+                setArmedId(id)
+                setTimeout(() => input.current?.focus(), 0)
+              }}
+              className={sheep ? 'min-h-12 w-full rounded-xl bg-brand-700 text-lg font-bold text-white' : 'min-h-12 rounded-xl border-2 border-brand-700 bg-white px-3 text-base font-semibold text-brand-800'}
+            >
+              Durchgang starten
+            </button>
+          </div>
         </section>
 
         {rounds.length > 0 && (
@@ -467,7 +494,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
               {fmtDate(round.date)} · {round.examiner ?? 'ohne Angabe'}
             </div>
             <div className="text-xs opacity-90">
-              Durchgang · {ofRound.length} erfasst · noch offen {animals.length - ofRound.length}
+              {round.single ? `Einzeltier · an diesem Tag ${ofRound.length} einzeln erfasst` : `Durchgang · ${ofRound.length} erfasst · noch offen ${animals.length - ofRound.length}`}
             </div>
           </div>
           <button
@@ -480,7 +507,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
             }}
             className="min-h-11 shrink-0 rounded-lg bg-white px-2.5 text-sm font-semibold text-brand-800"
           >
-            Beenden
+            {round.single ? 'Fertig' : 'Beenden'}
           </button>
         </div>
         <div className="space-y-2 p-3">
@@ -720,7 +747,7 @@ export default function ClawEntry({ moduleKey }: { moduleKey: string }) {
             </button>
           </li>
         ))}
-        {ofRound.length === 0 && <li className="px-3 py-3 text-sm text-gray-700">In diesem Durchgang noch nichts erfasst.</li>}
+        {ofRound.length === 0 && <li className="px-3 py-3 text-sm text-gray-700">{round.single ? 'An diesem Tag noch keine Einzeltiere.' : 'In diesem Durchgang noch nichts erfasst.'}</li>}
       </ul>
     </div>
   )

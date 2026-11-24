@@ -20,6 +20,7 @@ import { fmtDate, isoDate, localTodayIso, num } from '../lib/format'
 import { examiners, fmtDuration, fmtTimeRange, fromWeeks, groupRounds, isYoung, matchAnimals, METHOD_LABEL, RESULT_LABEL, summarize, tagDigits, toWeeks, uniqueMatch, type PregnancyRound } from '../lib/pregnancy'
 import { speciesOf, speciesTerms } from '../lib/species'
 import HoldButton from '../components/HoldButton'
+import PersonPicker from '../components/PersonPicker'
 import PresetHint from '../components/PresetHint'
 import ResumeGate, { RESUME_HOLD_MS } from '../components/ResumeGate'
 import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
@@ -56,8 +57,9 @@ const METHODS: { key: PregnancyMethod; icon: string }[] = [
   { key: 'auge', icon: '👁' },
   { key: 'farbtupfer', icon: '🎨' },
   { key: 'ultraschall', icon: '🔊' },
-  // rektal untersucht, nur beim Rind
+  // nur beim Rind: rektal untersucht, FERTALYS (Test aus der Milchprobe)
   { key: 'rektal', icon: '✋' },
+  { key: 'fertalys', icon: '🧪' },
 ]
 const roundTitle = (r: Pick<PregnancyRound, 'date' | 'examiner' | 'method'>) =>
   [fmtDate(r.date), r.examiner || 'ohne Angabe', r.method ? METHOD_LABEL[r.method] : null].filter(Boolean).join(' · ')
@@ -90,7 +92,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   const terms = speciesTerms(moduleKey)
   // Rindvieh: Einzelbefund ohne Durchgang (Tierarzt touchiert einzelne Kühe), Durchgang nur auf Wunsch
   const cattle = speciesOf(moduleKey) === 'cattle'
-  const methods = cattle ? METHODS : METHODS.filter((m) => m.key !== 'rektal')
+  const methods = cattle ? METHODS : METHODS.filter((m) => m.key !== 'rektal' && m.key !== 'fertalys')
   const { data } = useQuery(loadData)
   const allAnimals = useMemo(() => data?.animals ?? [], [data])
   const byId = useMemo(() => new Map(allAnimals.map((a) => [a.id, a])), [allAnimals])
@@ -397,27 +399,11 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         <label htmlFor="examiner" className="block text-sm font-medium text-gray-800">
           Wer untersucht?
         </label>
-        <input
-          id="examiner"
-          className="min-h-12 w-full rounded-lg border-2 border-gray-400 px-3 text-base text-gray-900 focus:border-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-200"
-          value={startExaminer}
-          onChange={(e) => setStartExaminer(e.target.value)}
-          placeholder="z.B. Tierarzt Muster"
-          autoComplete="off"
-        />
-        {knownExaminers.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {knownExaminers.slice(0, 5).map((e) => (
-              <button key={e} type="button" className={chip(startExaminer.trim() === e)} onClick={() => setStartExaminer(e)}>
-                {e}
-              </button>
-            ))}
-          </div>
-        )}
+        <PersonPicker id="examiner" value={startExaminer} onChange={setStartExaminer} recent={knownExaminers} placeholder="z.B. Tierarzt Muster" />
       </div>
       <div className="space-y-1.5">
         <div className="text-sm font-medium text-gray-800">Methode</div>
-        <div className={`grid gap-2 ${methods.length === 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+        <div className={`grid gap-2 grid-cols-3`}>
           {methods.map((m) => (
             <button
               key={m.key}
