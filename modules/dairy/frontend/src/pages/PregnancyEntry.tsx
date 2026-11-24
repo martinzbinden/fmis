@@ -56,6 +56,8 @@ const METHODS: { key: PregnancyMethod; icon: string }[] = [
   { key: 'auge', icon: '👁' },
   { key: 'farbtupfer', icon: '🎨' },
   { key: 'ultraschall', icon: '🔊' },
+  // rektal untersucht, nur beim Rind
+  { key: 'rektal', icon: '✋' },
 ]
 const roundTitle = (r: Pick<PregnancyRound, 'date' | 'examiner' | 'method'>) =>
   [fmtDate(r.date), r.examiner || 'ohne Angabe', r.method ? METHOD_LABEL[r.method] : null].filter(Boolean).join(' · ')
@@ -86,6 +88,9 @@ function writeJson(key: string, value: unknown) {
 export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   const db = useDb()
   const terms = speciesTerms(moduleKey)
+  // Rindvieh: Einzelbefund ohne Durchgang (Tierarzt touchiert einzelne Kühe), Durchgang nur auf Wunsch
+  const cattle = speciesOf(moduleKey) === 'cattle'
+  const methods = cattle ? METHODS : METHODS.filter((m) => m.key !== 'rektal')
   const { data } = useQuery(loadData)
   const allAnimals = useMemo(() => data?.animals ?? [], [data])
   const byId = useMemo(() => new Map(allAnimals.map((a) => [a.id, a])), [allAnimals])
@@ -102,7 +107,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   useKeepAwake(round != null)
   function setRound(r: PregnancyRound | null) {
     setRoundState(r)
-    writeJson(roundKey(moduleKey), r)
+    // Einzelbefunde laufen nicht weiter (kein «Weiter mit Durchgang» beim nächsten Öffnen)
+    writeJson(roundKey(moduleKey), r?.single ? null : r)
     if (r) writeJson(lastKey(moduleKey), { examiner: r.examiner, method: r.method, unit: r.unit })
   }
   // Ein gespeicherter oder wieder gewählter Durchgang läuft erst nach 1 s Gedrückthalten weiter (ResumeGate)
@@ -207,10 +213,25 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     setEditRound(false)
     setTimeout(() => input.current?.focus(), 0)
   }
-  /** Person/Methode eines laufenden Durchgangs ändern: gilt für alle seine Einträge. */
+  /** Einzelbefund: wie ein Durchgang erfassen, aber ohne round_id; die Liste zeigt die Einzelbefunde dieses Tages. */
+  function startSingle() {
+    if (!startMethod) return
+    const id = `tag:${startDate}`
+    setModeState('einzeln')
+    setRound({ id, date: startDate, examiner: startExaminer.trim() || null, method: startMethod, unit: startUnit, single: true })
+    setArmedId(id)
+    setEditRound(false)
+    setTimeout(() => input.current?.focus(), 0)
+  }
+  /** Person/Methode eines laufenden Durchgangs ändern: gilt für alle seine Einträge (Einzelbefund: nur für die nächsten). */
   async function changeRound() {
     if (!round || !startMethod) return
     const next = { ...round, examiner: startExaminer.trim() || null, method: startMethod, unit: startUnit }
+    if (round.single) {
+      setRound(next)
+      setEditRound(false)
+      return
+    }
     await inTransaction(db, async (tx) => {
       for (const c of ofRound) await upsertRow(tx, 'pregnancy_checks', { ...c, round_id: c.round_id ?? round.id, examiner: next.examiner, method: next.method, duration_unit: next.unit })
     })
@@ -246,7 +267,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
       result,
       weeks: w ?? prev?.weeks ?? null,
       source: viaReader ? 'reader' : 'manual',
-      round_id: prev?.round_id ?? round.id,
+      round_id: prev?.round_id ?? (round.single ? null : round.id),
       examiner: round.examiner,
       method: round.method,
       duration_unit: round.unit,
@@ -365,7 +386,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   // ---- Start eines Durchgangs (auch: Person/Methode ändern)
   const roundForm = (
     <section className="space-y-3 rounded-2xl border-2 border-brand-700 bg-white p-3 shadow-lg">
-      <h2 className="text-lg font-bold text-gray-900">{editRound ? 'Durchgang ändern' : 'Neuer Durchgang'}</h2>
+      <h2 className="text-lg font-bold text-gray-900">{editRound ? (round?.single ? 'Einzelbefund ändern' : 'Durchgang ändern') : cattle ? 'Trächtigkeit untersuchen' : 'Neuer Durchgang'}</h2>
       {!editRound && (
         <label className="flex items-center justify-between gap-2 text-sm font-medium text-gray-800">
           Datum
@@ -396,8 +417,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
       </div>
       <div className="space-y-1.5">
         <div className="text-sm font-medium text-gray-800">Methode</div>
-        <div className="grid grid-cols-3 gap-2">
-          {METHODS.map((m) => (
+        <div className={`grid gap-2 ${methods.length === 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+          {methods.map((m) => (
             <button
               key={m.key}
               type="button"
@@ -426,13 +447,27 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
             Abbrechen
           </button>
         )}
+        {cattle && !editRound && (
+          <button
+            type="button"
+            disabled={!startMethod}
+            onClick={startSingle}
+            className="min-h-12 flex-1 rounded-xl bg-brand-700 px-4 text-lg font-bold text-white shadow active:bg-brand-800 disabled:opacity-40"
+          >
+            Einzelbefund
+          </button>
+        )}
         <button
           type="button"
           disabled={!startMethod}
           onClick={() => void (editRound ? changeRound() : start())}
-          className="min-h-12 flex-1 rounded-xl bg-brand-700 px-4 text-lg font-bold text-white shadow active:bg-brand-800 disabled:opacity-40"
+          className={
+            cattle && !editRound
+              ? 'min-h-12 rounded-xl border-2 border-brand-700 bg-white px-3 text-base font-semibold text-brand-800 disabled:opacity-40'
+              : 'min-h-12 flex-1 rounded-xl bg-brand-700 px-4 text-lg font-bold text-white shadow active:bg-brand-800 disabled:opacity-40'
+          }
         >
-          {editRound ? `Übernehmen${ofRound.length ? ` (${ofRound.length} Einträge)` : ''}` : 'Durchgang starten'}
+          {editRound ? `Übernehmen${ofRound.length && !round?.single ? ` (${ofRound.length} Einträge)` : ''}` : 'Durchgang starten'}
         </button>
       </div>
     </section>
@@ -450,7 +485,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         onBack={() => setViewing(null)}
         onResume={() => {
           // Gedrückthalten bestätigt (RoundView): jetzt geht der Durchgang auf
-          setRound({ id: viewed.id, date: viewed.date, examiner: viewed.examiner, method: viewed.method, unit: viewed.unit })
+          // Tagesgruppe ohne round_id (Einzelbefunde, alte Einträge) geht als Einzelbefund weiter
+          setRound({ id: viewed.id, date: viewed.date, examiner: viewed.examiner, method: viewed.method, unit: viewed.unit, ...(viewed.id.startsWith('tag:') ? { single: true } : {}) })
           setArmedId(viewed.id)
           setViewing(null)
         }}
@@ -479,7 +515,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     return (
       <div className="mx-auto max-w-lg space-y-3 p-3 pb-24">
         <h1 className="text-xl font-bold text-gray-900">Trächtigkeit</h1>
-        {picked && !editRound && byId.get(picked) && <PresetHint animal={byId.get(picked)!} />}
+        {picked && !editRound && byId.get(picked) && <PresetHint animal={byId.get(picked)!} next={cattle ? 'Methode wählen, dann «Einzelbefund»' : undefined} />}
         {roundForm}
         {!editRound && rounds.length > 0 && (
           <section className="space-y-1">
@@ -518,9 +554,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
         <div className="flex items-center gap-2 bg-brand-700 px-3 py-2 text-white">
           <div className="min-w-0 flex-1">
             <div className="truncate font-semibold">{roundTitle(round)}</div>
-            <div className="text-xs opacity-90">
-              Durchgang · {ofRound.length} erfasst · noch offen {open}
-            </div>
+            <div className="text-xs opacity-90">{round.single ? `Einzelbefund · an diesem Tag ${ofRound.length} einzeln erfasst` : `Durchgang · ${ofRound.length} erfasst · noch offen ${open}`}</div>
           </div>
           <button
             type="button"
@@ -535,13 +569,13 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
             Ändern
           </button>
           <button type="button" className="min-h-11 shrink-0 rounded-lg bg-white px-2.5 text-sm font-semibold text-brand-800" onClick={stop}>
-            Beenden
+            {round.single ? 'Fertig' : 'Beenden'}
           </button>
         </div>
 
         <div className="space-y-2 p-3">
           <div className="flex items-start gap-2">
-            <div className="flex shrink-0 rounded-xl border-2 border-gray-400 p-0.5" role="radiogroup" aria-label="Erfassungsart">
+            <div className={`flex shrink-0 rounded-xl border-2 border-gray-400 p-0.5 ${round.single ? 'hidden' : ''}`} role="radiogroup" aria-label="Erfassungsart">
               {(['einzeln', 'liste'] as const).map((m) => (
                 <button key={m} type="button" role="radio" aria-checked={mode === m} onClick={() => setMode(m)} className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${mode === m ? 'bg-brand-700 text-white' : 'text-gray-800'}`}>
                   {m === 'einzeln' ? 'Einzeln' : 'Mehrere'}
@@ -724,7 +758,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
             </li>
           )
         })}
-        {ofRound.length === 0 && <li className="px-3 py-3 text-sm text-gray-700">In diesem Durchgang noch nichts erfasst.</li>}
+        {ofRound.length === 0 && <li className="px-3 py-3 text-sm text-gray-700">{round.single ? 'An diesem Tag noch keine Einzelbefunde.' : 'In diesem Durchgang noch nichts erfasst.'}</li>}
       </ul>
       {ofRound.length > 0 && <p className="px-1 text-xs text-gray-600">Eintrag antippen zum Ändern oder Löschen.</p>}
       {rounds.length > 1 && <CompareLink />}

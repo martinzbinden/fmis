@@ -227,7 +227,7 @@ export interface DataHistory {
 /** Trächtigkeitsuntersuchung (schema/0015_pregnancy_checks.sql) */
 export type PregnancyResult = 'ja' | 'nein' | 'unsicher'
 /** schema/0016_pregnancy_rounds.sql */
-export type PregnancyMethod = 'auge' | 'farbtupfer' | 'ultraschall'
+export type PregnancyMethod = 'auge' | 'farbtupfer' | 'ultraschall' | 'rektal'
 export type DurationUnit = 'wochen' | 'tage'
 export interface PregnancyCheck {
   id: string

@@ -29,7 +29,7 @@ const ICON: Record<PregnancyResult, { icon: string; cls: string }> = {
   nein: { icon: '✗', cls: 'text-red-600' },
   unsicher: { icon: '?', cls: 'text-amber-700' },
 }
-const METHOD_ICON: Record<PregnancyMethod, string> = { auge: '👁', farbtupfer: '🎨', ultraschall: '🔊' }
+const METHOD_ICON: Record<PregnancyMethod, string> = { auge: '👁', farbtupfer: '🎨', ultraschall: '🔊', rektal: '✋' }
 
 const roundLabel = (r: RoundSummary) =>
   `${fmtDate(r.date)} ${fmtTimeRange(r.first, r.last)} · ${r.examiner || 'ohne Angabe'}${r.method ? ` · ${METHOD_ICON[r.method]} ${METHOD_LABEL[r.method]}` : ''}`
