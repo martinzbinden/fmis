@@ -5,7 +5,7 @@ import { isoDate } from './format'
 import type { Animal, DurationUnit, PregnancyCheck, PregnancyMethod, PregnancyResult } from '../types'
 
 export const RESULT_LABEL: Record<PregnancyResult, string> = { ja: 'trächtig', nein: 'leer', unsicher: 'unsicher' }
-export const METHOD_LABEL: Record<PregnancyMethod, string> = { auge: 'Auge', farbtupfer: 'Farbtupfer', ultraschall: 'Ultraschall', rektal: 'Touchieren' }
+export const METHOD_LABEL: Record<PregnancyMethod, string> = { auge: 'Auge', farbtupfer: 'Farbtupfer', ultraschall: 'Ultraschall', rektal: 'Touchieren', fertalys: 'FERTALYS' }
 
 /** Ziffern der Ohrmarke in Kurzform (CH 9000 0200 → 90000200). */
 export const tagDigits = (a: Pick<Animal, 'ear_tag'>) => shortEarTag(a.ear_tag).replace(/\D/g, '')
@@ -67,7 +67,7 @@ export interface PregnancyStatus {
   weeks: number | null
 }
 
-export const METHOD_RANK: Record<PregnancyMethod, number> = { ultraschall: 4, rektal: 3, farbtupfer: 2, auge: 1 }
+export const METHOD_RANK: Record<PregnancyMethod, number> = { ultraschall: 5, rektal: 4, fertalys: 3, farbtupfer: 2, auge: 1 }
 
 /** Neuestes Ergebnis nach `sinceIso` (z.B. letzte Geburt; ältere gelten für die
  * damalige Trächtigkeit). Am gleichen Tag gilt die genauere Methode
