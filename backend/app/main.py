@@ -13,9 +13,11 @@ from core.backend.fmis_core import notifications as core_notifications
 from core.backend.fmis_core import user_links as core_user_links
 from core.backend.fmis_core import reader_scan as core_reader_scan
 from core.backend.fmis_core import release as core_release
+from core.backend.fmis_core import mailbox as core_mailbox
 from core.backend.fmis_core.db import close_pools, get_pool, open_pools, run_migrations
 from core.backend.fmis_core.module_registry import MODULE_SPECS
 from core.backend.fmis_core.modules_admin import require_module_enabled
+from modules.dairy.backend.app import mail_fertalys as dairy_mail_fertalys
 from modules.dairy.backend.app import photos as dairy_photos
 from modules.dairy.backend.app import reader as dairy_reader
 from modules.dairy.backend.app import sync as dairy_sync
@@ -87,7 +89,10 @@ async def lifespan(app: FastAPI):
     reader_pools = asyncio.create_task(tiere_reader_pools.periodic())
     # Shop-Anfragen abholen (modules/betrieb/backend/app/shop.py; nur wenn eingerichtet)
     shop = asyncio.create_task(betrieb_shop.periodic())
+    # Mail-Abruf (core/backend/fmis_core/mailbox.py; nur wenn eingerichtet, nicht in der Testumgebung)
+    mail = asyncio.create_task(core_mailbox.periodic())
     yield
+    mail.cancel()
     shop.cancel()
     school.cancel()
     proviande.cancel()
@@ -110,6 +115,7 @@ app.include_router(modules_admin.router)
 app.include_router(core_notifications.router)
 app.include_router(core_user_links.router)
 app.include_router(core_release.router)
+app.include_router(core_mailbox.router)
 app.include_router(core_reader_scan.router)
 
 for _spec in MODULE_SPECS:
@@ -127,6 +133,9 @@ for _spec in MODULE_SPECS:
             prefix=f"/{_spec.key}",
             dependencies=[Depends(require_module_enabled(_spec.key))],
         )
+        # FERTALYS-Resultate aus dem Mail-Abruf (nur Rindvieh, Schafe sind dairy_schafe)
+        if _spec.key == "dairy":
+            core_mailbox.register(dairy_mail_fertalys.fertalys_handler(_spec.key))
         # Fotos zu Journal-Einträgen (Inhalt nur auf dem Server, Angaben per Sync)
         app.include_router(
             dairy_photos.build_photo_router(_spec.key),
