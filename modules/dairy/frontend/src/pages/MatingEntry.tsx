@@ -25,6 +25,7 @@ const RECENT_LIST = 15
 
 interface RecentRow {
   id: string
+  animal_id: string | null
   service_date: unknown
   service_to: unknown
   kind: string | null
@@ -47,7 +48,7 @@ async function loadData(pg: PGlite) {
     loadInbreeding(pg),
     loadAnimalEvents(pg),
     pg.query<RecentRow>(
-      `select m.id, m.service_date, m.service_to, m.kind, m.sire_name, m.sire_ear_tag, m.marker_color, a.ear_tag, a.lauf_nr, a.name
+      `select m.id, m.animal_id, m.service_date, m.service_to, m.kind, m.sire_name, m.sire_ear_tag, m.marker_color, a.ear_tag, a.lauf_nr, a.name
        from matings m left join animals a on a.id = m.animal_id
        where m.deleted_at is null order by m.service_date desc, m.updated_at desc limit ${RECENT_LIST}`,
     ),
@@ -69,6 +70,8 @@ async function loadData(pg: PGlite) {
     milk,
     inbreeding,
     recent: recent.rows,
+    // Belegungen je Tier insgesamt (für «Letzte Meldungen»)
+    totalByAnimal: matings.rows.reduce((t, m) => t.set(m.animal_id, (t.get(m.animal_id) ?? 0) + 1), new Map<string, number>()),
   }
 }
 
@@ -364,6 +367,11 @@ export default function MatingEntry({ moduleKey }: { moduleKey: string }) {
                   <span className="block truncate font-medium text-gray-900">
                     {m.lauf_nr ? `${m.lauf_nr} · ` : ''}
                     {animalLabel({ ear_tag: m.ear_tag ?? '', name: m.name })}
+                    {m.animal_id && (data.totalByAnimal.get(m.animal_id) ?? 0) > 0 && (
+                      <span className="ml-1 font-normal text-gray-600" title={`${data.totalByAnimal.get(m.animal_id)} ${species === 'sheep' ? 'Belegungen' : 'Besamungen/Belegungen'} insgesamt für dieses Tier`}>
+                        ({data.totalByAnimal.get(m.animal_id)} total)
+                      </span>
+                    )}
                   </span>
                   <span className="block truncate text-xs text-gray-600">
                     {isMarkerColor(m.marker_color) && <span aria-label={`Farbe ${markerLabel(m.marker_color)}`} className={`mr-1 inline-block h-2.5 w-2.5 rounded-full align-middle ${MARKER_COLORS.find((c) => c.key === m.marker_color)!.swatch}`} />}
