@@ -40,6 +40,27 @@ async function call<T>(method: 'GET' | 'PUT' | 'POST' | 'DELETE', path = '', bod
   return (res.status === 204 ? undefined : await res.json()) as T
 }
 
+interface PollResult {
+  configured: boolean
+  mails?: number
+  saved?: number
+  total?: number
+  known?: number
+  foreign?: number
+  unmatched?: number
+}
+
+/** Rückmeldung zu «Jetzt abrufen»: neu verarbeitet + warum die übrigen Mails übersprungen wurden. */
+export function pollText(r: PollResult): string {
+  if (!r.configured) return 'Noch nicht eingerichtet'
+  const rest = [
+    r.known ? `${r.known} schon früher verarbeitet` : '',
+    r.foreign ? `${r.foreign} Absender nicht erlaubt` : '',
+    r.unmatched ? `${r.unmatched} für kein Modul` : '',
+  ].filter(Boolean)
+  return `Abgerufen: ${r.mails ?? 0} neue Mails, ${r.saved ?? 0} Einträge${r.total !== undefined ? ` (${r.total} im Postfach${rest.length ? `: ${rest.join(', ')}` : ''})` : ''}`
+}
+
 const field = 'min-h-11 w-full rounded-lg border-2 border-gray-400 px-3 text-base focus:border-brand-700 focus:outline-none'
 const when = (iso: string | null) => (iso ? datenstandText(iso) : '–')
 
@@ -83,8 +104,8 @@ export default function MailSettings() {
   async function pollNow() {
     setBusy(true)
     try {
-      const r = await call<{ configured: boolean; mails?: number; saved?: number }>('POST', '/poll')
-      notifySuccess(r.configured ? `Abgerufen: ${r.mails ?? 0} neue Mails, ${r.saved ?? 0} Einträge` : 'Noch nicht eingerichtet')
+      const r = await call<PollResult>('POST', '/poll')
+      notifySuccess(pollText(r))
       load()
     } catch (e) {
       notifyError(errorText(e))

@@ -144,14 +144,16 @@ async def poll() -> dict[str, Any]:
                 await conn.commit()
                 raise HTTPException(status_code=502, detail=f"Postfach: {e}") from None
             seen = {r[0] for r in await (await conn.execute("select message_id from mail_inbox")).fetchall()}
-            mails = saved = 0
+            mails = saved = known = foreign = unmatched = 0
             for data in raw:
                 msg = email.message_from_bytes(data, policy=email.policy.default)
                 mid = (str(msg.get("Message-ID") or "")).strip() or hashlib.sha256(data).hexdigest()
                 if mid in seen:
+                    known += 1
                     continue
                 sender = parseaddr(str(msg.get("From") or ""))[1]
                 if not sender_allowed(sender, cfg["senders"]):
+                    foreign += 1
                     continue
                 try:
                     received = parsedate_to_datetime(str(msg.get("Date")))
@@ -160,6 +162,7 @@ async def poll() -> dict[str, Any]:
                 mail = Mail(mid, sender, str(msg.get("Subject") or "")[:200], received, body_text(msg))
                 h = next((x for x in HANDLERS if x.matches(mail)), None)
                 if not h:
+                    unmatched += 1
                     continue
                 try:
                     n, problems, mail_date = await h.handle(mail)
@@ -175,8 +178,12 @@ async def poll() -> dict[str, Any]:
                 log.info("Mail-Abruf: %s → %s, %s gespeichert, %s Hinweise (Mail vom %s)", sender, h.name, n, len(problems), mail_date)
             await conn.execute("update mail_link set last_poll_at = now(), last_ok_at = now(), last_error = null where id")
             await conn.commit()
-            log.info("Mail-Abruf: %s Mails im Postfach (%s Tage), %s neu verarbeitet, %s Einträge", len(raw), LOOKBACK_DAYS, mails, saved)
-            return {"configured": True, "mails": mails, "saved": saved}
+            # Absender werden nicht geloggt (nur gezählt); nicht gespeicherte Mails werden bei jedem Abruf neu geprüft
+            log.info(
+                "Mail-Abruf: %s Mails im Postfach (%s Tage), %s neu verarbeitet, %s Einträge; %s schon früher verarbeitet, %s Absender nicht erlaubt, %s für kein Modul",
+                len(raw), LOOKBACK_DAYS, mails, saved, known, foreign, unmatched,
+            )
+            return {"configured": True, "mails": mails, "saved": saved, "total": len(raw), "known": known, "foreign": foreign, "unmatched": unmatched}
 
 
 async def periodic() -> None:
