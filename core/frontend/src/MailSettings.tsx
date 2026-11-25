@@ -141,8 +141,7 @@ export default function MailSettings() {
         </div>
         <label className="block text-sm font-medium text-gray-800">
           Erlaubte Absender (je Zeile eine Adresse oder «@domain», z.B. der Absender der FERTALYS-Mails und die eigene Domain für Weiterleitungen)
-          <textarea className={`${field} py-2`} rows={3} value={draft.senders} onChange={set('senders')} placeholder={'absender@example.ch
-@example.org'} />
+          <textarea className={`${field} py-2`} rows={3} value={draft.senders} onChange={set('senders')} placeholder={'absender@example.ch\n@example.org'} />
         </label>
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={busy} onClick={() => void save()} className="min-h-11 flex-1 rounded-lg bg-brand-700 px-4 font-semibold text-white disabled:opacity-50">
