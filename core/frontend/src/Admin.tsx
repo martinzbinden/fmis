@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { instanceInfo } from './instance'
 import Release from './Release'
+import MailSettings from './MailSettings'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import {
   ALL_PERMISSIONS,
@@ -76,6 +77,11 @@ export default function Admin() {
             👥 Benutzer
           </NavLink>
         )}
+        {canManageModules && (
+          <NavLink to="/verwaltung/mail" onClick={guard} className={tab}>
+            📬 Mail
+          </NavLink>
+        )}
         {canManageUsers && isDev && (
           <NavLink to="/verwaltung/freigabe" onClick={guard} className={tab}>
             🚀 Freigabe
@@ -85,6 +91,7 @@ export default function Admin() {
       <Routes>
         {canManageModules && <Route path="module" element={<ModulesSection onDirty={(v) => setSectionDirty('module', v)} />} />}
         {canManageUsers && <Route path="benutzer" element={<UsersSection onDirty={(v) => setSectionDirty('benutzer', v)} />} />}
+        {canManageModules && <Route path="mail" element={<MailSettings />} />}
         {canManageUsers && isDev && <Route path="freigabe" element={<Release />} />}
         <Route path="*" element={<Navigate to={canManageModules ? 'module' : 'benutzer'} replace />} />
       </Routes>
