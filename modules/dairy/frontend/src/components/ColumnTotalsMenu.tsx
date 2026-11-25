@@ -18,8 +18,8 @@ export default function ColumnTotalsMenu({ value, onChange, sheep }: { value: Co
       document.removeEventListener('keydown', esc)
     }
   }, [open])
-  const n = (value.meat ? 1 : 0) + (value.milk ? 1 : 0) + (value.feed ? 1 : 0)
-  const item = (k: 'meat' | 'milk' | 'feed', label: string, hint: string) => (
+  const n = (value.meat ? 1 : 0) + (value.milk ? 1 : 0) + (value.feed ? 1 : 0) + (value.transport ? 1 : 0)
+  const item = (k: 'meat' | 'milk' | 'feed' | 'transport', label: string, hint: string) => (
     <label key={k} className="flex min-h-11 cursor-pointer items-start gap-3 rounded px-1 py-1.5 active:bg-gray-100">
       <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-brand-700" checked={value[k]} onChange={() => onChange({ ...value, [k]: !value[k] })} />
       <span className="text-sm text-gray-900">
@@ -39,6 +39,7 @@ export default function ColumnTotalsMenu({ value, onChange, sheep }: { value: Co
           {item('meat', '🥩 Schlachtwert', 'Fleischwert nach Abzügen am Schlachttermin (Einstellungen: ⚙️ Einstellungen)')}
           {item('milk', '🥛 Milch', 'Gemolkene Milch und ihr Wert im Zeitraum, aus der letzten Wägung (Einstellungen: Milch gegen Futter)')}
           {item('feed', '🌾 Futterbedarf', 'Grundfutter in kg und Futterkosten (inkl. Kraftfutter je kg Milch) im Zeitraum')}
+          {item('transport', '🚚 Transport', 'Mindestfläche im Fahrzeug nach Gewicht (TSchV Anhang 4); Einzelheiten unter Listen → Gruppe')}
           <fieldset className="mt-1 border-t px-1 pt-2">
             <legend className="sr-only">Zeitraum</legend>
             <span className="text-xs font-semibold text-gray-700">Zeitraum</span>

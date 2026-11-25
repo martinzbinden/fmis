@@ -8,6 +8,8 @@ export interface ColumnTotalsSettings {
   milk: boolean
   /** Futterbedarf (kg Grundfutter, Fr. inkl. Kraftfutter) im Zeitraum */
   feed: boolean
+  /** Platz beim Transport (m² nach TSchV Anhang 4, lib/transportSpace.ts) */
+  transport: boolean
   /** Zeitraum in Tagen */
   days: number
 }
@@ -18,7 +20,7 @@ export const TOTAL_PERIODS = [
   { days: 90, label: '3 Monate' },
 ]
 
-export const DEFAULT_COLUMN_TOTALS: ColumnTotalsSettings = { meat: true, milk: true, feed: true, days: 30 }
+export const DEFAULT_COLUMN_TOTALS: ColumnTotalsSettings = { meat: true, milk: true, feed: true, transport: false, days: 30 }
 
 const key = (moduleKey: string) => `${moduleKey}_board_totals`
 
@@ -30,6 +32,7 @@ export function loadColumnTotals(moduleKey: string): ColumnTotalsSettings {
       meat: raw.meat ?? DEFAULT_COLUMN_TOTALS.meat,
       milk: raw.milk ?? DEFAULT_COLUMN_TOTALS.milk,
       feed: raw.feed ?? DEFAULT_COLUMN_TOTALS.feed,
+      transport: raw.transport ?? DEFAULT_COLUMN_TOTALS.transport,
       days: TOTAL_PERIODS.some((p) => p.days === raw.days) ? raw.days! : DEFAULT_COLUMN_TOTALS.days,
     }
   } catch {

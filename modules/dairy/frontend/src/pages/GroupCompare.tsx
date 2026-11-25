@@ -24,6 +24,7 @@ import { loadSettings } from './LambSelection'
 import ReaderGroupImport from '@fmis/tiere/components/ReaderGroupImport'
 import type { Animal } from '../types'
 import { ViewTabs } from '../components/ViewSwitch'
+import TransportSpace from '../components/TransportSpace'
 
 async function loadData(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: string) {
   const today = localTodayIso()
@@ -463,6 +464,7 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
               🥛 Leistung →
             </Link>
           </div>
+          <TransportSpace moduleKey={moduleKey} ids={tabGroup.ids} />
           <div className="space-y-1.5 rounded-lg bg-white p-2 shadow-sm">
             <div className="text-xs font-medium text-gray-600">Aktion für Tiere aus «{tabGroup.name}»</div>
             <ActionChips value={action} onChange={(a) => setAction(a)} moduleKey={moduleKey} />

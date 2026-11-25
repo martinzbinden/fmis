@@ -8,6 +8,7 @@ import Herds from './pages/Herds'
 import OutdoorJournal from './pages/OutdoorJournal'
 import GrazingYear from './pages/GrazingYear'
 import History from './pages/History'
+import Documents from './pages/Documents'
 import { herdLocator } from './lib/herds'
 import { tiereYearSummary } from './lib/yearSummary'
 import './theme.css'
@@ -29,8 +30,9 @@ const tiereModule: ModuleDescriptor = {
     { to: '', label: 'Gruppen', icon: 'gruppen' },
     { to: 'auslauf', label: 'Auslauf', icon: 'auslauf' },
     { to: 'weide', label: 'Weide', icon: 'weide' },
+    { to: 'merkblaetter', label: 'Merkblätter', icon: 'beleg' },
   ],
-  pageTitles: { auslauf: 'Auslaufjournal', weide: 'Weidenutzung' },
+  pageTitles: { auslauf: 'Auslaufjournal', weide: 'Weidenutzung', merkblaetter: 'Merkblätter' },
   historyPermission: 'tiere:history:read',
   search: searchHerds,
   importActions: [{ to: '/tiere?lesegeraet=gruppen', label: '📡 Gruppen vom Lesegerät', hint: 'Gruppen im APR600 ansehen, wählen und als Tiergruppen anlegen', permission: 'tiere:herden:write' }],
@@ -39,6 +41,7 @@ const tiereModule: ModuleDescriptor = {
     { path: 'auslauf', element: <OutdoorJournal /> },
     { path: 'weide', element: <GrazingYear /> },
     { path: 'verlauf', element: <History /> },
+    { path: 'merkblaetter', element: <Documents /> },
     { path: '*', element: <Navigate to="." replace /> },
   ],
   DbProvider: TiereDbProvider,

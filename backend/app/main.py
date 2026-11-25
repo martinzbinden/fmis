@@ -24,6 +24,7 @@ from modules.dairy.backend.app import sync as dairy_sync
 from modules.fields.backend.app import sync as fields_sync
 from modules.livestock.backend.app import dev_seed as livestock_dev_seed
 from modules.tiere.backend.app import dev_seed as tiere_dev_seed
+from modules.tiere.backend.app import documents as tiere_documents
 from modules.livestock.backend.app import proviande as livestock_proviande
 from modules.livestock.backend.app import reader as livestock_reader
 from modules.livestock.backend.app import sync as livestock_sync
@@ -155,6 +156,12 @@ app.include_router(
 # Link-Liste (Ohrmarke → VID) direkt aufs Lesegerät senden (modules/tiere/backend/app/reader_lists.py)
 app.include_router(
     tiere_reader_lists.router,
+    prefix="/tiere",
+    dependencies=[Depends(require_module_enabled("tiere"))],
+)
+# Merkblätter (PDF) der Instanz, z.B. Nutztiertransporte (modules/tiere/backend/app/documents.py)
+app.include_router(
+    tiere_documents.router,
     prefix="/tiere",
     dependencies=[Depends(require_module_enabled("tiere"))],
 )

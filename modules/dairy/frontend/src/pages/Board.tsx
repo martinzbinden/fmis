@@ -27,6 +27,8 @@ import CardFieldsMenu from '../components/CardFieldsMenu'
 import BoardViewsMenu from '../components/BoardViewsMenu'
 import StickyHScroll from '../components/StickyHScroll'
 import ColumnJump from '../components/ColumnJump'
+import { loadTransportAnimals } from '../lib/transportData'
+import { transportSummary, type TransportAnimal } from '../lib/transportSpace'
 import { ViewTabs } from '../components/ViewSwitch'
 import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
 import SortMenu from '@fmis/core/query/SortMenu'
@@ -227,6 +229,8 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   const cattleOn = species === 'cattle' && (cardFields.includes('meat') || totals.meat)
   const cattleData = useQuery((pg) => (cattleOn ? loadCattleData(pg, cattlePrices.prices) : Promise.resolve(null)), [cattleOn, cattlePrices.prices]).data
   const cattleDate = cattleSettings.slaughterDate || today
+  // Platz beim Transport je Spalte (Σ Summen → Transport): Gewicht je Tier nur laden, wenn gewählt
+  const transportAll = useQuery((pg) => (totals.transport ? loadTransportAnimals(pg, species, today, cattlePrices.prices) : Promise.resolve(null)), [totals.transport, species, today, cattlePrices.prices]).data
   // Fleischwert aller Karten: für die Karten, die Spaltensummen und die Formel «Fleischwert > 150»
   const meatAll = useMemo(() => {
     const m = new Map<string, MeatValue | null>()
@@ -544,7 +548,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
           )
         ) : (
           <>
-            {list.length > 0 && <ColumnTotals list={list} totals={totals} sheep={species === 'sheep'} meatAll={meatAll} windowById={windowById} />}
+            {list.length > 0 && <ColumnTotals list={list} totals={totals} sheep={species === 'sheep'} meatAll={meatAll} windowById={windowById} transport={transportAll} />}
             <div className="min-h-20 space-y-1.5 sm:space-y-2">
               {list.map((c) => (
                 <ColumnCard
@@ -1133,12 +1137,14 @@ function ColumnTotals({
   sheep,
   meatAll,
   windowById,
+  transport,
 }: {
   list: BoardCard[]
   totals: ColumnTotalsSettings
   sheep: boolean
   meatAll: ReadonlyMap<string, MeatValue | null>
   windowById: ReadonlyMap<string, MilkFeedWindow>
+  transport: ReadonlyMap<string, TransportAnimal> | null | undefined
 }) {
   const [meatOpen, setMeatOpen] = useState(false)
   const fr = (v: number) => Math.round(v).toLocaleString('de-CH')
@@ -1152,6 +1158,10 @@ function ColumnTotals({
   }
   if (totals.feed && w.length) {
     rows.push({ icon: '🌾', label: `Futter ${period}`, value: `${kg(w.reduce((t, x) => t + x.feedKg, 0))} kg ≈ ${fr(w.reduce((t, x) => t + x.feedCost, 0))} Fr.` })
+  }
+  if (totals.transport && transport) {
+    const t = transportSummary(list.map((c) => transport.get(c.id)).filter((a): a is TransportAnimal => !!a))
+    if (t.counted > 0) rows.push({ icon: '🚚', label: 'Transport', value: `mind. ${t.m2.toFixed(2).replace(/\.?0+$/, '')} m²`, note: t.estimated ? `${t.estimated} Gewichte geschätzt` : undefined })
   }
   const meat = totals.meat ? sumMeat(list.map((c) => meatAll.get(c.id) ?? null)) : null
   if (rows.length === 0 && !meat) return null
