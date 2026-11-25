@@ -40,3 +40,28 @@ export function menuItems(sheep: boolean, weanFromDays: number): MenuItem[] {
 
 /** Pfad eines Eintrags ohne Suchteil, wie er im Verlauf «zuletzt geöffnet» steht. */
 export const itemPath = (moduleKey: string, to: string) => (to.startsWith('/') ? to : `/${moduleKey}/${to}`).split('?')[0]
+
+/** Nur für die Suche über alles: Erfassungsarten und Untersuchungsmethoden, die direkt in die passende Erfassung
+ * führen (Art bzw. Methode vorgewählt), z.B. «fertalys», «brunst», «touchieren». */
+export function captureFunctions(sheep: boolean): FunctionEntry[] {
+  const out: FunctionEntry[] = [
+    { to: 'journal?art=behandlung', icon: 'behandlung', label: 'Behandlung / Medikament erfassen', keywords: 'medikament tierarzneimittel spritze absetzfrist antibiotika tierarzt' },
+    { to: 'journal?art=krankheit', icon: 'behandlung', label: 'Krankheit erfassen', keywords: 'diagnose krank fieber mastitis' },
+    { to: 'journal?art=beobachtung', icon: 'behandlung', label: 'Beobachtung erfassen', keywords: 'auffällig notieren' },
+    { to: 'journal?art=brunst', icon: 'belegung', label: 'Brunst erfassen', keywords: sheep ? 'bock decken' : 'stierig rindrig' },
+    { to: 'journal?art=fuetterung', icon: 'jungtiere', label: 'Fütterung erfassen', keywords: 'schoppen tränke' },
+    { to: 'journal?art=trocken', icon: 'milch', label: 'Trockenstellen', keywords: 'trockengestellt galt' },
+    { to: 'journal?art=notiz', icon: 'journal', label: 'Notiz zum Tier', keywords: 'bemerkung' },
+    { to: 'traechtigkeit?methode=ultraschall', icon: 'traechtig', label: 'Trächtigkeit: Ultraschall', keywords: 'tu tierarzt' },
+    { to: 'traechtigkeit?methode=farbtupfer', icon: 'traechtig', label: 'Trächtigkeit: Farbtupfer', keywords: 'markierung' },
+    { to: 'traechtigkeit?methode=auge', icon: 'traechtig', label: 'Trächtigkeit: von Auge', keywords: 'schauen' },
+  ]
+  if (!sheep)
+    out.push(
+      { to: 'traechtigkeit?fertalys=1', icon: 'traechtig', label: 'FERTALYS-Resultate (Trächtigkeit aus der Milchprobe)', keywords: 'fertalys milchprobe pag trächtigkeitstest cownect qualitas mail' },
+      { to: 'traechtigkeit?methode=rektal', icon: 'traechtig', label: 'Trächtigkeit: Touchieren (rektal)', keywords: 'touchieren rektal tierarzt' },
+      { to: 'klauen?einzeltier=1', icon: 'klauen', label: 'Klauen: Einzeltier', keywords: 'klauenstand lahm einzeltier schneiden' },
+      { to: 'tierinfo?erfassen=1', icon: 'tierinfo', label: 'Gewicht / CH-TAX schätzen (Tier-Info → Erfassen)', keywords: 'schlachtwert messband waage gewicht chtax taxierung fleischigkeit' },
+    )
+  return out
+}

@@ -123,7 +123,11 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   const animals = useMemo(() => allAnimals.filter((a) => !isYoung(a, refDate)), [allAnimals, refDate])
   const lambs = allAnimals.length - animals.length
   const [startExaminer, setStartExaminer] = useState(() => last?.examiner ?? '')
-  const [startMethod, setStartMethod] = useState<PregnancyMethod | null>(() => last?.method ?? null)
+  // ?methode=<key> (Suche über alles, z.B. «touchieren») wählt die Methode vor
+  const [startMethod, setStartMethod] = useState<PregnancyMethod | null>(() => {
+    const m = new URLSearchParams(window.location.search).get('methode')
+    return METHODS.some((x) => x.key === m) ? (m as PregnancyMethod) : (last?.method ?? null)
+  })
   const [startUnit, setStartUnit] = useState<DurationUnit>(() => last?.unit ?? 'wochen')
   // Vorbelegung aus dem letzten Eintrag, falls dieses Gerät noch nichts gespeichert hat
   useEffect(() => {
@@ -133,7 +137,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rounds.length])
   const [editRound, setEditRound] = useState(false)
-  const [fertalysOpen, setFertalysOpen] = useState(false)
+  // ?fertalys=1 (Suche über alles): gleich «FERTALYS-Mail einfügen»
+  const [fertalysOpen, setFertalysOpen] = useState(() => new URLSearchParams(window.location.search).has('fertalys'))
   // früheren Durchgang nur ansehen (?durchgang=…), ohne ihn fortzusetzen — bleibt beim Zurück aus der Tierseite
   const [params, setParams] = useSearchParams()
   const viewing = params.get('durchgang')

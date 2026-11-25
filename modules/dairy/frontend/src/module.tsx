@@ -37,7 +37,7 @@ import Lambs from './pages/Lambs'
 import ImportPanel from './components/ImportPanel'
 import { createDairyImporter, dairyFilesOf } from './lib/importDetect'
 import { createDairyAnimalProvider } from './lib/animalProvider'
-import { menuItems } from './lib/menuItems'
+import { captureFunctions, menuItems } from './lib/menuItems'
 import { WEAN_FROM_DAYS } from './lib/lambs'
 import { searchWatchlists } from './lib/search'
 import { dairyYearSummary } from './lib/yearSummary'
@@ -159,6 +159,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
     // Suche über alles: alle Funktionen aus «Mehr» plus die Ansichten, die dort nicht stehen
     functions: [
       ...menuItems(sheep, WEAN_FROM_DAYS),
+      ...captureFunctions(sheep),
       { to: 'dashboard', label: 'Karten', icon: 'karten', keywords: 'dashboard gruppen tiere' },
       { to: 'stall', label: 'Kalender', icon: 'kalender', keywords: 'stall hinweise tränkeplan' },
       { to: 'pruefbericht', label: 'Prüfbericht', icon: 'beleg', keywords: 'milchprüfung' },
