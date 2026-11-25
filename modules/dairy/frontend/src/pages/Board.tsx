@@ -26,6 +26,8 @@ import { useProviandePrices } from '../lib/proviandePrices'
 import CardFieldsMenu from '../components/CardFieldsMenu'
 import BoardViewsMenu from '../components/BoardViewsMenu'
 import StickyHScroll from '../components/StickyHScroll'
+import ColumnJump from '../components/ColumnJump'
+import { ViewTabs } from '../components/ViewSwitch'
 import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
 import SortMenu from '@fmis/core/query/SortMenu'
 import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
@@ -543,7 +545,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         ) : (
           <>
             {list.length > 0 && <ColumnTotals list={list} totals={totals} sheep={species === 'sheep'} meatAll={meatAll} windowById={windowById} />}
-            <div className="max-h-[calc(100dvh-8rem)] min-h-20 space-y-1.5 overflow-y-auto pr-0.5 sm:max-h-none sm:space-y-2 sm:overflow-visible">
+            <div className="min-h-20 space-y-1.5 sm:space-y-2">
               {list.map((c) => (
                 <ColumnCard
                   key={c.id}
@@ -581,18 +583,36 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
     )
   }
 
-  // Handy: Kopfzeile beim Hinunterscrollen ausblenden und beim Öffnen gleich zu den Karten (Werkzeuge darüber)
+  // Handy: Kopfzeile beim Hinunterscrollen ausblenden und beim Öffnen gleich zu den Karten: oben stehen dann der
+  // Umschalter und die Schnellauswahl (Leiste über den Spalten), Suche und Filter liegen darüber
   useEffect(() => {
     document.body.dataset.autohideHeader = 'on'
     return () => {
       delete document.body.dataset.autohideHeader
     }
   }, [])
+  const bar = useRef<HTMLDivElement | null>(null)
+  /** Seite so scrollen, dass die Leiste oben steht und die Karten darunter beginnen. */
+  function pageToCards() {
+    const s = scroller.current
+    if (!s) return
+    const top = s.getBoundingClientRect().top + window.scrollY - (bar.current?.offsetHeight ?? 0) - 4
+    // hinauf blendet die Kopfzeile wieder ein und schiebt die Leiste unter sie
+    const header = top < window.scrollY ? document.querySelector<HTMLElement>('[data-app-header]')?.offsetHeight ?? 0 : 0
+    window.scrollTo({ top: Math.max(0, top - header) })
+  }
+  function jumpToColumn(key: string) {
+    const s = scroller.current
+    const col = s?.querySelector<HTMLElement>(`[data-drop-col="${CSS.escape(key)}"]`)
+    if (!s || !col) return
+    s.scrollTo({ left: s.scrollLeft + col.getBoundingClientRect().left - s.getBoundingClientRect().left })
+    pageToCards()
+  }
   const scrolledToCards = useRef(false)
   useEffect(() => {
     if (loading || scrolledToCards.current || window.innerWidth >= 640 || jumpKey) return
     scrolledToCards.current = true
-    requestAnimationFrame(() => scroller.current?.scrollIntoView({ block: 'start' }))
+    requestAnimationFrame(() => pageToCards())
   }, [loading, jumpKey])
 
   if (loading) return <p className="p-6 text-center text-gray-500">Lädt…</p>
@@ -605,7 +625,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         <h1 className="sr-only">Karten</h1>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <QueryInput
-            className={`min-w-0 flex-1 sm:flex-none ${toolsOpen ? "basis-full sm:basis-auto" : ""} [&>div:first-child]:min-w-0 [&>div:first-child]:flex-1`}
+            className="min-w-0 flex-1 basis-[calc(100%-3.25rem)] sm:flex-none sm:basis-auto [&>div:first-child]:min-w-0 [&>div:first-child]:flex-1"
             inputClassName="w-full sm:w-96 sm:max-w-[70vw]"
             fields={QUERY_FIELDS}
             value={q.text}
@@ -624,9 +644,22 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
               </section>
             }
           />
-          {/* am Handy: Sortieren, Spaltenwahl und Einstellungen hinter «Ansicht», damit die Karten Platz haben */}
-          <button type="button" onClick={() => setToolsOpen((o) => !o)} aria-expanded={toolsOpen} className={`min-h-11 shrink-0 rounded-lg border-2 px-3 text-sm font-semibold sm:hidden ${toolsOpen ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}>
-            ☰ Ansicht
+          {/* am Handy: Sortieren, Spaltenwahl und Einstellungen hinter «Ansicht» (Regler-Symbol, bleibt neben dem
+              Suchfeld; die Werkzeuge öffnen sich darunter), damit die Karten Platz haben */}
+          <button
+            type="button"
+            onClick={() => setToolsOpen((o) => !o)}
+            aria-expanded={toolsOpen}
+            aria-label="Ansicht: Sortieren, Spalten, Einstellungen"
+            title="Ansicht: Sortieren, Spalten, Einstellungen"
+            className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg border-2 sm:hidden ${toolsOpen ? 'border-brand-700 bg-brand-700 text-white' : 'border-gray-300 bg-white text-gray-800'}`}
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+              <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" />
+              <circle cx="15" cy="6" r="2" />
+              <circle cx="9" cy="12" r="2" />
+              <circle cx="17" cy="18" r="2" />
+            </svg>
           </button>
           <span className={`${toolsOpen ? 'contents' : 'hidden'} sm:contents`}>
           <SortMenu options={SORTS} value={sort} onChange={q.setSort} autoLabel={q.suggestion?.label ?? null} autoOn={q.autoOn} onAutoChange={q.setAutoOn} flash={q.flash} />
@@ -910,6 +943,10 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         </p>
       )}
 
+      <div ref={bar} className="follow-header z-10 -mx-1.5 flex items-center gap-2 bg-gray-50 px-1.5 py-1 sm:-mx-3 sm:px-3">
+        <ViewTabs />
+        <ColumnJump columns={shownColumns.map((c) => ({ key: c.key, kind: c.kind, title: c.title, count: columnCards(c).length }))} scroller={scroller} onJump={jumpToColumn} />
+      </div>
       <div ref={scroller} className={`flex snap-x snap-mandatory items-start gap-2 overflow-x-auto pb-4 ${stall ? '' : 'sm:snap-none'} sm:gap-3`}>
         {buildLanes(shownColumns, collapsed).map((lane) =>
           lane.kind === 'column' ? (

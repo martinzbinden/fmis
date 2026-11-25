@@ -23,6 +23,7 @@ import { addToWatchlist, createWatchlist, loadWatchlists } from '../lib/watchlis
 import { loadSettings } from './LambSelection'
 import ReaderGroupImport from '@fmis/tiere/components/ReaderGroupImport'
 import type { Animal } from '../types'
+import { ViewTabs } from '../components/ViewSwitch'
 
 async function loadData(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: string) {
   const today = localTodayIso()
@@ -219,10 +220,32 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-3 p-3 pb-24">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold text-gray-900">Gruppen</h1>
-        <button type="button" onClick={() => setShowSettings((v) => !v)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-sm text-gray-700">
-          ⚙️ Preise
+      {/* Umschalter Karten/Listen + Schnellauswahl einer Gruppe (statt scrollen) */}
+      <div className="flex items-center gap-2">
+        <h1 className="sr-only">Gruppen</h1>
+        <ViewTabs />
+        <select
+          aria-label="Gruppe oder Merkliste öffnen"
+          value={tabGroup?.key ?? ''}
+          onChange={(e) => (e.target.value ? open(e.target.value) : setParams({}))}
+          className="min-h-9 min-w-0 flex-1 truncate rounded-lg border-2 border-gray-300 bg-white px-2 text-sm font-medium text-gray-900 sm:max-w-xs"
+        >
+          <option value="">Alle Gruppen</option>
+          {KINDS.map(([kind, title]) => {
+            const list = groups.filter((g) => g.kind === kind)
+            return list.length === 0 ? null : (
+              <optgroup key={kind} label={title}>
+                {list.map((g) => (
+                  <option key={g.key} value={g.key}>
+                    {g.name} ({g.ids.length})
+                  </option>
+                ))}
+              </optgroup>
+            )
+          })}
+        </select>
+        <button type="button" onClick={() => setShowSettings((v) => !v)} aria-label="Preise" title="Preise und Schlachtgewichte für den Erlös" className="min-h-9 shrink-0 rounded-lg border border-gray-300 px-2.5 text-sm text-gray-700">
+          ⚙️<span className="hidden sm:inline"> Preise</span>
         </button>
       </div>
 

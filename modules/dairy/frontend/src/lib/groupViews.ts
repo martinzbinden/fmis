@@ -1,9 +1,10 @@
 import { readLastView } from './lastView'
 
-/** Ansichten des Fussleisten-Punkts «Gruppen»: Karten (links, Vorgabe beim ersten Besuch) und Vergleich. */
+/** Ansichten des Fussleisten-Punkts «Gruppen»: Karten (links, Vorgabe beim ersten Besuch) und Listen
+ * (Gruppen als Liste mit Kennzahlen und Vergleich). */
 export const GROUP_VIEWS = [
   { to: 'dashboard', label: 'Karten' },
-  { to: 'gruppen', label: 'Vergleich' },
+  { to: 'gruppen', label: 'Listen' },
 ]
 
 export const GROUP_VIEW_TOPIC = 'gruppen'

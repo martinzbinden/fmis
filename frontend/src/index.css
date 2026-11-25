@@ -106,6 +106,17 @@ html[data-stall='on'] main a:not([class]) {
   }
 }
 
+/* Leiste, die unter der Kopfzeile klebt (z.B. Umschalter + Schnellauswahl der Karten): blendet sich die Kopfzeile beim
+   Hinunterscrollen aus (Layout.tsx, autohideHeader), rückt die Leiste mit ihr ganz nach oben */
+.follow-header {
+  position: sticky;
+  top: var(--app-header-h, 0px);
+  transition: transform 200ms;
+}
+body[data-header-hidden] .follow-header {
+  transform: translateY(calc(-1 * var(--app-header-h, 0px)));
+}
+
 /* Wer am Gerät «Bewegung reduzieren» eingestellt hat: keine Animationen und Übergänge (Pulsieren, Einblenden) */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -65,7 +65,11 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
   const HOME: View[] = [{ to: '', label: 'Heute' }, { to: 'stall', label: 'Kalender' }]
   // Gruppen: Karten links (Vorgabe beim ersten Besuch), danach die zuletzt benutzte Ansicht (lib/groupViews.ts)
   const GROUPS: View[] = GROUP_VIEWS
-  const views = (v: View[], el: ReactNode, remember?: string) => <ViewSwitch moduleKey={key} views={v} remember={remember}>{el}</ViewSwitch>
+  const views = (v: View[], el: ReactNode, remember?: string, inline = false) => (
+    <ViewSwitch moduleKey={key} views={v} remember={remember} inline={inline}>
+      {el}
+    </ViewSwitch>
+  )
   const capture = (path: string, el: ReactNode) => <LastCapture moduleKey={key} path={path}>{el}</LastCapture>
   const sync = createDairySyncClient(key)
   return {
@@ -136,8 +140,8 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'tierinfo', element: <AnimalInfo moduleKey={key} /> },
       { path: 'merklisten', element: <Watchlists moduleKey={key} /> },
       { path: 'klauen', element: capture('klauen', <ClawEntry moduleKey={key} />) },
-      { path: 'gruppen', element: views(GROUPS, <GroupCompare moduleKey={key} />, GROUP_VIEW_TOPIC) },
-      { path: 'dashboard', element: views(GROUPS, <Board moduleKey={key} />, GROUP_VIEW_TOPIC) },
+      { path: 'gruppen', element: views(GROUPS, <GroupCompare moduleKey={key} />, GROUP_VIEW_TOPIC, true) },
+      { path: 'dashboard', element: views(GROUPS, <Board moduleKey={key} />, GROUP_VIEW_TOPIC, true) },
       { path: 'stall', element: views(HOME, <Stall moduleKey={key} />) },
       { path: 'laemmer', element: <Lambs moduleKey={key} /> },
       { path: 'journal', element: capture('journal', <JournalEntry moduleKey={key} />) },

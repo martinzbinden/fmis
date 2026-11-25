@@ -79,6 +79,11 @@ export default function Layout({
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
   useEffect(() => setHeaderHidden(false), [pathname])
+  // Leisten, die unter der Kopfzeile kleben (Klasse follow-header, index.css), gleiten mit ihr
+  useEffect(() => {
+    if (headerHidden) document.body.dataset.headerHidden = '1'
+    else delete document.body.dataset.headerHidden
+  }, [headerHidden])
   // Seitenleiste (PC) beginnt genau unter der Kopfzeile: darüber können das Band der Testumgebung oder der Balken
   // «Ansicht als» stehen, und die Kopfzeile blendet sich auf manchen Seiten beim Scrollen aus
   useEffect(() => {
@@ -86,6 +91,7 @@ export default function Layout({
     if (!header) return
     let last = -1
     const place = () => {
+      document.documentElement.style.setProperty('--app-header-h', `${header.offsetHeight}px`)
       const bottom = Math.max(0, Math.round(header.getBoundingClientRect().bottom))
       if (bottom === last) return
       last = bottom
