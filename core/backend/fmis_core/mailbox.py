@@ -31,7 +31,8 @@ from pydantic import BaseModel
 from .auth import CurrentUser, require_auth
 from .db import get_pool
 
-log = logging.getLogger(__name__)
+# uvicorn.error: erscheint im Server-Log (docker logs), anders als eigene Logger auf Stufe INFO
+log = logging.getLogger("uvicorn.error")
 router = APIRouter()
 
 ADMIN = "core:modules:manage"
@@ -138,6 +139,7 @@ async def poll() -> dict[str, Any]:
             try:
                 raw = await asyncio.to_thread(_fetch, cfg, dt.date.today() - dt.timedelta(days=LOOKBACK_DAYS))
             except Exception as e:  # Verbindung, Anmeldung, Ordner
+                log.warning("Mail-Abruf: Postfach nicht erreichbar: %s", e)
                 await conn.execute("update mail_link set last_poll_at = now(), last_error = %s where id", (str(e)[:300] or e.__class__.__name__,))
                 await conn.commit()
                 raise HTTPException(status_code=502, detail=f"Postfach: {e}") from None
@@ -170,8 +172,10 @@ async def poll() -> dict[str, Any]:
                 )
                 mails += 1
                 saved += n
+                log.info("Mail-Abruf: %s → %s, %s gespeichert, %s Hinweise (Mail vom %s)", sender, h.name, n, len(problems), mail_date)
             await conn.execute("update mail_link set last_poll_at = now(), last_ok_at = now(), last_error = null where id")
             await conn.commit()
+            log.info("Mail-Abruf: %s Mails im Postfach (%s Tage), %s neu verarbeitet, %s Einträge", len(raw), LOOKBACK_DAYS, mails, saved)
             return {"configured": True, "mails": mails, "saved": saved}
 
 
@@ -187,9 +191,7 @@ async def periodic() -> None:
                 cfg = await _config(conn)
             if cfg:
                 minutes = max(5, int(cfg["poll_minutes"]))
-                r = await poll()
-                if r.get("mails"):
-                    log.info("Mail-Abruf: %s Mails, %s Einträge", r.get("mails"), r.get("saved"))
+                await poll()
         except HTTPException as e:
             log.warning("Mail-Abruf: %s", e.detail)
         except Exception:
