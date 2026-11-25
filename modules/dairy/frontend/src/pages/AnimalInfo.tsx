@@ -115,7 +115,6 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
     const m = words.length || dates.length ? base.filter((a) => nameAndBirthMatch(parsed, a)) : base
     return [...m.filter((a) => a.status === 'aktiv'), ...m.filter((a) => a.status !== 'aktiv')]
   }, [animals, parsed])
-  const [abc, setAbc] = useState(false)
 
   function show(animalId: string) {
     setId(animalId)
@@ -154,28 +153,18 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
               if (one) show(one.id)
             }}
             onKeyDown={(e) => e.key === 'Enter' && matches[0] && show(matches[0].id)}
-            // Ziffern mit Punkt (Datum) oder Buchstaben (Name)
-            inputMode={abc ? 'text' : 'decimal'}
+            // ein Feld für Nummer, Name und Datum: normale Tastatur, ohne Umschalten
+            inputMode="text"
             enterKeyHint="go"
             autoComplete="off"
             autoCapitalize="off"
-            placeholder={abc ? 'Name' : 'Nummer oder Geburtsdatum'}
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="Nummer, Name, Datum"
             aria-label="Laufnummer, Ende der Ohrmarke, Name oder Geburtsdatum"
             className="min-h-12 w-full rounded-lg border-2 border-gray-500 px-3 text-xl focus:border-brand-700 focus:outline-none"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setAbc(!abc)
-            input.current?.focus()
-          }}
-          aria-pressed={abc}
-          title={abc ? 'Zifferntastatur' : 'Buchstaben-Tastatur (Name)'}
-          className="min-h-12 shrink-0 rounded-lg border-2 border-gray-400 bg-white px-2 text-sm font-semibold text-gray-800"
-        >
-          {abc ? '123' : 'ABC'}
-        </button>
         <button
           type="button"
           onClick={() => setListOpen((o) => !o)}
@@ -215,7 +204,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
       {query.trim() && matches.length === 0 && <p className="text-sm text-gray-700">Kein Tier für «{query.trim()}».</p>}
 
       {!data && <p className="text-center text-gray-500">Lädt…</p>}
-      {data && !ctx && !query && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Laufnummer, die letzten Ziffern der Ohrmarke, den Namen (ABC) oder das Geburtsdatum eintippen, z.B. «12.3.2021», «12.3.» (jedes Jahr) oder «3.2021» (ganzer Monat). Name und Datum lassen sich kombinieren. Oder mit dem Lesegerät lesen.</p>}
+      {data && !ctx && !query && !listOpen && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Laufnummer, die letzten Ziffern der Ohrmarke, den Namen oder das Geburtsdatum eintippen, z.B. «12.3.2021», «12.3.» (jedes Jahr) oder «3.2021» (ganzer Monat). Name und Datum lassen sich kombinieren. Oder mit dem Lesegerät lesen.</p>}
 
       {data && ctx && (() => {
         const a = ctx.animal
