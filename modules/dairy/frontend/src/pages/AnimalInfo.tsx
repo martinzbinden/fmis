@@ -15,6 +15,9 @@ import { useCullingThresholds } from '../lib/cullingSettings'
 import { cullingInput } from '../lib/herdContext'
 import GroupJump from '../components/GroupJump'
 import CaptureMenu from '../components/CaptureMenu'
+import GroupChangePicker from '../components/GroupChangePicker'
+import { useHasPermission } from '@fmis/core/AuthContext'
+import { animalProvider } from '@fmis/core/animals'
 import { fmtInbreeding, inbreedingClass } from '../lib/inbreeding'
 import { rankLambs } from '../lib/lambSelection'
 import { loadLambSelection } from '../lib/lambSelectionData'
@@ -101,6 +104,10 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
     )
   const [picking, setPicking] = useState(false)
   const [capturing, setCapturing] = useState(false)
+  const [changingGroup, setChangingGroup] = useState(false)
+  // nach einem Gruppenwechsel den Knopf «Gruppe …» neu lesen
+  const [groupVersion, setGroupVersion] = useState(0)
+  const canMove = useHasPermission('tiere:herden:write') && !!animalProvider(moduleKey)
   const [listOpen, setListOpen] = useState(false)
   const [listMsg, setListMsg] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
@@ -120,6 +127,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
     setId(animalId)
     setPicking(false)
     setCapturing(false)
+    setChangingGroup(false)
     setListMsg(null)
     input.current?.blur()
   }
@@ -250,7 +258,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
                 {ctx.lactationNumber ? ` · ${ctx.lactationNumber}. Lakt.` : ''}
                 {inactive ? ` · ${a.status}` : ''}
               </div>
-              <GroupJump moduleKey={moduleKey} animalId={a.id} className="mt-2 border-white bg-white" />
+              <GroupJump key={`${a.id}:${groupVersion}`} moduleKey={moduleKey} animalId={a.id} className="mt-2 border-white bg-white" />
             </header>
 
             {(milkUntil || meatUntil) && (
@@ -368,17 +376,50 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
               </Tile>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            {/* Knöpfe zwei pro Zeile (Handy); das Erfassen-Menü öffnet sich darunter über die ganze Breite */}
+            <div className="flex flex-wrap gap-2 [&>a]:basis-[calc(50%-0.25rem)] [&>button]:basis-[calc(50%-0.25rem)]">
               <Link to={`../tiere/${a.id}`} relative="path" className="flex min-h-11 flex-1 items-center justify-center rounded-lg border-2 border-gray-300 bg-white font-semibold text-brand-800">
                 Details ›
               </Link>
-              <button type="button" onClick={() => setPicking((v) => !v)} className="min-h-11 flex-1 rounded-lg border-2 border-brand-700 bg-white font-semibold text-brand-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setPicking((v) => !v)
+                  setChangingGroup(false)
+                }}
+                aria-expanded={picking} className="min-h-11 flex-1 rounded-lg border-2 border-brand-700 bg-white font-semibold text-brand-800">
                 + Merkliste
               </button>
+              {/* Gruppenwechsel (Modul Tiere): nur Tiere im Bestand, mit Recht auf die Tiergruppen */}
+              {!inactive && canMove && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChangingGroup((v) => !v)
+                    setPicking(false)
+                  }}
+                  aria-expanded={changingGroup}
+                  className={`min-h-11 flex-1 rounded-lg border-2 border-brand-700 font-semibold ${changingGroup ? 'bg-brand-700 text-white' : 'bg-white text-brand-800'}`}
+                >
+                  ⇄ Gruppe
+                </button>
+              )}
               {/* Erfassungen mit diesem Tier (Geburt, Trächtigkeit, Behandlung …), nur für Tiere im Bestand */}
               {!inactive && <CaptureMenu moduleKey={moduleKey} animal={a} open={capturing} onToggle={() => setCapturing((v) => !v)} />}
             </div>
             {listMsg && <p className="text-sm font-semibold text-green-800">✓ {listMsg}</p>}
+            {changingGroup && (
+              <GroupChangePicker
+                moduleKey={moduleKey}
+                animalId={a.id}
+                sheep={species === 'sheep'}
+                onDone={(msg) => {
+                  setChangingGroup(false)
+                  setGroupVersion((v) => v + 1)
+                  setListMsg(msg)
+                }}
+              />
+            )}
             {picking && (
               <WatchlistPicker
                 animalIds={[a.id]}
