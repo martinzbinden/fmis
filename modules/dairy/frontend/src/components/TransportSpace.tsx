@@ -13,11 +13,11 @@ const m2 = (v: number) => `${v.toFixed(2).replace(/\.?0+$/, '')} m²`
 
 /** Merkblätter zum Thema Transport (Modul Tiere → Merkblätter); ohne Netz die zuletzt geholte Liste. */
 function useTransportDocs(): TierDocument[] {
-  const [docs, setDocs] = useState(() => storedDocuments().filter((d) => d.topic === 'transport'))
+  const [docs, setDocs] = useState(() => storedDocuments().filter((d) => d.topic === 'transport' && d.kind !== 'formular'))
   useEffect(() => {
     let live = true
     loadDocuments()
-      .then((d) => live && setDocs(d.filter((x) => x.topic === 'transport')))
+      .then((d) => live && setDocs(d.filter((x) => x.topic === 'transport' && x.kind !== 'formular')))
       .catch(() => undefined)
     return () => {
       live = false

@@ -7,7 +7,7 @@ import { animalLabel, shortEarTag } from '@fmis/core/earTag'
 import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
 import { undoAction } from '@fmis/core/undo'
 import { getSyncedDb as getBetriebDb } from '@fmis/betrieb/db/access'
-import { fetchFile, FORM_SOURCE, loadDocuments, storedDocuments, type TierDocument } from '@fmis/tiere/lib/documents'
+import { fetchFile, findForm, FORM_SOURCE, loadDocuments, storedDocuments, type TierDocument } from '@fmis/tiere/lib/documents'
 import AnimalPicker from '../components/AnimalPicker'
 import { useQuery } from '../hooks/useQuery'
 import { bdProblems, buildPdf, fmtDay, healthSummary, loadBdAnimals, loadMovementDocs, PURPOSES, saveMovementDoc, tagList, type BdAnimal, type BdData, type BdHolder, type Purpose } from '../lib/begleitdokument'
@@ -93,13 +93,13 @@ export default function Begleitdokument({ moduleKey }: { moduleKey: string }) {
       .then((list) => {
         setTemplates(list)
         // gleich auf dieses Gerät holen, damit es auch ohne Netz geht
-        for (const d of list.filter((x) => x.topic?.startsWith('vorlage_'))) void fetchFile(d.id).catch(() => undefined)
+        for (const d of [findForm(list, 'begleitdokument_klauentiere'), findForm(list, 'tierliste_klauentiere')].filter((x): x is TierDocument => !!x)) void fetchFile(d.id).catch(() => undefined)
       })
       .catch(() => undefined)
   }, [])
 
-  const begleit = templates.find((d) => d.topic === 'vorlage_begleitdokument')
-  const tierliste = templates.find((d) => d.topic === 'vorlage_tierliste')
+  const begleit = findForm(templates, 'begleitdokument_klauentiere')
+  const tierliste = findForm(templates, 'tierliste_klauentiere')
   const animals: BdAnimal[] = useMemo(() => (data?.chosen ?? []).map((a) => ({ ...a, ...overrides[a.id] })), [data, overrides])
   const health = healthSummary(animals)
   const input: BdData = { species, date, holder, destination, purpose, diseaseFree, animals, place: place || holder.place.replace(/^\d{4}\s*/, ''), signer: signer || holder.name }
@@ -293,7 +293,7 @@ export default function Begleitdokument({ moduleKey }: { moduleKey: string }) {
             <Link to="/tiere/merkblaetter" className="font-semibold underline">
               Tiergruppen → Merkblätter
             </Link>{' '}
-            mit dem Thema «Vorlage …» hochladen. Danach gehen sie auch ohne Netz.
+            hineinziehen oder den Link einfügen – FMIS erkennt die Formulare selbst. Danach gehen sie auch ohne Netz.
           </p>
         </section>
       )}
