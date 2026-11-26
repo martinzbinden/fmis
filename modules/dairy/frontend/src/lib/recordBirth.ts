@@ -36,20 +36,28 @@ export function compactEarTag(s: string): string {
 export function validateBirth(input: BirthInput, existing: Animal[]): string | null {
   if (input.offspring.length === 0) return 'Mindestens ein Nachkomme.'
   const keys = new Set<string>()
-  const existingByKey = new Map(existing.map((a) => [animalKey(a.ear_tag), a]))
   for (const [i, o] of input.offspring.entries()) {
     const key = animalKey(o.ear_tag)
-    if (o.fate === 'lebend' && !key && !o.tag_later) return `Nachkomme ${i + 1}: Ohrmarke fehlt – eintragen oder «später» wählen.`
-    // ohne Geschlecht später für Selektion und Ausmerzliste unbrauchbar
-    if (o.fate === 'lebend' && !o.sex) return `Nachkomme ${i + 1}: Geschlecht ♀/♂ wählen.`
+    const problem = offspringProblem(o, existing, `Nachkomme ${i + 1}`)
+    if (problem) return problem
     if (!key) continue
-    const problem = earTagProblem(o.ear_tag)
-    if (problem) return `Nachkomme ${i + 1}: ${problem}`
     if (keys.has(key)) return `Ohrmarke ${o.ear_tag} doppelt erfasst.`
     keys.add(key)
-    const clash = existingByKey.get(key)
-    if (clash) return `Ohrmarke ${o.ear_tag} gibt es schon (${clash.lauf_nr ?? clash.name ?? clash.ear_tag}).`
   }
+  return null
+}
+
+/** Ein Nachkomme für sich: Ohrmarke (oder «später»), Geschlecht, gültige und noch freie Ohrmarke. */
+export function offspringProblem(o: OffspringInput, existing: Animal[], label: string): string | null {
+  const key = animalKey(o.ear_tag)
+  if (o.fate === 'lebend' && !key && !o.tag_later) return `${label}: Ohrmarke fehlt – eintragen oder «später» wählen.`
+  // ohne Geschlecht später für Selektion und Ausmerzliste unbrauchbar
+  if (o.fate === 'lebend' && !o.sex) return `${label}: Geschlecht ♀/♂ wählen.`
+  if (!o.ear_tag.trim()) return null
+  const problem = earTagProblem(o.ear_tag)
+  if (problem || !key) return `${label}: ${problem ?? 'Ohrmarke ungültig.'}`
+  const clash = existing.find((a) => !a.deleted_at && animalKey(a.ear_tag) === key)
+  if (clash) return `Ohrmarke ${o.ear_tag} gibt es schon (${clash.lauf_nr ?? clash.name ?? clash.ear_tag}).`
   return null
 }
 

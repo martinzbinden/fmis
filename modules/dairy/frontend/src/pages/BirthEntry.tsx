@@ -11,6 +11,7 @@ import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
 import AnimalPicker from '../components/AnimalPicker'
 import BirthFollowUp from '../components/BirthFollowUp'
+import BirthEdit from '../components/BirthEdit'
 import AnimalWarnings from '../components/AnimalWarnings'
 import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
 import { sireForBirth, loadSireDoubts, type MatingLite } from '../lib/sireCheck'
@@ -90,6 +91,8 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   const [done, setDone] = useState<{ birthId: string; damId: string; count: number; later: number } | null>(null)
   // Entscheid einer früheren Geburt aus der Liste geöffnet
   const [openBirth, setOpenBirth] = useState<string | null>(null)
+  // frühere Geburt bearbeiten (Datum, Vater, weiteres Jungtier …)
+  const [editBirth, setEditBirth] = useState<string | null>(null)
   // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
   useOnUndo(() => setDone(null))
 
@@ -407,10 +410,20 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                       )
                     })}
                   </ul>
-                  <button type="button" aria-expanded={openBirth === b.id} onClick={() => setOpenBirth(openBirth === b.id ? null : b.id)} className="link-btn text-sm font-medium text-brand-700">
-                    {openBirth === b.id ? 'Eltern und Entscheid schliessen' : 'Eltern und Entscheid ›'}
-                  </button>
+                  <div className="flex flex-wrap gap-x-4">
+                    <button type="button" aria-expanded={openBirth === b.id} onClick={() => setOpenBirth(openBirth === b.id ? null : b.id)} className="link-btn text-sm font-medium text-brand-700">
+                      {openBirth === b.id ? 'Eltern und Entscheid schliessen' : 'Eltern und Entscheid ›'}
+                    </button>
+                    <button type="button" aria-expanded={editBirth === b.id} onClick={() => setEditBirth(editBirth === b.id ? null : b.id)} className="link-btn text-sm font-medium text-brand-700">
+                      ✎ bearbeiten
+                    </button>
+                  </div>
                 </div>
+                {editBirth === b.id && (
+                  <div className="w-full">
+                    <BirthEdit birthId={b.id} moduleKey={moduleKey} onClose={() => setEditBirth(null)} />
+                  </div>
+                )}
                 {openBirth === b.id && (
                   <div className="w-full">
                     <BirthFollowUp birthId={b.id} moduleKey={moduleKey} />

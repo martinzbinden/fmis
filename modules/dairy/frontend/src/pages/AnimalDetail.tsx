@@ -15,6 +15,7 @@ import { inTransaction } from '../db/transaction'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { softDeleteRow } from '../db/write'
 import JournalForm from '../components/JournalForm'
+import BirthEdit from '../components/BirthEdit'
 import { canChangeEntry, categoryIcon, categoryLabel, groupCases, journalSummary, supersededBy } from '../lib/journal'
 import { withdrawalUntil } from '../lib/treatments'
 import { examSummary, loadClawExams, worstMh } from '../lib/clawHealth'
@@ -219,6 +220,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const { data, loading } = useQuery((pg) => loadDetail(pg, id, species), [id, species])
   const { data: clawPhotos } = useQuery((pg) => loadPhotos(pg, id), [id])
   const { data: lambs } = useQuery((pg) => loadLambs(pg, localTodayIso()))
+  const [editBirth, setEditBirth] = useState<string | null>(null)
   useJumpTo(!!data)
 
   if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
@@ -445,6 +447,15 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                     </span>
                     <span className="flex items-center gap-1 text-xs text-gray-500">
                       {cycle?.interval_days != null ? `${intervalWord} ${cycle.interval_days} T.` : ''}
+                      <button
+                        type="button"
+                        aria-expanded={editBirth === b.id}
+                        onClick={() => setEditBirth(editBirth === b.id ? null : b.id)}
+                        className="grid h-11 w-11 place-items-center text-base leading-none text-gray-600"
+                        aria-label={`${birthWord} bearbeiten`}
+                      >
+                        ✎
+                      </button>
                       {b.source === 'manual' && (
                         <DeleteButton
                           onConfirm={() =>
@@ -486,6 +497,11 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                       )
                     })}
                   </div>
+                  {editBirth === b.id && (
+                    <div className="mt-2">
+                      <BirthEdit birthId={b.id} moduleKey={moduleKey} onClose={() => setEditBirth(null)} />
+                    </div>
+                  )}
                 </li>
               )
             })}
