@@ -20,7 +20,8 @@ READ = "tiere:herden:read"
 WRITE = "tiere:herden:write"
 MAX_BYTES = 30 * 1024 * 1024
 ALLOWED_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
-TOPICS = {"transport", "allgemein"}
+# vorlage_*: leere amtliche Formulare, die FMIS ausfüllt (dairy: lib/begleitdokument.ts)
+TOPICS = {"transport", "allgemein", "vorlage_begleitdokument", "vorlage_tierliste"}
 
 
 def _need(user: CurrentUser, perm: str) -> None:

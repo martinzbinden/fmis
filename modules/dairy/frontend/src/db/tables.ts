@@ -100,6 +100,7 @@ export const SYNC_TABLES = {
     'cows', 'notes', 'created_by', 'updated_at', 'deleted_at',
   ],
   board_views: ['id', 'name', 'owner', 'shared', 'settings', 'created_by', 'updated_at', 'deleted_at'],
+  movement_docs: ['id', 'doc_date', 'purpose', 'destination', 'animals', 'animal_count', 'tvd_reported_on', 'notes', 'created_by', 'updated_at', 'deleted_at'],
   data_history: [
     'id', 'table_name', 'row_id', 'action', 'changed_by', 'changed_at',
     'snapshot', 'updated_at',
@@ -144,5 +145,6 @@ export const DATE_ONLY_COLUMNS: Record<SyncTable, Set<string>> = {
   pedigree_performance: new Set(['calving_date', 'document_date']),
   yogurt_batches: new Set(['batch_date']),
   board_views: new Set(),
+  movement_docs: new Set(['doc_date', 'tvd_reported_on']),
   data_history: new Set(),
 }

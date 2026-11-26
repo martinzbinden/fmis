@@ -117,6 +117,8 @@ function describeEntry(entry: DataHistory, moduleKey: string, lk?: Lookup): { la
       return { label: `Joghurt-Milch ${day(snap.batch_date)}: ${kg(snap.milk_kg) ?? '?'}`, link: `/${moduleKey}/leistung?ansicht=joghurt` }
     case 'board_views':
       return { label: `Dashboard-Ansicht «${s(snap.name) ?? '?'}»${snap.shared ? ' (für alle)' : ''}`, link: `/${moduleKey}/dashboard` }
+    case 'movement_docs':
+      return { label: `Begleitdokument ${day(snap.doc_date)}: ${s(snap.animal_count) ?? '?'} Tiere${snap.destination ? ` → ${s(snap.destination)}` : ''}${snap.tvd_reported_on ? ' · TVD gemeldet' : ''}`, link: `/${moduleKey}/tvd` }
     case 'animals':
       return { label: snap.ear_tag ? animalLabel({ ear_tag: String(snap.ear_tag), name: s(snap.name) }) : entry.row_id, link: `/${moduleKey}/tiere/${entry.row_id}` }
     case 'milk_tests':

@@ -31,6 +31,10 @@ const LABEL_SUGGESTIONS = [
   'Milchkäufer-Lieferantennummer',
   'MWST-Nummer',
   'Tierseuchenkasse',
+  // Begleitdokument für Klauentiere (Modul Milchvieh/Schafe) liest diese Angaben
+  'Tierhalter (Name, Vorname)',
+  'Adresse',
+  'PLZ, Wohnort',
 ]
 
 async function load(pg: PGlite): Promise<{ numbers: FarmNumber[]; gelan: GelanFarm[] }> {

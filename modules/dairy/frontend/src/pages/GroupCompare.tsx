@@ -460,9 +460,14 @@ export default function GroupCompare({ moduleKey }: { moduleKey: string }) {
             <h2 className="text-lg font-semibold text-gray-900">
               {tabGroup.name} <span className="text-sm font-normal text-gray-600">{tabGroup.ids.length} Tiere</span>
             </h2>
-            <Link to={performanceLink(tabGroup)} relative="path" className="inline-flex min-h-11 items-center text-sm font-medium text-brand-700">
-              🥛 Leistung →
-            </Link>
+            <span className="flex gap-4">
+              <Link to={`../begleitdokument?tiere=${tabGroup.ids.join(',')}`} relative="path" className="inline-flex min-h-11 items-center text-sm font-medium text-brand-700">
+                📄 Begleitdokument
+              </Link>
+              <Link to={performanceLink(tabGroup)} relative="path" className="inline-flex min-h-11 items-center text-sm font-medium text-brand-700">
+                🥛 Leistung →
+              </Link>
+            </span>
           </div>
           <TransportSpace moduleKey={moduleKey} ids={tabGroup.ids} />
           <div className="space-y-1.5 rounded-lg bg-white p-2 shadow-sm">

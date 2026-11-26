@@ -98,6 +98,10 @@ export default function Today({ moduleKey }: { moduleKey: string }) {
   if (handoverOpen > 0) {
     todo.push(<Row key="handover" to="stall?fokus=uebergabe" icon="📋" title={`${handoverOpen} Übergabe-${handoverOpen === 1 ? 'Punkt' : 'Punkte'} offen`} detail="vom letzten Dienst" badge={handoverOpen} />)
   }
+  if (data && data.movementsOpen.docs > 0) {
+    const m = data.movementsOpen
+    todo.push(<Row key="abgang" to="tvd#abgaenge" icon="🚚" title={`TVD: Abgang von ${m.animals} ${m.animals === 1 ? 'Tier' : 'Tieren'} melden`} detail={`${m.docs} Begleitdokument${m.docs === 1 ? '' : 'e'} auf Papier`} badge={m.docs} />)
+  }
   if (data && data.pendingEarTags > 0) {
     todo.push(<Row key="tags" to="ohrmarken" icon="🏷️" title={`${data.pendingEarTags} ${data.pendingEarTags === 1 ? (sheep ? 'Lamm' : 'Kalb') : word.young} ohne Ohrmarke`} detail="nachtragen" badge={data.pendingEarTags} />)
   }

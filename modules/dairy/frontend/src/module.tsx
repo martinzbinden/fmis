@@ -13,6 +13,7 @@ import AnimalDetail from './pages/AnimalDetail'
 import Culling from './pages/Culling'
 import Erfassen from './pages/Erfassen'
 import BirthEntry from './pages/BirthEntry'
+import Begleitdokument from './pages/Begleitdokument'
 import EarTagPending from './pages/EarTagPending'
 import TvdBirths from './pages/TvdBirths'
 import SlaughterLambs from './pages/SlaughterLambs'
@@ -134,6 +135,7 @@ export function createDairyModule(key: string, title: string): ModuleDescriptor 
       { path: 'geburt', element: capture('geburt', <BirthEntry moduleKey={key} />) },
       { path: 'ohrmarken', element: capture('ohrmarken', <EarTagPending moduleKey={key} />) },
       { path: 'tvd', element: capture('tvd', <TvdBirths moduleKey={key} />) },
+      { path: 'begleitdokument', element: capture('begleitdokument', <Begleitdokument moduleKey={key} />) },
       { path: 'belegung', element: capture('belegung', <MatingEntry moduleKey={key} />) },
       { path: 'traechtigkeit', element: capture('traechtigkeit', <PregnancyEntry moduleKey={key} />) },
       { path: 'traechtigkeit/vergleich', element: <PregnancyCompare /> },

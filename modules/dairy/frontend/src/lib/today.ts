@@ -69,6 +69,8 @@ export function expectedBirths(
 
 export interface TodayData {
   pendingEarTags: number
+  /** Begleitdokumente auf Papier, deren Abgang noch nicht in der TVD gemeldet ist (Anzahl Tiere) */
+  movementsOpen: { docs: number; animals: number }
   withdrawals: (TodayAnimal & { until: string })[]
   openBank: { bank_number: number; session_date: string; slots: number } | null
   expected: ExpectedBirth[]
@@ -99,7 +101,7 @@ export async function loadExpectedBirths(pg: PGlite, species: Species, today: st
 }
 
 export async function loadToday(pg: PGlite, species: Species, today: string): Promise<TodayData> {
-  const [pending, withdrawals, banks, expected, lists, reminders] = await Promise.all([
+  const [pending, withdrawals, banks, expected, lists, reminders, movements] = await Promise.all([
     loadPendingOffspring(pg),
     pg.query<TodayAnimal & { until: unknown }>(
       `select a.id, a.ear_tag, a.lauf_nr, a.name, max(${MILK_UNTIL_SQL}) as until
@@ -131,10 +133,12 @@ export async function loadToday(pg: PGlite, species: Species, today: string): Pr
        order by l.name`,
     ),
     loadOpenReminders(pg),
+    pg.query<{ docs: number; animals: number }>('select count(*)::int as docs, coalesce(sum(animal_count), 0)::int as animals from movement_docs where deleted_at is null and tvd_reported_on is null'),
   ])
   const bank = banks.rows[0]
   return {
     pendingEarTags: pending.length,
+    movementsOpen: movements.rows[0] ?? { docs: 0, animals: 0 },
     withdrawals: withdrawals.rows.map((w) => ({ ...w, until: isoDate(w.until)! })),
     openBank: bank ? { bank_number: bank.bank_number, session_date: isoDate(bank.session_date)!, slots: bank.slots } : null,
     expected,

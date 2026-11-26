@@ -11,14 +11,19 @@ export interface TierDocument {
   size_bytes: number
   source: string | null
   /** Stichwort, über das andere Seiten ein Merkblatt finden (z.B. «transport» für die Tiergruppen) */
-  topic: 'transport' | 'allgemein' | null
+  topic: 'transport' | 'allgemein' | 'vorlage_begleitdokument' | 'vorlage_tierliste' | null
   uploaded_at: string
 }
 
 export const DOCUMENT_TOPICS: { key: NonNullable<TierDocument['topic']>; label: string }[] = [
   { key: 'transport', label: 'Transport' },
   { key: 'allgemein', label: 'Allgemein' },
+  { key: 'vorlage_begleitdokument', label: 'Vorlage Begleitdokument (leeres BLV-Formular)' },
+  { key: 'vorlage_tierliste', label: 'Vorlage Tierliste zum Begleitdokument (leer)' },
 ]
+
+/** Amtliche Formulare zum Ausfüllen: offizielle Bezugsquelle (BLV), auf der Instanz hinterlegt statt im Repo. */
+export const FORM_SOURCE = 'https://www.blv.admin.ch/de/tiertransporte'
 
 const base = `${API_URL}/tiere/documents`
 const auth = () => ({ Authorization: `Bearer ${getToken()}` })
@@ -62,7 +67,8 @@ export function storedDocuments(): TierDocument[] {
   }
 }
 
-async function fetchFile(id: string): Promise<Blob> {
+/** Inhalt eines Dokuments, nach dem ersten Mal aus dem Cache (auch ohne Netz). */
+export async function fetchFile(id: string): Promise<Blob> {
   const url = `${base}/${id}`
   const cache = typeof caches !== 'undefined' ? await caches.open(CACHE).catch(() => null) : null
   const cached = await cache?.match(url)

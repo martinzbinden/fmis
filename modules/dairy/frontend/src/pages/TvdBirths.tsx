@@ -7,6 +7,7 @@ import { useQuery } from '../hooks/useQuery'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { loadRules } from '../lib/stallRules'
+import MovementReports from '../components/MovementReports'
 import { ageDays, COLUMNS, deadlineDays, deadlineTone, lambFields, lambState, loadTvdBirths, markReported, reportable, toCsv, toTabText, type TvdBirth } from '../lib/tvdBirths'
 
 function addDays(iso: string, days: number): string {
@@ -81,6 +82,8 @@ export default function TvdBirths({ moduleKey }: { moduleKey: string }) {
         FMIS meldet nicht selbst an die TVD. Hier stehen die Angaben je {young} für die Meldung im Agate-Portal (Neue Meldung → Geburtsmeldung). Danach «Gemeldet» abhaken. Frist {deadline} Tage nach der Geburt.
         Rasse wie im Bestand erfasst; Farbe und Abzeichen trägst du im Portal ein.
       </p>
+
+      <MovementReports />
 
       <div className="flex gap-2" role="tablist">
         {(

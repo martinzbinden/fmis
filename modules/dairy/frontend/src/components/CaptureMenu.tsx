@@ -49,6 +49,7 @@ export function captureEntries(a: Pick<Animal, 'id' | 'sex'>, sheep: boolean, la
     out.push({ key: 'chtax', icon: '🏷️', label: 'CH-TAX schätzen', dialog: 'chtax' })
   }
   out.push({ key: 'notiz', icon: '📝', label: 'Notiz', to: `journal?${t}&art=notiz` })
+  out.push({ key: 'begleitdokument', icon: '📄', label: 'Begleitdokument', to: `begleitdokument?${t}` })
   return out
 }
 
