@@ -4,8 +4,9 @@ import { getCurrentUserEmail } from '@fmis/core/auth'
 import { getDb } from '../db/pglite'
 import { upsertRow } from '../db/write'
 
-/** Zeile `poolId` als importiert (mit der angelegten Gruppe) oder verworfen markieren. Die Zeile muss schon auf dem Gerät sein (Sync). */
-export async function markPool(poolId: string, next: 'importiert' | 'verworfen', groupId?: string): Promise<void> {
+/** Zeile `poolId` als importiert (mit der angelegten Gruppe) oder verworfen markieren — oder mit 'bekannt'
+ * wieder vorschlagen. Die Zeile muss schon auf dem Gerät sein (Sync). */
+export async function markPool(poolId: string, next: 'importiert' | 'verworfen' | 'bekannt', groupId?: string): Promise<void> {
   const pg = await getDb()
   const { rows } = await pg.query<Record<string, unknown>>('select * from reader_pools where id = $1', [poolId])
   if (!rows[0]) return

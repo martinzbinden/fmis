@@ -19,6 +19,37 @@ async function loadProposals(pg: PGlite): Promise<PoolProposal[]> {
   return rows.map(toProposal)
 }
 
+/** Erledigte Gruppen (importiert, verworfen, durch neueren Stand ersetzt), neueste zuerst. */
+interface DoneProposal {
+  id: string
+  name: string | null
+  device_group_id: string
+  status: 'importiert' | 'verworfen' | 'ersetzt'
+  handled_at: string | null
+  handled_by: string | null
+  tag_count: number
+}
+
+const iso = (v: unknown) => (v == null ? null : v instanceof Date ? v.toISOString() : String(v))
+
+async function loadDone(pg: PGlite): Promise<DoneProposal[]> {
+  const { rows } = await pg.query<Record<string, unknown>>(
+    `select id, name, device_group_id, status, handled_at, handled_by, tag_count, updated_at from reader_pools
+     where deleted_at is null and status in ('importiert', 'verworfen', 'ersetzt') order by coalesce(handled_at, updated_at) desc limit 100`,
+  )
+  return rows.map((r) => ({
+    id: String(r.id),
+    name: (r.name as string | null) ?? null,
+    device_group_id: String(r.device_group_id),
+    status: String(r.status) as DoneProposal['status'],
+    handled_at: iso(r.handled_at) ?? iso(r.updated_at),
+    handled_by: (r.handled_by as string | null) ?? null,
+    tag_count: Number(r.tag_count ?? 0),
+  }))
+}
+
+const DONE_LABEL: Record<DoneProposal['status'], string> = { importiert: 'importiert', verworfen: 'verworfen', ersetzt: 'ersetzt durch neueren Stand' }
+
 interface ReaderStatus {
   enabled: boolean
   last_ok_at: number | null
@@ -41,6 +72,7 @@ const authHeaders = () => ({ Authorization: `Bearer ${getToken()}` })
  * wieder erreichbar ist, und schlägt sie hier zum Import vor — als neue Gruppe oder als Ersatz einer bestehenden. */
 export default function ReaderProposals({ data, canWrite, onImported }: { data: HerdData; canWrite: boolean; onImported: (g: HerdGroup) => void }) {
   const { data: proposals } = useQuery(loadProposals)
+  const { data: done } = useQuery(loadDone)
   const [animals, setAnimals] = useState<AnimalRef[] | null>(null)
   const [status, setStatus] = useState<ReaderStatus | null>(null)
   const [importing, setImporting] = useState<PoolProposal | null>(null)
@@ -132,8 +164,17 @@ export default function ReaderProposals({ data, canWrite, onImported }: { data: 
     }
   }
 
+  async function propose(p: DoneProposal) {
+    try {
+      await markPool(p.id, 'bekannt')
+      notifySuccess(`«${p.name ?? p.device_group_id}» steht wieder bei den Gruppen auf dem Gerät`)
+    } catch (e) {
+      notifyError(errorText(e))
+    }
+  }
+
   const reachable = status?.enabled
-  if (!canWrite || (!reachable && fresh.length === 0 && older.length === 0)) return null
+  if (!canWrite || (!reachable && fresh.length === 0 && older.length === 0 && !done?.length)) return null
 
   const importingResolved = importing && animals ? resolveTags(importing.tags, animals) : null
 
@@ -186,6 +227,29 @@ export default function ReaderProposals({ data, canWrite, onImported }: { data: 
           <ul className="mt-1 space-y-2">
             {older.map((p) => (
               <ProposalRow key={p.id} p={p} animals={animals} onImport={() => setImporting(p)} onDiscard={() => void discard(p)} />
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {done && done.length > 0 && (
+        <details>
+          <summary className="min-h-11 cursor-pointer py-2 font-medium text-sky-900">Erledigt ({done.length})</summary>
+          <ul className="mt-1 divide-y rounded-lg bg-white">
+            {done.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 p-2">
+                <span className="min-w-0">
+                  <span className="font-medium text-gray-900">{p.name ?? `Gruppe ${p.device_group_id}`}</span>
+                  <span className="block text-xs text-gray-600">
+                    {DONE_LABEL[p.status]}
+                    {p.handled_at ? ` · ${fmtDateTime(p.handled_at)}` : ''}
+                    {p.handled_by ? ` · ${p.handled_by}` : ''} · {p.tag_count} Ohrmarken
+                  </span>
+                </span>
+                <button type="button" onClick={() => void propose(p)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-gray-700">
+                  wieder vorschlagen
+                </button>
+              </li>
             ))}
           </ul>
         </details>

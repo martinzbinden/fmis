@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { fmtNum } from '@fmis/core/yearSummary'
 import { useQuery } from '../hooks/useQuery'
-import { DP_RATES, dpCropName } from '../lib/directPayments'
+import { dpCropName, ratesFor } from '../lib/directPayments'
 import { farmEstimate, loadDpData } from '../lib/dpData'
 import { fmtArea } from '../lib/format'
 import { geoAdminUrl } from '../lib/geoAdmin'
@@ -52,15 +52,15 @@ export default function FieldDetails({ decl, farmName }: { decl: FieldDeclaratio
 }
 
 function DpSection({ decl }: { decl: FieldDeclaration }) {
-  const hasRates = decl.jahr in DP_RATES
+  // fehlen die Ansätze des Jahres, rechnet der Rechner mit denen des nächstliegenden Jahres (angezeigt)
+  const { ratesYear, exact } = ratesFor(decl.jahr)
   const { data } = useQuery((pg) => loadDpData(pg, decl.jahr), [decl.jahr])
-  const calc = useMemo(() => (data && hasRates ? farmEstimate(data, decl.farm_id, decl.jahr) : null), [data, hasRates, decl.farm_id, decl.jahr])
+  const calc = useMemo(() => (data ? farmEstimate(data, decl.farm_id, decl.jahr) : null), [data, decl.farm_id, decl.jahr])
   const p = calc?.estimate.parcels.find((e) => e.parcel.id === decl.id)
 
   let summary = '…'
-  if (!hasRates) summary = `keine Ansätze für ${decl.jahr}`
-  else if (data && !p) summary = 'nicht berechnet'
-  else if (p) summary = p.offen ? 'offen' : p.total > 0 ? `≈ ${fmtNum(p.total, 0)} Fr.` : '–'
+  if (data && !p) summary = 'nicht berechnet'
+  else if (p) summary = p.offen ? 'offen' : p.total > 0 ? `≈ ${fmtNum(p.total, 0)} Fr.${exact ? '' : ` (Ansätze ${ratesYear})`}` : '–'
 
   const link = `/fields/direktzahlungen?jahr=${decl.jahr}&betrieb=${decl.farm_id}&parzelle=${decl.id}`
   return (
@@ -70,9 +70,8 @@ function DpSection({ decl }: { decl: FieldDeclaration }) {
         <span className="tabular-nums text-gray-700">{summary}</span>
       </summary>
       <div className="space-y-1 border-t bg-gray-50 px-3 py-2 text-xs text-gray-700">
-        {!hasRates ? (
-          <p>Der Rechner kennt die Ansätze der Jahre {Object.keys(DP_RATES).join(' und ')}.</p>
-        ) : !data ? (
+        {!exact && <p className="font-medium text-amber-800">Für {decl.jahr} sind keine Ansätze hinterlegt — gerechnet mit den Ansätzen {ratesYear}.</p>}
+        {!data ? (
           <p>Lädt…</p>
         ) : !p ? (
           <p>Nur Flächen aus dem Raumdaten-Import (Hauptkultur) zählen für die Direktzahlungen.</p>
@@ -88,11 +87,9 @@ function DpSection({ decl }: { decl: FieldDeclaration }) {
             <p className="text-gray-500">Schätzung nach DZV Anhang 7 mit den Angaben zum Betrieb. Massgebend ist die Abrechnung des Kantons.</p>
           </>
         )}
-        {hasRates && (
-          <Link to={link} className="flex min-h-11 items-center font-medium text-brand-700 underline">
-            Betrieb und Angaben unter Direktzahlungen →
-          </Link>
-        )}
+        <Link to={link} className="flex min-h-11 items-center font-medium text-brand-700 underline">
+          Betrieb und Angaben unter Direktzahlungen →
+        </Link>
       </div>
     </details>
   )

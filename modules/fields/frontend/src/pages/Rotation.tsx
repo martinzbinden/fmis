@@ -60,6 +60,7 @@ export default function Rotation() {
   const [filter, setFilter] = useState<'alle' | KulturCategory>('alle')
   const [showGeholz, setShowGeholz] = useState(false)
   const [detailsLineage, setDetailsLineage] = useState<FieldLineageSummary | null>(null)
+  const [editingPlan, setEditingPlan] = useState<FieldDeclaration | null>(null)
 
   const byLineage = useMemo(() => {
     const map = new Map<string, FieldDeclaration[]>()
@@ -219,11 +220,23 @@ export default function Rotation() {
         />
       )}
 
-      {detailsLineage && (
+      {detailsLineage && editingPlan && (
+        <PlanDialog
+          lineages={[detailsLineage]}
+          byLineage={byLineage}
+          allCrops={mainCrops}
+          cropOptions={cropOptions}
+          initial={editingPlan}
+          onClose={() => setEditingPlan(null)}
+        />
+      )}
+
+      {detailsLineage && !editingPlan && (
         <Modal
           title={detailsLineage.flurname ?? detailsLineage.kultur_name_de ?? detailsLineage.kultur_code}
           onClose={() => setDetailsLineage(null)}
         >
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-gray-500">
@@ -244,8 +257,13 @@ export default function Rotation() {
                   <td className="py-1 pr-2 text-gray-800">{r.kultur_name_de ?? r.kultur_code}</td>
                   <td className="py-1 pr-2 text-gray-600">{r.sorte ?? '–'}</td>
                   <td className="py-1 pr-2 text-gray-600">{fmtArea(r.area_a)}</td>
-                  <td className="py-1 text-gray-500">
+                  <td className="whitespace-nowrap py-1 text-gray-500">
                     {SOURCE_LABEL[r.source]}
+                    {canWrite && r.source === 'plan' && (
+                      <button type="button" onClick={() => setEditingPlan(r)} className="ml-1 min-h-11 rounded-lg border border-gray-300 px-2 text-xs text-gray-700" aria-label={`Planung ${r.jahr} ändern`}>
+                        Ändern
+                      </button>
+                    )}
                     {canWrite && r.source === 'plan' && (
                       <button
                         type="button"
@@ -254,8 +272,7 @@ export default function Rotation() {
                             notifyError(errorText(e)),
                           )
                         }
-                        className="ml-1 rounded px-1 text-red-700"
-                        title="Planung löschen"
+                        className="ml-1 inline-grid min-h-11 min-w-11 place-items-center rounded-lg text-lg text-red-700 active:bg-red-50"
                         aria-label={`Planung ${r.jahr} löschen`}
                       >
                         ×
@@ -266,6 +283,7 @@ export default function Rotation() {
               ))}
             </tbody>
           </table>
+          </div>
           {canWrite && <PlanForm
             lineage={detailsLineage}
             latestDeclaration={detailsRows[0]}

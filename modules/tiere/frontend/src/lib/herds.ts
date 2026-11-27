@@ -36,7 +36,9 @@ export interface HerdData {
 }
 
 /** Liest aus der Tiere-Ablage — auch von anderen Modulen aus aufrufbar
- * (Wiesenjournal leitet daraus die Weidebelegung ab). */
+ * (Wiesenjournal leitet daraus die Weidebelegung ab). Ohne `seasonYear` kommen
+ * die Parzellen aller Jahre (für die Namen früherer Aufenthalte); die Auswahl
+ * eines Jahres filtert der Aufrufer über `season_year`. */
 export async function loadHerdData(seasonYear?: number): Promise<HerdData> {
   const pg = await getSyncedDb()
   const [locations, groups, stays, members, counts, laufhof, parcels] = await Promise.all([
@@ -79,6 +81,17 @@ async function closeFrom<T extends 'herd_stays' | 'herd_members' | 'herd_counts'
 
 export async function saveGroup(group: HerdGroup): Promise<void> {
   await writeBatch((w) => w.upsert('herd_groups', group as never))
+}
+
+/** Früheren Aufenthalt korrigieren (Ort, von/bis, Tagweide) — ohne Folgen für andere Zeilen;
+ * Überschneidungen prüft der Aufrufer vorher (herdModel stayProblem). */
+export async function updateStay(stay: HerdStay): Promise<void> {
+  await writeBatch((w) => w.upsert('herd_stays', stay as never))
+}
+
+/** Aufenthalt entfernen (Soft-Delete, bleibt im Verlauf). */
+export async function deleteStay(id: string): Promise<void> {
+  await writeBatch((w) => w.softDelete('herd_stays', id))
 }
 
 /** Stall oder Weide einer Gruppe ab `date` wechseln (target null = keine). */

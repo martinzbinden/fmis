@@ -9,6 +9,7 @@ import { pointLabel } from '../lib/csv'
 import { parseGeometry } from '../lib/geometry'
 import { ACCURACY_WARN_M, accuracyClass } from '../lib/survey'
 import type { Fix } from '../lib/useGeolocation'
+import { measuredAtLabel } from '../lib/measuredAt'
 import type { BauFeature, SurveyPoint } from '../types'
 
 const CLASS_STYLE = {
@@ -177,7 +178,7 @@ export default function SurveyPanel({
                   {p.depth_cm != null ? ` · ${p.depth_cm} cm tief` : ''}
                   {p.altitude_m != null ? ` · H ${p.altitude_m.toFixed(1)}` : ''}
                   {' · '}
-                  {new Date(p.measured_at).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })}
+                  {measuredAtLabel(p.measured_at)}
                   {p.note ? ` · ${p.note}` : ''}
                 </span>
                 {canWrite && (

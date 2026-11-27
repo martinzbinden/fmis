@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basisAbstufung, classifyDp, compareWithStatement, dpCropName, DP_DEFAULTS, DP_STORED_EMPTY, hangFromStatement, q2FromStatement, referenceFor, resolveSettings, tierRate, vernetzungRates, DP_RATES, estimateFarm, steillagenAnsatz, type DpFarmEstimate, type DpLineKey, type DpParcel } from './directPayments'
+import { basisAbstufung, classifyDp, compareWithStatement, dpCropName, DP_DEFAULTS, DP_STORED_EMPTY, hangFromStatement, q2FromStatement, referenceFor, resolveSettings, tierRate, vernetzungRates, DP_RATES, estimateFarm, steillagenAnsatz, ratesFor, dpYears, type DpFarmEstimate, type DpLineKey, type DpParcel } from './directPayments'
 
 const rates = DP_RATES[2026]
 
@@ -244,5 +244,22 @@ describe('aus der Abrechnung', () => {
     expect(s.bio).toBe(true)
     expect(s.hang).toEqual([1, 0.5, 0.1])
     expect(s.q2[wiese.lineage_id]).toBe(7)
+  })
+})
+
+describe('Jahre und Ansätze', () => {
+  it('eigene Ansätze, sonst die des nächstliegenden Jahres', () => {
+    expect(ratesFor(2026)).toMatchObject({ ratesYear: 2026, exact: true })
+    expect(ratesFor(2031)).toMatchObject({ ratesYear: 2026, exact: false })
+    expect(ratesFor(2019)).toMatchObject({ ratesYear: 2025, exact: false })
+  })
+  it('bei gleichem Abstand die jüngeren Ansätze', () => {
+    const table = { 2020: DP_RATES[2026], 2024: DP_RATES[2026] }
+    expect(ratesFor(2022, table).ratesYear).toBe(2024)
+  })
+  it('Jahresauswahl: Parzellen, Abrechnungen, Ansätze und das verlangte Jahr, neueste zuerst', () => {
+    expect(dpYears([2024, 2025], [2023, 2025], 2030)).toEqual([2030, 2026, 2025, 2024, 2023])
+    expect(dpYears([], [], null)).toEqual([2026, 2025])
+    expect(dpYears([], [], Number.NaN)).toEqual([2026, 2025])
   })
 })

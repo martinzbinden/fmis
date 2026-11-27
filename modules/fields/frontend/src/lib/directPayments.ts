@@ -88,6 +88,26 @@ export const DP_RATES: Record<number, typeof RATES_2026> = { 2025: RATES_2026, 2
 
 type Rates = typeof RATES_2026
 
+/** Ansätze für `year`: die eigenen oder — fehlen sie — die des nächstliegenden Jahres (bei
+ * gleichem Abstand die jüngeren). `exact` false heisst: die Seite muss das deutlich sagen. */
+export function ratesFor(year: number, table: Record<number, Rates> = DP_RATES): { rates: Rates; ratesYear: number; exact: boolean } {
+  if (table[year]) return { rates: table[year], ratesYear: year, exact: true }
+  const known = Object.keys(table).map(Number)
+  const ratesYear = known.reduce((best, y) => {
+    const d = Math.abs(y - year)
+    const bd = Math.abs(best - year)
+    return d < bd || (d === bd && y > best) ? y : best
+  }, known[0])
+  return { rates: table[ratesYear], ratesYear, exact: false }
+}
+
+/** Jahre für die Auswahl: mit Parzellen, mit Abrechnung, mit Ansätzen und allenfalls das verlangte
+ * (aus `?jahr=`), neueste zuerst. */
+export function dpYears(parcelYears: number[], statementYears: number[], requested?: number | null): number[] {
+  const all = [...parcelYears, ...statementYears, ...Object.keys(DP_RATES).map(Number), ...(requested ? [requested] : [])]
+  return [...new Set(all.filter((y) => Number.isInteger(y) && y > 1990 && y < 2200))].sort((a, b) => b - a)
+}
+
 export type DpKind =
   | 'acker'
   | 'dauerkultur'

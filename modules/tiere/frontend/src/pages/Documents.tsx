@@ -81,7 +81,13 @@ function MetaFields({ meta, onChange }: { meta: DocInput; onChange: (m: DocInput
 function Status({ d }: { d: TierDocument }) {
   if (!d.url) return null
   if (d.check_status === 'neu') return <span className="rounded bg-amber-100 px-1.5 font-semibold text-amber-900">neue Version unter dem Link</span>
-  if (d.check_status === 'fehler') return <span className="text-red-700" title={d.check_note ?? ''}>🔗 Prüfen ging nicht{d.checked_at ? ` (${fmtDay(d.checked_at)})` : ''}</span>
+  if (d.check_status === 'fehler')
+    return (
+      <span className="basis-full text-red-700">
+        🔗 Prüfen ging nicht{d.checked_at ? ` (${fmtDay(d.checked_at)})` : ''}
+        {d.check_note && <span className="block break-words text-red-800/90">Grund: {d.check_note}</span>}
+      </span>
+    )
   if (d.check_status === 'aktuell' && d.checked_at) return <span className="text-green-800">🔗 aktuell, geprüft {fmtDay(d.checked_at)}</span>
   return <span>🔗 Link</span>
 }

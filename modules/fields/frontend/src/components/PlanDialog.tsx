@@ -3,7 +3,7 @@ import NumberInput from '@fmis/core/NumberInput'
 import { errorText, notifySuccess } from '@fmis/core/toast'
 import { undoAction } from '@fmis/core/undo'
 import Modal from './Modal'
-import { upsertRows } from '../db/write'
+import { softDeleteRow, upsertRows } from '../db/write'
 import { parcelHints, ruleText, type MainCrop } from '../lib/rotationRules'
 import type { FieldDeclaration, FieldLineageSummary } from '../types'
 
@@ -15,26 +15,32 @@ export interface CropOption {
 /** Eine Kultur für mehrere Parzellen und auf Wunsch wiederkehrend planen
  * («alle n Jahre bis …»). Importierte Jahre bleiben unberührt; eine schon
  * geplante Hauptkultur im selben Jahr wird ersetzt. Vorschau der
- * Anbaupausen vor dem Speichern. */
+ * Anbaupausen vor dem Speichern. Mit `initial` ändert der Dialog eine bestehende
+ * Planung (eine Parzelle, ohne Wiederholen): gleiche Zeile, bei anderem Jahr wird
+ * die alte Zeile entfernt (Soft-Delete, im selben Rückgängig-Schritt). */
 export default function PlanDialog({
   lineages,
   byLineage,
   allCrops,
   cropOptions,
+  initial,
   onClose,
 }: {
   lineages: FieldLineageSummary[]
   byLineage: Map<string, FieldDeclaration[]>
   allCrops: MainCrop[]
   cropOptions: CropOption[]
+  /** bestehende Planung ändern (source 'plan') */
+  initial?: FieldDeclaration
   onClose: (saved: boolean) => void
 }) {
   const maxYear = Math.max(new Date().getFullYear(), ...lineages.flatMap((l) => (byLineage.get(l.lineage_id) ?? []).map((d) => d.jahr)))
-  const [year, setYear] = useState(String(maxYear + 1))
-  const [kulturCode, setKulturCode] = useState('')
-  const [customName, setCustomName] = useState('')
-  const [sorte, setSorte] = useState('')
-  const [zwischenfutter, setZwischenfutter] = useState(false)
+  const initialKnown = initial ? cropOptions.some((o) => o.code === initial.kultur_code) : false
+  const [year, setYear] = useState(String(initial?.jahr ?? maxYear + 1))
+  const [kulturCode, setKulturCode] = useState(initial ? (initialKnown ? initial.kultur_code : '__custom__') : '')
+  const [customName, setCustomName] = useState(initial && !initialKnown ? (initial.kultur_name_de ?? initial.kultur_code) : '')
+  const [sorte, setSorte] = useState(initial?.sorte ?? '')
+  const [zwischenfutter, setZwischenfutter] = useState(initial ? initial.sequence_in_year > 1 : false)
   const [repeat, setRepeat] = useState(false)
   const [every, setEvery] = useState('4')
   const [until, setUntil] = useState(String(maxYear + 8))
@@ -72,7 +78,9 @@ export default function PlanDialog({
           skipped.push(`${l.flurname ?? l.kultur_name_de ?? l.kultur_code} ${y}`)
           continue
         }
-        const base = !zwischenfutter && main ? main : null
+        // beim Ändern eines Zwischenfutters dieselbe Zeile (gleiches Jahr) weiterführen
+        const keepInitial = initial && zwischenfutter && initial.sequence_in_year > 1 && initial.lineage_id === l.lineage_id && initial.jahr === y ? initial : null
+        const base = keepInitial ?? (!zwischenfutter && main ? main : null)
         rows.push({
           ...(base ?? {}),
           id: base?.id ?? crypto.randomUUID(),
@@ -81,7 +89,7 @@ export default function PlanDialog({
           management_unit_external_id: latest?.management_unit_external_id ?? null,
           external_kultur_id: null,
           jahr: y,
-          sequence_in_year: zwischenfutter ? sameYear.length + 1 : 1,
+          sequence_in_year: keepInitial ? keepInitial.sequence_in_year : zwischenfutter ? sameYear.length + 1 : 1,
           kultur_code: code,
           kultur_name_de: name ?? code,
           kultur_name_fr: null,
@@ -98,7 +106,7 @@ export default function PlanDialog({
       }
     }
     return { rows, skipped }
-  }, [code, name, sorte, zwischenfutter, years, lineages, byLineage])
+  }, [code, name, sorte, zwischenfutter, years, lineages, byLineage, initial])
 
   // Vorschau: Anbaupausen der ausgewählten Parzellen mit dem Plan
   const preview = useMemo(() => {
@@ -134,8 +142,13 @@ export default function PlanDialog({
     setBusy(true)
     setError(null)
     try {
-      await undoAction(`Fruchtfolge geplant: ${name ?? code}`, () => upsertRows('field_declarations', plan.rows as never))
-      notifySuccess(`${plan.rows.length} ${plan.rows.length === 1 ? 'Eintrag' : 'Einträge'} geplant`)
+      // geänderte Planung in ein anderes Jahr oder auf eine andere Zeile: die alte Zeile entfernen
+      const dropInitial = initial && !plan.rows.some((r) => r.id === initial.id)
+      await undoAction(initial ? `Planung geändert: ${name ?? code}` : `Fruchtfolge geplant: ${name ?? code}`, async () => {
+        await upsertRows('field_declarations', plan.rows as never)
+        if (dropInitial) await softDeleteRow('field_declarations', initial.id)
+      })
+      notifySuccess(initial ? 'Planung geändert' : `${plan.rows.length} ${plan.rows.length === 1 ? 'Eintrag' : 'Einträge'} geplant`)
       onClose(true)
     } catch (e) {
       setError(errorText(e, 'Planen fehlgeschlagen'))
@@ -147,7 +160,7 @@ export default function PlanDialog({
   const input = 'mt-1 min-h-11 w-full rounded border border-gray-300 px-2 text-base'
 
   return (
-    <Modal title={`Planen: ${lineages.length} ${lineages.length === 1 ? 'Parzelle' : 'Parzellen'}`} onClose={() => onClose(false)}>
+    <Modal title={initial ? `Planung ändern: ${initial.jahr}` : `Planen: ${lineages.length} ${lineages.length === 1 ? 'Parzelle' : 'Parzellen'}`} onClose={() => onClose(false)}>
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -182,10 +195,12 @@ export default function PlanDialog({
             <input type="checkbox" checked={zwischenfutter} onChange={(e) => setZwischenfutter(e.target.checked)} />
             Zwischenfutter
           </label>
-          <label className="flex min-h-11 items-center gap-1.5 text-sm">
-            <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
-            wiederholen
-          </label>
+          {!initial && (
+            <label className="flex min-h-11 items-center gap-1.5 text-sm">
+              <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
+              wiederholen
+            </label>
+          )}
         </div>
         {repeat && (
           <div className="flex flex-wrap items-end gap-3">
@@ -227,7 +242,7 @@ export default function PlanDialog({
         {error && <p className="text-sm text-red-600">{error}</p>}
         <div className="flex gap-2">
           <button type="submit" disabled={busy} className="min-h-11 rounded-lg bg-brand-700 px-4 text-sm font-semibold text-white disabled:opacity-50">
-            {busy ? 'Speichere…' : 'Planen'}
+            {busy ? 'Speichere…' : initial ? 'Speichern' : 'Planen'}
           </button>
           <button type="button" onClick={() => onClose(false)} className="min-h-11 px-3 text-sm text-gray-500">
             Abbrechen

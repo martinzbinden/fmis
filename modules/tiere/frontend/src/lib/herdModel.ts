@@ -310,3 +310,38 @@ export function searchMoveSources(
     .map((x) => ({ kind: 'animal' as const, animal: x.a }))
   return [...sets, ...animals]
 }
+
+/** Welche Gruppen die Seite «Herden & Standorte» am Tag `date` zeigt: alle aktiven und dazu aufgelöste,
+ * die an diesem Tag noch Tiere (mit oder ohne Nummer) oder einen offenen Stall/Weide hatten — so steht bei
+ * einem früheren «Stand am» die Gruppe wieder da. Die übrigen aufgelösten kommen in `dissolved`. */
+export function groupsAt(
+  data: { groups: HerdGroup[]; members: HerdMember[]; counts: HerdCount[]; stays: HerdStay[] },
+  date: string,
+): { shown: HerdGroup[]; dissolved: HerdGroup[] } {
+  const occupied = new Set<string>()
+  for (const rows of [data.members, data.counts, data.stays] as { group_id: string; from_date: string; to_date: string | null; deleted_at?: string | null }[][]) {
+    for (const r of rows) if (activeAt(r, date)) occupied.add(r.group_id)
+  }
+  const shown: HerdGroup[] = []
+  const dissolved: HerdGroup[] = []
+  for (const g of data.groups) {
+    if (g.deleted_at) continue
+    if (g.active || occupied.has(g.id)) shown.push(g)
+    else dissolved.push(g)
+  }
+  return { shown, dissolved }
+}
+
+/** Prüft einen geänderten Aufenthalt (Stall bzw. Weide einer Gruppe): Daten in Ordnung und keine
+ * Überschneidung mit einem anderen Aufenthalt derselben Gruppe im selben Platz. Gibt den Grund zurück
+ * oder null, wenn alles passt. */
+export function stayProblem(stays: HerdStay[], edited: Pick<HerdStay, 'id' | 'group_id' | 'slot' | 'from_date' | 'to_date' | 'location_id' | 'parcel_id'>): string | null {
+  if (!edited.from_date) return 'Beginn fehlt.'
+  if (!edited.location_id && !edited.parcel_id) return 'Ort fehlt.'
+  if (edited.to_date && edited.to_date < edited.from_date) return 'Das Ende liegt vor dem Beginn.'
+  const end = edited.to_date ?? '9999-12-31'
+  const clash = stays.find(
+    (s) => s.id !== edited.id && !s.deleted_at && s.group_id === edited.group_id && s.slot === edited.slot && s.from_date <= end && (s.to_date ?? '9999-12-31') >= edited.from_date,
+  )
+  return clash ? `Überschneidet sich mit dem Aufenthalt ab ${clash.from_date.split('-').reverse().join('.')}${clash.to_date ? ` bis ${clash.to_date.split('-').reverse().join('.')}` : ''}.` : null
+}

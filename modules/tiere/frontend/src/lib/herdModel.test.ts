@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AnimalRef } from '@fmis/core/animals'
-import { compositionAt, compositionText, defaultCategory, derivedWeideEntries, herdWeidePeriods, locateAnimal, matchNumber } from './herdModel'
+import { compositionAt, compositionText, defaultCategory, derivedWeideEntries, groupsAt, herdWeidePeriods, locateAnimal, matchNumber, stayProblem } from './herdModel'
 import type { HerdCount, HerdGroup, HerdMember, HerdStay } from '../types'
 
 const base = { updated_at: '2026-10-03T00:00:00Z', deleted_at: null }
@@ -141,5 +141,44 @@ describe('Tiere zuteilen: ein Suchfeld', () => {
     expect(searchMoveSources('101', input).map((s) => (s.kind === 'animal' ? s.animal.id : s.kind))).toEqual(['a'])
     expect(searchMoveSources('0190', input).map((s) => (s.kind === 'animal' ? s.animal.id : s.kind))).toEqual(['c'])
     expect(searchMoveSources('ber', input).map((s) => (s.kind === 'animal' ? s.animal.id : s.kind))).toEqual(['a'])
+  })
+})
+
+describe('groupsAt', () => {
+  const stay = (id: string, group_id: string, from_date: string, to_date: string | null): HerdStay => ({
+    id, group_id, slot: 'weide', location_id: null, parcel_id: 'p1', day_only: false, from_date, to_date, notes: null, ...base,
+  })
+  const g = (id: string, active: boolean): HerdGroup => ({ ...group, id, name: id, active })
+  const data = {
+    groups: [g('aktiv', true), g('alt', false), g('leer', false)],
+    members: [{ ...members[0], group_id: 'alt', from_date: '2026-03-01', to_date: '2026-06-30' }],
+    counts: [] as HerdCount[],
+    stays: [stay('s1', 'leer', '2026-01-01', '2026-02-28')],
+  }
+  it('zeigt heute nur aktive, aufgelöste stehen getrennt', () => {
+    const r = groupsAt(data, '2026-11-01')
+    expect(r.shown.map((x) => x.id)).toEqual(['aktiv'])
+    expect(r.dissolved.map((x) => x.id)).toEqual(['alt', 'leer'])
+  })
+  it('zeigt bei früherem Stand die Gruppen mit Tieren oder offenem Aufenthalt', () => {
+    expect(groupsAt(data, '2026-05-01').shown.map((x) => x.id)).toEqual(['aktiv', 'alt'])
+    expect(groupsAt(data, '2026-02-01').shown.map((x) => x.id)).toEqual(['aktiv', 'leer'])
+  })
+})
+
+describe('stayProblem', () => {
+  const s = (id: string, from_date: string, to_date: string | null): HerdStay => ({
+    id, group_id: 'g1', slot: 'stall', location_id: 'l1', parcel_id: null, day_only: false, from_date, to_date, notes: null, ...base,
+  })
+  const stays = [s('a', '2026-01-01', '2026-03-31'), s('b', '2026-04-01', null)]
+  it('erlaubt eine Änderung ohne Überschneidung', () => {
+    expect(stayProblem(stays, { ...stays[0], to_date: '2026-03-15' })).toBeNull()
+  })
+  it('meldet Überschneidung und verkehrte Daten', () => {
+    expect(stayProblem(stays, { ...stays[0], to_date: '2026-04-10' })).toMatch(/Überschneidet sich mit dem Aufenthalt ab 01.04.2026/)
+    expect(stayProblem(stays, { ...stays[0], to_date: '2025-12-01' })).toMatch(/vor dem Beginn/)
+  })
+  it('anderer Platz (Weide) zählt nicht', () => {
+    expect(stayProblem(stays, { ...stays[0], slot: 'weide', to_date: '2026-05-01' })).toBeNull()
   })
 })

@@ -56,21 +56,24 @@ export default function OutdoorJournal() {
     <div className="space-y-3 p-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Auslaufjournal {monthLabel}</h1>
-        <div className="flex items-center gap-2 print:hidden">
-          <button type="button" onClick={() => setMonth(shiftMonth(month, -1))} className="rounded border border-gray-300 px-2 py-1 text-sm">
-            ‹
+        {/* am Handy umbrechen: bei 375 px ragte der Kopf sonst seitlich hinaus */}
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 print:hidden">
+          <div className="flex min-w-0 items-center gap-1">
+            <button type="button" onClick={() => setMonth(shiftMonth(month, -1))} aria-label="Vormonat" className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-gray-300 bg-white text-lg">
+              ‹
+            </button>
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} aria-label="Monat" className="h-11 min-w-0 max-w-[11rem] rounded-lg border border-gray-300 px-2 text-sm" />
+            <button type="button" onClick={() => setMonth(shiftMonth(month, 1))} aria-label="Folgemonat" className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-gray-300 bg-white text-lg">
+              ›
+            </button>
+          </div>
+          <button type="button" onClick={() => window.print()} className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm">
+            🖨 Drucken
           </button>
-          <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-sm" />
-          <button type="button" onClick={() => setMonth(shiftMonth(month, 1))} className="rounded border border-gray-300 px-2 py-1 text-sm">
-            ›
-          </button>
-          <button type="button" onClick={() => window.print()} className="rounded border border-gray-300 px-2 py-1 text-sm">
-            🖨
-          </button>
-          <Link to={`/tiere/weide?jahr=${month.slice(0, 4)}`} className="text-sm text-brand-700">
+          <Link to={`/tiere/weide?jahr=${month.slice(0, 4)}`} className="inline-flex min-h-11 items-center px-2 text-sm text-brand-700">
             Jahr
           </Link>
-          <Link to="/tiere" className="text-sm text-brand-700">
+          <Link to="/tiere" className="inline-flex min-h-11 items-center px-2 text-sm text-brand-700">
             Herden
           </Link>
         </div>

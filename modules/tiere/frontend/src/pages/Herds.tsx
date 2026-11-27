@@ -9,8 +9,8 @@ import TagReaderButton from '@fmis/core/TagReaderButton'
 import { useQuery } from '../hooks/useQuery'
 import Modal from '../components/Modal'
 import { addDaysIso, fmtDate, todayIso } from '../lib/format'
-import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, doubleMemberships, HERD_CATEGORIES, matchNumber, numberTokens, searchMoveSources } from '../lib/herdModel'
-import { changeStay, countAt, dissolveGroup, type HerdData, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, resolveDoubleMemberships, saveGroup, saveLocation, setCount, setLaufhof } from '../lib/herds'
+import { activeAt, categoryLabel, compositionAt, compositionText, defaultCategory, doubleMemberships, groupsAt, HERD_CATEGORIES, matchNumber, numberTokens, searchMoveSources, stayProblem } from '../lib/herdModel'
+import { changeStay, countAt, deleteStay, dissolveGroup, type HerdData, identifyAnimals, loadHerdData, memberAt, moveAnimals, removeMembers, resolveDoubleMemberships, saveGroup, saveLocation, setCount, setLaufhof, updateStay } from '../lib/herds'
 import { accessIndex, ACCESS_LABEL, monthCounter, type AccessIndex } from '../lib/outdoorAccess'
 import CounterBadge from '../components/CounterBadge'
 import GroupHistoryDialog from '../components/GroupHistoryDialog'
@@ -104,6 +104,149 @@ function LaufhofToday({ data, idx, groups, date, canWrite, onChanged }: { data: 
   )
 }
 
+/** Auswahl für Stall bzw. Weide: Parzellen des Jahres (Wiesenjournal) und feste Orte nach Standort. */
+function stayChoices(data: HerdData, slot: StaySlot, year: number, keep?: HerdStay) {
+  const parcels = data.parcels.filter((p) => p.season_year === year || p.id === keep?.parcel_id)
+  const locs = data.locations.filter((l) => (l.active || l.id === keep?.location_id) && (slot === 'stall' ? l.kind !== 'weide' : l.kind !== 'stall'))
+  const bySite = new Map<string, HerdLocation[]>()
+  for (const l of locs) bySite.set(l.site ?? 'Weitere', [...(bySite.get(l.site ?? 'Weitere') ?? []), l])
+  return { parcels, bySite }
+}
+
+/** Früheren Aufenthalt korrigieren: Ort, von/bis, Tagweide — oder entfernen (bleibt im Verlauf des Moduls). */
+function StayEditDialog({ data, group, stay, onClose }: { data: HerdData; group: HerdGroup; stay: HerdStay; onClose: () => void }) {
+  const [target, setTarget] = useState(stay.parcel_id ? `p:${stay.parcel_id}` : stay.location_id ? `l:${stay.location_id}` : '')
+  const [from, setFrom] = useState(stay.from_date)
+  const [to, setTo] = useState(stay.to_date ?? '')
+  const [dayOnly, setDayOnly] = useState(stay.day_only)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { parcels, bySite } = stayChoices(data, stay.slot, Number(from.slice(0, 4)), stay)
+  const edited: HerdStay = {
+    ...stay,
+    location_id: target.startsWith('l:') ? target.slice(2) : null,
+    parcel_id: target.startsWith('p:') ? target.slice(2) : null,
+    from_date: from,
+    to_date: to || null,
+    day_only: stay.slot === 'weide' ? dayOnly : false,
+  }
+  const problem = stayProblem(data.stays, edited)
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true)
+    setError(null)
+    try {
+      await fn()
+      onClose()
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title={`${stay.slot === 'stall' ? 'Stall' : 'Weide'} korrigieren — ${group.name}`} onClose={() => !busy && onClose()}>
+      <div className="space-y-3 text-sm">
+        <label className="block">
+          <span className="mb-1 block font-medium text-gray-700">{stay.slot === 'stall' ? 'Stall / Ort' : 'Weide'}</span>
+          <select className={`${field} min-h-11`} value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="">— wählen —</option>
+            {stay.slot === 'weide' && (
+              <optgroup label={`Parzellen ${from.slice(0, 4)}`}>
+                {parcels.map((p) => (
+                  <option key={p.id} value={`p:${p.id}`}>
+                    {p.name}
+                    {p.season_year !== Number(from.slice(0, 4)) ? ` (${p.season_year})` : ''}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {[...bySite].map(([site, list]) => (
+              <optgroup key={site} label={site}>
+                {list.map((l) => (
+                  <option key={l.id} value={`l:${l.id}`}>
+                    {l.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="mb-1 block font-medium text-gray-700">von</span>
+            <input type="date" className={`${field} min-h-11`} value={from} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block font-medium text-gray-700">bis (leer = bis heute)</span>
+            <input type="date" className={`${field} min-h-11`} value={to} onChange={(e) => setTo(e.target.value)} />
+          </label>
+        </div>
+        {stay.slot === 'weide' && (
+          <label className="flex min-h-11 items-center gap-2">
+            <input type="checkbox" className="h-5 w-5" checked={dayOnly} onChange={(e) => setDayOnly(e.target.checked)} />
+            nur Tagweide (nachts im Stall)
+          </label>
+        )}
+        {problem && <p className="rounded bg-amber-50 p-2 text-amber-900">{problem}</p>}
+        {error && <p className="text-red-700">{error}</p>}
+        <div className="flex gap-2">
+          <button type="button" disabled={busy} onClick={onClose} className={`${btn} flex-1`}>
+            ✕ Abbrechen
+          </button>
+          <button type="button" disabled={busy || !!problem} onClick={() => void run(() => updateStay(edited))} className="min-h-11 flex-1 rounded-lg bg-brand-600 px-3 font-semibold text-white disabled:opacity-50">
+            ✓ Speichern
+          </button>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (confirm(`Aufenthalt ${stayName(data, stay)} (${fmtDate(stay.from_date)}–${stay.to_date ? fmtDate(stay.to_date) : 'heute'}) entfernen?`)) void run(() => deleteStay(stay.id))
+          }}
+          className="min-h-11 w-full rounded-lg border border-red-300 font-medium text-red-700 disabled:opacity-50"
+        >
+          Aufenthalt entfernen
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+/** Verlauf der Aufenthalte (Stall und Weide) einer Gruppe, neueste zuerst; je Zeile ein Stift zum Korrigieren. */
+function StayHistory({ data, group, canWrite, onEdit }: { data: HerdData; group: HerdGroup; canWrite: boolean; onEdit: (s: HerdStay) => void }) {
+  const [all, setAll] = useState(false)
+  const history = data.stays.filter((s) => s.group_id === group.id).sort((a, b) => b.from_date.localeCompare(a.from_date))
+  const shown = all ? history : history.slice(0, 12)
+  return (
+    <div>
+      <span className="text-xs font-semibold text-gray-500">Verlauf Stall und Weide</span>
+      {history.length === 0 && <p className="text-xs text-gray-500">Noch keine Aufenthalte.</p>}
+      <ul className="divide-y text-xs text-gray-600">
+        {shown.map((s) => (
+          <li key={s.id} className="flex min-h-11 items-center justify-between gap-2">
+            <span>
+              {fmtDate(s.from_date)}–{s.to_date ? fmtDate(s.to_date) : 'heute'}: {s.slot === 'stall' ? '🏠' : '🌿'} {stayName(data, s)}
+              {s.day_only ? ' (Tagweide)' : ''}
+            </span>
+            {canWrite && (
+              <button type="button" onClick={() => onEdit(s)} aria-label={`Aufenthalt ab ${fmtDate(s.from_date)} korrigieren`} className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-base text-gray-600 active:bg-gray-100">
+                ✎
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {history.length > 12 && (
+        <button type="button" onClick={() => setAll(!all)} className={`${btn} mt-1`}>
+          {all ? 'nur die neuesten 12' : `alle ${history.length} anzeigen`}
+        </button>
+      )}
+    </div>
+  )
+}
+
 /** Stall oder Weide wechseln. */
 function StayDialog({
   data,
@@ -123,9 +266,7 @@ function StayDialog({
   const [dayOnly, setDayOnly] = useState(cur?.day_only ?? false)
   const [date, setDate] = useState(initialDate)
   const [busy, setBusy] = useState(false)
-  const locs = data.locations.filter((l) => l.active && (slot === 'stall' ? l.kind !== 'weide' : l.kind !== 'stall'))
-  const bySite = new Map<string, HerdLocation[]>()
-  for (const l of locs) bySite.set(l.site ?? 'Weitere', [...(bySite.get(l.site ?? 'Weitere') ?? []), l])
+  const { parcels, bySite } = stayChoices(data, slot, Number(date.slice(0, 4)))
 
   async function save() {
     setBusy(true)
@@ -146,8 +287,8 @@ function StayDialog({
           <select className={field} value={target} onChange={(e) => setTarget(e.target.value)}>
             <option value="">{slot === 'stall' ? '— kein Stall (nur Weide) —' : '— keine Weide (im Stall) —'}</option>
             {slot === 'weide' && (
-              <optgroup label="Parzellen">
-                {data.parcels.map((p) => (
+              <optgroup label={`Parzellen ${date.slice(0, 4)}`}>
+                {parcels.map((p) => (
                   <option key={p.id} value={`p:${p.id}`}>
                     {p.name}
                   </option>
@@ -239,12 +380,12 @@ function CountDialog({ data, group, date: initialDate, onClose }: { data: HerdDa
   )
 }
 
-/** Neue Gruppe oder Gruppe bearbeiten (Name, Tierart, gemolken). */
+/** Neue Gruppe oder Gruppe bearbeiten (Name, Tierart, gemolken). Ausblenden gibt es nicht: «Gruppe auflösen»
+ * schliesst Mitglieder, Anzahlen und Aufenthalte sauber ab (dissolveGroup), eine aufgelöste lässt sich wieder aktivieren. */
 function GroupDialog({ data, group, date, onClose }: { data: HerdData; group: HerdGroup | null; date: string; onClose: () => void }) {
   const [name, setName] = useState(group?.name ?? '')
   const [species, setSpecies] = useState<HerdSpecies>(group?.species ?? 'schafe')
   const [milking, setMilking] = useState(group?.milking ?? false)
-  const [active, setActive] = useState(group?.active ?? true)
   const [busy, setBusy] = useState(false)
 
   async function save() {
@@ -256,7 +397,7 @@ function GroupDialog({ data, group, date, onClose }: { data: HerdData; group: He
         name: name.trim(),
         species,
         milking,
-        active,
+        active: group?.active ?? true,
       } as HerdGroup)
       onClose()
     } finally {
@@ -288,12 +429,6 @@ function GroupDialog({ data, group, date, onClose }: { data: HerdData; group: He
           <input type="checkbox" checked={milking} onChange={(e) => setMilking(e.target.checked)} />
           gemolkene Gruppe (wer sie verlässt, wird trockengestellt)
         </label>
-        {group && (
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-            aktiv
-          </label>
-        )}
         {!group && <p className="text-xs text-gray-500">Stall, Weide und Tiere danach in der Gruppe setzen (ab {fmtDate(date)} oder einem anderen Datum).</p>}
         <button type="button" disabled={busy || !name.trim()} onClick={() => void save()} className="min-h-12 w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50">
           Speichern
@@ -310,9 +445,25 @@ function GroupDialog({ data, group, date, onClose }: { data: HerdData; group: He
                 .then(onClose)
                 .finally(() => setBusy(false))
             }}
-            className="w-full rounded-lg border border-red-300 py-2 font-medium text-red-700 disabled:opacity-50"
+            className="min-h-11 w-full rounded-lg border border-red-300 py-2 font-medium text-red-700 disabled:opacity-50"
           >
-            Gruppe ab {fmtDate(date)} auflösen
+            Gruppe auflösen (ab {fmtDate(date)})
+          </button>
+        )}
+        {group?.active && <p className="text-xs text-gray-500">Auflösen: alle Tiere stehen danach «ohne Gruppe», Stall und Weide enden. Die Gruppe bleibt unter «Aufgelöste Gruppen» und lässt sich wieder aktivieren.</p>}
+        {group && !group.active && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true)
+              void saveGroup({ ...group, name: name.trim() || group.name, milking, active: true })
+                .then(onClose)
+                .finally(() => setBusy(false))
+            }}
+            className="min-h-11 w-full rounded-lg border border-brand-600 py-2 font-medium text-brand-700 disabled:opacity-50"
+          >
+            Gruppe wieder aktivieren
           </button>
         )}
       </div>
@@ -621,15 +772,17 @@ function MoveDialog({
             <span>Tiere aus der gemolkenen Gruppe ab {fmtDate(date)} trockenstellen (Eintrag im Tierjournal, nicht mehr in der Milchwägung)</span>
           </label>
         )}
-        {error && <p className="text-red-700">{error}</p>}
-        <button
-          type="button"
-          disabled={busy || !to || total === 0}
-          onClick={() => void save()}
-          className="min-h-11 w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50"
-        >
-          {busy ? 'Speichert…' : `${total} ${total === 1 ? 'Tier' : 'Tiere'} nach «${to?.name ?? '…'}» zügeln`}
-        </button>
+        <div className="sticky bottom-0 z-10 -mx-1 space-y-1 bg-white px-1 pb-1 pt-2 shadow-[0_-6px_8px_-6px_rgba(0,0,0,0.15)]">
+          {error && <p className="text-red-700">{error}</p>}
+          <button
+            type="button"
+            disabled={busy || !to || total === 0}
+            onClick={() => void save()}
+            className="min-h-11 w-full rounded-lg bg-brand-600 py-2 font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? 'Speichert…' : `${total} ${total === 1 ? 'Tier' : 'Tiere'} nach «${to?.name ?? '…'}» zügeln`}
+          </button>
+        </div>
       </div>
     </Modal>
   )
@@ -930,6 +1083,7 @@ type DialogState = { seq: number } & (
   | { kind: 'readerlists' }
   | { kind: 'readergroups' }
   | { kind: 'history'; group: HerdGroup }
+  | { kind: 'stayedit'; group: HerdGroup; stay: HerdStay }
 )
 type DialogInput = DialogState extends infer D ? (D extends { seq: number } ? Omit<D, 'seq'> : never) : never
 
@@ -938,8 +1092,8 @@ type DialogInput = DialogState extends infer D ? (D extends { seq: number } ? Om
  * Journal-Raster. */
 export default function Herds() {
   const [date, setDate] = useState(todayIso())
-  const seasonYear = Number(date.slice(0, 4))
-  const { data, loading, refresh } = useQuery(() => loadHerdData(seasonYear), [seasonYear])
+  // Parzellen aller Jahre (Namen früherer Aufenthalte); die Auswahl im Dialog filtert das Jahr
+  const { data, loading, refresh } = useQuery(() => loadHerdData(), [])
   const canWrite = useHasPermission('tiere:herden:write')
   const [dialog, setDialogState] = useState<DialogState | null>(null)
   const setDialog = (d: DialogInput | null) => setDialogState((prev) => (d ? ({ ...d, seq: (prev?.seq ?? 0) + 1 } as DialogState) : null))
@@ -974,7 +1128,31 @@ export default function Herds() {
 
   // Ein Tier gehört genau einer Gruppe an — doppelt nur nach gleichzeitigem Zuteilen ohne Netz
   const doubles = useMemo(() => (data ? doubleMemberships(data.members, date) : []), [data, date])
-  const groups = useMemo(() => (data?.groups ?? []).filter((g) => g.active), [data])
+  // aktive Gruppen und solche, die am «Stand am» noch Tiere oder Stall/Weide hatten; die übrigen aufgelösten unten eingeklappt
+  const { shown: groups, dissolved } = useMemo(() => (data ? groupsAt(data, date) : { shown: [], dissolved: [] }), [data, date])
+  const [dissolvedOpen, setDissolvedOpen] = useState(false)
+  const [openDissolved, setOpenDissolved] = useState<Set<string>>(new Set())
+  // aus der Suche: «/tiere?gruppe=<id>» klappt die Gruppe auf und scrollt hin (auch aufgelöste)
+  const [focusId, setFocusId] = useState<string | null>(null)
+  useEffect(() => {
+    const id = params.get('gruppe')
+    if (!id || !data) return
+    if (dissolved.some((g) => g.id === id)) {
+      setDissolvedOpen(true)
+      setOpenDissolved((prev) => new Set(prev).add(id))
+    } else setOpen((prev) => new Set(prev).add(id))
+    setFocusId(id)
+    setParams((p) => {
+      p.delete('gruppe')
+      return p
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, data])
+  useEffect(() => {
+    if (!focusId) return
+    const t = setTimeout(() => document.getElementById(`gruppe-${focusId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    return () => clearTimeout(t)
+  }, [focusId, dissolvedOpen])
   const idx = useMemo(() => (data ? accessIndex(data) : null), [data])
   const close = () => {
     setDialog(null)
@@ -1126,14 +1304,14 @@ export default function Herds() {
           const stall = currentStay(data, g.id, 'stall', date)
           const weide = currentStay(data, g.id, 'weide', date)
           const isOpen = open.has(g.id)
-          const history = data.stays.filter((s) => s.group_id === g.id).sort((a, b) => b.from_date.localeCompare(a.from_date)).slice(0, 12)
           return (
-            <li key={g.id} className="space-y-2 rounded-lg bg-white p-3 shadow-sm">
+            <li key={g.id} id={`gruppe-${g.id}`} className={`scroll-mt-20 space-y-2 rounded-lg bg-white p-3 shadow-sm ${focusId === g.id ? 'ring-2 ring-brand-500' : ''}`}>
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="font-semibold text-gray-800">
                     {SPECIES_ICON[g.species]} {g.name}
                     {g.milking && <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-800">gemolken</span>}
+                    {!g.active && <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-xs font-medium text-gray-700">inzwischen aufgelöst</span>}
                   </div>
                   <div className="text-sm text-gray-700">
                     <b>{comp.total}</b> Tiere{comp.total ? ` · ${compositionText(comp)}` : ''}
@@ -1225,7 +1403,7 @@ export default function Herds() {
                   {comp.members.length > 0 ? (
                     <ul className="divide-y">
                       {comp.members.map((m) => (
-                        <li key={m.id} className="flex items-center justify-between gap-2 py-1">
+                        <li key={m.id} className="flex items-center justify-between gap-3 py-1">
                           <span>
                             <Link to={`/${m.module_key}/tiere/${m.animal_id}`} className="link-btn font-medium text-brand-700">
                               {m.label ?? m.animal_id.slice(0, 8)}
@@ -1235,11 +1413,11 @@ export default function Herds() {
                           {canWrite && (
                             <button
                               type="button"
-                              title="Aus der Gruppe nehmen (Abgang)"
+                              aria-label={`${m.label ?? 'Tier'} aus der Gruppe nehmen (Abgang)`}
                               onClick={() => {
                                 if (confirm(`${m.label ?? 'Tier'} ab ${fmtDate(date)} aus «${g.name}» nehmen?`)) void removeMembers(data, [m.id], date).then(refresh)
                               }}
-                              className="text-xs text-red-700"
+                              className="min-h-11 shrink-0 rounded-lg px-3 text-xs text-red-700 active:bg-red-50"
                             >
                               entfernen
                             </button>
@@ -1250,23 +1428,74 @@ export default function Herds() {
                   ) : (
                     <p className="text-xs text-gray-500">Keine Einzeltiere mit Nummer.</p>
                   )}
-                  <div>
-                    <span className="text-xs font-semibold text-gray-500">Verlauf</span>
-                    <ul className="text-xs text-gray-600">
-                      {history.map((s) => (
-                        <li key={s.id}>
-                          {fmtDate(s.from_date)}–{s.to_date ? fmtDate(s.to_date) : 'heute'}: {s.slot === 'stall' ? '🏠' : '🌿'} {stayName(data, s)}
-                          {s.day_only ? ' (Tagweide)' : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <StayHistory data={data} group={g} canWrite={canWrite} onEdit={(stay) => setDialog({ kind: 'stayedit', group: g, stay })} />
                 </div>
               )}
             </li>
           )
         })}
       </ul>
+
+      {dissolved.length > 0 && (
+        <details open={dissolvedOpen} onToggle={(e) => setDissolvedOpen(e.currentTarget.open)} className="rounded-lg bg-white p-3 text-sm shadow-sm">
+          <summary className="flex min-h-11 cursor-pointer items-center font-medium text-gray-700">Aufgelöste Gruppen ({dissolved.length})</summary>
+          <p className="text-xs text-gray-500">Ohne Tiere und ohne Stall/Weide am {fmtDate(date)}. Der Verlauf bleibt; wieder aktivieren und danach Tiere zuteilen.</p>
+          <ul className="mt-2 divide-y">
+            {dissolved.map((g) => {
+              const isOpen = openDissolved.has(g.id)
+              const last = data.stays.filter((s) => s.group_id === g.id).reduce<string | null>((m, s) => (s.to_date && (!m || s.to_date > m) ? s.to_date : m), null)
+              return (
+                <li key={g.id} id={`gruppe-${g.id}`} className={`scroll-mt-20 space-y-2 py-2 ${focusId === g.id ? 'rounded ring-2 ring-brand-500' : ''}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      <span className="font-medium text-gray-800">
+                        {SPECIES_ICON[g.species]} {g.name}
+                      </span>
+                      {last && <span className="block text-xs text-gray-500">zuletzt Stall/Weide bis {fmtDate(last)}</span>}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenDissolved((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(g.id)) next.delete(g.id)
+                            else next.add(g.id)
+                            return next
+                          })
+                        }
+                        className={btn}
+                      >
+                        {isOpen ? 'Weniger' : 'Stall/Weide'}
+                      </button>
+                      {canWrite && (
+                        <button type="button" onClick={() => setDialog({ kind: 'history', group: g })} className={btn}>
+                          ↶ Verlauf
+                        </button>
+                      )}
+                      {canWrite && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void saveGroup({ ...g, active: true }).then(() => {
+                              notifySuccess(`«${g.name}» wieder aktiv`)
+                              refresh()
+                            })
+                          }
+                          className="min-h-11 rounded-lg border border-brand-600 bg-white px-3 text-sm font-medium text-brand-700"
+                        >
+                          wieder aktivieren
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {isOpen && <StayHistory data={data} group={g} canWrite={canWrite} onEdit={(stay) => setDialog({ kind: 'stayedit', group: g, stay })} />}
+                </li>
+              )
+            })}
+          </ul>
+        </details>
+      )}
 
       {unassigned && unassigned.length > 0 && (
         <details className="rounded-lg border-2 border-dashed border-amber-300 bg-amber-50 p-3 text-sm">
@@ -1322,6 +1551,7 @@ export default function Herds() {
       )}
       {dialog?.kind === 'readerlists' && <ReaderListsDialog key={dialog.seq} data={data} onClose={close} />}
       {dialog?.kind === 'readergroups' && <ReaderGroupImport key={dialog.seq} onClose={close} />}
+      {dialog?.kind === 'stayedit' && <StayEditDialog key={dialog.seq} data={data} group={dialog.group} stay={dialog.stay} onClose={close} />}
       {dialog?.kind === 'history' && <GroupHistoryDialog key={dialog.seq} data={data} group={dialog.group} onChanged={refresh} onClose={close} />}
       {dialog?.kind === 'identify' && (
         <IdentifyDialog key={dialog.seq} data={data} group={dialog.group} preselected={dialog.preselected} date={date} onClose={close} />

@@ -5,15 +5,18 @@ import NumberInput from '@fmis/core/NumberInput'
 import { useOnUndo } from '@fmis/core/undo'
 import { errorText, notifyError } from '@fmis/core/toast'
 import { fmtNum } from '@fmis/core/yearSummary'
-import { upsertRow } from '../db/write'
+import { softDeleteRow, upsertRow } from '../db/write'
 import { useQuery } from '../hooks/useQuery'
 import DpBreakdown from '../components/DpBreakdown'
-import { loadDpData, storedOf } from '../lib/dpData'
+import { loadDpData, loadDpYears, loadStatementLines, storedOf, type DpStatementRow } from '../lib/dpData'
 import {
   compareWithStatement,
   dpCropName,
-  DP_RATES,
+  DP_STATEMENT_ONLY,
+  DP_LINE_LABEL,
   DP_STORED_EMPTY,
+  dpYears,
+  ratesFor,
   estimateFarm,
   referenceFor,
   resolveSettings,
@@ -22,7 +25,6 @@ import {
 } from '../lib/directPayments'
 import { cropLabel } from '../lib/rotationRules'
 
-const YEARS = Object.keys(DP_RATES).map(Number).sort((a, b) => b - a)
 const HANG_LABEL = ['18–35 %', 'über 35–50 %', 'über 50 %']
 
 const fr = (v: number) => `${fmtNum(v, 0)} Fr.`
@@ -33,7 +35,12 @@ export default function DirectPayments() {
   const canWrite = useHasPermission('fields:dz:write')
   // Aus den Parzellen-Details auf der Karte: ?jahr=…&betrieb=…&parzelle=…
   const [params] = useSearchParams()
-  const [year, setYear] = useState(() => (YEARS.includes(Number(params.get('jahr'))) ? Number(params.get('jahr')) : YEARS[0]))
+  // ?jahr= gilt auch für Jahre ohne Ansätze (dann mit denen des nächstliegenden Jahres, deutlich angezeigt)
+  const requested = Number(params.get('jahr')) || null
+  const { data: yearData } = useQuery(loadDpYears)
+  const years = useMemo(() => dpYears(yearData?.parcels ?? [], yearData?.statement ?? [], requested), [yearData, requested])
+  const [year, setYear] = useState(() => (requested && years.includes(requested) ? requested : new Date().getFullYear()))
+  const rateInfo = ratesFor(year)
   const { data } = useQuery((pg) => loadDpData(pg, year), [year])
   const [farmId, setFarmId] = useState<string | null>(params.get('betrieb'))
   const [search, setSearch] = useState('')
@@ -62,14 +69,14 @@ export default function DirectPayments() {
   const ref = useMemo(() => (farm && data ? referenceFor(data.statement, farm.id, year) : undefined), [farm, data, year])
   const settings = useMemo(() => resolveSettings(stored, parcelRows, ref), [stored, parcelRows, ref])
   const derived = useMemo(() => resolveSettings(DP_STORED_EMPTY, parcelRows, ref), [parcelRows, ref])
-  const estimate = useMemo(() => (farm ? estimateFarm(DP_RATES[year], parcelRows, settings, ref) : null), [farm, year, parcelRows, settings, ref])
+  const estimate = useMemo(() => (farm ? estimateFarm(rateInfo.rates, parcelRows, settings, ref) : null), [farm, rateInfo.rates, parcelRows, settings, ref])
 
   if (!allowed) return <p className="p-6 text-center text-gray-500">Diese Seite ist der Betriebsleitung und dem Büro vorbehalten.</p>
   if (!data) return <p className="p-6 text-center text-gray-500">Lädt…</p>
 
   const yearSwitch = (
     <div className="flex flex-wrap gap-2" role="group" aria-label="Jahr">
-      {YEARS.map((y) => (
+      {years.map((y) => (
         <button
           key={y}
           type="button"
@@ -143,6 +150,12 @@ export default function DirectPayments() {
 
       {yearSwitch}
 
+      {!rateInfo.exact && (
+        <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+          Für {year} sind keine Ansätze hinterlegt — gerechnet mit den Ansätzen {rateInfo.ratesYear}.
+        </p>
+      )}
+
       {farmsWithData.length > 1 && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Betrieb">
           {farmsWithData.map((f) => (
@@ -169,7 +182,8 @@ export default function DirectPayments() {
         </div>
         <div className="mt-1 text-3xl font-bold tabular-nums text-gray-900">≈ {fr(estimate.total)}</div>
         <p className="text-xs text-gray-500">{ref ? `Rechner pro Jahr; Abrechnung ${ref.jahr}: ${fr(statementTotal)}` : 'pro Jahr, nur die unten aufgeführten Beiträge'}</p>
-        <table className="mt-3 w-full text-sm">
+        <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
           {ref && (
             <thead>
               <tr className="text-xs text-gray-500">
@@ -196,6 +210,7 @@ export default function DirectPayments() {
             </tr>
           </tfoot>
         </table>
+        </div>
         {ref ? (
           <p className="mt-2 text-xs text-gray-500">
             «–» beim Rechner: nur aus der Abrechnung, nicht im Total des Rechners. Vernetzung, Landschaftsqualität und GVE folgen der Abrechnung {ref.jahr}
@@ -314,6 +329,8 @@ export default function DirectPayments() {
         )}
       </section>
 
+      <StatementList farmId={farm.id} farmName={farm.name} year={year} canWrite={canWrite} />
+
       <section className="space-y-2 rounded-lg bg-white p-3 text-xs text-gray-600 shadow-sm">
         <p>
           <span className="font-semibold text-gray-700">Grundlagen:</span> Die Tierzahlen stehen nicht vollständig in FMIS, darum kommen die GVE aus der
@@ -395,5 +412,94 @@ function ParcelRow({
         </div>
       )}
     </li>
+  )
+}
+
+const sectionLabel = (key: string) => (DP_LINE_LABEL as Record<string, string>)[key] ?? DP_STATEMENT_ONLY[key] ?? key
+
+/** Eingefügte Abrechnung des Kantons (dp_statement_lines) für Betrieb und Jahr: Zeile für Zeile, Löschen über den Stift
+ * (Soft-Delete). Korrigieren = löschen und die richtige Zeile neu einfügen — der Import ergänzt nur und überspringt
+ * Zeilen mit gleichem Abschnitt, gleicher Bezeichnung und Zone. */
+function StatementList({ farmId, farmName, year, canWrite }: { farmId: string; farmName: string; year: number; canWrite: boolean }) {
+  const { data } = useQuery((pg) => loadStatementLines(pg, farmId, year), [farmId, year])
+  const rows = data ?? []
+  const [editing, setEditing] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  if (rows.length === 0) return null
+  const total = rows.reduce((s, r) => s + r.amount, 0)
+
+  async function remove(r: DpStatementRow) {
+    setBusy(true)
+    try {
+      await softDeleteRow('dp_statement_lines', r.id)
+      setEditing(null)
+    } catch (err) {
+      notifyError(errorText(err, 'Löschen fehlgeschlagen'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <details className="rounded-lg bg-white shadow-sm">
+      <summary className="flex min-h-11 cursor-pointer select-none items-center px-3 py-2 text-sm font-semibold text-gray-700">
+        Abrechnung {year}: {rows.length} {rows.length === 1 ? 'Zeile' : 'Zeilen'} · {fr(total)}
+      </summary>
+      <div className="border-t px-3 py-2 text-xs text-gray-600">
+        <p className="mb-2">
+          Eingefügt unter «Daten importieren» für {farmName}. Eine falsche Zeile hier löschen und richtig neu einfügen (gleiche Zeilen überspringt der Import).
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-500">
+                <th className="py-1 pr-2 text-left font-medium">Abschnitt / Bezeichnung</th>
+                <th className="py-1 pr-2 text-left font-medium">Zone</th>
+                <th className="py-1 pr-2 text-right font-medium">Anzahl</th>
+                <th className="py-1 pr-2 text-right font-medium">Ansatz</th>
+                <th className="py-1 pr-2 text-right font-medium">Betrag</th>
+                {canWrite && <th className="w-11" aria-label="Bearbeiten" />}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td className="py-1 pr-2 text-gray-800">
+                    <span className="block text-gray-500">{sectionLabel(r.section)}</span>
+                    {r.label}
+                    {editing === r.id && (
+                      <span className="mt-1 flex gap-2">
+                        <button type="button" disabled={busy} onClick={() => setEditing(null)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-gray-700">
+                          ✕ Abbrechen
+                        </button>
+                        <button type="button" disabled={busy} onClick={() => void remove(r)} className="min-h-11 rounded-lg bg-red-700 px-3 font-semibold text-white disabled:opacity-50">
+                          Zeile löschen
+                        </button>
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-1 pr-2">{r.zone ?? ''}</td>
+                  <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">{r.quantity == null ? '' : fmtNum(r.quantity, 2)}</td>
+                  <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums">{r.rate == null ? '' : fmtNum(r.rate, 2)}</td>
+                  <td className="whitespace-nowrap py-1 pr-2 text-right tabular-nums text-gray-900">{fmtNum(r.amount, 2)}</td>
+                  {canWrite && (
+                    <td className="py-1 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setEditing(editing === r.id ? null : r.id)}
+                        aria-label={`Zeile «${r.label}» bearbeiten`}
+                        className="grid h-11 w-11 place-items-center rounded-lg text-base text-gray-600 active:bg-gray-100"
+                      >
+                        ✎
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
   )
 }

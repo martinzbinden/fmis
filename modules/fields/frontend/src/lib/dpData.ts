@@ -1,6 +1,6 @@
 // Daten für die Direktzahlungen: Seite «Direktzahlungen» und Parzellen-Details auf der Karte.
 import type { PGlite } from '@electric-sql/pglite'
-import { DP_RATES, DP_STORED_EMPTY, estimateFarm, referenceFor, resolveSettings, type DpParcel, type DpStatementLine, type DpStored } from './directPayments'
+import { DP_STORED_EMPTY, ratesFor, estimateFarm, referenceFor, resolveSettings, type DpParcel, type DpStatementLine, type DpStored } from './directPayments'
 
 export type DpRow = DpParcel & { farm_id: string }
 
@@ -22,6 +22,29 @@ export interface DpData {
   farms: { id: string; name: string }[]
   settings: DpSettingsRow[]
   statement: (DpStatementLine & { farm_id: string; jahr: number })[]
+}
+
+/** Jahre mit Parzellen aus dem Raumdaten-Import bzw. mit eingefügter Abrechnung (Jahresauswahl). */
+export async function loadDpYears(pg: PGlite): Promise<{ parcels: number[]; statement: number[] }> {
+  const [a, b] = await Promise.all([
+    pg.query<{ jahr: number }>(`select distinct jahr from field_declarations where deleted_at is null and sequence_in_year = 1 and source = 'import'`),
+    pg.query<{ jahr: number }>('select distinct jahr from dp_statement_lines where deleted_at is null'),
+  ])
+  return { parcels: a.rows.map((r) => Number(r.jahr)), statement: b.rows.map((r) => Number(r.jahr)) }
+}
+
+export interface DpStatementRow extends DpStatementLine {
+  id: string
+}
+
+/** Eingefügte Abrechnung eines Betriebs und Jahres, Zeile für Zeile (zum Ansehen und Löschen). */
+export async function loadStatementLines(pg: PGlite, farmId: string, year: number): Promise<DpStatementRow[]> {
+  const { rows } = await pg.query<DpStatementRow>(
+    `select id, section, label, zone, quantity::float8 as quantity, rate::float8 as rate, factor::float8 as factor, amount::float8 as amount
+     from dp_statement_lines where deleted_at is null and farm_id = $1 and jahr = $2 order by section, label, zone`,
+    [farmId, year],
+  )
+  return rows
 }
 
 export async function loadDpData(pg: PGlite, year: number): Promise<DpData> {
@@ -60,12 +83,12 @@ export function storedOf(row: DpSettingsRow | undefined): DpStored {
 }
 
 /** Schätzung des ganzen Betriebs mit den gespeicherten Angaben (die jüngsten bis zu diesem Jahr).
- * Eine einzelne Parzelle hängt vom Betrieb ab: Flächenabstufung, Tierbesatz, Vernetzungsanteile. */
+ * Eine einzelne Parzelle hängt vom Betrieb ab: Flächenabstufung, Tierbesatz, Vernetzungsanteile.
+ * Fehlen die Ansätze des Jahres, gelten die des nächstliegenden (`ratesYear`, anzeigen!). */
 export function farmEstimate(data: DpData, farmId: string, year: number) {
-  const rates = DP_RATES[year]
-  if (!rates) return null
+  const { rates, ratesYear } = ratesFor(year)
   const parcels = data.rows.filter((r) => r.farm_id === farmId)
   const ref = referenceFor(data.statement, farmId, year)
   const settings = resolveSettings(storedOf(data.settings.find((s) => s.farm_id === farmId)), parcels, ref)
-  return { estimate: estimateFarm(rates, parcels, settings, ref), settings, ref }
+  return { estimate: estimateFarm(rates, parcels, settings, ref), settings, ref, ratesYear }
 }

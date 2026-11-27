@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet-draw'
 import 'leaflet-draw/dist/leaflet.draw.css'
 import LocateControl from '@fmis/core/LocateControl'
+import { MapTouchButton, MapTouchLock, useMapTouchLock } from './MapTouchLock'
 import { BACKGROUND_LAYERS as ALL_BACKGROUNDS, swisstopoUrl } from '@fmis/core/swisstopo'
 import type { PlanParcel } from '../types'
 import { colorForKultur } from '../lib/kulturColor'
@@ -199,6 +200,8 @@ export default function PlanningMap({
 }) {
   const [background, setBackground] = useState<BackgroundKey>('pixelkarte')
   const [isFullscreen, setIsFullscreen] = useState(false)
+  // am Handy: Karte erst nach «Karte bedienen» ziehen (sonst lässt sich die Seite nicht scrollen)
+  const touchLock = useMapTouchLock(isFullscreen)
   const mapRef = useRef<L.Map | null>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -278,17 +281,18 @@ export default function PlanningMap({
         <button
           type="button"
           onClick={toggleFullscreen}
-          title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild'}
-          className="ml-auto rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
+          aria-label={isFullscreen ? 'Vollbild verlassen' : 'Vollbild'}
+          className="ml-auto min-h-10 min-w-10 rounded bg-gray-100 px-2 py-1 font-medium text-gray-600"
         >
           {isFullscreen ? '⤡' : '⤢'}
         </button>
       </div>
+      <div className="relative">
       <MapContainer
         ref={mapRef}
         center={[46.92, 7.6]}
         zoom={13}
-        style={{ height: isFullscreen ? 'calc(100vh - 41px)' : 480, width: '100%' }}
+        style={{ height: isFullscreen ? 'calc(100vh - 57px)' : 480, width: '100%' }}
       >
         <TileLayer
           key={background}
@@ -307,7 +311,10 @@ export default function PlanningMap({
           onToggleSelect={onToggleSelect ?? noop}
         />
         <LocateControl />
+        <MapTouchLock locked={touchLock.locked} />
       </MapContainer>
+      <MapTouchButton lock={touchLock} isFullscreen={isFullscreen} />
+      </div>
     </div>
   )
 }

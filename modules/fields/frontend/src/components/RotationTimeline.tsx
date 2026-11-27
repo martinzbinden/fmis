@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { colorForKultur } from '../lib/kulturColor'
 import type { FieldDeclaration, FieldLineageSummary } from '../types'
 
@@ -99,7 +99,18 @@ export default function RotationTimeline({
     return result
   }, [declarationsByLineage])
 
-  if (years.length === 0 || lineages.length === 0) {
+  // beim Öffnen ans rechte Ende: die aktuellen Jahre sollen sichtbar sein (einmal, danach scrollt man selbst)
+  const scroller = useRef<HTMLDivElement>(null)
+  const scrolled = useRef(false)
+  const hasContent = years.length > 0 && lineages.length > 0
+  useEffect(() => {
+    const el = scroller.current
+    if (!hasContent || scrolled.current || !el) return
+    scrolled.current = true
+    el.scrollLeft = el.scrollWidth
+  }, [hasContent])
+
+  if (!hasContent) {
     return <p className="text-center text-gray-500">Keine Daten für den Zeitstrahl.</p>
   }
 
@@ -117,7 +128,7 @@ export default function RotationTimeline({
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
+    <div ref={scroller} className="overflow-x-auto rounded-lg bg-white shadow-sm">
       <div style={{ minWidth: LABEL_COL_WIDTH + trackWidth }}>
         <div className="flex border-b">
           <div

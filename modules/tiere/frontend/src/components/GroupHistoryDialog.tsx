@@ -21,6 +21,7 @@ export default function GroupHistoryDialog({ data, group, onChanged, onClose }: 
   const [error, setError] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<{ step: Step; rows: UndoRow[] } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [showAll, setShowAll] = useState(false)
 
   const load = useCallback(() => {
     setError(null)
@@ -30,7 +31,8 @@ export default function GroupHistoryDialog({ data, group, onChanged, onClose }: 
 
   const nameOf = (id: string) => data.groups.find((g) => g.id === id)?.name ?? 'Gruppe?'
   // gleiche Schritte bei jedem Rendern (das Bestätigungsfeld erkennt seinen Schritt daran wieder)
-  const steps = useMemo(() => (entries ? stepsOfGroup(buildSteps(entries), group.id).slice(0, 20) : []), [entries, group.id])
+  const allSteps = useMemo(() => (entries ? stepsOfGroup(buildSteps(entries), group.id) : []), [entries, group.id])
+  const steps = showAll ? allSteps : allSteps.slice(0, 20)
 
   async function prepare(step: Step) {
     if (!entries) return
@@ -139,6 +141,11 @@ export default function GroupHistoryDialog({ data, group, onChanged, onClose }: 
             )
           })}
         </ul>
+        {allSteps.length > 20 && (
+          <button type="button" onClick={() => setShowAll(!showAll)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-gray-700">
+            {showAll ? 'nur die neuesten 20' : `alle ${allSteps.length} Schritte anzeigen`}
+          </button>
+        )}
         {entries && entries.length >= WINDOW && <p className="text-xs text-gray-500">Gezeigt werden die neuesten Änderungen; ältere stehen im Verlauf des Moduls.</p>}
       </div>
     </Modal>
