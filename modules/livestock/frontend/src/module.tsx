@@ -17,6 +17,7 @@ import FeedEntry from './pages/FeedEntry'
 import FeedReference from './pages/FeedReference'
 import SlaughterEntry from './pages/SlaughterEntry'
 import Slaughterings from './pages/Slaughterings'
+import Fattening from './pages/Fattening'
 import { slaughterPasteImporter } from './lib/pasteSlaughter'
 import Economics from './pages/Economics'
 import Vermarktung from './pages/Vermarktung'
@@ -54,6 +55,7 @@ const livestockModule: ModuleDescriptor = {
     'futter/referenz': 'Futtermittel-Referenz',
     schlachtung: 'Schlachtung',
     schlachtungen: 'Schlachtungen',
+    mastauswertung: 'Mastauswertung',
     vermarktung: 'Vermarktung',
   },
   routes: [
@@ -70,6 +72,7 @@ const livestockModule: ModuleDescriptor = {
     { path: 'futter/referenz', element: <FeedReference /> },
     { path: 'schlachtung', element: <SlaughterEntry /> },
     { path: 'schlachtungen', element: <Slaughterings /> },
+    { path: 'mastauswertung', element: <Fattening /> },
     { path: 'wirtschaftlichkeit', element: <Economics /> },
     { path: 'vermarktung', element: <Vermarktung /> },
     { path: 'verlauf', element: <History /> },

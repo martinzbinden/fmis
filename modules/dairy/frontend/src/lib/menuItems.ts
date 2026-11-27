@@ -34,6 +34,7 @@ export function menuItems(sheep: boolean, weanFromDays: number): MenuItem[] {
     { to: 'merklisten', icon: 'merkliste', label: 'Merklisten', short: 'Merklisten', desc: 'Tiere vormerken, z.B. «Ausmerzen prüfen» – auch aus Warnungen bei der Erfassung' },
     { to: 'gruppen', icon: 'vergleich', label: 'Gruppen vergleichen', short: 'Gruppen', desc: 'Tiergruppen und Merklisten vergleichen: Leistung + Zuchtwert, Schlachterlös, Fortpflanzung, Klauen', keywords: 'vergleich' },
     { to: '/livestock/schlachtungen', icon: 'beleg', label: 'Schlachtungen', short: 'Schlachtungen', desc: 'Schlachtabrechnungen aller Tiere: Gewicht nach Alter und Laktationstagen, Preise je Taxation' },
+    { to: '/livestock/mastauswertung', icon: 'geld', label: 'Mastauswertung', short: 'Mastauswertung', desc: 'Lämmer aus den Schlachtabrechnungen: Tageszunahmen, Futterverzehr, Futterverwertung, Deckungsbeitrag', keywords: 'mast tageszunahme futterverwertung deckungsbeitrag' },
     { to: '/import', icon: 'import', label: 'Datenimport', short: 'Import', desc: 'TVD-Tierbestand, Herdebuch- und weitere Dateien hochladen (gemeinsame Seite für alle Module)' },
     { to: 'anpaarung', icon: 'anpaarung', label: 'Anpaarung planen', short: 'Anpaarung', desc: `Erwartete Inzucht je Mutter × ${sire}`, keywords: 'inzucht' },
   ]

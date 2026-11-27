@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { animalKey, shortEarTag } from '@fmis/core/earTag'
 import { openImport } from '@fmis/core/importModal'
 import { errorText, notifyError } from '@fmis/core/toast'
@@ -48,7 +49,10 @@ export default function Slaughterings() {
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Schlachtungen</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Link to="/livestock/mastauswertung" className="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-3 text-sm text-brand-700">
+            Mastauswertung
+          </Link>
           <button type="button" onClick={() => setAdding((v) => !v)} className="min-h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm">
             + von Hand
           </button>

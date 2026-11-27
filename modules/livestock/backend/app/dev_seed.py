@@ -5,7 +5,8 @@ lässt: eine abgeschlossene Gruppe mit Schlachtresultaten (Markt und
 Direktvermarktung, Gewichte und Klassen wie in den Vieh- und
 Schlachtabrechnungen 2025/26), eine laufende Gruppe mit Wägungen bis heute
 (einige knapp vor, einige schon im Proviande-Gewichtsabzug), ein altes Schaf,
-Futter, Kosten, eine offene Absetzfrist und einen Proviande-Wochenpreis.
+Futter, Kosten, eine offene Absetzfrist und einen Proviande-Wochenpreis; dazu Lamm-Schlachtungen
+(slaughter_records) für die Mastauswertung.
 
 Läuft nur, wenn noch keine Testtiere da sind (Ohrmarken CH9999…), und
 schreibt nur eigene Zeilen — vorhandene Daten bleiben unberührt. Wegräumen:
@@ -33,6 +34,7 @@ async def seed_if_empty(pool: AsyncConnectionPool) -> int:
             "select count(*) from animals where ear_tag like %s", (TAG_PREFIX + "%",)
         )
         if (await cur.fetchone())[0] > 0:
+            await _seed_lamb_slaughter_records(conn)
             return 0
         rnd = random.Random(42)
         today = date.today()
@@ -147,4 +149,57 @@ async def seed_if_empty(pool: AsyncConnectionPool) -> int:
                         f'insert into "{table}" ({", ".join(cols)}) values ({", ".join(["%s"] * len(cols))})',
                         [row[c] for c in cols],
                     )
+        await _seed_lamb_slaughter_records(conn)
         return len(rows["animals"])
+
+
+async def _seed_lamb_slaughter_records(conn) -> int:
+    """Lamm-Schlachtungen (slaughter_records) für die Mastauswertung: die Testlämmer mit Marktabrechnung, zwei davon
+    am Vortag der Schlachtung gewogen, und zwei erfundene Lämmer ohne Tier in den Listen (ohne Geburtsdatum).
+    Läuft einmal, auch wenn die Testtiere schon da sind."""
+    cur = await conn.execute(
+        "select count(*) from slaughter_records where notes = %s and ear_tag like %s", (SOURCE, TAG_PREFIX + "%")
+    )
+    if (await cur.fetchone())[0] > 0:
+        return 0
+    cur = await conn.execute(
+        """select a.id, a.ear_tag, s.slaughter_date, s.carcass_weight_kg, s.classification, s.fat_class, s.price_per_kg
+           from animals a join slaughter_results s on s.animal_id = a.id and s.deleted_at is null
+           where a.ear_tag like %s and a.deleted_at is null and s.channel = 'markt'
+           order by a.ear_tag""",
+        (TAG_PREFIX + "%",),
+    )
+    lambs = await cur.fetchall()
+    if not lambs:
+        return 0
+    records: list[dict] = []
+    weighings: list[dict] = []
+    for i, (aid, tag, day, sg, cls, fat, ppk) in enumerate(lambs):
+        sg = float(sg) if sg is not None else None
+        ppk = float(ppk) if ppk is not None else None
+        records.append({
+            "id": _id(), "slaughter_date": day, "ear_tag": tag, "animal_key": tag, "category": "Lamm",
+            "carcass_kg": sg, "classification": f"{cls}{fat}" if cls and fat else cls, "price_per_kg": ppk,
+            "amount": round(sg * ppk, 2) if sg is not None and ppk is not None else None,
+            "remark": None, "buyer": "Händler (Test)", "settlement_no": "900001", "weigh_slip_no": None,
+            "source": "import", "notes": SOURCE,
+        })
+        if i < 2 and sg is not None:
+            weighings.append({"id": _id(), "animal_id": aid, "date": day - timedelta(days=1), "weight_kg": round(sg / 0.47, 1)})
+    day = lambs[0][2]
+    for n, (sg, cls, ppk) in enumerate([(16.5, "T3", 14.6), (12.0, "A2", 11.2)], start=1):
+        records.append({
+            "id": _id(), "slaughter_date": day, "ear_tag": f"{TAG_PREFIX}8{n:03d}", "animal_key": f"{TAG_PREFIX}8{n:03d}",
+            "category": "Lamm", "carcass_kg": sg, "classification": cls, "price_per_kg": ppk, "amount": round(sg * ppk, 2),
+            "remark": None, "buyer": "Händler (Test)", "settlement_no": "900001", "weigh_slip_no": None,
+            "source": "import", "notes": SOURCE,
+        })
+    async with conn.transaction():
+        for table, items in (("slaughter_records", records), ("weighings", weighings)):
+            for row in items:
+                cols = list(row)
+                await conn.execute(
+                    f'insert into "{table}" ({", ".join(cols)}) values ({", ".join(["%s"] * len(cols))})',
+                    [row[c] for c in cols],
+                )
+    return len(records)

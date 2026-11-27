@@ -68,9 +68,14 @@ export default function Economics() {
     <div className="mx-auto max-w-3xl space-y-6 p-4">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Wirtschaftlichkeit</h1>
-        <Link to="/livestock/vermarktung" className="text-sm text-brand-700">
-          Markt oder Direktvermarktung →
-        </Link>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <Link to="/livestock/mastauswertung" className="text-sm text-brand-700">
+            Mastauswertung →
+          </Link>
+          <Link to="/livestock/vermarktung" className="text-sm text-brand-700">
+            Markt oder Direktvermarktung →
+          </Link>
+        </div>
       </div>
 
       <section>
