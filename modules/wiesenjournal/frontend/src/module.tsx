@@ -22,9 +22,9 @@ const DruckPage = lazy(() => import('./agff/pages/DruckPage'))
 const FragenPage = lazy(() => import('./agff/pages/FragenPage'))
 const MorePage = lazy(() => import('./agff/pages/MorePage'))
 
-function Agff({ children }: { children: ReactNode }) {
+function Agff({ children, jahrWahl }: { children: ReactNode; jahrWahl?: boolean }) {
   return (
-    <AgffSeite>
+    <AgffSeite jahrWahl={jahrWahl}>
       <Suspense fallback={<p className="p-4 text-sm text-gray-600">Seite wird geladen …</p>}>{children}</Suspense>
     </AgffSeite>
   )
@@ -82,11 +82,11 @@ const wiesenjournalModule: ModuleDescriptor = {
     { path: 'verlauf', element: <History /> },
     { path: 'heute', element: <Agff><TagPage /></Agff> },
     { path: 'heute/:datum', element: <Agff><TagPage /></Agff> },
-    { path: 'raster', element: <Agff><RasterPlus /></Agff> },
-    { path: 'jahr', element: <Agff><JahrPage /></Agff> },
+    { path: 'raster', element: <Agff jahrWahl><RasterPlus /></Agff> },
+    { path: 'jahr', element: <Agff jahrWahl><JahrPage /></Agff> },
     { path: 'parzelle/:id', element: <Agff><SteckbriefPage /></Agff> },
-    { path: 'druck', element: <Agff><DruckPage /></Agff> },
-    { path: 'fragen', element: <Agff><FragenPage /></Agff> },
+    { path: 'druck', element: <Agff jahrWahl><DruckPage /></Agff> },
+    { path: 'fragen', element: <Agff jahrWahl><FragenPage /></Agff> },
     { path: 'mehr', element: <Agff><MorePage /></Agff> },
     // Kein Nav-Eintrag (Bottom-Bar ist voll) — verlinkt von Parzellen/Auswertung.
     { path: 'duengerarten', element: <FertilizerTypes /> },

@@ -24,6 +24,7 @@ modules/wiesenjournal/frontend/src/agff/
     persist.ts         Speicher hinter dem Store: Laden aus pglite, Schreiben über core/writer (Outbox, Verlauf, Rückgängig)
     abbildung.ts       Zeilen FMIS ↔ AGFF (+ Tests), Herden aus dem Modul Tiere
     AgffSeite.tsx      öffnet den Store vor der ersten Seite
+    JahrWahl.tsx       Leiste «Saison ‹ 2026 ›» über Jahr, Raster plus, Drucken, Fragen (setzt hooks/useYear)
 ```
 
 Der AGFF-Store hält alle Journal-Zeilen im Speicher, die Seiten lesen synchron. Im FMIS lädt `persist.ts` beim ersten

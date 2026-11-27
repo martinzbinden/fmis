@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import QueryInput, { QueryChips } from '@fmis/core/query/QueryInput'
 import SortMenu from '@fmis/core/query/SortMenu'
@@ -7,7 +7,7 @@ import { QUERY_SORT_KEY, useListQuery } from '@fmis/core/query/useListQuery'
 import { PARCEL_EXAMPLES, PARCEL_QUERY_FIELDS, PARCEL_SORTS, parcelTexts, sortParcels } from '../lib/parcelQuery'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
-import { upsertRow, softDeleteRow } from '../db/write'
+import { upsertRow, upsertRows, softDeleteRow } from '../db/write'
 import { syncClient } from '../db/sync'
 import { fmtArea, PARCEL_CATEGORY_COLOR, PARCEL_CATEGORY_LABEL, PARCEL_SOURCE_LABEL } from '../lib/format'
 import { importParcelsFromFields, type ParcelsImportResult } from '../lib/parcelsImport'
@@ -18,8 +18,11 @@ import Modal from '../components/Modal'
 import type { Intensitaet, Parcel, ParcelCategory } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
 import { errorText } from '@fmis/core/toast'
+import { useSeasonYear } from '../hooks/useSeasonYear'
+import SeasonYearSelect from '../components/SeasonYearSelect'
+import { useDb } from '@fmis/core/DbContext'
+import { byOwnOrder, moveParcel } from '../lib/parcelOrder'
 
-const CURRENT_YEAR = new Date().getFullYear()
 
 async function loadParcels(pg: PGlite, seasonYear: number, showAcker: boolean, showSmall: boolean): Promise<Parcel[]> {
   const { rows } = await pg.query<Parcel>(
@@ -58,7 +61,7 @@ const EMPTY_FORM: FormState = {
 }
 
 export default function Parcels() {
-  const [seasonYear, setSeasonYear] = useState(CURRENT_YEAR)
+  const [seasonYear, setSeasonYear] = useSeasonYear()
   const [showAcker] = useShowAcker()
   const [showSmall] = useShowSmall()
   const { data, loading, refresh } = useQuery((pg) => loadParcels(pg, seasonYear, showAcker, showSmall), [seasonYear, showAcker, showSmall])
@@ -70,6 +73,22 @@ export default function Parcels() {
   const [mergeSource, setMergeSource] = useState<Parcel | null>(null)
   const [mergeTargetId, setMergeTargetId] = useState('')
 
+  const db = useDb()
+  // ?ordnen=1 (Finder «↕ ändern» in Raster plus) oder Knopf «Reihenfolge ändern»: eigene Reihenfolge mit ▲▼
+  const [params, setParams] = useSearchParams()
+  const ordering = params.get('ordnen') === '1'
+  const setOrdering = (on: boolean) =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p)
+        if (on) next.set('ordnen', '1')
+        else next.delete('ordnen')
+        return next
+      },
+      { replace: true },
+    )
+  const [moving, setMoving] = useState(false)
+
   const parcels = data ?? []
   const gelanParcels = parcels.filter((p) => p.source === 'fields')
   const q = useListQuery({ storage: 'wiesenjournal_parcels', fields: PARCEL_QUERY_FIELDS, ctx: null, texts: parcelTexts, defaultSort: 'standard', validSorts: PARCEL_SORTS.map((x) => x.key) })
@@ -77,6 +96,26 @@ export default function Parcels() {
     const list = parcels.filter((p) => q.match(p))
     return q.queryCompare && q.sortKey === QUERY_SORT_KEY ? [...list].sort(q.queryCompare) : sortParcels(list, q.sortKey)
   }, [parcels, q])
+  const orderedParcels = useMemo(() => [...parcels].sort(byOwnOrder), [parcels])
+
+  async function move(p: Parcel, neighbor: Parcel, dir: 'up' | 'down') {
+    setMoving(true)
+    try {
+      // alle Parzellen des Jahres, auch die ausgeblendeten (Acker, kleine), damit keine gleichen Werte entstehen
+      const { rows: all } = await db.query<Parcel>('select * from parcels where season_year = $1 and deleted_at is null', [seasonYear])
+      const byId = new Map(all.map((x) => [x.id, x]))
+      const changes = moveParcel(all, p.id, neighbor.id, dir)
+      await upsertRows(
+        'parcels',
+        changes.map((c) => ({ ...byId.get(c.id)!, sort_order: c.sort_order })) as never,
+      )
+      refresh()
+    } catch (err) {
+      alert(errorText(err, 'Reihenfolge nicht gespeichert'))
+    } finally {
+      setMoving(false)
+    }
+  }
 
   function openNew() {
     setForm({ ...EMPTY_FORM })
@@ -132,7 +171,17 @@ export default function Parcels() {
   }
 
   async function remove(p: Parcel) {
-    if (!confirm(`Parzelle "${p.name}" wirklich löschen?`)) return
+    // wie in der AGFF-Fassung (agff/components/ParzelleBearbeiten.tsx): vorhandene Einträge zählen und warnen
+    const { rows } = await db.query<{ n: number }>(
+      `select (select count(*) from usage_entries where parcel_id = $1 and deleted_at is null)
+            + (select count(*) from fertilization_shares where parcel_id = $1 and deleted_at is null) as n`,
+      [p.id],
+    )
+    const n = Number(rows[0]?.n ?? 0)
+    const text = n
+      ? `«${p.name}» hat ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}. Trotzdem löschen? Die Einträge verschwinden aus Raster und Auswertung. (Rückgängig ist möglich.)`
+      : `Parzelle «${p.name}» löschen? (Rückgängig ist möglich.)`
+    if (!confirm(text)) return
     await softDeleteRow('parcels', p.id)
     refresh()
   }
@@ -175,17 +224,7 @@ export default function Parcels() {
           <Link to="../duengerarten" className="text-xs font-medium text-brand-700 underline">
             Düngerarten
           </Link>
-          <select
-            value={seasonYear}
-            onChange={(e) => setSeasonYear(Number(e.target.value))}
-            className="rounded border border-gray-300 px-2 py-1 text-sm"
-          >
-            {[CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1].map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+          <SeasonYearSelect value={seasonYear} onChange={setSeasonYear} />
           {canWrite && (
             <>
               <button
@@ -197,6 +236,15 @@ export default function Parcels() {
               >
                 {importing ? 'Übernehme…' : `Aus GELAN übernehmen (${seasonYear})`}
               </button>
+              {!ordering && parcels.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setOrdering(true)}
+                  className="min-h-11 rounded-lg border border-gray-300 px-3 text-sm font-medium text-gray-700 active:bg-gray-50"
+                >
+                  ↕ Reihenfolge ändern
+                </button>
+              )}
               <button
                 type="button"
                 onClick={openNew}
@@ -239,7 +287,19 @@ export default function Parcels() {
         </p>
       )}
 
-      {parcels.length > 0 && (
+      {ordering && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-50 p-3 text-sm text-brand-900">
+          <span>
+            Eigene Reihenfolge (für «eigene Reihenfolge» in Raster plus)
+            {canWrite ? ': mit ▲ ▼ verschieben.' : ' – ändern braucht das Recht, Parzellen zu bearbeiten.'}
+          </span>
+          <button type="button" onClick={() => setOrdering(false)} className="min-h-11 rounded-lg bg-brand-600 px-4 font-medium text-white">
+            Fertig
+          </button>
+        </div>
+      )}
+
+      {parcels.length > 0 && !ordering && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <QueryInput
@@ -259,7 +319,7 @@ export default function Parcels() {
       )}
 
       <ul className="space-y-2">
-        {shownParcels.map((p) => (
+        {(ordering ? orderedParcels : shownParcels).map((p, i, list) => (
           <li key={p.id} className="rounded-lg bg-white p-3 shadow-sm">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -283,7 +343,29 @@ export default function Parcels() {
                 </div>
                 {p.notes && <div className="mt-1 text-xs text-gray-500">{p.notes}</div>}
               </div>
-              {canWrite && (
+              {canWrite && ordering && (
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    disabled={moving || i === 0}
+                    onClick={() => void move(p, list[i - 1], 'up')}
+                    aria-label={`${p.name} nach oben`}
+                    className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-gray-300 text-lg disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    disabled={moving || i === list.length - 1}
+                    onClick={() => void move(p, list[i + 1], 'down')}
+                    aria-label={`${p.name} nach unten`}
+                    className="grid min-h-11 min-w-11 place-items-center rounded-lg border border-gray-300 text-lg disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+              )}
+              {canWrite && !ordering && (
                 <div className="flex shrink-0 flex-col items-end gap-0.5 sm:flex-row sm:gap-1">
                   <button
                     type="button"

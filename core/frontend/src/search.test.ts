@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { animalRank, functionHits, moduleFunctions, norm, textRank } from './search'
+import { animalRank, functionHits, functionPath, moduleFunctions, norm, textRank } from './search'
 
 describe('Suche über alles', () => {
   it('vereinfacht Umlaute und Satzzeichen', () => {
@@ -43,5 +43,13 @@ describe('Suche über alles', () => {
     expect(hits[0]).toMatchObject({ to: '/x/geburt', icon: '🐣', group: 'funktionen' })
     // nur der Modulname passt: alle Seiten, aber weiter unten
     expect(functionHits([m], 'modul x').every((h) => h.rank === 3)).toBe(true)
+  })
+
+  it('übernimmt absolute Ziele unverändert', () => {
+    expect(functionPath('x', 'geburt')).toBe('/x/geburt')
+    expect(functionPath('x', '')).toBe('/x')
+    expect(functionPath('x', '/livestock/schlachtungen')).toBe('/livestock/schlachtungen')
+    const m = { key: 'x', title: 'Modul X', icon: 'kuh', navItems: [], functions: [{ to: '/import', label: 'Datenimport' }] }
+    expect(functionHits([m], 'datenimport')[0]).toMatchObject({ to: '/import' })
   })
 })

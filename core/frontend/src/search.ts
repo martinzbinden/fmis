@@ -89,6 +89,12 @@ export function moduleFunctions(m: Pick<ModuleDescriptor, 'key' | 'title' | 'nav
   return [...out.values()].map((f) => ({ ...f, moduleKey: m.key, moduleTitle: m.title }))
 }
 
+/** Pfad einer Funktion: relative Ziele unter dem Modul, absolute (beginnt mit «/») unverändert. */
+export function functionPath(moduleKey: string, to: string): string {
+  if (to.startsWith('/')) return to
+  return `/${moduleKey}${to ? `/${to}` : ''}`
+}
+
 export function functionHits(modules: Pick<ModuleDescriptor, 'key' | 'title' | 'icon' | 'navItems' | 'pageTitles' | 'functions'>[], q: string): SearchHit[] {
   const hits: SearchHit[] = []
   for (const m of modules) {
@@ -103,7 +109,7 @@ export function functionHits(modules: Pick<ModuleDescriptor, 'key' | 'title' | '
         title: f.label,
         subtitle: m.title,
         icon: f.icon ?? m.icon,
-        to: `/${m.key}${f.to ? `/${f.to}` : ''}`,
+        to: functionPath(m.key, f.to),
         rank: own == null ? 3 : r,
       })
     }

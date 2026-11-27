@@ -227,6 +227,7 @@ export const TABLE_LABELS: Record<string, string> = {
   tracks: 'Spur', tank_events: 'Tanken', duty_people: 'Person', duty_types: 'Dienst', duty_absences: 'Abwesenheit', duty_shifts: 'Dienstplan',
   duty_templates: 'Dienstvorlage', duty_weeks: 'Dienstwoche', work_assignments: 'Arbeitsauftrag', duty_requests: 'Wunsch', duty_changes: 'Diensttausch', farm_numbers: 'Betriebsnummer',
   duty_companions: 'Begleitung', duty_tasks: 'Arbeit',
+  work_tasks: 'Geplante Arbeit', farm_journal: 'Betriebsjournal', photos: 'Foto', handover_items: 'Übergabe-Punkt', handover_checks: 'Übergabe erledigt',
   // Wiesenjournal
   parcels: 'Parzelle', paddocks: 'Weide', usage_entries: 'Nutzung', fertilizer_types: 'Dünger', fertilization_entries: 'Düngung',
   daily_farm_log: 'Tagesmeldung', weed_observations: 'Unkraut', sowing_details: 'Saat', auslauf_ausnahmen: 'Auslauf-Ausnahme', journal_einstellungen: 'Journal-Einstellung',

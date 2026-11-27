@@ -27,8 +27,9 @@ import AckerToggle from '../components/AckerToggle'
 import { categoryFilterSql, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import type { Paddock, Parcel, WeedObservation } from '../types'
 import { notifyError, errorText } from '@fmis/core/toast'
+import { useSeasonYear } from '../hooks/useSeasonYear'
+import SeasonYearSelect from '../components/SeasonYearSelect'
 
-const CURRENT_YEAR = new Date().getFullYear()
 
 async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean, showSmall: boolean) {
   const [paddocks, { rows: parcels }, { rows: tracks }, { rows: weedObservations }, { rows: fertRows }] = await Promise.all([
@@ -63,11 +64,20 @@ async function loadMapData(pg: PGlite, seasonYear: number, showAcker: boolean, s
   return { paddocks, parcels, tracks, weedObservations, fertilization }
 }
 
+/** Einmal-Parameter entfernen, die gewählte Saison (?jahr=) behalten. */
+function keepYear(p: URLSearchParams): URLSearchParams {
+  const next = new URLSearchParams()
+  const jahr = p.get('jahr')
+  if (jahr) next.set('jahr', jahr)
+  return next
+}
+
 export default function Map() {
   const [searchParams, setSearchParams] = useSearchParams()
   const db = useDb()
-  const focusParcelId = searchParams.get('parcel')
-  const [seasonYear] = useState(CURRENT_YEAR)
+  // ?parzelle= (Steckbrief, AGFF-Seiten) und ?parcel= (ältere Links)
+  const focusParcelId = searchParams.get('parzelle') ?? searchParams.get('parcel')
+  const [seasonYear, setSeasonYear] = useSeasonYear()
   const [showAcker] = useShowAcker()
   const [showSmall] = useShowSmall()
   const { data, refresh } = useQuery((pg) => loadMapData(pg, seasonYear, showAcker, showSmall), [seasonYear, showAcker, showSmall])
@@ -102,7 +112,7 @@ export default function Map() {
   // ?abdeckung=<Spur> (aus dem Tracking): Doppelt/Lücken zeigen; alte Links
   // (?fahrhilfe=1, ?plan=start, ?abschluss=1) führen in den Betrieb.
   useEffect(() => {
-    if (searchParams.get('fahrhilfe') === '1') setSearchParams({}, { replace: true })
+    if (searchParams.get('fahrhilfe') === '1') setSearchParams(keepYear, { replace: true })
   }, [searchParams, setSearchParams])
   const coverageRequested = useRef<string | null>(null)
   useEffect(() => {
@@ -111,7 +121,7 @@ export default function Map() {
     const t = tracks.find((x) => x.id === id)
     if (!t) return
     coverageRequested.current = id
-    setSearchParams({}, { replace: true })
+    setSearchParams(keepYear, { replace: true })
     void showCoverage(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, tracks])
@@ -310,7 +320,10 @@ export default function Map() {
     <div className="space-y-4 p-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Karte · Weidegänge {seasonYear}</h1>
-        <AckerToggle />
+        <div className="flex flex-wrap items-center gap-2">
+          <AckerToggle />
+          <SeasonYearSelect value={seasonYear} onChange={setSeasonYear} />
+        </div>
       </div>
       <p className="text-xs text-gray-500">
         Zeichne einen Weidegang direkt auf die Karte (Toolbar oben rechts). Jede Verschiebung des Zauns wird als neue

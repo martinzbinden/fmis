@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { instanceInfo } from './instance'
 import Release from './Release'
 import MailSettings from './MailSettings'
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import {
   ALL_PERMISSIONS,
   assignRole,
@@ -37,6 +37,18 @@ const STATUS_COLOR: Record<AdminUser['status'], string> = {
 
 /** Verwaltung mit Untermenü: Module und Benutzer. Schalter und Auswahl
  * ändern zunächst nur den Entwurf; erst «Speichern» führt die Änderungen aus. */
+/** Meldung für Benutzer ohne Verwaltungsrecht (statt stummer Umleitung). */
+export function KeinZugriff() {
+  return (
+    <div className="p-6 text-center text-gray-600">
+      <p>Kein Zugriff – nur für Admins.</p>
+      <Link to="/dashboard" className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-white px-4 font-semibold text-brand-700 shadow-sm">
+        Zur Übersicht
+      </Link>
+    </div>
+  )
+}
+
 export default function Admin() {
   const canManageUsers = useHasPermission('core:users:manage')
   const canManageModules = useHasPermission('core:modules:manage')
@@ -55,18 +67,19 @@ export default function Admin() {
   }, [anyDirty])
 
   if (!canManageUsers && !canManageModules) {
-    return <p className="p-6 text-center text-gray-500">Kein Zugriff — nur für Admins.</p>
+    return <KeinZugriff />
   }
 
   const tab = ({ isActive }: { isActive: boolean }) =>
-    `flex min-h-11 flex-1 items-center justify-center rounded-lg px-4 text-sm font-semibold ${isActive ? 'bg-brand-700 text-white' : 'bg-white text-gray-700 shadow-sm'}`
+    `flex min-h-11 flex-1 items-center justify-center whitespace-nowrap rounded-lg px-3 text-sm font-semibold ${isActive ? 'bg-brand-700 text-white' : 'bg-white text-gray-700 shadow-sm'}`
   const guard = (e: React.MouseEvent) => {
     if (anyDirty && !window.confirm('Ungespeicherte Änderungen verwerfen?')) e.preventDefault()
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4 pb-28">
-      <nav className="flex gap-2" aria-label="Verwaltung">
+      {/* Handy: zwei Reiter je Zeile statt Querlaufen */}
+      <nav className="grid grid-cols-2 gap-2 sm:flex" aria-label="Verwaltung">
         {canManageModules && (
           <NavLink to="/verwaltung/module" onClick={guard} className={tab}>
             🧩 Module

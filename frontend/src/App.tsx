@@ -5,7 +5,7 @@ import { AuthUserProvider, useHasPermission } from '@fmis/core/AuthContext'
 import { isLoggedIn, logout, recheckSso } from '@fmis/core/auth'
 import Login from '@fmis/core/Login'
 import VerifyToken from '@fmis/core/VerifyToken'
-import CoreAdmin from '@fmis/core/Admin'
+import CoreAdmin, { KeinZugriff } from '@fmis/core/Admin'
 import Layout from '@fmis/core/Layout'
 import Toaster from '@fmis/core/Toaster'
 import ViewAsBar from '@fmis/core/ViewAsBar'
@@ -255,16 +255,13 @@ function ModuleRoute({ mod, onLoggedOut }: { mod: ModuleDescriptor; onLoggedOut:
   )
 }
 
-/** /admin nur mit Verwaltungsrechten. */
+/** /verwaltung nur mit Verwaltungsrechten; sonst Meldung mit Weg zur Übersicht. */
 function CoreShell({ children, onLoggedOut }: { children: ReactNode; onLoggedOut: () => void }) {
   const canManageUsers = useHasPermission('core:users:manage')
   const canManageModules = useHasPermission('core:modules:manage')
-  if (!canManageUsers && !canManageModules) {
-    return <Navigate to="/dashboard" replace />
-  }
   return (
     <PageShell title="Verwaltung" onLoggedOut={onLoggedOut}>
-      {children}
+      {canManageUsers || canManageModules ? children : <KeinZugriff />}
     </PageShell>
   )
 }

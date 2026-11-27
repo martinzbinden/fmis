@@ -29,8 +29,9 @@ import { matchesVirtualCategory, parcelMatchesChip, type FilterChip } from '../l
 import { summarizeParcels } from '../lib/parcelSummary'
 import type { AnimalCategory, DailyFarmLog, FertilizationEntry, Parcel, UsageEntry } from '../types'
 import { isoDate, num, todayIso } from '../lib/format'
+import { useSeasonYear } from '../hooks/useSeasonYear'
+import SeasonYearSelect from '../components/SeasonYearSelect'
 
-const CURRENT_YEAR = new Date().getFullYear()
 
 // ganzes Jahr: Weidegänge und Gülle gibt es auch im Winter
 function seasonDays(year: number): string[] {
@@ -70,7 +71,7 @@ async function loadGridData(pg: PGlite, seasonYear: number, from: string, to: st
 
 export default function JournalGridPage() {
   const navigate = useNavigate()
-  const [seasonYear, setSeasonYear] = useState(CURRENT_YEAR)
+  const [seasonYear, setSeasonYear] = useSeasonYear()
   const days = useMemo(() => seasonDays(seasonYear), [seasonYear])
   const from = days[0]
   const to = days[days.length - 1]
@@ -245,17 +246,7 @@ export default function JournalGridPage() {
           >
             Σ Zusammenfassung
           </button>
-          <select
-            value={seasonYear}
-            onChange={(e) => setSeasonYear(Number(e.target.value))}
-            className="rounded border border-gray-300 px-2 py-1 text-sm"
-          >
-            {[CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1].map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+          <SeasonYearSelect value={seasonYear} onChange={setSeasonYear} />
         </div>
       </div>
 

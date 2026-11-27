@@ -41,6 +41,13 @@ function monthLabel(iso: string): string {
   return d.toLocaleDateString('de-CH', { month: 'short' })
 }
 
+/** Tag der angetippten Zelle (data-tag). Ein Klick-Handler je Zeile statt eines Knopfs je Zelle: das Raster einer
+ * Saison hätte sonst Zehntausende Knöpfe (Parzellen × 365 Tage) und baut am Handy spürbar langsam auf. */
+function cellDate(e: React.MouseEvent): string | null {
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-tag]')
+  return el && e.currentTarget.contains(el) ? (el.dataset.tag ?? null) : null
+}
+
 function isWeekend(iso: string): boolean {
   const dow = new Date(iso + 'T00:00:00').getDay()
   return dow === 0 || dow === 6
@@ -174,7 +181,13 @@ export default function JournalGrid({
                 📋
               </span>
             </div>
-            <div className="flex">
+            <div
+              className="flex cursor-pointer"
+              onClick={(e) => {
+                const d = cellDate(e)
+                if (d) onCellClick(p, d)
+              }}
+            >
               {days.map((d) => {
                 const usage = usageByDay[p.id]?.[d] ?? []
                 const fert = fertByDay[p.id]?.[d] ?? []
@@ -184,17 +197,14 @@ export default function JournalGrid({
                   ...fert.map((f) => `${f.duengung_code}${f.amount != null ? ` ${f.amount} ${f.unit}` : ''}`),
                 ].join('\n')
                 const { isFirstOfMonth } = shortDay(d)
+                const cls = `flex shrink-0 flex-col items-center justify-center overflow-hidden hover:bg-brand-50 ${
+                  isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
+                } ${d === today ? 'bg-yellow-200/60' : isWeekend(d) ? 'bg-gray-50' : ''}`
+                const style = { width: CELL_WIDTH, height: ROW_HEIGHT }
+                // Leere Zelle: kein eigener Knopf (Klick geht über die Zeile, siehe cellDate)
+                if (!badge && fert.length === 0) return <div key={d} data-tag={d} className={cls} style={style} />
                 return (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => onCellClick(p, d)}
-                    title={title || undefined}
-                    className={`flex shrink-0 flex-col items-center justify-center overflow-hidden hover:bg-brand-50 ${
-                      isFirstOfMonth ? 'border-l-2 border-gray-300' : 'border-l border-gray-100'
-                    } ${d === today ? 'bg-yellow-200/60' : isWeekend(d) ? 'bg-gray-50' : ''}`}
-                    style={{ width: CELL_WIDTH, height: ROW_HEIGHT }}
-                  >
+                  <button key={d} type="button" data-tag={d} title={title || undefined} aria-label={`${p.name}, ${d}: ${title}`} className={cls} style={style}>
                     {badge && (
                       <span className={`font-bold leading-tight text-brand-700 ${badge.length > 2 ? 'text-[10px]' : 'text-[11px]'}`}>
                         {badge}
@@ -235,7 +245,13 @@ export default function JournalGrid({
             >
               {row.label}
             </div>
-            <div className="flex">
+            <div
+              className="flex cursor-pointer"
+              onClick={(e) => {
+                const d = cellDate(e)
+                if (d) onFarmCellClick(d)
+              }}
+            >
               {days.map((d) => {
                 const log = dailyLogByDate[d]
                 let content: string | null = null
@@ -252,14 +268,18 @@ export default function JournalGrid({
                 // Werte kursiv andeuten — lokale Eingabe (Standard) bleibt
                 // normal; siehe DailyLogEditor.tsx.
                 const fromGeodata = (row.key === 'wetter_code' || row.key === 'niederschlag_mm') && log?.wetter_quelle === 'geodaten'
+                const cls = `shrink-0 border-l border-gray-100 text-center text-[10px] ${herdMark ? 'font-semibold text-emerald-700' : 'text-gray-600'} hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`
+                const style = { width: CELL_WIDTH, height: FARM_ROW_HEIGHT }
+                // Leere Zelle: kein eigener Knopf (Klick geht über die Zeile)
+                if (content == null || content === '') return <div key={d} data-tag={d} className={cls} style={style} />
                 return (
                   <button
                     key={d}
                     type="button"
-                    onClick={() => onFarmCellClick(d)}
+                    data-tag={d}
                     title={fromGeodata ? 'Automatisch vom Geodatenserver' : herdMark && herdCat ? `Aus den Herden:\n${categoryTitle(herdCat)}` : undefined}
-                    className={`shrink-0 border-l border-gray-100 text-center text-[10px] ${herdMark ? 'font-semibold text-emerald-700' : 'text-gray-600'} hover:bg-brand-50 ${fromGeodata ? 'italic text-sky-700' : ''}`}
-                    style={{ width: CELL_WIDTH, height: FARM_ROW_HEIGHT }}
+                    className={cls}
+                    style={style}
                   >
                     {content}
                   </button>

@@ -13,29 +13,20 @@ import { fmtArea, fmtDate, PARCEL_CATEGORY_LABEL } from '../lib/format'
 import { isSmallParcel, useShowAcker, useShowSmall } from '../hooks/useShowAcker'
 import AckerToggle from '../components/AckerToggle'
 import { errorText } from '@fmis/core/toast'
+import { useSeasonYear } from '../hooks/useSeasonYear'
+import SeasonYearSelect from '../components/SeasonYearSelect'
 
-const CURRENT_YEAR = new Date().getFullYear()
 type Tab = 'naehrstoffe' | 'weidegaenge'
 
 export default function Report() {
-  const [seasonYear, setSeasonYear] = useState(CURRENT_YEAR)
+  const [seasonYear, setSeasonYear] = useSeasonYear()
   const [tab, setTab] = useState<Tab>('naehrstoffe')
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Jahresauswertung {seasonYear}</h1>
-        <select
-          value={seasonYear}
-          onChange={(e) => setSeasonYear(Number(e.target.value))}
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
-        >
-          {[CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1].map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+        <SeasonYearSelect value={seasonYear} onChange={setSeasonYear} />
       </div>
 
       <div className="flex gap-1 border-b">

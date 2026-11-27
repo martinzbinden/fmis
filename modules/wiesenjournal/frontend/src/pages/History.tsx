@@ -4,6 +4,7 @@ import { TABLE_LABELS } from '@fmis/core/undo'
 import { SessionUndoList } from '@fmis/core/UndoBar'
 import { restoreRowState } from '../db/write'
 import { useServerHistory } from '@fmis/core/historyApi'
+import HistoryLoadMore from '@fmis/core/HistoryLoadMore'
 import { fmtDateTime } from '../lib/format'
 import type { DataHistory, HistoryAction } from '../types'
 
@@ -64,7 +65,8 @@ function describeEntry(entry: DataHistory): string {
 }
 
 export default function History() {
-  const { entries: data, loading, error, reload } = useServerHistory('wiesenjournal')
+  const history = useServerHistory('wiesenjournal')
+  const { entries: data, loading, error, reload } = history
   const [tableFilter, setTableFilter] = useState('')
   const [search, setSearch] = useState('')
 
@@ -92,7 +94,7 @@ export default function History() {
         <select
           value={tableFilter}
           onChange={(e) => setTableFilter(e.target.value)}
-          className="rounded border border-gray-300 px-3 py-2 text-sm"
+          className="min-h-11 min-w-0 rounded border border-gray-300 px-3 py-2 text-sm"
         >
           <option value="">Alle Bereiche</option>
           {availableTables.map((t) => (
@@ -117,7 +119,7 @@ export default function History() {
           <p className="mt-1 text-xs text-amber-700">
             Der Verlauf wird vom Server gelesen und ist deshalb offline nicht verfügbar.
           </p>
-          <button type="button" onClick={reload} className="mt-2 rounded bg-amber-700 px-3 py-1 text-xs font-semibold text-white">
+          <button type="button" onClick={reload} className="mt-2 min-h-11 rounded bg-amber-700 px-3 text-xs font-semibold text-white">
             Nochmals versuchen
           </button>
         </div>
@@ -148,6 +150,7 @@ export default function History() {
           </li>
         ))}
       </ul>
+      <HistoryLoadMore history={history} />
     </div>
   )
 }

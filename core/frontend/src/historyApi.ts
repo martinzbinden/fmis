@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_URL, getToken } from './auth'
 import { errorText } from './toast'
 
@@ -50,38 +50,87 @@ export async function fetchHistory(
  * Verlauf, und eine leere Liste ohne Erklärung sähe aus, als wäre nie etwas
  * geändert worden.
  */
-export function useServerHistory(
-  moduleKey: string,
-  limit = 300,
-): { entries: HistoryEntry[] | null; loading: boolean; error: string | null; reload: () => void } {
+export interface ServerHistory {
+  entries: HistoryEntry[] | null
+  loading: boolean
+  error: string | null
+  reload: () => void
+  /** Ältere Einträge nachladen (vor dem ältesten bisher geladenen). */
+  loadMore: () => void
+  /** Der letzte Abruf war voll – es gibt vermutlich ältere Einträge. */
+  hasMore: boolean
+  loadingMore: boolean
+  /** Fehler beim Nachladen (die bisherige Liste bleibt stehen). */
+  moreError: string | null
+}
+
+/** Hängt ältere Einträge an, ohne Doppelte (gleiche id). */
+export function appendOlder(current: HistoryEntry[], older: HistoryEntry[]): HistoryEntry[] {
+  const seen = new Set(current.map((e) => e.id))
+  return [...current, ...older.filter((e) => !seen.has(e.id))]
+}
+
+export function useServerHistory(moduleKey: string, limit = 300): ServerHistory {
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState<string | null>(null)
+  // Abrufe einer älteren Runde (nach reload/Modulwechsel) verwerfen
+  const round = useRef(0)
 
   const reload = useCallback(() => setAttempt((n) => n + 1), [])
 
   useEffect(() => {
     let active = true
+    const mine = ++round.current
     setLoading(true)
+    setMoreError(null)
+    setLoadingMore(false)
     fetchHistory(moduleKey, { limit })
       .then((rows) => {
-        if (!active) return
+        if (!active || round.current !== mine) return
         setEntries(rows)
+        setHasMore(rows.length >= limit)
         setError(null)
       })
       .catch((err: unknown) => {
-        if (!active) return
+        if (!active || round.current !== mine) return
         setEntries(null)
+        setHasMore(false)
         setError(errorText(err))
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (active && round.current === mine) setLoading(false)
       })
     return () => {
       active = false
     }
   }, [moduleKey, limit, attempt])
 
-  return { entries, loading, error, reload }
+  const oldest = entries && entries.length > 0 ? entries[entries.length - 1].changed_at : null
+
+  const loadMore = useCallback(() => {
+    if (!oldest || loadingMore) return
+    const mine = round.current
+    setLoadingMore(true)
+    setMoreError(null)
+    // Der Server blättert über «changed_at < before» (kein OFFSET)
+    fetchHistory(moduleKey, { limit, before: oldest })
+      .then((rows) => {
+        if (round.current !== mine) return
+        setEntries((cur) => appendOlder(cur ?? [], rows))
+        setHasMore(rows.length >= limit)
+      })
+      .catch((err: unknown) => {
+        if (round.current === mine) setMoreError(errorText(err))
+      })
+      .finally(() => {
+        if (round.current === mine) setLoadingMore(false)
+      })
+  }, [moduleKey, limit, oldest, loadingMore])
+
+  return { entries, loading, error, reload, loadMore, hasMore, loadingMore, moreError }
 }

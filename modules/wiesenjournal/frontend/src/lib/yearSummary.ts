@@ -28,7 +28,7 @@ export async function wiesenjournalYearSummary(year: number): Promise<YearSectio
   return {
     title: 'Wiesenjournal',
     icon: 'wiese',
-    to: '/wiesenjournal',
+    to: `/wiesenjournal?jahr=${year}`,
     figures: [
       { label: 'Schnitte', value: fmtNum(cuts.length), detail: 'Einträge eingrasen, Silage, Dürrfutter' },
       { label: 'Weide', value: fmtNum(grazing.length), detail: 'Einträge' },
