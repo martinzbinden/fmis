@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { localToday } from '../lib/duty'
-import { absenceUnits, dayOfYear, daysInYear, overlaps, planEntries, vacationDays, type PlanEntry } from '../lib/vacationPlan'
+import { absenceUnits, dayOfYear, daysInYear, overlaps, planEntries, vacationDays, type Overlap, type PlanEntry } from '../lib/vacationPlan'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest } from '../types'
 
 const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
 const dm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`
 const span = (a: string, b: string) => (a === b ? dm(a) : `${dm(a)}–${dm(b)}`)
+// Ein Tag ist am Handy unter 1 px breit: Balken mindestens so breit, dass man sie sieht und antippen kann
+const MIN_BAR = 8
 
 /** Ferienplan eines Jahres: je Person eine Zeile mit Balken (Farbe = Art, gestrichelt = Wunsch), darüber eine Zeile
  * «Überschneidung» (rot: mindestens zwei Personen weg). Darunter die Überschneidungen als Liste und die Ferientage je
@@ -27,6 +29,7 @@ export default function VacationPlan({
 }) {
   const [withSchool, setWithSchool] = useState(true)
   const [picked, setPicked] = useState<PlanEntry | null>(null)
+  const [pickedClash, setPickedClash] = useState<Overlap | null>(null)
   const entries = useMemo(() => planEntries(absences, requests, year, new Set(people.filter((p) => !p.deleted_at).map((p) => p.id))), [absences, requests, year, people])
   const unitOf = useMemo(() => absenceUnits(people), [people])
   const clash = useMemo(() => overlaps(entries, { withSchool, unitOf }), [entries, withSchool, unitOf])
@@ -66,16 +69,25 @@ export default function VacationPlan({
         {/* Überschneidungen */}
         <div className="flex items-center border-b border-gray-200 py-0.5">
           <div className="w-20 shrink-0 truncate pr-1 font-semibold text-red-800 sm:w-28">Überschneidung</div>
-          <div className="relative h-4 flex-1 rounded bg-gray-50">
+          <div className="relative h-6 flex-1 rounded bg-gray-50">
             {grid}
-            {clash.map((o) => (
-              <span
-                key={o.from}
-                className="absolute inset-y-0 rounded-sm bg-red-500"
-                style={{ left: pct(o.from), width: width(o.from, o.to), minWidth: 2 }}
-                title={`${span(o.from, o.to)}: ${o.who.map((w) => `${name(w.personId)} (${kindLabel[w.kind]}${w.pending ? ', Wunsch' : ''})`).join(', ')}`}
-              />
-            ))}
+            {clash.map((o) => {
+              const text = `${span(o.from, o.to)}: ${o.who.map((w) => `${name(w.personId)} (${kindLabel[w.kind]}${w.pending ? ', Wunsch' : ''})`).join(', ')}`
+              return (
+                <button
+                  key={o.from}
+                  type="button"
+                  onClick={() => {
+                    setPickedClash(pickedClash?.from === o.from ? null : o)
+                    setPicked(null)
+                  }}
+                  className={`absolute inset-y-0 rounded-sm bg-red-500 ${pickedClash?.from === o.from ? 'ring-2 ring-gray-900' : ''}`}
+                  style={{ left: pct(o.from), width: width(o.from, o.to), minWidth: MIN_BAR }}
+                  title={text}
+                  aria-label={`Überschneidung ${text}`}
+                />
+              )
+            })}
           </div>
         </div>
         {rows.map((p) => (
@@ -91,12 +103,15 @@ export default function VacationPlan({
                   <button
                     key={`${e.from}${i}`}
                     type="button"
-                    onClick={() => setPicked(picked === e ? null : e)}
+                    onClick={() => {
+                      setPicked(picked === e ? null : e)
+                      setPickedClash(null)
+                    }}
                     className={`absolute inset-y-0.5 rounded-sm ${picked === e ? 'ring-2 ring-gray-900' : ''}`}
                     style={{
                       left: pct(e.from),
                       width: width(e.from, e.to),
-                      minWidth: 3,
+                      minWidth: MIN_BAR,
                       ...(e.pending ? { border: `1.5px dashed ${kindColor[e.kind]}`, background: 'white' } : { background: kindColor[e.kind] }),
                     }}
                     title={`${p.name}: ${kindLabel[e.kind]} ${span(e.from, e.to)}${e.pending ? ' (Wunsch, nicht bestätigt)' : ''}${e.notes ? ` · ${e.notes}` : ''}`}
@@ -108,6 +123,12 @@ export default function VacationPlan({
         ))}
       </div>
 
+      {pickedClash && (
+        <p className="rounded-lg bg-red-50 px-2 py-1.5 text-sm text-red-900">
+          <span className="font-semibold">Überschneidung {span(pickedClash.from, pickedClash.to)}</span>:{' '}
+          {pickedClash.who.map((w) => `${name(w.personId)} (${kindLabel[w.kind]}${w.pending ? ', Wunsch' : ''})`).join(', ')}
+        </p>
+      )}
       {picked && (
         <p className="rounded-lg bg-gray-50 px-2 py-1.5 text-sm text-gray-800">
           <span className="font-semibold">{name(picked.personId)}</span>: {kindLabel[picked.kind]} {span(picked.from, picked.to)}

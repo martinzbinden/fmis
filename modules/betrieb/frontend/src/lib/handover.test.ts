@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applies, itemsFor, type HandoverCheck, type HandoverItem } from './handover'
+import { applies, handoverHistory, itemsFor, type HandoverCheck, type HandoverItem } from './handover'
 
 const item = (p: Partial<HandoverItem>): HandoverItem => ({
   id: 'i', text: 'Kontrolle ob saugt', targets: [], type_id: null, animal: 'Schafe', from_date: '2026-11-22', until_date: null, recurring: false,
@@ -32,5 +32,25 @@ describe('Übergabe zwischen den Diensten', () => {
     expect(itemsFor([i], [c], { date: '2026-11-22', type: morgen })[0].check).not.toBeNull()
     expect(itemsFor([i], [c], { date: '2026-11-22', type: abend })[0].check).toBeNull()
     expect(itemsFor([i], [c], { date: '2026-11-23', type: morgen })[0].check).toBeNull()
+  })
+})
+
+describe('Übergabe: Verlauf', () => {
+  it('abgehakte und beendete Punkte samt Bemerkung, neueste zuerst; ältere und offene ohne Haken nicht', () => {
+    const flasche = item({ id: 'f', recurring: true, text: 'Milch mit Flasche geben', closed_at: '2026-11-25T18:00:00Z' })
+    const saugt = item({ id: 's' })
+    const offen = item({ id: 'o', text: 'Fieber messen' })
+    const alt = item({ id: 'x', closed_at: '2026-11-01T08:00:00Z' })
+    const checks = [
+      check({ id: 'c1', item_id: 'f', date: '2026-11-24', done_at: '2026-11-24T07:00:00Z', note: '150 ml' }),
+      check({ id: 'c2', item_id: 'f', date: '2026-11-25', done_at: '2026-11-25T07:00:00Z' }),
+      check({ id: 'c3', item_id: 's', date: '2026-11-26', done_at: '2026-11-26T06:30:00Z', note: 'saugt gut' }),
+      check({ id: 'c4', item_id: 's', date: '2026-11-02', done_at: '2026-11-02T06:30:00Z' }),
+    ]
+    const h = handoverHistory([flasche, saugt, offen, alt], checks, '2026-11-14')
+    expect(h.map((e) => e.item.id)).toEqual(['s', 'f'])
+    expect(h[0].checks.map((c) => c.note)).toEqual(['saugt gut'])
+    expect(h[1].checks.map((c) => c.id)).toEqual(['c2', 'c1'])
+    expect(h[1].last).toBe('2026-11-25T18:00:00Z')
   })
 })

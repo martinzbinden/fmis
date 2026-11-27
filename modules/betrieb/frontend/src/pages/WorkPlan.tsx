@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { getCurrentUserEmail } from '@fmis/core/auth'
+import { undoAction } from '@fmis/core/undo'
+import { errorText, notifyError } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
 import { addDaysIso, fmtArea, fmtDate, num, todayIso } from '../lib/format'
 import { calibrate, fieldAxis, planSpreading } from '../lib/slurry'
@@ -16,18 +18,21 @@ import PlanCreateDialog from '../components/PlanCreateDialog'
 import CompletePlanDialog from '../components/CompletePlanDialog'
 import TaskCreateDialog from '../components/TaskCreateDialog'
 import FollowUpDialog from '../components/FollowUpDialog'
-import { CompleteTaskDialog, FarmJournalList, WorkTaskCard } from '../components/WorkTaskViews'
-import { followUpOf, loadFarmJournal, loadWorkTasks, type FollowUpOrigin, type WorkTask } from '../lib/workTasks'
+import { CancelledTaskList, CompleteTaskDialog, FarmJournalEditDialog, FarmJournalList, WorkTaskCard } from '../components/WorkTaskViews'
+import { followUpOf, loadFarmJournal, loadWorkTasks, oldestFarmJournalDate, type FarmJournalEntry, type FollowUpOrigin, type WorkTask } from '../lib/workTasks'
+import { hasOlderJournal, JOURNAL_STEP_DAYS, splitOverdue } from '../lib/workPlanView'
 import { photoIdsByRef } from '../lib/photoRefs'
 import type { Machine, Track } from '../types'
 
 const UNIT: Record<string, string> = { m3: 'm³', t: 't', kg: 'kg' }
 
-async function load(pg: PGlite) {
-  // Überfällige Planungen der letzten zwei Wochen mit anzeigen.
+// Geplante Parzellen-Arbeiten ohne Untergrenze: auch lange überfällige bleiben sichtbar (Block «Überfällig»).
+const PLAN_FROM = '2000-01-01'
+
+async function load(pg: PGlite, journalSince: string) {
   const active = getActivePlan()
   const [tasks, machines, tanks, planTracks] = await Promise.all([
-    loadPlan(addDaysIso(todayIso(), -14)),
+    loadPlan(PLAN_FROM),
     loadMachines(pg),
     pg.query<Record<string, unknown>>('select * from tank_events where deleted_at is null order by event_at'),
     // Spuren seit Start der laufenden Ausführung (Fortschritt, Fässer)
@@ -45,9 +50,11 @@ async function load(pg: PGlite) {
   }
   const planTanks = planTracks.length ? await loadTrackTanks(pg, planTracks.map((t) => t.id)) : []
   // Arbeiten an Tieren, Gebäuden, Maschinen, Brennholz (lib/workTasks.ts) und das Betriebsjournal
-  const [work, journal, people] = await Promise.all([
+  const [work, cancelled, journal, journalOldest, people] = await Promise.all([
     loadWorkTasks(pg),
-    loadFarmJournal(pg, addDaysIso(todayIso(), -90)),
+    loadWorkTasks(pg, 'abgesagt', 50),
+    loadFarmJournal(pg, journalSince),
+    oldestFarmJournalDate(pg),
     pg.query<{ id: string; name: string }>('select id, name from duty_people where deleted_at is null').then((r) => r.rows),
   ])
   const origins = work.flatMap((w) => {
@@ -65,7 +72,7 @@ async function load(pg: PGlite) {
     for (const r of rows) originTitles.set(r.id, r.title)
   }
   const photos = await photoIdsByRef(pg, [...work.map((w) => w.id), ...journal.map((j) => j.id), ...journal.flatMap((j) => (j.task_id ? [j.task_id] : [])), ...origins])
-  return { tasks, machines, flow, planTracks, planTanks, work, journal, people, photos, originTitles }
+  return { tasks, machines, flow, planTracks, planTanks, work, cancelled, journal, journalOldest, people, photos, originTitles }
 }
 
 function weekday(iso: string): string {
@@ -241,7 +248,10 @@ function TaskCard({
 /** Arbeitsplan aus der Planung im Journal: je Tag, was wo zu tun ist, mit
  * Menge und Anzahl Fässer — und dem Start der GPS-Aufzeichnung. */
 export default function WorkPlan() {
-  const { data, loading, refresh } = useQuery(load, [])
+  // Betriebsjournal: zuerst 90 Tage, «ältere laden» je weitere 90
+  const [journalDays, setJournalDays] = useState(JOURNAL_STEP_DAYS)
+  const journalSince = addDaysIso(todayIso(), -journalDays)
+  const { data, loading, refresh } = useQuery((pg) => load(pg, journalSince), [journalSince])
   const canTrack = useHasPermission('betrieb:tracking:write')
   // Planen und Abschliessen schreiben Journal-Einträge (Nutzung/Düngung)
   const canFert = useHasPermission('wiesenjournal:duengung:write')
@@ -252,6 +262,10 @@ export default function WorkPlan() {
   // Parzellen-Arbeit aus dem Dialog «Arbeit planen» (Suche): Vorwahl für den Wiesenjournal-Dialog
   const [parcelPlan, setParcelPlan] = useState<{ workKey: string; parcels: string[]; date: string } | null>(null)
   const [completingWork, setCompletingWork] = useState<WorkTask | null>(null)
+  const [editingWork, setEditingWork] = useState<WorkTask | null>(null)
+  const [editingJournal, setEditingJournal] = useState<FarmJournalEntry | null>(null)
+  // Hinweis nach dem Absagen einer Shop-Arbeit
+  const [notice, setNotice] = useState<string | null>(null)
   const [doneNowId, setDoneNowId] = useState<string | null>(null)
   const [doneMsg, setDoneMsg] = useState<string | null>(null)
   const [followUp, setFollowUp] = useState<FollowUpOrigin | null>(null)
@@ -308,10 +322,12 @@ export default function WorkPlan() {
   }
 
   const workDate = (w: WorkTask) => w.planned_date ?? today
-  const dates = useMemo(() => [...new Set([...(data?.tasks ?? []).map((t) => t.date), ...(data?.work ?? []).map(workDate)])].sort(), [data, today])
+  // Parzellen-Planungen älter als 14 Tage: eigener Block «Überfällig», nicht in der Tagesauswahl
+  const { current: planCurrent, overdue: planOverdue } = useMemo(() => splitOverdue(data?.tasks ?? [], today), [data, today])
+  const dates = useMemo(() => [...new Set([...planCurrent.map((t) => t.date), ...(data?.work ?? []).map(workDate)])].sort(), [planCurrent, data, today])
   const [chosen, setChosen] = useState<string | null>(null)
   const date = chosen ?? dates.find((d) => d >= today) ?? dates.at(-1) ?? null
-  const tasks = (data?.tasks ?? []).filter((t) => t.date === date)
+  const tasks = planCurrent.filter((t) => t.date === date)
   const work = (data?.work ?? []).filter((w) => workDate(w) === date)
   const view = params.get('ansicht') === 'journal' ? 'journal' : 'plan'
   const setView = (v: 'plan' | 'journal') =>
@@ -333,6 +349,12 @@ export default function WorkPlan() {
       setDoneNowId(null)
     }
   }, [doneNowId, data])
+
+  function removePlan(t: PlanTask) {
+    void undoAction(`Plan gelöscht: ${t.title}`, () => deletePlanTask(t))
+      .then(refresh)
+      .catch((e: unknown) => notifyError(errorText(e)))
+  }
 
   function start(task: PlanTask, machine: Machine | null, tractor: Machine | null) {
     record({
@@ -369,8 +391,28 @@ export default function WorkPlan() {
           </button>
         ))}
       </div>
-      {doneMsg && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-900">✓ Eingetragen: {doneMsg}</p>}
-      {view === 'journal' && data && <FarmJournalList entries={data.journal} photos={data.photos} onFollowUp={canWork ? setFollowUp : undefined} />}
+      {doneMsg && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-900">✓ {doneMsg}</p>}
+      {notice && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          <span className="flex-1">{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} className="-my-1 grid min-h-11 min-w-11 place-items-center rounded-lg" aria-label="Hinweis schliessen">
+            ✕
+          </button>
+        </div>
+      )}
+      {view === 'journal' && data && (
+        <>
+          <FarmJournalList entries={data.journal} photos={data.photos} onFollowUp={canWork ? setFollowUp : undefined} onEdit={canWork ? setEditingJournal : undefined} />
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
+            <span>seit {fmtDate(journalSince)}</span>
+            {hasOlderJournal(data.journalOldest, journalSince) && (
+              <button type="button" onClick={() => setJournalDays((d) => d + JOURNAL_STEP_DAYS)} disabled={loading} className="min-h-11 rounded-lg border border-gray-300 bg-white px-3 text-gray-800 disabled:opacity-40">
+                ältere laden ({JOURNAL_STEP_DAYS} Tage)
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {view === 'plan' && active && (
         <div className={`space-y-2 rounded-lg p-3 text-sm ${recording ? 'bg-green-50 text-green-900' : 'bg-amber-50 text-amber-900'}`}>
@@ -414,7 +456,7 @@ export default function WorkPlan() {
       )}
 
       {loading && !data && <p className="text-center text-gray-500">Lädt…</p>}
-      {view === 'plan' && data && dates.length === 0 && (
+      {view === 'plan' && data && dates.length === 0 && planOverdue.length === 0 && (
         <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">
           Nichts geplant. Mit «+ Arbeit planen» hier planen — oder im Raster einen Tag ab heute öffnen und «Arbeit planen» wählen.
         </p>
@@ -456,7 +498,7 @@ export default function WorkPlan() {
             onFollowUp={setFollowUp}
             canWrite={canWork}
             onComplete={() => setCompletingWork(w)}
-            onChanged={refresh}
+            onEdit={() => setEditingWork(w)}
           />
         ))}
       {view === 'plan' && tasks.map((t) => (
@@ -469,9 +511,32 @@ export default function WorkPlan() {
           canWrite={canWrite}
           onStart={(m, tr) => start(t, m, tr)}
           onComplete={() => setCompleting(t)}
-          onDelete={() => void deletePlanTask(t).then(refresh)}
+          onDelete={() => removePlan(t)}
         />
       ))}
+      {view === 'plan' && planOverdue.length > 0 && (
+        <details className="rounded-lg border border-amber-300 bg-amber-50">
+          <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold text-amber-900">Überfällig ({planOverdue.length}) — geplant vor mehr als 14 Tagen</summary>
+          <div className="space-y-2 p-2">
+            {planOverdue.map((t) => (
+              <div key={t.key} className="space-y-1">
+                <div className="px-1 text-xs font-medium text-amber-900">geplant {fmtDate(t.date)}</div>
+                <TaskCard
+                  flow={data?.flow ?? new Map()}
+                  task={t}
+                  machines={data?.machines ?? []}
+                  canTrack={false}
+                  canWrite={canWrite}
+                  onStart={() => undefined}
+                  onComplete={() => setCompleting(t)}
+                  onDelete={() => removePlan(t)}
+                />
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      {view === 'plan' && data && <CancelledTaskList tasks={data.cancelled} canWrite={canWork} onReopened={(t) => (setChosen(t.planned_date ?? today), setDoneMsg(`Wieder offen: ${t.title}`), refresh())} />}
 
       {creating && (
         <TaskCreateDialog
@@ -488,6 +553,37 @@ export default function WorkPlan() {
           onDoneNow={(id) => {
             setCreating(false)
             setDoneNowId(id)
+            refresh()
+          }}
+        />
+      )}
+      {editingWork && (
+        <TaskCreateDialog
+          editing={editingWork}
+          onClose={() => setEditingWork(null)}
+          onSaved={(d) => {
+            setEditingWork(null)
+            setChosen(d)
+            setDoneMsg(`Geändert: ${editingWork.title}`)
+            refresh()
+          }}
+          onParcelWork={() => setEditingWork(null)}
+          onDoneNow={() => setEditingWork(null)}
+          onCancelled={(t, fromShop) => {
+            setEditingWork(null)
+            setDoneMsg(`Abgesagt: ${t.title}`)
+            setNotice(fromShop ? `Anfrage im Shop ablehnen: «${t.title}» kam aus dem Shop — der Shop erfährt von der Absage nichts. Kontaktdaten sind hier entfernt.` : null)
+            refresh()
+          }}
+        />
+      )}
+      {editingJournal && (
+        <FarmJournalEditDialog
+          entry={editingJournal}
+          onClose={() => setEditingJournal(null)}
+          onSaved={(msg) => {
+            setEditingJournal(null)
+            setDoneMsg(msg)
             refresh()
           }}
         />
@@ -523,7 +619,7 @@ export default function WorkPlan() {
           onDone={(refs, wantFollowUp) => {
             const t = completingWork
             setCompletingWork(null)
-            setDoneMsg(refs.join(', '))
+            setDoneMsg(`Eingetragen: ${refs.join(', ')}`)
             if (wantFollowUp) setFollowUp({ kind: 'work_task', id: t.id, title: t.title, area: t.area, targets: t.targets })
             refresh()
           }}
@@ -540,7 +636,7 @@ export default function WorkPlan() {
             setFinishing(false)
           }}
           onDone={async (done, date, amounts) => {
-            await completePlan(active, done, date, amounts)
+            await undoAction(`Erledigt: ${active.task.title}`, () => completePlan(active, done, date, amounts))
             updateActive(null)
             setFinishing(false)
             refresh()
@@ -552,7 +648,7 @@ export default function WorkPlan() {
           task={completing}
           onClose={() => setCompleting(null)}
           onDone={async (done, date, amounts) => {
-            await completePlan({ task: completing }, done, date, amounts)
+            await undoAction(`Erledigt: ${completing.title}`, () => completePlan({ task: completing }, done, date, amounts))
             setCompleting(null)
             refresh()
           }}

@@ -81,6 +81,29 @@ export function itemsFor(items: HandoverItem[], checks: HandoverCheck[], o: Duty
     .sort((a, b) => a.item.created_at.localeCompare(b.item.created_at))
 }
 
+const toItem = (r: Record<string, unknown>): HandoverItem => ({
+  id: String(r.id),
+  text: String(r.text),
+  targets: parse(r.targets),
+  type_id: (r.type_id as string | null) ?? null,
+  animal: (r.animal as string | null) ?? null,
+  from_date: isoDate(r.from_date),
+  until_date: r.until_date ? isoDate(r.until_date) : null,
+  recurring: Boolean(r.recurring),
+  created_by: (r.created_by as string | null) ?? null,
+  created_at: ts(r.created_at) ?? '',
+  closed_at: ts(r.closed_at),
+})
+const toCheck = (r: Record<string, unknown>): HandoverCheck => ({
+  id: String(r.id),
+  item_id: String(r.item_id),
+  date: isoDate(r.date),
+  type_id: (r.type_id as string | null) ?? null,
+  done_by: (r.done_by as string | null) ?? null,
+  done_at: ts(r.done_at) ?? '',
+  note: (r.note as string | null) ?? null,
+})
+
 /** Offene, nicht abgeschlossene Punkte ab `since` und die Haken der letzten Tage. */
 export async function loadHandover(pg?: PGlite, since?: string): Promise<{ items: HandoverItem[]; checks: HandoverCheck[] }> {
   const db = pg ?? (await getDb())
@@ -88,30 +111,47 @@ export async function loadHandover(pg?: PGlite, since?: string): Promise<{ items
     db.query<Record<string, unknown>>('select * from handover_items where deleted_at is null and closed_at is null order by created_at'),
     db.query<Record<string, unknown>>('select * from handover_checks where deleted_at is null and date >= $1', [since ?? '2000-01-01']),
   ])
-  return {
-    items: items.rows.map((r) => ({
-      id: String(r.id),
-      text: String(r.text),
-      targets: parse(r.targets),
-      type_id: (r.type_id as string | null) ?? null,
-      animal: (r.animal as string | null) ?? null,
-      from_date: isoDate(r.from_date),
-      until_date: r.until_date ? isoDate(r.until_date) : null,
-      recurring: Boolean(r.recurring),
-      created_by: (r.created_by as string | null) ?? null,
-      created_at: ts(r.created_at) ?? '',
-      closed_at: ts(r.closed_at),
-    })),
-    checks: checks.rows.map((r) => ({
-      id: String(r.id),
-      item_id: String(r.item_id),
-      date: isoDate(r.date),
-      type_id: (r.type_id as string | null) ?? null,
-      done_by: (r.done_by as string | null) ?? null,
-      done_at: ts(r.done_at) ?? '',
-      note: (r.note as string | null) ?? null,
-    })),
+  return { items: items.rows.map(toItem), checks: checks.rows.map(toCheck) }
+}
+
+/** Ein Eintrag im Verlauf: Punkt mit seinen Haken im Zeitraum, beendet oder nicht. */
+export interface HandoverHistoryEntry {
+  item: HandoverItem
+  checks: HandoverCheck[]
+  /** zuletzt passiert (Haken oder Beenden), für die Sortierung */
+  last: string
+}
+
+/** Verlauf ab `since` (Datum): abgehakte und beendete Punkte, samt Bemerkungen; neueste zuerst. */
+export function handoverHistory(items: HandoverItem[], checks: HandoverCheck[], since: string): HandoverHistoryEntry[] {
+  const out: HandoverHistoryEntry[] = []
+  for (const item of items) {
+    const mine = checks.filter((c) => c.item_id === item.id && c.date >= since).sort((a, b) => b.done_at.localeCompare(a.done_at))
+    const closed = !!item.closed_at && item.closed_at.slice(0, 10) >= since
+    if (!mine.length && !closed) continue
+    const last = [closed ? item.closed_at! : '', mine[0]?.done_at ?? ''].sort().pop()!
+    out.push({ item, checks: mine, last })
   }
+  return out.sort((a, b) => b.last.localeCompare(a.last))
+}
+
+/** Für den Verlauf: Punkte mit Haken ab `since` oder seit `since` beendet. */
+export async function loadHandoverHistory(pg: PGlite, since: string): Promise<HandoverHistoryEntry[]> {
+  const [items, checks] = await Promise.all([
+    pg.query<Record<string, unknown>>(
+      `select * from handover_items where deleted_at is null
+         and (closed_at >= $1::date or id in (select item_id from handover_checks where deleted_at is null and date >= $1::date))`,
+      [since],
+    ),
+    pg.query<Record<string, unknown>>('select * from handover_checks where deleted_at is null and date >= $1::date', [since]),
+  ])
+  return handoverHistory(items.rows.map(toItem), checks.rows.map(toCheck), since)
+}
+
+/** Text und Enddatum eines Punkts ändern (Ersteller und Zeitpunkt bleiben). */
+export async function updateHandoverItem(item: HandoverItem, change: { text: string; until_date: string | null }): Promise<void> {
+  // nur die geänderten Spalten: der Schreibweg ergänzt den Rest aus der bestehenden Zeile
+  await upsertRow('handover_items', { id: item.id, text: change.text.trim(), until_date: change.until_date } as never)
 }
 
 export async function saveHandoverItem(i: Omit<HandoverItem, 'id' | 'created_by' | 'created_at' | 'closed_at'> & { id?: string }): Promise<void> {

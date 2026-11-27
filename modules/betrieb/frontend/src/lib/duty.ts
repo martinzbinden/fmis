@@ -188,26 +188,60 @@ export interface Slot {
   slot: number
   id: string
   shift: DutyShift | null
+  /** nur aus dem gespeicherten Dienst (vergangener Tag, den der heutige Diensttyp so nicht mehr vorsieht) */
+  kept?: boolean
 }
 
-/** Alle Plätze der Tage (aktive Typen, sortiert nach Tag und Uhrzeit). */
-export function slotsFor(types: DutyType[], shifts: DutyShift[], dates: string[]): Slot[] {
+/** Platzhalter, wenn der Diensttyp eines gespeicherten Dienstes gar nicht mehr vorhanden ist. */
+function missingType(id: string): DutyType {
+  return {
+    id, name: 'Dienst', start_time: '00:00', duration_min: 0, weekdays: '0000000', color: null, description: null, active: false, sort_order: 9999,
+    updated_at: '', deleted_at: 'unbekannt', animal: null, active_from: null, active_to: null, summer_from: null, summer_to: null, times: null,
+  }
+}
+
+/** Alle Plätze der Tage (aktive Typen, sortiert nach Tag und Uhrzeit).
+ *
+ * Mit `before` (heute): Tage davor zeigen zusätzlich jeden gespeicherten, besetzten Dienst, auch wenn der
+ * Diensttyp inzwischen inaktiv oder gelöscht ist oder Wochentage/Anzahl geändert wurden — vergangene Wochen
+ * sollen sich nicht rückwirkend ändern. `allTypes` = alle Diensttypen samt inaktiven und gelöschten. */
+export function slotsFor(types: DutyType[], shifts: DutyShift[], dates: string[], opts?: { before?: string; allTypes?: DutyType[] }): Slot[] {
   const byId = new Map(shifts.filter((s) => !s.deleted_at && s.person_id).map((s) => [s.id, s]))
   const out: Slot[] = []
   const live = [...types].filter((t) => !t.deleted_at)
+  const lookup = new Map([...(opts?.allTypes ?? []), ...types].map((t) => [t.id, t]))
   for (const date of dates) {
     // Uhrzeit und Dauer gelten für DIESEN Tag (Jahreszeit, Wochentag): der Platz trägt einen Typ mit den Zeiten des Tages
-    const day = live
-      .filter((t) => slotsOn(t, date) > 0)
-      .map((t) => ({ type: { ...t, ...timeOn(t, date) }, n: slotsOn(t, date) }))
-      .sort((a, b) => a.type.start_time.localeCompare(b.type.start_time) || a.type.sort_order - b.type.sort_order)
-    for (const { type, n } of day)
-      for (let slot = 0; slot < n; slot++) {
-        const id = shiftId(type.id, date, slot)
-        out.push({ type, date, slot, id, shift: byId.get(id) ?? null })
+    const day: { type: DutyType; slot: number; id: string; kept: boolean; order: number }[] = []
+    for (const [order, t] of live.entries()) {
+      const n = slotsOn(t, date)
+      for (let slot = 0; slot < n; slot++) day.push({ type: { ...t, ...timeOn(t, date) }, slot, id: shiftId(t.id, date, slot), kept: false, order })
+    }
+    if (opts?.before && date < opts.before) {
+      const have = new Set(day.map((x) => x.id))
+      for (const s of byId.values()) {
+        if (s.date !== date || have.has(s.id)) continue
+        const t = lookup.get(s.type_id) ?? missingType(s.type_id)
+        day.push({ type: { ...t, ...timeOn(t, date) }, slot: s.slot, id: s.id, kept: true, order: ((i) => (i < 0 ? live.length : i))(live.findIndex((x) => x.id === t.id)) })
       }
+    }
+    day.sort((a, b) => a.type.start_time.localeCompare(b.type.start_time) || a.type.sort_order - b.type.sort_order || a.order - b.order || a.type.id.localeCompare(b.type.id) || a.slot - b.slot)
+    for (const x of day) out.push({ type: x.type, date, slot: x.slot, id: x.id, shift: byId.get(x.id) ?? null, ...(x.kept ? { kept: true } : {}) })
   }
   return out
+}
+
+/** Name mit Hinweis, wenn die Person nicht mehr dabei ist: «(gelöscht)» bzw. «(ausgetreten)». */
+export function personLabel(p: Pick<DutyPerson, 'name' | 'active' | 'deleted_at'> | null | undefined): string {
+  if (!p) return '–'
+  if (p.deleted_at) return `${p.name} (gelöscht)`
+  return p.active ? p.name : `${p.name} (ausgetreten)`
+}
+
+/** Zusatz zum Dienstnamen, wenn es den Dienst so nicht mehr gibt: « (gelöscht)» bzw. « (inaktiv)», sonst leer. */
+export function typeSuffix(t: Pick<DutyType, 'active' | 'deleted_at'>): string {
+  if (t.deleted_at) return ' (gelöscht)'
+  return t.active ? '' : ' (inaktiv)'
 }
 
 export interface Conflict {

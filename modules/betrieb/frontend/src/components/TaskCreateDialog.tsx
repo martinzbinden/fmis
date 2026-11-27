@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import AppIcon from '@fmis/core/AppIcon'
+import { undoAction } from '@fmis/core/undo'
+import { errorText } from '@fmis/core/toast'
 import { herdLocator, listAllAnimals } from '@fmis/core/animals'
 import { animalRank, textRank } from '@fmis/core/search'
 import { getSyncedDb as getWiesenjournalDb } from '@fmis/wiesenjournal/db/access'
@@ -11,7 +13,7 @@ import { addPhotos } from '../lib/photoRefs'
 import { useQuery } from '../hooks/useQuery'
 import { addDaysIso, num, todayIso, USAGE_TYPE_LABEL } from '../lib/format'
 import { loadMachines } from '../lib/machines'
-import { ACTIVITIES, AREA_LABEL, areaFor, knownObjects, saveWorkTask, targetIcon, type Activity, type TaskTarget } from '../lib/workTasks'
+import { ACTIVITIES, activityByTitle, AREA_LABEL, areaFor, cancelWorkTask, knownObjects, saveWorkTask, targetIcon, type Activity, type TaskTarget, type WorkTask } from '../lib/workTasks'
 import type { PGlite } from '@electric-sql/pglite'
 
 // Nutzungen, die man planen kann (wie components/PlanCreateDialog.tsx)
@@ -53,13 +55,15 @@ type Hit =
 
 /** «Arbeit planen»: ein Suchfeld für Tätigkeiten, Parzellen, Tiere, Tiergruppen, Maschinen, Gebäude; auch ganz neue
  * Arbeiten. Parzellen-Arbeiten (Düngen, Mähen …) gehen an den bisherigen Dialog (Wiesenjournal), alles andere wird
- * eine Arbeit (work_tasks). «Schon erledigt» trägt gleich ein. */
+ * eine Arbeit (work_tasks). «Schon erledigt» trägt gleich ein. Mit `editing`: eine offene Arbeit ändern oder absagen. */
 export default function TaskCreateDialog({
   onClose,
   onSaved,
   onParcelWork,
   onDoneNow,
+  onCancelled,
   initialDate,
+  editing,
 }: {
   onClose: () => void
   onSaved: (date: string) => void
@@ -67,25 +71,31 @@ export default function TaskCreateDialog({
   onParcelWork: (workKey: string, parcelIds: string[], date: string) => void
   /** Arbeit gespeichert und gleich abschliessen (freie Erfassung ins Journal) */
   onDoneNow: (taskId: string) => void
+  /** Arbeit abgesagt (nur beim Ändern) */
+  onCancelled?: (task: WorkTask, fromShop: boolean) => void
   initialDate?: string
+  /** offene Arbeit zum Ändern */
+  editing?: WorkTask
 }) {
   const { data } = useQuery(loadChoices, [])
   const [q, setQ] = useState('')
-  const [title, setTitle] = useState('')
-  const [activity, setActivity] = useState<Activity | null>(null)
+  const [title, setTitle] = useState(editing?.title ?? '')
+  const [activity, setActivity] = useState<Activity | null>(editing ? (activityByTitle(editing.title, editing.area) ?? null) : null)
   const [parcelWork, setParcelWork] = useState<{ title: string; workKey: string } | null>(null)
-  const [targets, setTargets] = useState<TaskTarget[]>([])
+  const [targets, setTargets] = useState<TaskTarget[]>(editing?.targets ?? [])
   const [parcels, setParcels] = useState<{ id: string; title: string }[]>([])
-  const [date, setDate] = useState(initialDate ?? addDaysIso(todayIso(), 1))
-  const [due, setDue] = useState('')
-  const [person, setPerson] = useState('')
-  const [quantity, setQuantity] = useState('')
+  const [date, setDate] = useState(editing ? (editing.planned_date ?? '') : (initialDate ?? addDaysIso(todayIso(), 1)))
+  const [due, setDue] = useState(editing?.due_date ?? '')
+  const [person, setPerson] = useState(editing?.person_id ?? '')
+  const [quantity, setQuantity] = useState(editing?.quantity != null ? String(editing.quantity) : '')
   const [qtyOpen, setQtyOpen] = useState(false)
-  const [unit, setUnit] = useState('')
-  const [customer, setCustomer] = useState('')
-  const [notes, setNotes] = useState('')
+  const [unit, setUnit] = useState(editing?.unit ?? '')
+  const [customer, setCustomer] = useState(editing?.customer ?? '')
+  const [notes, setNotes] = useState(editing?.notes ?? '')
   const [photos, setPhotos] = useState<PreparedPhoto[]>([])
   const [busy, setBusy] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
 
   const hits = useMemo((): { group: string; items: Hit[] }[] => {
@@ -110,16 +120,17 @@ export default function TaskCreateDialog({
       data.parcels.map((p) => ({ r: textRank(term, p.name, p.kultur_name_de), x: { kind: 'parcel' as const, key: `p:${p.id}`, id: p.id, title: p.name, sub: [num(p.area_a) != null ? `${((num(p.area_a) ?? 0) / 100).toFixed(2)} ha` : null, p.kultur_name_de].filter(Boolean).join(' · ') } })),
     )
     const out: { group: string; items: Hit[] }[] = [
-      { group: 'Tätigkeiten', items: [...acts, ...pw].slice(0, 8) },
+      // beim Ändern keine Parzellen-Arbeiten: die gehören ins Wiesenjournal
+      { group: 'Tätigkeiten', items: (editing ? acts : [...acts, ...pw]).slice(0, 8) },
       { group: 'Tiere', items: animals.slice(0, 6) },
       { group: 'Tiergruppen', items: groups.slice(0, 5) },
       { group: 'Maschinen', items: machines.slice(0, 5) },
       { group: 'Gebäude und Objekte', items: [...objects.slice(0, 4), { kind: 'newobject', key: `no:${term}`, title: term }] },
-      { group: 'Parzellen', items: parcelHits.slice(0, 6) },
+      { group: 'Parzellen', items: editing ? [] : parcelHits.slice(0, 6) },
       { group: 'Neue Arbeit', items: [{ kind: 'new', key: `n:${term}`, title: term }] },
     ]
     return out.filter((g) => g.items.length > 0)
-  }, [q, data])
+  }, [q, data, editing])
 
   function pick(h: Hit) {
     if (h.kind === 'activity') {
@@ -146,7 +157,8 @@ export default function TaskCreateDialog({
     input.current?.focus()
   }
 
-  const area = areaFor(targets, activity)
+  // beim Ändern ohne erkannte Tätigkeit und ohne Ziele den bisherigen Bereich behalten (z.B. Brennholz aus dem Shop)
+  const area = editing && !activity && targets.length === 0 ? editing.area : areaFor(targets, activity)
   const isParcelJob = !!parcelWork || (parcels.length > 0 && targets.length === 0)
   const showQty = area === 'brennholz' || qtyOpen || !!quantity
   const valid = title.trim().length > 0 && !isParcelJob
@@ -154,8 +166,12 @@ export default function TaskCreateDialog({
   async function save(doneNow: boolean) {
     if (!valid) return
     setBusy(true)
+    setErr(null)
     try {
-      const id = await saveWorkTask({
+      const draft = {
+        id: editing?.id,
+        source: editing?.source,
+        source_ref: editing?.source_ref,
         title: title.trim(),
         area,
         targets,
@@ -166,17 +182,36 @@ export default function TaskCreateDialog({
         unit: unit.trim() || null,
         customer: customer.trim() || null,
         notes: notes.trim() || null,
+      }
+      const id = await undoAction(editing ? `Arbeit geändert: ${draft.title}` : `Arbeit geplant: ${draft.title}`, async () => {
+        const saved = await saveWorkTask(draft)
+        if (photos.length) await addPhotos('work_task', saved, photos)
+        return saved
       })
-      if (photos.length) await addPhotos('work_task', id, photos)
       if (doneNow) onDoneNow(id)
-      else onSaved(date)
+      else onSaved(date || todayIso())
+    } catch (e) {
+      setErr(errorText(e))
     } finally {
       setBusy(false)
     }
   }
 
+  async function cancelTask() {
+    if (!editing) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await undoAction(`Abgesagt: ${editing.title}`, () => cancelWorkTask(editing))
+      onCancelled?.(editing, r.fromShop)
+    } catch (e) {
+      setErr(errorText(e))
+      setBusy(false)
+    }
+  }
+
   return (
-    <Modal title="Arbeit planen" onClose={onClose} onSubmit={() => void save(false)}>
+    <Modal title={editing ? 'Arbeit ändern' : 'Arbeit planen'} onClose={onClose} onSubmit={() => void save(false)}>
       <div className="space-y-3">
         <div>
           <input
@@ -184,7 +219,7 @@ export default function TaskCreateDialog({
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            autoFocus
+            autoFocus={!editing}
             enterKeyHint="search"
             autoComplete="off"
             placeholder="Was und woran? Tätigkeit, Tier, Gruppe, Maschine, Gebäude, Parzelle …"
@@ -323,14 +358,41 @@ export default function TaskCreateDialog({
                 <PhotoInput photos={photos} onChange={setPhotos} />
               </div>
             </div>
+            {err && <p className="text-sm text-red-700">{err}</p>}
             <div className="flex flex-wrap gap-2">
               <button type="button" disabled={!valid || busy} onClick={() => void save(false)} className="min-h-12 flex-1 rounded-lg bg-brand-700 px-4 font-semibold text-white disabled:opacity-40">
-                Planen
+                {editing ? 'Speichern' : 'Planen'}
               </button>
-              <button type="button" disabled={!valid || busy} onClick={() => void save(true)} className="min-h-12 rounded-lg border-2 border-green-700 px-4 font-semibold text-green-800 disabled:opacity-40">
-                Schon erledigt → eintragen
-              </button>
+              {!editing && (
+                <button type="button" disabled={!valid || busy} onClick={() => void save(true)} className="min-h-12 rounded-lg border-2 border-green-700 px-4 font-semibold text-green-800 disabled:opacity-40">
+                  Schon erledigt → eintragen
+                </button>
+              )}
             </div>
+            {editing && (
+              <div className="space-y-2 border-t pt-3 text-sm">
+                {confirmCancel ? (
+                  <>
+                    <p className="text-gray-800">
+                      «{editing.title}» absagen?
+                      {editing.source === 'shop' ? ' Telefon, Adresse und Notiz der Kundschaft werden dabei entfernt (nur «Anfrage …» bleibt). Die Anfrage danach im Shop ablehnen — der Shop erfährt es nicht.' : ''}
+                    </p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setConfirmCancel(false)} className="min-h-11 flex-1 rounded-lg border border-gray-300 px-3">
+                        Nein
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => void cancelTask()} className="min-h-11 flex-1 rounded-lg bg-red-600 px-3 font-medium text-white disabled:opacity-40">
+                        Ja, absagen
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => setConfirmCancel(true)} className="min-h-11 rounded-lg border border-red-200 px-3 text-red-700">
+                    Arbeit absagen …
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

@@ -6,6 +6,7 @@ import { confirmDeadline, GENERATE_AHEAD_WEEKS, templateOn, templateSlotsFromWee
 import type { DutyTemplate, DutyType } from '../types'
 import { errorText } from '@fmis/core/toast'
 import { fmtHours, loadFulltimeHours, saveFulltimeHours, targetMinutes } from '../lib/workload'
+import NumberInput from '@fmis/core/NumberInput'
 
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 const field = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
@@ -516,12 +517,11 @@ function TemplateEditor({ d, t, onClose }: { d: DutyData; t: DutyTemplate; onClo
           <span className="font-semibold text-gray-700">Pensum laut Standardplan{t.cycle_weeks > 1 ? ` (Woche ${String.fromCharCode(65 + weekNo)})` : ''}</span>
           <label className="flex items-center gap-1 text-gray-600">
             Vollzeit
-            <input
-              type="number"
-              min={10}
-              max={80}
+            <NumberInput
+              step={1}
               className={`${field} w-16`}
-              value={fulltime}
+              value={fulltime || ''}
+              aria-label="Vollzeit in Stunden je Woche"
               onChange={(e) => {
                 const v = Number(e.target.value)
                 setFulltime(v)

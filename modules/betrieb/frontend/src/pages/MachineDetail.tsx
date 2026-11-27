@@ -5,7 +5,9 @@ import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import MachineMaintenance from '../components/MachineMaintenance'
 import { loadMaintenanceData } from '../lib/maintenanceData'
-import { softDeleteRow } from '../db/write'
+import { softDeleteRow, upsertRow } from '../db/write'
+import { undoAction } from '@fmis/core/undo'
+import { journalCount } from '../lib/machineJournal'
 import { isSelfPropelled, isTractor, loadMachines, MACHINE_KIND_LABEL } from '../lib/machines'
 import { fmtBytes, loadMachineFiles, MACHINE_FILE_KIND_LABEL, machineFileUrl, uploadMachineFile } from '../lib/machineFiles'
 import MachineForm from '../components/MachineForm'
@@ -86,6 +88,7 @@ export default function MachineDetail() {
   const [viewing, setViewing] = useState<MachineFile | null>(null)
   const [uploading, setUploading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState(false)
   const input = useRef<HTMLInputElement>(null)
 
   const machines = data?.machines ?? []
@@ -136,10 +139,25 @@ export default function MachineDetail() {
   }
 
   async function removeMachine() {
-    if (!confirm(`Maschine «${m!.name}» löschen? Bisherige Spuren behalten den Namen.`)) return
-    await softDeleteRow('machines', m!.id)
-    navigate('../maschinen')
+    try {
+      await undoAction(`Maschine «${m!.name}» gelöscht`, () => softDeleteRow('machines', m!.id))
+      navigate('../maschinen')
+    } catch (e) {
+      notifyError(errorText(e))
+    }
   }
+
+  async function retireMachine() {
+    try {
+      await undoAction(`Maschine «${m!.name}» stillgelegt`, () => upsertRow('machines', { id: m!.id, active: false } as never))
+      setRemoving(false)
+      refresh()
+    } catch (e) {
+      notifyError(errorText(e))
+    }
+  }
+
+  const logCount = data ? journalCount(data.maintenance.log, m.id) : 0
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
@@ -288,8 +306,8 @@ export default function MachineDetail() {
       )}
 
       {canWrite && (
-        <button type="button" onClick={() => void removeMachine()} className="text-sm text-red-700">
-          Maschine löschen
+        <button type="button" onClick={() => setRemoving(true)} className="min-h-11 rounded-lg px-2 text-sm text-red-700">
+          Maschine löschen …
         </button>
       )}
 
@@ -303,6 +321,33 @@ export default function MachineDetail() {
             refresh()
           }}
         />
+      )}
+
+      {removing && (
+        <Modal title={`Maschine «${m.name}» löschen?`} onClose={() => setRemoving(false)}>
+          <div className="space-y-3 text-sm">
+            <p className="text-gray-700">
+              {logCount > 0
+                ? `${logCount} ${logCount === 1 ? 'Eintrag' : 'Einträge'} im Wartungsjournal ${logCount === 1 ? 'gehört' : 'gehören'} zu dieser Maschine. Sie bleiben stehen und erscheinen im Wartungsjournal mit «(gelöscht)», lassen sich danach aber nicht mehr korrigieren.`
+                : 'Keine Einträge im Wartungsjournal.'}{' '}
+              Bisherige Spuren behalten den Namen.
+            </p>
+            {m.active && (
+              <>
+                <p className="text-gray-700">Wird die Maschine nur nicht mehr gebraucht (verkauft, ausser Betrieb), besser stilllegen: Sie verschwindet aus den Auswahllisten, Journal und Angaben bleiben vollständig.</p>
+                <button type="button" onClick={() => void retireMachine()} className="min-h-12 w-full rounded-lg bg-brand-700 font-semibold text-white">
+                  Stattdessen stilllegen (inaktiv)
+                </button>
+              </>
+            )}
+            <button type="button" onClick={() => void removeMachine()} className="min-h-11 w-full rounded-lg border border-red-300 font-medium text-red-700">
+              Trotzdem löschen
+            </button>
+            <button type="button" onClick={() => setRemoving(false)} className="min-h-11 w-full rounded-lg text-gray-700">
+              Abbrechen
+            </button>
+          </div>
+        </Modal>
       )}
 
       {viewing && (

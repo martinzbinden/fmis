@@ -4,11 +4,14 @@ import { API_URL, getToken } from '@fmis/core/auth'
 import { useHasPermission } from '@fmis/core/AuthContext'
 import { useQuery } from '../hooks/useQuery'
 import { useStored } from '../components/DriveAssist'
-import { absenceOn, addDays, localToday as todayIso, conflictsFor, copyFromPrevious, DEFAULT_SUMMER, endTime, groupTypes, hasConflict, hhmm, isoWeek, mondayOf, parseTimes, slotsFor, stringifyTimes, suggest, typeLabel, weekDates, type Block, type DayTime, type SeasonTimes, type Slot, timeText } from '../lib/duty'
+import { absenceOn, addDays, localToday as todayIso, conflictsFor, copyFromPrevious, DEFAULT_SUMMER, endTime, groupTypes, hasConflict, hhmm, isoWeek, mondayOf, parseTimes, personLabel, slotsFor, stringifyTimes, suggest, typeLabel, typeSuffix, weekDates, type Block, type DayTime, type SeasonTimes, type Slot, timeText } from '../lib/duty'
 import TimeStrip, { TimeAxis } from '../components/TimeStrip'
 import Planning, { OfficeBar } from '../components/DutyPlanning'
 import AbsenceCalendar from '../components/AbsenceCalendar'
 import AbsenceGaps from '../components/AbsenceGaps'
+import AbsenceDialog, { mayEditAbsence } from '../components/AbsenceDialog'
+import HandoverHistory from '../components/HandoverHistory'
+import NumberInput from '@fmis/core/NumberInput'
 import HandoverList from '../components/HandoverList'
 import HandoverForm from '../components/HandoverForm'
 import { itemsFor, loadHandover } from '../lib/handover'
@@ -19,7 +22,7 @@ import { getSyncedDb } from '../db/access'
 import { syncClient } from '../db/sync'
 import PlanCreateDialog from '../components/PlanCreateDialog'
 import { loadPlan, type PlanTask } from '../lib/workPlan'
-import { adjustWeek, assignWork, respondRequest, saveSkills, setWeekStatus, assignSlots, checkRequest, decideRequest, deleteAbsence, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, setCompanion, saveTask, deleteTask, type DutyData } from '../lib/dutyData'
+import { adjustWeek, assignWork, respondRequest, saveSkills, setWeekStatus, assignSlots, checkRequest, decideRequest, deletePerson, deleteType, loadDuty, me, saveAbsence, savePerson, saveRequest, saveType, setSkill, withdrawRequest, setCompanion, saveTask, deleteTask, type DutyData } from '../lib/dutyData'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest, DutyRequestStatus, DutyTask, DutyType } from '../types'
 import Modal from '../components/Modal'
 import { errorText } from '@fmis/core/toast'
@@ -33,7 +36,8 @@ const field = 'min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
 const btn = 'min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm active:bg-gray-100 disabled:opacity-40'
 
 /** Dienstname mit der Tierart voran, in der Farbe des Dienstes. */
-function TypeName({ t }: { t: Pick<DutyType, 'name' | 'animal' | 'color'> }) {
+function TypeName({ t }: { t: Pick<DutyType, 'name' | 'animal' | 'color'> & Partial<Pick<DutyType, 'active' | 'deleted_at'>> }) {
+  const suffix = t.active === undefined ? '' : typeSuffix({ active: t.active, deleted_at: t.deleted_at ?? null })
   return (
     <>
       {t.animal?.trim() && (
@@ -42,12 +46,24 @@ function TypeName({ t }: { t: Pick<DutyType, 'name' | 'animal' | 'color'> }) {
         </b>
       )}
       {t.name}
+      {suffix && <span className="text-gray-500">{suffix}</span>}
     </>
   )
 }
 
+/** Name der Person, auch wenn sie inzwischen ausgetreten oder gelöscht ist (vergangene Dienste, Änderungen). */
 function personName(d: DutyData, id: string | null | undefined) {
-  return d.people.find((p) => p.id === id)?.name ?? '–'
+  if (!id) return '–'
+  return personLabel((d.allPeople ?? d.people).find((p) => p.id === id))
+}
+
+/** Person zur id samt gelöschten (für die Auswahl eines schon eingeteilten Dienstes). */
+const anyPerson = (d: DutyData, id: string) => (d.allPeople ?? d.people).find((p) => p.id === id)
+
+/** Dienstname zur id, auch für inaktive und gelöschte Diensttypen. */
+function typeNameOf(d: DutyData, id: string | null) {
+  const t = (d.allTypes ?? d.types).find((x) => x.id === id)
+  return t ? `${typeLabel(t)}${typeSuffix(t)}` : 'Dienst'
 }
 
 /** Ein Platz im Wochenplan: Zeit, Dienst, Person (nur Befähigte), Warnungen. */
@@ -55,7 +71,7 @@ function SlotRow({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; c
   const pid = s.shift?.person_id ?? null
   const c = pid ? conflictsFor(pid, s, all, d.skills, d.absences) : null
   const skilled = d.people.filter((p) => p.active && d.skills.some((k) => k.person_id === p.id && k.type_id === s.type.id))
-  const options = pid && !skilled.some((p) => p.id === pid) ? [...skilled, d.people.find((p) => p.id === pid)!].filter(Boolean) : skilled
+  const options = pid && !skilled.some((p) => p.id === pid) ? [...skilled, anyPerson(d, pid)!].filter(Boolean) : skilled
   return (
     <li data-dienst={s.id} className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 ${!pid ? 'bg-red-50' : ''}`}>
       <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: s.type.color ?? '#64748b' }} />
@@ -79,7 +95,7 @@ function SlotRow({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; c
             const why = cc.absent ? ` (${KIND[cc.absent.kind]})` : cc.overlap.length ? ' (gleichzeitig)' : ''
             return (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {personLabel(p)}
                 {why}
               </option>
             )
@@ -109,7 +125,7 @@ function SlotCell({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; 
   const pending = d.requests.some((r) => r.status === 'offen' && (r.shift_id === s.id || r.other_shift_id === s.id))
   const tone = !pid ? 'border-red-300 bg-red-50 text-red-800' : warn ? 'border-amber-500 bg-amber-50' : 'border-gray-200 bg-white'
   const skilled = d.people.filter((p) => p.active && d.skills.some((k) => k.person_id === p.id && k.type_id === s.type.id))
-  const options = pid && !skilled.some((p) => p.id === pid) ? [...skilled, ...d.people.filter((p) => p.id === pid)] : skilled
+  const options = pid && !skilled.some((p) => p.id === pid) ? [...skilled, anyPerson(d, pid)!].filter(Boolean) : skilled
   return (
     <div data-dienst={s.id} className={`rounded border px-1 py-0.5 ${tone}`} title={[why, s.shift?.notes].filter(Boolean).join(' · ') || undefined}>
       {canWrite ? (
@@ -117,7 +133,7 @@ function SlotCell({ s, d, all, canWrite }: { s: Slot; d: DutyData; all: Slot[]; 
           <option value="">— offen —</option>
           {options.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name}
+              {personLabel(p)}
             </option>
           ))}
         </select>
@@ -165,7 +181,7 @@ function WorkCell({ task, d, canWrite }: { task: PlanTask; d: DutyData; canWrite
 }
 
 /** Begleitung im Dienst (Praktikum, Schnupperlehre): zählt nicht als Besetzung. */
-function Companions({ d, date, typeId, mainIds, canWrite }: { d: DutyData; date: string; typeId: string; mainIds: (string | null | undefined)[]; canWrite: boolean }) {
+function Companions({ d, date, typeId, mainIds, canWrite, list = false }: { d: DutyData; date: string; typeId: string; mainIds: (string | null | undefined)[]; canWrite: boolean; /** Ansicht «Liste» (Handy): grössere Tippziele */ list?: boolean }) {
   const here = d.companions.filter((c) => c.date === date && c.type_id === typeId)
   // Begleitende zuerst, dann alle anderen Aktiven, die nicht schon im Dienst sind
   const options = d.people
@@ -178,12 +194,12 @@ function Companions({ d, date, typeId, mainIds, canWrite }: { d: DutyData; date:
         return (
           <div
             key={c.id}
-            className={`flex items-center gap-0.5 rounded border border-dashed px-1 text-[11px] ${away ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-teal-500 bg-teal-50 text-teal-900'}`}
+            className={`flex items-center gap-0.5 rounded border border-dashed px-1 ${list ? 'text-sm' : 'text-[11px]'} ${away ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-teal-500 bg-teal-50 text-teal-900'}`}
             title={away ? `${personName(d, c.person_id)} ist ${KIND[away.kind]}` : 'begleitet, zählt nicht als Besetzung'}
           >
             <span className="min-w-0 flex-1 truncate">🤝 {personName(d, c.person_id)}</span>
             {canWrite && (
-              <button type="button" onClick={() => void setCompanion(d, date, typeId, c.person_id, false)} className="px-0.5 text-gray-500" aria-label={`Begleitung ${personName(d, c.person_id)} entfernen`}>
+              <button type="button" onClick={() => void setCompanion(d, date, typeId, c.person_id, false)} className={list ? 'min-h-10 min-w-10 text-gray-500' : 'px-0.5 text-gray-500'} aria-label={`Begleitung ${personName(d, c.person_id)} entfernen`}>
                 ✕
               </button>
             )}
@@ -195,7 +211,7 @@ function Companions({ d, date, typeId, mainIds, canWrite }: { d: DutyData; date:
         <select
           value=""
           onChange={(e) => e.target.value && void setCompanion(d, date, typeId, e.target.value, true)}
-          className="w-full rounded border border-dashed border-gray-300 bg-transparent text-[10px] text-gray-500"
+          className={list ? 'min-h-10 rounded-lg border border-dashed border-gray-300 bg-white px-2 text-sm text-gray-600' : 'w-full rounded border border-dashed border-gray-300 bg-transparent text-[10px] text-gray-500'}
           aria-label={`Begleitung ${dm(date)}`}
         >
           <option value="">+ Begleitung</option>
@@ -212,18 +228,18 @@ function Companions({ d, date, typeId, mainIds, canWrite }: { d: DutyData; date:
 }
 
 /** Arbeit ausserhalb der Dienste: Uhrzeit (falls gesetzt), Titel, Person. */
-function TaskChip({ t, d, onOpen }: { t: DutyTask; d: DutyData; onOpen: (() => void) | null }) {
+function TaskChip({ t, d, onOpen, list = false }: { t: DutyTask; d: DutyData; onOpen: (() => void) | null; list?: boolean }) {
   const away = t.person_id ? absenceOn(t.person_id, t.date, d.absences) : null
   const body = (
     <>
-      <span className="block truncate text-[11px] font-medium text-sky-900">
+      <span className={`block truncate font-medium text-sky-900 ${list ? 'text-sm' : 'text-[11px]'}`}>
         {t.start_time ? `${t.start_time} ` : ''}
         {t.title}
       </span>
-      <span className={`block truncate text-[10px] ${t.person_id ? 'text-gray-600' : 'text-red-700'}`}>{t.person_id ? personName(d, t.person_id) : 'offen'}</span>
+      <span className={`block truncate ${list ? 'text-xs' : 'text-[10px]'} ${t.person_id ? 'text-gray-600' : 'text-red-700'}`}>{t.person_id ? personName(d, t.person_id) : 'offen'}</span>
     </>
   )
-  const cls = `block w-full rounded border px-1 py-0.5 text-left ${away ? 'border-amber-500 bg-amber-50' : 'border-sky-200 bg-sky-50'}`
+  const cls = `block w-full rounded border px-1 py-0.5 text-left ${list ? 'min-h-11' : ''} ${away ? 'border-amber-500 bg-amber-50' : 'border-sky-200 bg-sky-50'}`
   const title = [away && `${personName(d, t.person_id)} ist ${KIND[away.kind]}`, t.notes].filter(Boolean).join(' · ') || undefined
   return onOpen ? (
     <button type="button" onClick={onOpen} className={cls} title={title}>
@@ -286,7 +302,7 @@ function TaskDialog({ d, date, task, onClose }: { d: DutyData; date: string; tas
           <input type="date" className={field} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} aria-label="Datum" />
           <input type="time" className={field} value={f.start_time} onChange={(e) => setF({ ...f, start_time: e.target.value })} aria-label="Beginn (freiwillig)" />
           <label className="flex items-center gap-1 text-gray-600">
-            <input type="number" min={5} step={15} className={`${field} w-20`} value={f.duration_min} onChange={(e) => setF({ ...f, duration_min: e.target.value })} aria-label="Dauer in Minuten" /> Min.
+            <NumberInput step={15} className={`${field} w-20`} value={f.duration_min} onChange={(e) => setF({ ...f, duration_min: e.target.value })} aria-label="Dauer in Minuten" /> Min.
           </label>
         </div>
         <p className="text-xs text-gray-500">Ohne Uhrzeit: irgendwann am Tag (im Kalender-Abo als ganzer Tag). Ohne Dauer: 1 Stunde.</p>
@@ -308,14 +324,12 @@ function TaskDialog({ d, date, task, onClose }: { d: DutyData; date: string; tas
 }
 
 /** Wochenkalender: Dienste (nach Tierart) × Wochentage. */
-function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork }: { d: DutyData; dates: string[]; slots: Slot[]; canWrite: boolean; tasks: PlanTask[]; onAddWork: ((date: string) => void) | null }) {
-  const rows = groupTypes(d.types)
-    .flatMap((g) => g.types)
-    .filter((t) => slots.some((s) => s.type.id === t.id))
-  const [taskEdit, setTaskEdit] = useState<{ date: string; task: DutyTask | null } | null>(null)
+function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork, onEditTask }: { d: DutyData; dates: string[]; slots: Slot[]; canWrite: boolean; tasks: PlanTask[]; onAddWork: ((date: string) => void) | null; onEditTask: ((date: string, task: DutyTask | null) => void) | null }) {
+  // auch inaktive/gelöschte Diensttypen, wenn die Woche noch gespeicherte Dienste davon hat
+  const rows = groupTypes([...new Map(slots.map((s) => [s.type.id, s.type])).values()]).flatMap((g) => g.types)
+  const setTaskEdit = (x: { date: string; task: DutyTask | null }) => onEditTask?.(x.date, x.task)
   return (
     <div className="overflow-x-auto rounded-xl border bg-white">
-      {taskEdit && <TaskDialog d={d} date={taskEdit.date} task={taskEdit.task} onClose={() => setTaskEdit(null)} />}
       <table className="w-full min-w-[42rem] table-fixed text-sm">
         <thead>
           <tr className="bg-gray-50">
@@ -368,7 +382,7 @@ function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork }: { d: DutyData
                       <WorkCell key={t.key} task={t} d={d} canWrite={canWrite} />
                     ))}
                   {onAddWork && (
-                    <button type="button" onClick={() => onAddWork(date)} className="w-full rounded border border-dashed border-violet-300 py-0.5 text-[11px] text-violet-700" aria-label={`Arbeit am ${dm(date)} planen`}>
+                    <button type="button" onClick={() => onAddWork(date)} className="min-h-10 w-full rounded border border-dashed border-violet-300 py-0.5 text-[11px] text-violet-700" aria-label={`Arbeit am ${dm(date)} planen`}>
                       + Arbeit
                     </button>
                   )}
@@ -386,10 +400,10 @@ function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork }: { d: DutyData
                 {d.tasks
                   .filter((t) => t.date === date)
                   .map((t) => (
-                    <TaskChip key={t.id} t={t} d={d} onOpen={canWrite ? () => setTaskEdit({ date, task: t }) : null} />
+                    <TaskChip key={t.id} t={t} d={d} onOpen={onEditTask ? () => setTaskEdit({ date, task: t }) : null} />
                   ))}
-                {canWrite && (
-                  <button type="button" onClick={() => setTaskEdit({ date, task: null })} className="w-full rounded border border-dashed border-sky-300 py-0.5 text-[11px] text-sky-700" aria-label={`Arbeit am ${dm(date)} erfassen`}>
+                {onEditTask && (
+                  <button type="button" onClick={() => setTaskEdit({ date, task: null })} className="min-h-10 w-full rounded border border-dashed border-sky-300 py-0.5 text-[11px] text-sky-700" aria-label={`Arbeit am ${dm(date)} erfassen`}>
                     + Arbeit
                   </button>
                 )}
@@ -413,9 +427,19 @@ function WeekGrid({ d, dates, slots, canWrite, tasks, onAddWork }: { d: DutyData
   )
 }
 
-function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday: string; setMonday: (m: string) => void; canWrite: boolean; refresh: () => void }) {
+/** Unter 640 px (Handy) ist die Liste die Vorgabe; eine gespeicherte Wahl geht vor (useStored). */
+const defaultView = (): 'kalender' | 'liste' => {
+  try {
+    return window.matchMedia('(max-width: 639px)').matches ? 'liste' : 'kalender'
+  } catch {
+    return 'kalender'
+  }
+}
+
+function Week({ d, monday, setMonday, canWrite, refresh, showOlder }: { d: DutyData; monday: string; setMonday: (m: string) => void; canWrite: boolean; refresh: () => void; showOlder: () => void }) {
   const dates = weekDates(monday)
-  const slots = useMemo(() => slotsFor(d.types, d.shifts, dates), [d, monday])
+  // vergangene Tage: gespeicherte Dienste bleiben sichtbar, auch wenn der Diensttyp inzwischen geändert ist
+  const slots = useMemo(() => slotsFor(d.types, d.shifts, dates, { before: todayIso(), allTypes: d.allTypes }), [d, monday])
   const prevSlots = useMemo(() => slotsFor(d.types, d.shifts, weekDates(addDays(monday, -7))), [d, monday])
   const open = slots.filter((s) => !s.shift?.person_id).length
   const [msg, setMsg] = useState<string | null>(null)
@@ -447,11 +471,10 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
   const canUsage = useHasPermission('wiesenjournal:nutzung:write')
   const canPlan = canFert || canUsage
   const [planDate, setPlanDate] = useState<string | null>(null)
-  const [view, setView] = useStored<'kalender' | 'liste'>('betrieb_duty_view', 'kalender')
-  const typeName = (id: string) => {
-    const t = d.types.find((x) => x.id === id)
-    return t ? typeLabel(t) : 'Dienst'
-  }
+  const [view, setView] = useStored<'kalender' | 'liste'>('betrieb_duty_view', defaultView())
+  const typeName = (id: string) => typeNameOf(d, id)
+  const [taskEdit, setTaskEdit] = useState<{ date: string; task: DutyTask | null } | null>(null)
+  const onEditTask = canWrite ? (date: string, task: DutyTask | null) => setTaskEdit({ date, task }) : null
 
   return (
     <div className="space-y-3">
@@ -473,7 +496,7 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
           </span>
           <span className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-xs">
             {(['kalender', 'liste'] as const).map((v) => (
-              <button key={v} type="button" onClick={() => setView(v)} className={`px-2 py-1 ${view === v ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
+              <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v} className={`min-h-10 px-3 py-1 ${view === v ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
                 {v === 'kalender' ? 'Kalender' : 'Liste'}
               </button>
             ))}
@@ -539,24 +562,32 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
               }
             }}
           >
-            Änderungen (30 Tage){unseen.length ? ` · ${unseen.length} neu` : ''}
+            Änderungen{d.history ? '' : ' (30 Tage)'}{unseen.length ? ` · ${unseen.length} neu` : ''}
             <span>{showChanges ? '▴' : '▾'}</span>
           </button>
           {showChanges && (
             <ul className="mt-1 space-y-0.5 text-xs text-amber-900">
-              {d.changes.slice(0, 40).map((c) => (
+              {(d.history ? d.changes : d.changes.slice(0, 40)).map((c) => (
                 <li key={c.id}>
                   {dm(c.date)} {typeName(c.type_id)}: {c.from_person ? personName(d, c.from_person) : 'offen'} → {c.to_person ? personName(d, c.to_person) : 'offen'}
                   {c.kind === 'tausch' || c.kind === 'abgabe' ? ` (${c.kind})` : ''} · {c.changed_by ?? ''}
                   {c.notes ? ` · «${c.notes}»` : ''}
                 </li>
               ))}
+              {!d.history && (
+                <li>
+                  <button type="button" className="min-h-11 font-medium text-amber-900 underline" onClick={showOlder}>
+                    ältere anzeigen
+                  </button>
+                </li>
+              )}
             </ul>
           )}
         </div>
       )}
 
-      {view === 'kalender' && <WeekGrid d={d} dates={dates} slots={slots} canWrite={canWrite} tasks={tasks ?? []} onAddWork={canWrite && canPlan ? setPlanDate : null} />}
+      {taskEdit && <TaskDialog d={d} date={taskEdit.date} task={taskEdit.task} onClose={() => setTaskEdit(null)} />}
+      {view === 'kalender' && <WeekGrid d={d} dates={dates} slots={slots} canWrite={canWrite} tasks={tasks ?? []} onAddWork={canWrite && canPlan ? setPlanDate : null} onEditTask={onEditTask} />}
       {planDate && (
         <PlanCreateDialog
           seasonYear={Number(planDate.slice(0, 4))}
@@ -571,6 +602,11 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
       {view === 'liste' && dates.map((date) => {
         const day = slots.filter((s) => s.date === date)
         const away = d.absences.filter((a) => a.from_date <= date && date <= a.to_date)
+        const planned = (tasks ?? []).filter((t) => t.date === date)
+        const extra = d.tasks.filter((t) => t.date === date)
+        // Diensttypen des Tages in Reihenfolge, für die Begleitung je Dienst
+        const typeIds = [...new Set(day.map((s) => s.type.id))]
+        const withCompanions = typeIds.filter((id) => d.companions.some((c) => c.date === date && c.type_id === id) || (canWrite && d.people.some((p) => p.active && p.companion)))
         return (
           <section key={date} className={`overflow-hidden rounded-xl border bg-white ${date === todayIso() ? 'border-brand-500' : ''}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2 bg-gray-50 px-2 py-1">
@@ -581,13 +617,11 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
                 </span>
               )}
             </div>
-            {(tasks ?? []).filter((t) => t.date === date).length > 0 && (
+            {planned.length > 0 && (
               <div className="space-y-1 border-b bg-violet-50/50 px-2 py-1">
-                {(tasks ?? [])
-                  .filter((t) => t.date === date)
-                  .map((t) => (
-                    <WorkCell key={t.key} task={t} d={d} canWrite={canWrite} />
-                  ))}
+                {planned.map((t) => (
+                  <WorkCell key={t.key} task={t} d={d} canWrite={canWrite} />
+                ))}
               </div>
             )}
             {day.length ? (
@@ -595,9 +629,39 @@ function Week({ d, monday, setMonday, canWrite, refresh }: { d: DutyData; monday
                 {day.map((s) => (
                   <SlotRow key={s.id} s={s} d={d} all={slots} canWrite={canWrite} />
                 ))}
+                {withCompanions.map((typeId) => (
+                  <li key={`b-${typeId}`} className="flex flex-wrap items-center gap-2 px-2 py-1.5 text-sm">
+                    <span className="text-xs text-gray-600">
+                      Begleitung <TypeName t={day.find((s) => s.type.id === typeId)!.type} />:
+                    </span>
+                    <Companions d={d} date={date} typeId={typeId} mainIds={day.filter((s) => s.type.id === typeId).map((s) => s.shift?.person_id)} canWrite={canWrite} list />
+                  </li>
+                ))}
               </ul>
             ) : (
               <p className="px-2 py-1.5 text-xs text-gray-500">keine Dienste</p>
+            )}
+            {extra.length > 0 && (
+              <div className="space-y-1 border-t bg-sky-50/50 px-2 py-1">
+                <span className="block text-xs font-semibold text-sky-800">Weitere Arbeiten</span>
+                {extra.map((t) => (
+                  <TaskChip key={t.id} t={t} d={d} onOpen={onEditTask ? () => onEditTask(date, t) : null} list />
+                ))}
+              </div>
+            )}
+            {(onEditTask || (canWrite && canPlan)) && (
+              <div className="flex flex-wrap gap-2 border-t px-2 py-1.5">
+                {onEditTask && (
+                  <button type="button" onClick={() => onEditTask(date, null)} className="min-h-11 rounded-lg border border-dashed border-sky-300 px-3 text-sm text-sky-800" aria-label={`Arbeit am ${dm(date)} erfassen`}>
+                    + Arbeit
+                  </button>
+                )}
+                {canWrite && canPlan && (
+                  <button type="button" onClick={() => setPlanDate(date)} className="min-h-11 rounded-lg border border-dashed border-violet-300 px-3 text-sm text-violet-800" aria-label={`Arbeit am ${dm(date)} im Arbeitsplan planen`}>
+                    + Arbeitsplan
+                  </button>
+                )}
+              </div>
             )}
           </section>
         )
@@ -620,7 +684,14 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
   const { data: handover } = useQuery((pg) => loadHandover(pg, addDays(today, -1)), [today])
   const [handoverFor, setHandoverFor] = useState<string | null>(null)
   const peopleByEmail = useMemo(() => new Map(d.people.filter((p) => p.email).map((p) => [p.email!.toLowerCase(), p.name])), [d.people])
-  if (!self) return <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Dein Konto ist noch keiner Person zugeordnet. Unter «Einstellungen» bei deiner Person die E-Mail deines FMIS-Kontos eintragen.</p>
+  if (!self)
+    return (
+      <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+        {canWrite
+          ? 'Dein Konto ist noch keiner Person zugeordnet. Unter «Einstellungen» bei deiner Person die E-Mail deines FMIS-Kontos eintragen.'
+          : 'Dein Konto ist noch keiner Person zugeordnet. Das Büro trägt bei deiner Person die E-Mail deines FMIS-Kontos ein.'}
+      </p>
+    )
   const mine = slots.filter((s) => s.shift?.person_id === self.id)
   // Wer den Plan nicht führt, schlägt nur vor; das Büro bestätigt (Tab «Anträge»)
   const propose = !canWrite && canPropose
@@ -781,6 +852,7 @@ function Mine({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boo
           )
         })}
       </ul>
+      <HandoverHistory people={peopleByEmail} />
     </div>
   )
 }
@@ -806,10 +878,7 @@ const STATUS_CLASS: Record<DutyRequestStatus, string> = {
 /** Antrag in einem Satz. */
 function describeRequest(d: DutyData, r: DutyRequest): string {
   const name = personName(d, r.person_id)
-  const dutyName = (typeId: string | null) => {
-    const t = d.types.find((x) => x.id === typeId)
-    return t ? typeLabel(t) : 'Dienst'
-  }
+  const dutyName = (typeId: string | null) => typeNameOf(d, typeId)
   const range = r.from_date && r.to_date ? `${dm(r.from_date)}${r.to_date !== r.from_date ? `–${dm(r.to_date)}` : ''}` : ''
   if (r.kind === 'wunsch') return `${name} beantragt ${r.absence_kind && r.absence_kind !== 'frei' ? KIND[r.absence_kind] : 'frei'}: ${range}`
   const mine = `${r.date ? dm(r.date) : ''} ${dutyName(r.type_id)}`
@@ -819,7 +888,7 @@ function describeRequest(d: DutyData, r: DutyRequest): string {
 
 /** Freiwünsche und Vorschläge. Mitarbeitende stellen sie und ziehen sie zurück;
  * das Büro bestätigt oder lehnt ab, erst die Bestätigung ändert den Plan. */
-function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite: boolean; canPropose: boolean; refresh: () => void }) {
+function Requests({ d, canWrite, canPropose, refresh, showOlder }: { d: DutyData; canWrite: boolean; canPropose: boolean; refresh: () => void; showOlder: () => void }) {
   const self = me(d.people)
   const today = todayIso()
   const [f, setF] = useState({ from_date: today, to_date: today, notes: '' })
@@ -938,9 +1007,9 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
           {open.length === 0 && <li className="px-3 py-2 text-gray-500">Keine offenen Anträge.</li>}
         </ul>
       </section>
-      {done.length > 0 && (
+      {(done.length > 0 || !d.history) && (
         <section className="space-y-1">
-          <h3 className="text-sm font-semibold text-gray-700">Entschieden (30 Tage)</h3>
+          <h3 className="text-sm font-semibold text-gray-700">Entschieden{d.history ? '' : ' (30 Tage)'}</h3>
           <ul className="divide-y rounded-xl border bg-white text-sm">
             {done.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
@@ -951,33 +1020,62 @@ function Requests({ d, canWrite, canPropose, refresh }: { d: DutyData; canWrite:
                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_CLASS[r.status]}`}>{STATUS_LABEL[r.status]}</span>
               </li>
             ))}
+            {done.length === 0 && <li className="px-3 py-2 text-gray-500">In den letzten 30 Tagen nichts entschieden.</li>}
           </ul>
+          {!d.history && (
+            <button type="button" className={btn} onClick={showOlder}>
+              ältere anzeigen (auch Ferienwünsche)
+            </button>
+          )}
         </section>
       )}
     </div>
   )
 }
 
-function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; refresh: () => void }) {
+function Absences({ d, canWrite, refresh, personFilter }: { d: DutyData; canWrite: boolean; refresh: () => void; /** aus der Suche: nur diese Person */ personFilter?: string | null }) {
   const self = me(d.people)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<DutyAbsence | null>(null)
   const [gapsOf, setGapsOf] = useState<string | null>(null)
+  const [showPast, setShowPast] = useState(false)
+  const [only, setOnly] = useState<string | null>(personFilter ?? null)
+  useEffect(() => setOnly(personFilter ?? null), [personFilter])
   // alle Abwesenheiten (Jahresübersicht), nicht nur die des geladenen Zeitraums
   const { data: all } = useQuery(async (pg) =>
     (await pg.query<DutyAbsence>('select * from duty_absences where deleted_at is null order by from_date')).rows.map((a) => ({ ...a, from_date: isoDate(a.from_date)!, to_date: isoDate(a.to_date)!, missing_since: a.missing_since ? isoDate(a.missing_since) : null })),
   )
   const absences = all ?? d.absences
-  const coming = absences.filter((a) => a.to_date >= todayIso())
+  const today = todayIso()
+  const shown = absences.filter((a) => (showPast || a.to_date >= today) && (!only || a.person_id === only))
+  // frühere zuerst die jüngsten
+  if (showPast) shown.sort((a, b) => b.from_date.localeCompare(a.from_date))
   // Schultage aus dem Stundenplan je Person zusammengefasst; einzeln nur, was nicht mehr im Stundenplan steht
-  const school = coming.filter((a) => a.source === 'webuntis' && !a.missing_since)
-  const list = coming.filter((a) => a.source !== 'webuntis' || a.missing_since)
+  const school = shown.filter((a) => a.source === 'webuntis' && !a.missing_since)
+  const list = shown.filter((a) => a.source !== 'webuntis' || a.missing_since)
   const schoolBy = [...new Set(school.map((a) => a.person_id))].map((pid) => ({ pid, days: school.filter((a) => a.person_id === pid) }))
-  // eigene Krankmeldung darf man selber löschen, alles andere das Büro
-  const mayDelete = (a: DutyAbsence) => canWrite || (!!self && a.person_id === self.id && a.kind === 'krank')
+  // ändern/löschen: das Büro alles, Mitarbeitende die eigene Krankmeldung (wie bisher beim Löschen)
+  const mayEdit = (a: DutyAbsence) => mayEditAbsence(a, canWrite, self?.id)
   return (
     <div className="space-y-3">
-      <AbsenceCalendar d={d} canWrite={canWrite} absences={absences} refresh={refresh} />
-      <h3 className="text-sm font-semibold text-gray-700">Kommende Abwesenheiten</h3>
+      {editing && <AbsenceDialog absence={editing} who={personName(d, editing.person_id)} canWrite={canWrite} onClose={() => setEditing(null)} />}
+      <AbsenceCalendar key={personFilter ?? ''} d={d} canWrite={canWrite} absences={absences} refresh={refresh} initialFilter={personFilter ?? ''} onPick={(a) => (mayEdit(a) ? () => setEditing(a) : null)} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-gray-700">
+          {showPast ? 'Alle Abwesenheiten' : 'Kommende Abwesenheiten'}
+          {only ? ` · ${personName(d, only)}` : ''}
+        </h3>
+        <div className="flex flex-wrap items-center gap-2">
+          {only && (
+            <button type="button" className={btn} onClick={() => setOnly(null)}>
+              alle Personen
+            </button>
+          )}
+          <label className="flex min-h-11 items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" className="h-5 w-5" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} />
+            frühere anzeigen
+          </label>
+        </div>
+      </div>
       <ul className="divide-y rounded-xl border bg-white text-sm">
         {schoolBy.map(({ pid, days }) => (
           <li key={`schule-${pid}`} className="px-3 py-2">
@@ -986,38 +1084,33 @@ function Absences({ d, canWrite, refresh }: { d: DutyData; canWrite: boolean; re
           </li>
         ))}
         {list.map((a) => (
-          <li key={a.id} className={`flex flex-wrap items-center gap-2 px-3 py-2 ${a.missing_since ? 'bg-amber-50' : ''}`}>
+          <li key={a.id} className={`flex flex-wrap items-center gap-2 px-3 py-2 ${a.missing_since ? 'bg-amber-50' : ''} ${a.to_date < today ? 'text-gray-600' : ''}`}>
             <span className="flex-1">
               <b>{personName(d, a.person_id)}</b> · {KIND[a.kind]} · {dm(a.from_date)}
               {a.to_date !== a.from_date ? `–${dm(a.to_date)}` : ''}
+              {a.from_date.slice(0, 4) !== today.slice(0, 4) ? ` ${a.from_date.slice(0, 4)}` : ''}
               {a.notes ? ` · ${a.notes}` : ''}
               {a.missing_since && <span className="block text-xs text-amber-900">⚠ seit {dm(a.missing_since)} nicht mehr im Stundenplan: prüfen und ggf. löschen</span>}
             </span>
-            {canWrite && a.kind !== 'schule' && (
-              <button type="button" className={`${btn} shrink-0`} aria-expanded={gapsOf === a.id} onClick={() => setGapsOf(gapsOf === a.id ? null : a.id)} title="Dienste in dieser Zeit und Ersatz">
+            {canWrite && a.kind !== 'schule' && a.to_date >= today && (
+              <button type="button" className={`${btn} shrink-0`} aria-expanded={gapsOf === a.id} onClick={() => setGapsOf(gapsOf === a.id ? null : a.id)}>
                 Lücken
               </button>
             )}
-            {mayDelete(a) &&
-              (confirmId === a.id ? (
-                <button type="button" className="min-h-11 rounded-lg bg-red-600 px-3 py-1 text-sm text-white" onClick={() => void deleteAbsence(a.id).then(() => setConfirmId(null))}>
-                  Wirklich löschen?
-                </button>
-              ) : (
-                <button type="button" className="px-1 text-gray-500" onClick={() => setConfirmId(a.id)} aria-label="Abwesenheit löschen">
-                  ×
-                </button>
-              ))}
+            {mayEdit(a) && (
+              <button type="button" className="min-h-11 min-w-11 shrink-0 rounded-lg border border-gray-300 bg-white text-gray-700 active:bg-gray-100" onClick={() => setEditing(a)} aria-label={`Abwesenheit ${personName(d, a.person_id)} ${dm(a.from_date)} ändern oder löschen`}>
+                ✎
+              </button>
+            )}
             {gapsOf === a.id && (
               <div className="w-full">
-                <AbsenceGaps d={d} personId={a.person_id} from={a.from_date < todayIso() ? todayIso() : a.from_date} to={a.to_date} onClose={() => setGapsOf(null)} />
+                <AbsenceGaps d={d} personId={a.person_id} from={a.from_date < today ? today : a.from_date} to={a.to_date} onClose={() => setGapsOf(null)} />
               </div>
             )}
           </li>
         ))}
-        {list.length === 0 && schoolBy.length === 0 && <li className="px-3 py-2 text-gray-500">Keine kommenden Abwesenheiten.</li>}
+        {list.length === 0 && schoolBy.length === 0 && <li className="px-3 py-2 text-gray-500">{showPast ? 'Keine Abwesenheiten.' : 'Keine kommenden Abwesenheiten.'}</li>}
       </ul>
-
     </div>
   )
 }
@@ -1363,7 +1456,7 @@ function SchoolSync() {
   )
 }
 
-function Settings({ d }: { d: DutyData }) {
+function Settings({ d, highlight }: { d: DutyData; /** aus der Suche: diese Person markieren und ins Bild holen */ highlight?: string | null }) {
   const [editType, setEditType] = useState<Partial<DutyType> | null>(null)
   const [newPerson, setNewPerson] = useState({ name: '', email: '' })
   const [editPerson, setEditPerson] = useState<DutyPerson | null>(null)
@@ -1378,13 +1471,21 @@ function Settings({ d }: { d: DutyData }) {
   })()
   const animals = [...new Set(d.types.map((t) => t.animal?.trim()).filter((a): a is string => !!a))]
   const people = d.people
+  const scrolled = useRef<string | null>(null)
+  useEffect(() => {
+    if (!highlight || scrolled.current === highlight) return
+    const el = document.querySelector<HTMLElement>(`[data-person="${CSS.escape(highlight)}"]`)
+    if (!el) return
+    scrolled.current = highlight
+    el.scrollIntoView({ block: 'center' })
+  }, [highlight, people])
   return (
     <div className="space-y-3">
       <section className="space-y-2 rounded-xl border bg-white p-3 text-sm">
         <h3 className="font-semibold text-gray-700">Personen</h3>
         <ul className="divide-y">
           {people.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-2 py-1.5">
+            <li key={p.id} data-person={p.id} className={`flex flex-wrap items-center gap-2 py-1.5 ${highlight === p.id ? 'rounded-lg bg-brand-50 ring-2 ring-brand-700' : ''}`}>
               {editPerson?.id === p.id ? (
                 <>
                   <input className={field} value={editPerson.name} onChange={(e) => setEditPerson({ ...editPerson, name: e.target.value })} />
@@ -1406,26 +1507,20 @@ function Settings({ d }: { d: DutyData }) {
                   </span>
                   <span className="flex w-full flex-wrap items-center gap-2 text-xs text-gray-600">
                     Anstellung
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
+                    <NumberInput
                       step={5}
                       className={`${field} w-20`}
                       value={editPerson.employment_pct ?? ''}
-                      onChange={(e) => setEditPerson({ ...editPerson, employment_pct: e.target.value === '' ? null : Math.min(100, Math.max(0, Number(e.target.value))) })}
+                      onChange={(e) => setEditPerson({ ...editPerson, employment_pct: e.target.value === '' || !Number.isFinite(Number(e.target.value)) ? null : Math.min(100, Math.max(0, Number(e.target.value))) })}
                       placeholder="–"
                       aria-label="Anstellung in Prozent"
                     />
                     % · davon Schule/ÜK
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
+                    <NumberInput
                       step={5}
                       className={`${field} w-20`}
                       value={editPerson.school_pct ?? ''}
-                      onChange={(e) => setEditPerson({ ...editPerson, school_pct: e.target.value === '' ? null : Math.min(100, Math.max(0, Number(e.target.value))) })}
+                      onChange={(e) => setEditPerson({ ...editPerson, school_pct: e.target.value === '' || !Number.isFinite(Number(e.target.value)) ? null : Math.min(100, Math.max(0, Number(e.target.value))) })}
                       placeholder="–"
                       aria-label="davon Schule und überbetriebliche Kurse in Prozent"
                     />
@@ -1456,11 +1551,20 @@ function Settings({ d }: { d: DutyData }) {
                     Speichern
                   </button>
                   {confirmP === p.id ? (
-                    <button type="button" className="min-h-11 rounded-lg bg-red-600 px-3 py-1 text-sm text-white" onClick={() => void deletePerson(p.id).then(() => setEditPerson(null))}>
-                      Wirklich löschen?
-                    </button>
+                    <>
+                      <button type="button" className="min-h-11 rounded-lg bg-red-600 px-3 py-1 text-sm text-white" onClick={() => void deletePerson(p.id).then(() => setEditPerson(null))}>
+                        Wirklich löschen?
+                      </button>
+                      <button type="button" className={btn} onClick={() => setConfirmP(null)}>
+                        Abbrechen
+                      </button>
+                      <span className="w-full text-xs text-amber-900">
+                        Wer nicht mehr mitarbeitet: besser oben «aktiv» ausschalten und speichern. Dann bleibt die Person in vergangenen Diensten und im Verlauf als «ausgetreten» sichtbar und
+                        lässt sich wieder aktivieren.
+                      </span>
+                    </>
                   ) : (
-                    <button type="button" className="link-btn px-1 text-sm text-red-700 underline" onClick={() => setConfirmP(p.id)}>
+                    <button type="button" className="link-btn min-h-11 px-1 text-sm text-red-700 underline" onClick={() => setConfirmP(p.id)}>
                       löschen
                     </button>
                   )}
@@ -1645,11 +1749,15 @@ export default function Duty() {
   const [monday, setMonday] = useState(() => mondayOf(todayIso()))
   // Link aus einer Benachrichtigung: /betrieb/dienste?tab=antraege
   const { search } = useLocation()
+  // Link aus der Suche: ?tab=einstellungen&person=<id> (Büro) bzw. ?tab=abwesend&person=<id>
+  const personParam = new URLSearchParams(search).get('person')
   useEffect(() => {
-    const t = new URLSearchParams(search).get('tab') as Tab | null
+    let t = new URLSearchParams(search).get('tab') as Tab | null
+    // ohne Recht für die Einstellungen: die Abwesenheiten der Person
+    if (personParam && t === 'einstellungen' && !canWrite) t = 'abwesend'
     if (t && ['woche', 'meine', 'antraege', 'abwesend', 'planung', 'einstellungen'].includes(t)) setTab(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
+  }, [search, canWrite])
   // Link aus der Zeit-App: /betrieb/dienste?tab=woche&datum=2026-11-07&dienst=<id> öffnet die Woche und markiert den Dienst
   useEffect(() => {
     const datum = new URLSearchParams(search).get('datum')
@@ -1660,7 +1768,10 @@ export default function Duty() {
   // Planung zeigt die Wochen bis zur Erzeugungsgrenze
   const far = addDays(mondayOf(todayIso()), GENERATE_AHEAD_WEEKS * 7 + 6)
   const to = tab === 'planung' && far > near ? far : near
-  const { data, refresh } = useQuery((pg) => loadDuty(pg, from, to), [from, to])
+  // «ältere anzeigen» bei den Änderungen oder Anträgen: ohne Zeitgrenze nachladen
+  const [history, setHistory] = useState(false)
+  const showOlder = () => setHistory(true)
+  const { data, refresh } = useQuery((pg) => loadDuty(pg, from, to, history), [from, to, history])
   const scrolledTo = useRef<string | null>(null)
   useEffect(() => {
     const id = new URLSearchParams(search).get('dienst')
@@ -1675,6 +1786,13 @@ export default function Duty() {
     }
     return () => el.classList.remove('ring-2', 'ring-brand-700')
   }, [search, data, tab, monday])
+  // aktiven Reiter ins Bild holen (die Leiste scrollt am Handy waagrecht)
+  const tabRefs = useRef(new Map<Tab, HTMLButtonElement>())
+  // Reiter ohne Recht (z.B. auf einem geteilten Gerät gespeichert) zeigen die Woche
+  const shown: Tab = !canWrite && (tab === 'planung' || tab === 'einstellungen') ? 'woche' : tab
+  useEffect(() => {
+    tabRefs.current.get(shown)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [shown, !!data])
   const overdue = data && canWrite ? weekStates(data.weeks, todayIso()).filter((w) => w.overdue).length : 0
   if (!canRead) return <p className="p-4 text-sm text-gray-600">Keine Berechtigung für den Dienstplan.</p>
   const tabs: [Tab, string][] = [
@@ -1689,14 +1807,21 @@ export default function Duty() {
         ] as [Tab, string][])
       : []),
   ]
-  // Reiter ohne Recht (z.B. auf einem geteilten Gerät gespeichert) zeigen die Woche
-  const shown: Tab = !canWrite && (tab === 'planung' || tab === 'einstellungen') ? 'woche' : tab
   return (
     <div className={`mx-auto space-y-3 p-4 pb-24 ${shown === 'woche' ? 'max-w-6xl' : 'max-w-3xl'}`}>
       <h1 className="text-xl font-bold text-gray-800">Dienstplan</h1>
       <div className="flex gap-1 overflow-x-auto">
         {tabs.map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setTab(k)} className={`shrink-0 rounded-lg px-3 py-1.5 text-sm ${shown === k ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}>
+          <button
+            key={k}
+            ref={(el) => {
+              if (el) tabRefs.current.set(k, el)
+              else tabRefs.current.delete(k)
+            }}
+            type="button"
+            onClick={() => setTab(k)}
+            aria-current={shown === k ? 'page' : undefined}
+            className={`min-h-11 shrink-0 rounded-lg px-3 py-1.5 text-sm ${shown === k ? 'bg-brand-700 text-white' : 'border border-gray-300 bg-white text-gray-700'}`}>
             {l}
           </button>
         ))}
@@ -1704,13 +1829,13 @@ export default function Duty() {
       {!data ? (
         <p className="text-sm text-gray-500">Lädt…</p>
       ) : shown === 'woche' ? (
-        <Week d={data} monday={monday} setMonday={setMonday} canWrite={canWrite} refresh={refresh} />
+        <Week d={data} monday={monday} setMonday={setMonday} canWrite={canWrite} refresh={refresh} showOlder={showOlder} />
       ) : shown === 'meine' ? (
         <Mine d={data} canWrite={canWrite} canPropose={canPropose} refresh={refresh} />
       ) : shown === 'antraege' ? (
-        <Requests d={data} canWrite={canWrite} canPropose={canPropose} refresh={refresh} />
+        <Requests d={data} canWrite={canWrite} canPropose={canPropose} refresh={refresh} showOlder={showOlder} />
       ) : shown === 'abwesend' ? (
-        <Absences d={data} canWrite={canWrite} refresh={refresh} />
+        <Absences d={data} canWrite={canWrite} refresh={refresh} personFilter={personParam} />
       ) : shown === 'planung' ? (
         <Planning
           d={data}
@@ -1721,7 +1846,7 @@ export default function Duty() {
           }}
         />
       ) : (
-        <Settings d={data} />
+        <Settings d={data} highlight={personParam} />
       )}
     </div>
   )

@@ -9,7 +9,7 @@
 import type { PGlite } from '@electric-sql/pglite'
 import { animalProviders, herdLocator, listAllAnimals } from '@fmis/core/animals'
 import { getCurrentUserEmail } from '@fmis/core/auth'
-import { upsertRow } from '../db/write'
+import { softDeleteRow, upsertRow } from '../db/write'
 import { isoDate, num } from './format'
 
 export type TaskArea = 'tiere' | 'gebaeude' | 'maschine' | 'brennholz' | 'frei'
@@ -128,8 +128,12 @@ export function areaFor(targets: TaskTarget[], activity: Activity | null): TaskA
   return 'frei'
 }
 
-export async function loadWorkTasks(pg: PGlite): Promise<WorkTask[]> {
-  const { rows } = await pg.query<Record<string, unknown>>("select * from work_tasks where deleted_at is null and status = 'offen' order by planned_date nulls last, title")
+/** Offene (Vorgabe) oder abgesagte Arbeiten; abgesagte die zuletzt geänderten zuerst, höchstens `limit`. */
+export async function loadWorkTasks(pg: PGlite, status: 'offen' | 'abgesagt' = 'offen', limit = 200): Promise<WorkTask[]> {
+  const { rows } =
+    status === 'offen'
+      ? await pg.query<Record<string, unknown>>("select * from work_tasks where deleted_at is null and status = 'offen' order by planned_date nulls last, title")
+      : await pg.query<Record<string, unknown>>("select * from work_tasks where deleted_at is null and status = 'abgesagt' order by updated_at desc limit $1", [limit])
   return rows.map((r) => ({
     ...(r as unknown as WorkTask),
     targets: parseTargets(r.targets),
@@ -145,6 +149,49 @@ export async function loadFarmJournal(pg: PGlite, since: string): Promise<FarmJo
   return rows.map((r) => ({ ...(r as unknown as FarmJournalEntry), entry_date: isoDate(r.entry_date), targets: parseTargets(r.targets), quantity: num(r.quantity) ?? null }))
 }
 
+/** Datum des ältesten Eintrags im Betriebsjournal (null: leer) — ob «ältere laden» noch etwas bringt. */
+export async function oldestFarmJournalDate(pg: PGlite): Promise<string | null> {
+  const { rows } = await pg.query<{ d: unknown }>('select min(entry_date) as d from farm_journal where deleted_at is null')
+  return rows[0]?.d ? isoDate(rows[0].d) : null
+}
+
+const NOTE_PREFIX = 'Lieferschein '
+
+/** «Kunde · Lieferschein 123» (so schreibt completeWorkTask) in Kunde und Lieferschein-Nr. zerlegen. */
+export function splitCustomer(customer: string | null): { customer: string; deliveryNoteNo: string } {
+  const parts = (customer ?? '').split(' · ')
+  const i = parts.findIndex((p) => p.startsWith(NOTE_PREFIX))
+  if (i < 0) return { customer: customer ?? '', deliveryNoteNo: '' }
+  return { customer: parts.filter((_, j) => j !== i).join(' · '), deliveryNoteNo: parts[i].slice(NOTE_PREFIX.length).trim() }
+}
+
+/** Gegenstück zu splitCustomer. */
+export function joinCustomer(customer: string, deliveryNoteNo: string): string | null {
+  return [customer.trim(), deliveryNoteNo.trim() ? `${NOTE_PREFIX}${deliveryNoteNo.trim()}` : ''].filter(Boolean).join(' · ') || null
+}
+
+export interface FarmJournalEdit {
+  entry_date: string
+  quantity: number | null
+  customer: string
+  deliveryNoteNo: string
+  notes: string
+}
+
+/** Eintrag im Betriebsjournal korrigieren (Ziele, Titel und Herkunft bleiben). */
+export async function updateFarmJournalEntry(e: FarmJournalEntry, c: FarmJournalEdit): Promise<void> {
+  await upsertRow('farm_journal', {
+    id: e.id,
+    entry_date: c.entry_date,
+    quantity: c.quantity,
+    customer: joinCustomer(c.customer, c.deliveryNoteNo),
+    notes: c.notes.trim() || null,
+  } as never)
+}
+
+/** Eintrag im Betriebsjournal löschen (weich; Rückgängig möglich). Die erledigte Arbeit dahinter bleibt erledigt. */
+export const deleteFarmJournalEntry = (id: string) => softDeleteRow('farm_journal', id)
+
 /** Bisher benutzte Objekte (Gebäude u.ä.) für die Suche. */
 export async function knownObjects(pg: PGlite): Promise<string[]> {
   const { rows } = await pg.query<{ targets: string }>("select targets from work_tasks where deleted_at is null and targets like '%objekt%' union all select targets from farm_journal where deleted_at is null and targets like '%objekt%'")
@@ -155,6 +202,7 @@ export async function knownObjects(pg: PGlite): Promise<string[]> {
 
 export type TaskDraft = Omit<WorkTask, 'id' | 'status' | 'done_date' | 'done_by' | 'result_notes' | 'journal_refs' | 'created_by' | 'source' | 'source_ref'> & { id?: string; source?: string; source_ref?: string | null }
 
+/** Neue Arbeit anlegen oder (mit `id`) eine offene ändern; beim Ändern bleibt «erfasst von». */
 export async function saveWorkTask(t: TaskDraft): Promise<string> {
   const id = t.id ?? crypto.randomUUID()
   await upsertRow('work_tasks', {
@@ -176,14 +224,35 @@ export async function saveWorkTask(t: TaskDraft): Promise<string> {
     done_by: null,
     result_notes: null,
     journal_refs: null,
-    created_by: getCurrentUserEmail(),
+    ...(t.id ? {} : { created_by: getCurrentUserEmail() }),
     deleted_at: null,
   } as never)
   return id
 }
 
-export async function cancelWorkTask(t: WorkTask): Promise<void> {
-  await upsertRow('work_tasks', { ...t, targets: JSON.stringify(t.targets), status: 'abgesagt' } as never)
+/** Verweis einer Shop-Arbeit: erste Zeile der Notiz («Anfrage CODE · Lieferung», backend/app/shop.py ref_line). */
+export function shopRefOf(t: Pick<WorkTask, 'source' | 'notes'>): string | null {
+  if (t.source !== 'shop') return null
+  return (t.notes ?? '').split('\n')[0].trim() || 'Shop-Anfrage'
+}
+
+/** Felder einer abgesagten Arbeit: bei Shop-Arbeiten ohne Kontaktdaten (Telefon, Adresse, Notiz der Kundschaft, Name),
+ * nur der Verweis bleibt — wie im Backend (_scrub) beim Ablehnen im Shop. */
+export function cancelledFields(t: Pick<WorkTask, 'source' | 'notes' | 'customer'>): { status: 'abgesagt'; notes: string | null; customer: string | null } {
+  const ref = shopRefOf(t)
+  if (ref == null) return { status: 'abgesagt', notes: t.notes, customer: t.customer }
+  return { status: 'abgesagt', notes: ref, customer: ref.split(' · ')[0] }
+}
+
+/** Arbeit absagen. Gibt zurück, ob sie aus dem Shop kam (dann die Anfrage dort ablehnen: der Shop erfährt es nicht). */
+export async function cancelWorkTask(t: WorkTask): Promise<{ fromShop: boolean }> {
+  await upsertRow('work_tasks', { id: t.id, ...cancelledFields(t) } as never)
+  return { fromShop: t.source === 'shop' }
+}
+
+/** Abgesagte Arbeit wieder öffnen (bei Shop-Arbeiten bleibt die gekürzte Notiz). */
+export async function reopenWorkTask(t: Pick<WorkTask, 'id'>): Promise<void> {
+  await upsertRow('work_tasks', { id: t.id, status: 'offen' } as never)
 }
 
 export interface Completion {
@@ -226,7 +295,7 @@ export async function completeWorkTask(t: WorkTask, c: Completion): Promise<stri
   const refs: string[] = []
   // Shop-Arbeit: nach dem Abschluss bleibt nur der Verweis «Anfrage CODE», keine Kontaktdaten (der Shop löscht sie auch)
   const shop = t.source === 'shop'
-  const shopRef = shop ? (t.notes ?? '').split('\n')[0].trim() || 'Shop-Anfrage' : null
+  const shopRef = shopRefOf(t)
   const customer = [shop ? shopRef : t.customer, c.deliveryNoteNo ? `Lieferschein ${c.deliveryNoteNo}` : null].filter(Boolean).join(' · ') || null
   const taskNotes = shop ? shopRef : t.notes
   if (c.deliveryNoteNo) refs.push(`Lieferschein ${c.deliveryNoteNo} im Shop`)

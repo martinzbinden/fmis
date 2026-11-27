@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { conflictsFor, copyFromPrevious, endTime, inMonthDayRange, isoWeek, isSummer, mondayOf, parseTimes, shiftId, slotsFor, slotsOn, stringifyTimes, suggest, timeOn, typeLabel, weekDates, monthGrid, runsOf, toQuarters, fromQuarters, timeText, rangesOverlap } from './duty'
+import { conflictsFor, copyFromPrevious, endTime, personLabel, typeSuffix, inMonthDayRange, isoWeek, isSummer, mondayOf, parseTimes, shiftId, slotsFor, slotsOn, stringifyTimes, suggest, timeOn, typeLabel, weekDates, monthGrid, runsOf, toQuarters, fromQuarters, timeText, rangesOverlap } from './duty'
 import type { DutyAbsence, DutyPerson, DutyShift, DutySkill, DutyType } from '../types'
 
 const T = (id: string, name: string, start: string, dur: number, weekdays = '1111111'): DutyType => ({
@@ -168,3 +168,46 @@ describe('Lücken und Zeitschaltuhr', () => {
   })
 })
 
+
+describe('Vergangene Tage: gespeicherte Dienste bleiben', () => {
+  const mo = '2026-10-12'
+  const sh = (type: string, date: string, slot: number, person: string): DutyShift => ({ id: shiftId(type, date, slot), type_id: type, date, slot, person_id: person, notes: null, assigned_by: null, updated_at: '', deleted_at: null })
+  it('inaktiver Diensttyp: vor heute mit dem gespeicherten Dienst, ab heute nicht', () => {
+    const inaktiv = { ...kaeserei, active: false }
+    const shifts = [sh('c', '2026-10-13', 0, 'a'), sh('c', '2026-10-16', 0, 'a')]
+    const slots = slotsFor([kuehe, inaktiv], shifts, weekDates(mo), { before: '2026-10-15', allTypes: [kuehe, inaktiv] })
+    const c = slots.filter((s) => s.type.id === 'c')
+    expect(c.map((s) => s.date)).toEqual(['2026-10-13'])
+    expect(c[0].kept).toBe(true)
+    expect(c[0].shift?.person_id).toBe('a')
+    // ohne «before» wie bisher
+    expect(slotsFor([kuehe, inaktiv], shifts, weekDates(mo)).some((s) => s.type.id === 'c')).toBe(false)
+  })
+  it('Anzahl verkleinert und Wochentag weggenommen: zusätzliche Plätze aus den Diensten', () => {
+    const zwei = sh('k', '2026-10-12', 1, 'b')
+    const sonntag = sh('c', '2026-10-11', 0, 'a') // Käserei läuft nur Di/Fr
+    const slots = slotsFor([kuehe, kaeserei], [zwei, sonntag], ['2026-10-11', '2026-10-12'], { before: '2026-10-20' })
+    expect(slots.filter((s) => s.date === '2026-10-12' && s.type.id === 'k').map((s) => s.slot)).toEqual([0, 1])
+    expect(slots.find((s) => s.date === '2026-10-11' && s.type.id === 'c')?.shift?.person_id).toBe('a')
+  })
+  it('gelöschter Diensttyp: aus allTypes, sonst Platzhalter; leere und gelöschte Dienste nicht', () => {
+    const weg = { ...schafe, deleted_at: '2026-10-20T00:00:00Z' }
+    const shifts = [sh('s', '2026-10-12', 0, 'a'), sh('z', '2026-10-12', 0, 'b'), { ...sh('k', '2026-10-12', 3, 'a'), deleted_at: 'x' }, { ...sh('k', '2026-10-12', 4, 'a'), person_id: null }]
+    const slots = slotsFor([kuehe], shifts, ['2026-10-12'], { before: '2026-10-20', allTypes: [kuehe, weg] })
+    // nach Uhrzeit: der Platzhalter hat keine (00:00), Kühe vor dem gelöschten Typ mit gleicher Zeit
+    expect(slots.map((s) => s.type.id)).toEqual(['z', 'k', 's'])
+    expect(slots.find((s) => s.type.id === 's')?.type.deleted_at).toBeTruthy()
+    expect(slots.find((s) => s.type.id === 'z')?.type.name).toBe('Dienst')
+    expect(slots.filter((s) => s.type.id === 'k').map((s) => s.slot)).toEqual([0])
+    expect(slots).toHaveLength(3)
+  })
+  it('Namen mit Hinweis', () => {
+    expect(personLabel({ name: 'Anna', active: true, deleted_at: null })).toBe('Anna')
+    expect(personLabel({ name: 'Anna', active: false, deleted_at: null })).toBe('Anna (ausgetreten)')
+    expect(personLabel({ name: 'Anna', active: true, deleted_at: '2026-10-01' })).toBe('Anna (gelöscht)')
+    expect(personLabel(undefined)).toBe('–')
+    expect(typeSuffix({ active: false, deleted_at: null })).toBe(' (inaktiv)')
+    expect(typeSuffix({ active: true, deleted_at: 'x' })).toBe(' (gelöscht)')
+    expect(typeSuffix(kuehe)).toBe('')
+  })
+})

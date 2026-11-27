@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { localToday as todayIso, monthGrid, runsOf } from '../lib/duty'
+import { pickDay, type PickMode } from '../lib/absencePick'
 import { me, saveAbsence, saveRequest, type DutyData } from '../lib/dutyData'
 import type { DutyAbsence, DutyAbsenceKind, DutyPerson, DutyRequest } from '../types'
 import VacationPlan from './VacationPlan'
@@ -9,8 +10,8 @@ const KIND_LABEL: Record<DutyAbsenceKind, string> = { ferien: 'Ferien', frei: 'f
 const KIND_COLOR: Record<DutyAbsenceKind, string> = { ferien: '#0284c7', frei: '#059669', krank: '#dc2626', kurs: '#7c3aed', schule: '#d97706', andere: '#6b7280' }
 const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
 const DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
-const field = 'rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
-const btn = 'rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm active:bg-gray-100 disabled:opacity-40'
+const field = 'min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-sm'
+const btn = 'min-h-11 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm active:bg-gray-100 disabled:opacity-40'
 
 interface DayEntry {
   person: DutyPerson | undefined
@@ -19,6 +20,8 @@ interface DayEntry {
   pending: boolean
   /** Schultag, der nicht mehr im Stundenplan steht */
   missing?: boolean
+  /** der Eintrag selbst (nicht bei Anträgen): antippen zum Ändern */
+  absence?: DutyAbsence
 }
 
 const short = (name: string | undefined) => (name ?? '?').replace(/^TEST\s+/, '').split(/\s+/).slice(-1)[0]
@@ -26,12 +29,27 @@ const short = (name: string | undefined) => (name ?? '?').replace(/^TEST\s+/, ''
 /** Abwesenheiten als Monatskalender und Jahresübersicht. Tage antippen, Art wählen, «Speichern».
  * Büro trägt für alle direkt ein. Mitarbeitende: «krank» gilt sofort, Ferien/Frei/Kurs werden
  * beantragt (das Büro bestätigt, bis dahin gestrichelt). */
-export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d: DutyData; canWrite: boolean; absences: DutyAbsence[]; refresh: () => void }) {
+export default function AbsenceCalendar({
+  d,
+  canWrite,
+  absences,
+  refresh,
+  onPick,
+  initialFilter = '',
+}: {
+  d: DutyData
+  canWrite: boolean
+  absences: DutyAbsence[]
+  refresh: () => void
+  /** Balken antippen: Eintrag ändern/löschen (nur für Einträge, die man ändern darf; sonst null) */
+  onPick?: (a: DutyAbsence) => (() => void) | null
+  initialFilter?: string
+}) {
   const today = todayIso()
   const self = useMemo(() => me(d.people), [d.people])
   const [view, setView] = useState<'monat' | 'jahr' | 'plan'>('monat')
   const [ym, setYm] = useState(() => ({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) }))
-  const [filter, setFilter] = useState<string>('')
+  const [filter, setFilter] = useState<string>(initialFilter)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [person, setPerson] = useState<string>(canWrite ? '' : (self?.id ?? ''))
   const [kind, setKind] = useState<DutyAbsenceKind>('ferien')
@@ -49,27 +67,27 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
       for (let day = from; day <= to; day = new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10))
         map.set(day, [...(map.get(day) ?? []), e])
     }
-    for (const a of absences) if (!filter || a.person_id === filter) add(a.from_date, a.to_date, { person: d.people.find((p) => p.id === a.person_id), kind: a.kind, pending: false, missing: !!a.missing_since })
+    for (const a of absences) if (!filter || a.person_id === filter) add(a.from_date, a.to_date, { person: (d.allPeople ?? d.people).find((p) => p.id === a.person_id), kind: a.kind, pending: false, missing: !!a.missing_since, absence: a })
     for (const r of d.requests as DutyRequest[])
       if (r.kind === 'wunsch' && r.status === 'offen' && r.from_date && r.to_date && (!filter || r.person_id === filter))
         add(r.from_date, r.to_date, { person: d.people.find((p) => p.id === r.person_id), kind: r.absence_kind ?? 'frei', pending: true })
     return map
   }, [absences, d.requests, d.people, filter])
 
-  // zuletzt angetippter Tag: mit Shift-Klick den ganzen Zeitraum bis hierher wählen
+  // «von–bis»: erster Tipp = Anfang, zweiter = Ende (lib/absencePick.ts); Shift-Klick: Zeitraum ab dem zuletzt angetippten Tag
+  const [mode, setMode] = useState<PickMode>('bereich')
   const [anchor, setAnchor] = useState<string | null>(null)
+  const [start, setStart] = useState<string | null>(null)
   const toggle = (day: string, shift: boolean) => {
     if (!canEnter) return
-    setSel((s) => {
-      const n = new Set(s)
-      if (shift && anchor) {
-        const [from, to] = anchor <= day ? [anchor, day] : [day, anchor]
-        for (let x = from; x <= to; x = new Date(Date.parse(`${x}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) n.add(x)
-      } else if (n.has(day)) n.delete(day)
-      else n.add(day)
-      return n
-    })
-    setAnchor(day)
+    const next = pickDay({ sel, anchor, start }, day, mode, shift)
+    setSel(next.sel)
+    setAnchor(next.anchor)
+    setStart(next.start)
+  }
+  const clearSel = () => {
+    setSel(new Set())
+    setStart(null)
   }
   const direct = canWrite || kind === 'krank'
   async function save() {
@@ -83,7 +101,7 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
       }
       if (direct && canWrite && kind !== 'schule') setGapRuns(runs.map(([from, to]) => ({ personId: who, from, to })))
       setMsg(direct ? `${runs.length} ${runs.length === 1 ? 'Eintrag' : 'Einträge'} gespeichert.` : `${runs.length} ${runs.length === 1 ? 'Antrag' : 'Anträge'} gestellt, das Büro bestätigt.`)
-      setSel(new Set())
+      clearSel()
       setNotes('')
       refresh()
     } finally {
@@ -107,10 +125,10 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
             ›
           </button>
         </div>
-        <div className="flex items-center gap-2">
-          {view !== 'plan' && <select className={field} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Person anzeigen">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {view !== 'plan' && <select className={`${field} min-w-0`} value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Person anzeigen">
             <option value="">alle Personen</option>
-            {d.people.filter((p) => p.active).map((p) => (
+            {d.people.filter((p) => p.active || p.id === filter).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
@@ -118,7 +136,7 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
           </select>}
           <span className="inline-flex overflow-hidden rounded-lg border border-gray-300 text-xs">
             {(['monat', 'jahr', 'plan'] as const).map((v) => (
-              <button key={v} type="button" onClick={() => setView(v)} className={`px-2 py-1 ${view === v ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
+              <button key={v} type="button" onClick={() => setView(v)} className={`min-h-10 px-2 py-1 ${view === v ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
                 {v === 'monat' ? 'Monat' : v === 'jahr' ? 'Jahr' : 'Ferienplan'}
               </button>
             ))}
@@ -138,27 +156,35 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
           <div className="grid grid-cols-7 gap-px rounded-lg bg-gray-200 p-px">
             {monthGrid(ym.y, ym.m).flat().map((day, i) =>
               day ? (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={(e) => toggle(day, e.shiftKey)}
-                  className={`min-h-16 bg-white p-0.5 text-left align-top ${sel.has(day) ? 'ring-2 ring-inset ring-indigo-500 !bg-indigo-50' : ''} ${day === today ? 'font-bold' : ''} ${i % 7 >= 5 ? 'bg-gray-50' : ''}`}
-                  aria-pressed={sel.has(day)}
-                  aria-label={`${Number(day.slice(8))}. ${MONTHS[ym.m - 1]}`}
-                >
-                  <span className={`block text-xs ${day === today ? 'text-brand-700' : 'text-gray-600'}`}>{Number(day.slice(8))}</span>
-                  {(byDay.get(day) ?? []).slice(0, 4).map((e, k) => (
-                    <span
-                      key={k}
-                      className={`mt-px block truncate rounded px-0.5 text-[10px] leading-tight text-white ${e.missing ? 'line-through opacity-60' : ''}`}
-                      style={e.pending ? { color: KIND_COLOR[e.kind], border: `1px dashed ${KIND_COLOR[e.kind]}`, background: 'white' } : { background: KIND_COLOR[e.kind] }}
-                      title={`${e.person?.name ?? '?'}: ${KIND_LABEL[e.kind]}${e.pending ? ' (beantragt)' : ''}${e.missing ? ' (nicht mehr im Stundenplan)' : ''}`}
-                    >
-                      {short(e.person?.name)}
-                    </span>
-                  ))}
-                  {(byDay.get(day)?.length ?? 0) > 4 && <span className="block text-[10px] text-gray-500">+{byDay.get(day)!.length - 4}</span>}
-                </button>
+                // Tag wählen = Knopf über die ganze Zelle; die Balken liegen als eigene Knöpfe darüber (nicht verschachtelt)
+                <div key={day} className={`relative min-h-16 bg-white ${sel.has(day) ? 'ring-2 ring-inset ring-indigo-500 !bg-indigo-50' : ''} ${day === start ? '!bg-indigo-100' : ''} ${i % 7 >= 5 ? 'bg-gray-50' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={(e) => toggle(day, e.shiftKey)}
+                    className="absolute inset-0 h-full w-full"
+                    aria-pressed={sel.has(day)}
+                    aria-label={`${Number(day.slice(8))}. ${MONTHS[ym.m - 1]}`}
+                  />
+                  <div className="pointer-events-none relative p-0.5 text-left">
+                    <span className={`block text-xs ${day === today ? 'font-bold text-brand-700' : 'text-gray-600'}`}>{Number(day.slice(8))}</span>
+                    {(byDay.get(day) ?? []).slice(0, 4).map((e, k) => {
+                      const label = `${e.person?.name ?? '?'}: ${KIND_LABEL[e.kind]}${e.pending ? ' (beantragt)' : ''}${e.missing ? ' (nicht mehr im Stundenplan)' : ''}`
+                      const cls = `mt-px block w-full truncate rounded px-0.5 text-left text-[10px] leading-tight text-white ${e.missing ? 'line-through opacity-60' : ''}`
+                      const style = e.pending ? { color: KIND_COLOR[e.kind], border: `1px dashed ${KIND_COLOR[e.kind]}`, background: 'white' } : { background: KIND_COLOR[e.kind] }
+                      const open = e.absence && onPick ? onPick(e.absence) : null
+                      return open ? (
+                        <button key={k} type="button" onClick={open} className={`${cls} pointer-events-auto min-h-4 py-0.5`} style={style} aria-label={`${label}: ändern`}>
+                          {short(e.person?.name)}
+                        </button>
+                      ) : (
+                        <span key={k} className={cls} style={style} title={label}>
+                          {short(e.person?.name)}
+                        </span>
+                      )
+                    })}
+                    {(byDay.get(day)?.length ?? 0) > 4 && <span className="block text-[10px] text-gray-500">+{byDay.get(day)!.length - 4}</span>}
+                  </div>
+                </div>
               ) : (
                 <div key={`x${i}`} className="bg-gray-50" />
               ),
@@ -207,7 +233,25 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
 
       {canEnter && view === 'monat' && (
         <div className={`space-y-2 rounded-lg p-2 ${sel.size ? 'bg-indigo-50' : 'bg-gray-50'}`}>
-          <p className="text-xs text-gray-600">{sel.size ? `${sel.size} ${sel.size === 1 ? 'Tag' : 'Tage'} gewählt.` : 'Tage im Kalender antippen (Shift-Klick: ganzer Zeitraum von–bis), dann Art wählen und speichern.'}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex shrink-0 overflow-hidden rounded-lg border border-gray-300 text-xs" role="group" aria-label="Tage wählen">
+              {(['bereich', 'einzeln'] as const).map((m) => (
+                <button key={m} type="button" onClick={() => { setMode(m); setStart(null) }} aria-pressed={mode === m} className={`min-h-10 whitespace-nowrap px-3 ${mode === m ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
+                  {m === 'bereich' ? 'von–bis' : 'einzelne Tage'}
+                </button>
+              ))}
+            </span>
+            <p className="min-w-[10rem] flex-1 text-xs text-gray-600">
+              {start
+                ? `Anfang ${Number(start.slice(8))}.${Number(start.slice(5, 7))}. gewählt – jetzt den letzten Tag antippen.`
+                : sel.size
+                  ? `${sel.size} ${sel.size === 1 ? 'Tag' : 'Tage'} gewählt.`
+                  : mode === 'bereich'
+                    ? 'Ersten und letzten Tag antippen, dann Art wählen und speichern.'
+                    : 'Tage einzeln antippen (Shift-Klick: ganzer Zeitraum), dann Art wählen und speichern.'}
+            </p>
+          </div>
+          {onPick && <p className="text-xs text-gray-500">Einen Eintrag ändern oder löschen: farbigen Balken antippen.</p>}
           <div className="flex flex-wrap gap-2">
             {canWrite ? (
               <select className={field} value={person} onChange={(e) => setPerson(e.target.value)} aria-label="Person">
@@ -229,11 +273,11 @@ export default function AbsenceCalendar({ d, canWrite, absences, refresh }: { d:
               ))}
             </select>
             <input className={`${field} min-w-0 flex-1`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Bemerkung (optional)" />
-            <button type="button" className="rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40" disabled={busy || !sel.size || !who} onClick={() => void save()}>
+            <button type="button" className="min-h-11 rounded-lg bg-brand-700 px-3 py-1.5 font-semibold text-white disabled:opacity-40" disabled={busy || !sel.size || !who} onClick={() => void save()}>
               {direct ? 'Speichern' : 'Beantragen'}
             </button>
             {sel.size > 0 && (
-              <button type="button" className={btn} onClick={() => setSel(new Set())}>
+              <button type="button" className={btn} onClick={clearSel}>
                 Auswahl löschen
               </button>
             )}

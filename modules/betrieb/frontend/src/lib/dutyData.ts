@@ -27,15 +27,22 @@ export interface DutyData {
   /** Begleitung in Diensten und Arbeiten ausserhalb der Dienste (schema/0012) */
   companions: DutyCompanion[]
   tasks: DutyTask[]
+  /** alle Personen samt inaktiven und gelöschten: Namen in vergangenen Diensten, Änderungen, Anträgen */
+  allPeople?: DutyPerson[]
+  /** alle Diensttypen samt gelöschten: vergangene Dienste zeigen (lib/duty.ts slotsFor) */
+  allTypes?: DutyType[]
+  /** Änderungen und entschiedene Anträge ohne Zeitgrenze geladen («ältere anzeigen») */
+  history?: boolean
 }
 
 const iso = (v: unknown) => isoDate(v)
 
-/** Alles für den Zeitraum [from, to] (Dienste, Abwesenheiten, Änderungen der letzten 30 Tage). */
-export async function loadDuty(pg: PGlite, from: string, to: string): Promise<DutyData> {
-  const [people, types, skills, absences, shifts, changes, requests, templates, templateSlots, weeks, works, companions, tasks] = await Promise.all([
-    pg.query<DutyPerson>('select * from duty_people where deleted_at is null order by sort_order, name'),
-    pg.query<DutyType>('select * from duty_types where deleted_at is null order by sort_order, start_time, name'),
+/** Alles für den Zeitraum [from, to] (Dienste, Abwesenheiten, Änderungen der letzten 30 Tage).
+ * `history`: Änderungen und entschiedene Anträge ohne Zeitgrenze. */
+export async function loadDuty(pg: PGlite, from: string, to: string, history = false): Promise<DutyData> {
+  const [allPeople, allTypes, skills, absences, shifts, changes, requests, templates, templateSlots, weeks, works, companions, tasks] = await Promise.all([
+    pg.query<DutyPerson>('select * from duty_people order by sort_order, name'),
+    pg.query<DutyType>('select * from duty_types order by sort_order, start_time, name'),
     pg.query<DutySkill>('select * from duty_skills where deleted_at is null'),
     pg.query<DutyAbsence>('select * from duty_absences where deleted_at is null and to_date >= $1 and from_date <= $2 order by from_date', [from, to]),
     // auch die Dienste, um die es in offenen Anträgen geht (können ausserhalb des Zeitraums liegen)
@@ -45,8 +52,8 @@ export async function loadDuty(pg: PGlite, from: string, to: string): Promise<Du
          or date in (select other_date from duty_requests where deleted_at is null and status = 'offen' and other_date is not null))`,
       [from, to],
     ),
-    pg.query<DutyChange>("select * from duty_changes where deleted_at is null and changed_at > now() - interval '30 days' order by changed_at desc"),
-    pg.query<DutyRequest>("select * from duty_requests where deleted_at is null and (status = 'offen' or updated_at > now() - interval '30 days') order by updated_at desc"),
+    pg.query<DutyChange>(`select * from duty_changes where deleted_at is null${history ? '' : " and changed_at > now() - interval '30 days'"} order by changed_at desc`),
+    pg.query<DutyRequest>(`select * from duty_requests where deleted_at is null${history ? '' : " and (status = 'offen' or updated_at > now() - interval '30 days')"} order by updated_at desc`),
     pg.query<DutyTemplate>('select * from duty_templates where deleted_at is null order by valid_from desc'),
     pg.query<DutyTemplateSlot>('select * from duty_template_slots where deleted_at is null'),
     pg.query<DutyWeek>('select * from duty_weeks where deleted_at is null order by week_start'),
@@ -54,9 +61,13 @@ export async function loadDuty(pg: PGlite, from: string, to: string): Promise<Du
     pg.query<DutyCompanion>('select * from duty_companions where deleted_at is null and date between $1 and $2', [from, to]),
     pg.query<DutyTask>('select * from duty_tasks where deleted_at is null and date between $1 and $2 order by date, start_time nulls last, title', [from, to]),
   ])
+  const types = allTypes.rows.map((t) => ({ ...t, duration_min: Number(t.duration_min) }))
   return {
-    people: people.rows,
-    types: types.rows.map((t) => ({ ...t, duration_min: Number(t.duration_min) })),
+    people: allPeople.rows.filter((p) => !p.deleted_at),
+    types: types.filter((t) => !t.deleted_at),
+    allPeople: allPeople.rows,
+    allTypes: types,
+    history,
     skills: skills.rows,
     absences: absences.rows.map((a) => ({ ...a, from_date: iso(a.from_date), to_date: iso(a.to_date), missing_since: a.missing_since ? iso(a.missing_since) : null })),
     shifts: shifts.rows.map((s) => ({ ...s, date: iso(s.date), slot: Number(s.slot) })),

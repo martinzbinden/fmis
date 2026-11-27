@@ -131,7 +131,8 @@ export default function ParcelPicker({
                 key={t}
                 type="button"
                 onClick={() => setTab(t)}
-                className={`flex-1 rounded px-2 py-1.5 text-sm ${tab === t ? 'bg-brand-700 text-white' : 'border border-gray-300 text-gray-700'}`}
+                aria-pressed={tab === t}
+                className={`min-h-11 flex-1 rounded px-2 py-1.5 text-sm ${tab === t ? 'bg-brand-700 text-white' : 'border border-gray-300 text-gray-700'}`}
               >
                 {t === 'karte' ? '🗺 Karte' : '☰ Liste'}
               </button>
@@ -139,7 +140,9 @@ export default function ParcelPicker({
           </div>
           {tab === 'karte' ? (
             <div>
-              <div className="h-[60vh] overflow-hidden rounded">
+              {/* Karte nicht höher als ca. 40 % des Bildschirms: im Dialog (max. 85vh) bleiben Umschalter und Hinweis
+                  sichtbar, und neben der Karte bleibt Platz zum Scrollen (die Karte fängt Wischbewegungen ab) */}
+              <div className="h-[40vh] overflow-hidden rounded">
                 <MapContainer center={[46.92, 7.6]} zoom={14} style={{ height: '100%', width: '100%' }}>
                   <TileLayer url={TILES} maxZoom={18} attribution="&copy; swisstopo" />
                   <ParcelLayer parcels={parcels} selectedId={selectedId} here={here} onPick={pick} />
@@ -163,7 +166,7 @@ export default function ParcelPicker({
                     <button
                       type="button"
                       onClick={() => pick(p.id)}
-                      className={`flex w-full items-baseline justify-between gap-2 px-1 py-2 text-left text-sm ${p.id === selectedId ? 'bg-brand-50' : ''}`}
+                      className={`flex min-h-11 w-full items-baseline justify-between gap-2 px-1 py-2 text-left text-sm ${p.id === selectedId ? 'bg-brand-50' : ''}`}
                     >
                       <span className="min-w-0">
                         <span className="font-medium text-gray-800">{p.name}</span>

@@ -5,29 +5,8 @@ import { SessionUndoList } from '@fmis/core/UndoBar'
 import { restoreRowState } from '../db/write'
 import { useServerHistory } from '@fmis/core/historyApi'
 import { fmtDateTime } from '../lib/format'
-import type { DataHistory, HistoryAction } from '../types'
-
-const TABLE_LABEL: Record<string, string> = {
-  machines: 'Maschine',
-  machine_files: 'Maschinen-Datei',
-  maintenance_tasks: 'Wartungsplan',
-  maintenance_log: 'Wartungsjournal',
-  machine_todos: 'Pendenz',
-  tracks: 'Spur',
-  tank_events: 'Fass',
-  duty_people: 'Person',
-  duty_types: 'Dienst',
-  duty_skills: 'Fähigkeit',
-  duty_absences: 'Abwesenheit',
-  duty_shifts: 'Einteilung',
-  duty_changes: 'Diensttausch',
-  duty_requests: 'Dienst-Antrag',
-  duty_templates: 'Standardplan',
-  duty_template_slots: 'Standardplan-Platz',
-  duty_weeks: 'Dienstwoche',
-  work_assignments: 'Arbeit zugeteilt',
-  machine_settings: 'Geräteeinstellung',
-}
+import { describeEntry, TABLE_LABEL } from '../lib/historyLabels'
+import type { HistoryAction } from '../types'
 
 const ACTION_LABEL: Record<HistoryAction, string> = {
   insert: 'Neu',
@@ -39,40 +18,6 @@ const ACTION_COLOR: Record<HistoryAction, string> = {
   insert: 'bg-green-100 text-green-800',
   update: 'bg-blue-100 text-blue-800',
   delete: 'bg-red-100 text-red-800',
-}
-
-function describeEntry(entry: DataHistory): string {
-  let snap: Record<string, unknown> = {}
-  try {
-    snap = JSON.parse(entry.snapshot)
-  } catch {
-    // Snapshot ist immer valides JSON (schreibt nur write.ts).
-  }
-  const s = (v: unknown) => (v == null ? null : String(v))
-
-  switch (entry.table_name) {
-    case 'machines':
-    case 'duty_people':
-    case 'duty_types':
-      return s(snap.name) ?? entry.row_id
-    case 'maintenance_tasks':
-    case 'machine_todos':
-    case 'maintenance_log':
-      return `${s(snap.title) ?? s(snap.entry_type) ?? '?'}${snap.done_date ? ` (${s(snap.done_date)})` : ''}`
-    case 'tracks':
-      return s(snap.label) ?? s(snap.work_type) ?? `${s(snap.point_count) ?? '?'} Punkte`
-    case 'duty_shifts':
-    case 'duty_changes':
-      return s(snap.date) ?? entry.row_id
-    case 'duty_requests':
-      return `${s(snap.kind) ?? '?'} ${s(snap.date) ?? s(snap.from_date) ?? ''} (${s(snap.status) ?? '?'})`
-    case 'duty_absences':
-      return `${s(snap.kind) ?? '?'} ${s(snap.from_date) ?? ''}–${s(snap.to_date) ?? ''}`
-    case 'machine_settings':
-      return s(snap.crop) ?? s(snap.set_at) ?? entry.row_id
-    default:
-      return entry.row_id
-  }
 }
 
 export default function History() {

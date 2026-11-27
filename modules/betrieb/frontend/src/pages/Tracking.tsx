@@ -89,15 +89,24 @@ function GpsChip({ s, now }: { s: SessionState; now: number }) {
   return <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${TONE[q.tone]}`}>{q.label}</span>
 }
 
+const TRACK_PAGE = 150
+
 /** Frühere und offene Spuren: Liste, Karte mit Fläche (Gerätebreite) und
  * Bahnen der gespeicherten Nulllinie, Kennzahlen. */
 function Tracks({ fields, s, selectedId, onSelect }: { fields: AssistField[]; s: SessionState; selectedId: string | null; onSelect: (id: string | null) => void }) {
   const navigate = useNavigate()
   const canWrite = useHasPermission('betrieb:tracking:write')
-  const { data: tracks, refresh } = useQuery(
-    (pg) => pg.query<Track>('select * from tracks where deleted_at is null order by started_at desc limit 150').then((r) => r.rows.map((t) => ({ ...t, started_at: iso(t.started_at), ended_at: t.ended_at ? iso(t.ended_at) : null }))),
-    [s.track?.id],
+  // die neuesten TRACK_PAGE Spuren, «weitere» lädt je TRACK_PAGE dazu (eine Zeile mehr zeigt, ob es noch ältere gibt)
+  const [limit, setLimit] = useState(TRACK_PAGE)
+  const { data: page, refresh } = useQuery(
+    (pg) =>
+      pg
+        .query<Track>('select * from tracks where deleted_at is null order by started_at desc limit $1', [limit + 1])
+        .then((r) => r.rows.map((t) => ({ ...t, started_at: iso(t.started_at), ended_at: t.ended_at ? iso(t.ended_at) : null }))),
+    [s.track?.id, limit],
   )
+  const tracks = page?.slice(0, limit)
+  const more = (page?.length ?? 0) > limit
   const [busy, setBusy] = useState(false)
   const sel = tracks?.find((t) => t.id === selectedId) ?? null
   const detail = useMemo(() => {
@@ -242,6 +251,11 @@ function Tracks({ fields, s, selectedId, onSelect }: { fields: AssistField[]; s:
         })}
         {tracks.length === 0 && <li className="p-3 text-sm text-gray-500">Noch keine Spuren.</li>}
       </ul>
+      {more && (
+        <button type="button" onClick={() => setLimit((n) => n + TRACK_PAGE)} className="min-h-11 w-full rounded-xl border border-gray-300 bg-white text-sm text-gray-800 active:bg-gray-50">
+          weitere {TRACK_PAGE} ältere Spuren
+        </button>
+      )}
     </div>
   )
 }

@@ -6,10 +6,17 @@ import MachineMaintenance, { ENTRY_LABEL, machineStatuses, STATE_LABEL, STATE_ST
 import { fmtDate, todayIso } from '../lib/format'
 import { CATEGORY_ICON, CATEGORY_LABEL, categoryOf, counterUnit, openTodos, parseTaskIds, TEMPLATES, todoOverdue, type DueState } from '../lib/maintenance'
 import { applyTemplates, loadMaintenanceData } from '../lib/maintenanceData'
-import type { Machine, MachineCategory } from '../types'
+import { costsByYear, loadDeletedMachines } from '../lib/machineJournal'
+import type { PGlite } from '@electric-sql/pglite'
+import type { MachineCategory } from '../types'
 
 const CATEGORIES: MachineCategory[] = ['zugfahrzeug', 'anbaugeraet', 'anhaenger', 'auto', 'uebrige']
 const STORAGE_KEY = 'wiesenjournal_wartung_view'
+
+async function load(pg: PGlite) {
+  const [data, deletedMachines] = await Promise.all([loadMaintenanceData(pg), loadDeletedMachines(pg)])
+  return { ...data, deletedMachines }
+}
 
 const chf = (v: number) => `CHF ${v.toLocaleString('de-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -25,7 +32,7 @@ function loadView(): { category: MachineCategory | 'alle'; onlyDue: boolean; tab
  * Wartungsplan mit Fälligkeit (Stundenzähler/km bzw. GPS-Stunden und
  * Monate) und das Journal; Kosten je Jahr und Eigentümer. */
 export default function Maintenance() {
-  const { data, loading, refresh } = useQuery(loadMaintenanceData, [])
+  const { data, loading, refresh } = useQuery(load, [])
   const canWrite = useHasPermission('betrieb:tracking:write')
   const [view, setViewState] = useState(loadView)
   const setView = (patch: Partial<typeof view>) => {
@@ -63,22 +70,14 @@ export default function Maintenance() {
   const withoutPlan = rows.filter((r) => r.statuses.length === 0 && (TEMPLATES[r.m.kind] ?? []).length > 0)
   const total = (s: DueState) => inCategory.reduce((sum, r) => sum + r.counts[s], 0)
 
-  // Journal: alle Einträge der Kategorie, Kosten je Jahr und Eigentümer
-  const byId = new Map((data?.machines ?? []).map((m) => [m.id, m]))
+  // Journal: alle Einträge der Kategorie (auch gelöschter Maschinen), Kosten je Jahr und Eigentümer
+  const byId = new Map([...(data?.deletedMachines ?? []), ...(data?.machines ?? [])].map((m) => [m.id, m]))
   const taskName = new Map((data?.tasks ?? []).map((t) => [t.id, t.title]))
   const journal = (data?.log ?? []).filter((l) => {
     const m = byId.get(l.machine_id)
     return m && (view.category === 'alle' || categoryOf(m) === view.category)
   })
-  const costs = new Map<string, Map<string, number>>()
-  for (const l of journal) {
-    if (l.cost_chf == null) continue
-    const year = l.done_date.slice(0, 4)
-    const owner = byId.get(l.machine_id)?.owner ?? 'eigene'
-    const y = costs.get(year) ?? new Map<string, number>()
-    y.set(owner, (y.get(owner) ?? 0) + l.cost_chf)
-    costs.set(year, y)
-  }
+  const costs = costsByYear(journal, byId)
 
   async function applyAll() {
     setBusy(true)
@@ -256,21 +255,20 @@ export default function Maintenance() {
 
       {view.tab === 'journal' && (
         <div className="space-y-3">
-          {costs.size > 0 && (
+          {costs.length > 0 && (
             <div className="rounded-lg bg-white p-3 text-sm shadow-sm">
               <h2 className="mb-1 text-xs font-semibold uppercase text-gray-500">Kosten je Jahr</h2>
               <table className="w-full text-sm">
                 <tbody>
-                  {[...costs]
-                    .sort((a, b) => b[0].localeCompare(a[0]))
-                    .map(([year, owners]) => (
-                      <tr key={year} className="border-t first:border-0">
-                        <td className="py-1 pr-2 font-medium text-gray-700">{year}</td>
-                        <td className="py-1 text-gray-600">
-                          {[...owners].map(([o, v]) => `${o === 'eigene' ? 'eigene Maschinen' : o}: ${chf(v)}`).join(' · ')}
-                        </td>
-                      </tr>
-                    ))}
+                  {costs.map(({ year, owners, deleted }) => (
+                    <tr key={year} className="border-t first:border-0">
+                      <td className="py-1 pr-2 align-top font-medium text-gray-700">{year}</td>
+                      <td className="py-1 text-gray-600">
+                        {[...owners].map(([o, v]) => `${o === 'eigene' ? 'eigene Maschinen' : o}: ${chf(v)}`).join(' · ')}
+                        {deleted > 0 && <span className="block text-xs text-gray-500">davon Maschinen (gelöscht): {chf(deleted)}</span>}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -280,12 +278,14 @@ export default function Maintenance() {
           ) : (
             <ul className="divide-y rounded-lg bg-white shadow-sm">
               {journal.map((l) => {
-                const m = byId.get(l.machine_id) as Machine
-                return (
-                  <li key={l.id} className="px-3 py-2 text-sm">
+                const m = byId.get(l.machine_id)!
+                const gone = m.deleted_at != null
+                const body = (
+                  <>
                     <div className="flex justify-between gap-2">
                       <span className="text-gray-800">
-                        {fmtDate(l.done_date)} · <b>{m.name}</b> · {ENTRY_LABEL[l.entry_type]}
+                        {fmtDate(l.done_date)} · <b>{m.name}</b>
+                        {gone ? ' (gelöscht)' : ''} · {ENTRY_LABEL[l.entry_type]}
                         {l.counter != null ? ` · ${l.counter.toLocaleString('de-CH')} ${counterUnit(m)}` : ''}
                       </span>
                       {l.cost_chf != null && <span className="shrink-0">{chf(l.cost_chf)}</span>}
@@ -295,6 +295,18 @@ export default function Maintenance() {
                         .filter(Boolean)
                         .join(' · ')}
                     </div>
+                  </>
+                )
+                // Korrigieren auf der Seite der Maschine; gelöschte Maschinen haben keine mehr
+                return (
+                  <li key={l.id} className="text-sm">
+                    {gone ? (
+                      <div className="px-3 py-2">{body}</div>
+                    ) : (
+                      <Link to={`../maschinen/${m.id}`} className="block min-h-11 px-3 py-2 active:bg-gray-50">
+                        {body}
+                      </Link>
+                    )}
                   </li>
                 )
               })}

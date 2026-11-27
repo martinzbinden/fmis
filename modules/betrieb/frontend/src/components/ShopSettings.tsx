@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
 import SelectAllBox from '@fmis/core/SelectAllBox'
 import { deleteShopToken, getShopCatalog, getShopSettings, pollShop, saveShopSettings, type ShopSettings as Settings, type ShopVariant } from '../lib/shop'
+import NumberInput from '@fmis/core/NumberInput'
 
 const field = 'min-h-11 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-base'
 const btn = 'min-h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm active:bg-gray-100 disabled:opacity-40'
@@ -66,7 +67,7 @@ export default function ShopSettings() {
               aria-label="Speichern"
               onClick={() =>
                 void run(async () => {
-                  setS(await saveShopSettings({ ...edit, variants: [...edit.variants] }))
+                  setS(await saveShopSettings({ ...edit, variants: [...edit.variants], poll_minutes: Math.min(1440, Math.max(2, edit.poll_minutes || 10)) }))
                   setEdit(null)
                   notifySuccess('Shop-Anbindung gespeichert')
                 })
@@ -95,7 +96,7 @@ export default function ShopSettings() {
             </label>
             <label className="block">
               <span className="text-gray-600">Abfragen alle … Minuten</span>
-              <input type="number" min={2} max={1440} className={`${field} w-24`} value={edit.poll_minutes} onChange={(e) => setEdit({ ...edit, poll_minutes: Number(e.target.value) || 10 })} />
+              <NumberInput step={1} className={`${field} w-24`} value={edit.poll_minutes || ''} onChange={(e) => setEdit({ ...edit, poll_minutes: Number(e.target.value) || 0 })} placeholder="10" aria-label="Abfragen alle … Minuten" />
             </label>
             <div>
               <div className="mb-1 flex items-center justify-between">

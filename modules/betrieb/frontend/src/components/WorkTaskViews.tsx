@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import AppIcon from '@fmis/core/AppIcon'
 import { getCurrentUserEmail } from '@fmis/core/auth'
+import { undoAction } from '@fmis/core/undo'
+import { errorText, notifyError } from '@fmis/core/toast'
 import Modal from './Modal'
 import PhotoInput from '@fmis/core/PhotoInput'
 import PhotoStrip from '@fmis/core/PhotoStrip'
@@ -8,7 +10,22 @@ import type { PreparedPhoto } from '@fmis/core/photos'
 import { addPhotos, PHOTO_MODULE } from '../lib/photoRefs'
 import { createDeliveryNote, createDirectDeliveryNote, getShopProducts, searchShopCustomers, variantLabel, type ShopCustomer, type ShopVariant } from '../lib/shop'
 import { fmtDate, todayIso } from '../lib/format'
-import { activityByTitle, AREA_ICON, AREA_LABEL, cancelWorkTask, completeWorkTask, STABLE_CATEGORIES, targetIcon, type FarmJournalEntry, type FollowUpOrigin, type TaskArea, type WorkTask } from '../lib/workTasks'
+import {
+  activityByTitle,
+  AREA_ICON,
+  AREA_LABEL,
+  completeWorkTask,
+  deleteFarmJournalEntry,
+  reopenWorkTask,
+  splitCustomer,
+  STABLE_CATEGORIES,
+  targetIcon,
+  updateFarmJournalEntry,
+  type FarmJournalEntry,
+  type FollowUpOrigin,
+  type TaskArea,
+  type WorkTask,
+} from '../lib/workTasks'
 
 const field = 'min-h-11 rounded-lg border border-gray-300 px-2 py-1.5 text-base'
 
@@ -20,7 +37,7 @@ export function WorkTaskCard({
   originTitle,
   canWrite,
   onComplete,
-  onChanged,
+  onEdit,
   onFollowUp,
 }: {
   task: WorkTask
@@ -31,10 +48,10 @@ export function WorkTaskCard({
   originTitle?: string | null
   canWrite: boolean
   onComplete: () => void
-  onChanged: () => void
+  /** ✎: Arbeit ändern oder absagen (Dialog) */
+  onEdit: () => void
   onFollowUp?: (origin: FollowUpOrigin) => void
 }) {
-  const [confirm, setConfirm] = useState(false)
   const overdue = task.due_date && task.due_date < todayIso()
   return (
     <div className="space-y-2 rounded-lg bg-white p-4 shadow-sm">
@@ -53,6 +70,11 @@ export function WorkTaskCard({
           {task.customer && <div className="text-sm text-gray-700">für {task.customer}</div>}
           {task.notes && <div className="whitespace-pre-line text-sm text-gray-600">{task.notes}</div>}
         </div>
+        {canWrite && (
+          <button type="button" onClick={onEdit} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-lg text-lg text-gray-600 active:bg-gray-100" aria-label={`«${task.title}» ändern oder absagen`}>
+            ✎
+          </button>
+        )}
       </div>
       {task.targets.length > 0 && (
         <ul className="flex flex-wrap gap-1.5 text-sm">
@@ -70,18 +92,48 @@ export function WorkTaskCard({
           <button type="button" onClick={onComplete} className="min-h-11 flex-1 rounded-lg border border-green-600 px-3 py-2 text-sm font-medium text-green-700">
             ✓ Erledigt erfassen
           </button>
-          {confirm ? (
-            <button type="button" onClick={() => void cancelWorkTask(task).then(onChanged)} className="min-h-11 rounded-lg bg-red-600 px-3 py-2 text-sm text-white">
-              Wirklich absagen?
-            </button>
-          ) : (
-            <button type="button" onClick={() => setConfirm(true)} className="min-h-11 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-700">
-              Absagen
-            </button>
-          )}
         </div>
       )}
     </div>
+  )
+}
+
+/** Abgesagte Arbeiten (eingeklappt) mit «wieder öffnen». */
+export function CancelledTaskList({ tasks, canWrite, onReopened }: { tasks: WorkTask[]; canWrite: boolean; onReopened: (t: WorkTask) => void }) {
+  if (tasks.length === 0) return null
+  return (
+    <details className="rounded-lg bg-white shadow-sm">
+      <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium text-gray-700">Abgesagt ({tasks.length})</summary>
+      <ul className="divide-y border-t text-sm">
+        {tasks.map((t) => (
+          <li key={t.id} className="flex items-start gap-2 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-gray-800">{t.title}</div>
+              <div className="text-gray-600">
+                {AREA_LABEL[t.area]}
+                {t.planned_date ? ` · geplant ${fmtDate(t.planned_date)}` : ''}
+                {t.source === 'shop' ? ' · aus dem Shop' : ''}
+              </div>
+              {t.notes && <div className="whitespace-pre-line text-gray-600">{t.notes}</div>}
+              {t.source === 'shop' && <div className="text-xs text-gray-600">Kontaktdaten beim Absagen entfernt — Angaben in der Anfrage im Shop.</div>}
+            </div>
+            {canWrite && (
+              <button
+                type="button"
+                onClick={() =>
+                  void undoAction(`Wieder offen: ${t.title}`, () => reopenWorkTask(t))
+                    .then(() => onReopened(t))
+                    .catch((e: unknown) => notifyError(errorText(e)))
+                }
+                className="min-h-11 shrink-0 rounded-lg border border-gray-300 px-3 text-sm text-gray-800 active:bg-gray-50"
+              >
+                wieder öffnen
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 
@@ -149,9 +201,12 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
         })
         deliveryNoteNo = r.delivery_note_no
       }
-      // Fotos gehören zur Arbeit: Betriebs- und Stalljournal zeigen sie über die Arbeit (task_id bzw. ref_id)
-      if (photos.length) await addPhotos('work_task', task.id, photos)
-      const refs = await completeWorkTask(task, { date, notes, category, medication, dose, doneBy, quantity: q != null && Number.isFinite(q) ? q : null, deliveryNoteNo })
+      // Alles Folgende (auch Stalljournal anderer Module) ist EIN Rückgängig-Schritt; der Lieferschein im Shop bleibt.
+      const refs = await undoAction(`Erledigt: ${task.title}`, async () => {
+        // Fotos gehören zur Arbeit: Betriebs- und Stalljournal zeigen sie über die Arbeit (task_id bzw. ref_id)
+        if (photos.length) await addPhotos('work_task', task.id, photos)
+        return completeWorkTask(task, { date, notes, category, medication, dose, doneBy, quantity: q != null && Number.isFinite(q) ? q : null, deliveryNoteNo })
+      })
       onDone(photos.length ? [...refs, `${photos.length} ${photos.length === 1 ? 'Foto' : 'Fotos'}`] : refs, followUp)
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -268,6 +323,7 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
                   </ul>
                 )}
                 <p className="text-xs text-gray-600">Braucht Verbindung. Ohne Empfang: Häkchen entfernen und den Lieferschein später im Shop-Backoffice erstellen.</p>
+                <p className="text-xs text-gray-700">«Rückgängig» nimmt danach nur die Einträge hier zurück — der Lieferschein bleibt im Shop und muss dort storniert werden.</p>
               </>
             )}
           </div>
@@ -292,7 +348,18 @@ export function CompleteTaskDialog({ task, onClose, onDone }: { task: WorkTask; 
 }
 
 /** Betriebsjournal: erledigte Arbeiten an Gebäuden, Maschinen, Brennholz und weitere. */
-export function FarmJournalList({ entries, photos, onFollowUp }: { entries: FarmJournalEntry[]; photos?: Map<string, string[]>; onFollowUp?: (origin: FollowUpOrigin) => void }) {
+export function FarmJournalList({
+  entries,
+  photos,
+  onFollowUp,
+  onEdit,
+}: {
+  entries: FarmJournalEntry[]
+  photos?: Map<string, string[]>
+  onFollowUp?: (origin: FollowUpOrigin) => void
+  /** ✎ je Zeile: Eintrag ändern oder löschen */
+  onEdit?: (e: FarmJournalEntry) => void
+}) {
   if (entries.length === 0) return <p className="rounded-lg bg-white p-4 text-sm text-gray-600 shadow-sm">Noch keine Einträge. Erledigte Arbeiten (ausser Parzellen und Tiere mit Stalljournal) erscheinen hier.</p>
   return (
     <ul className="divide-y rounded-lg bg-white text-sm shadow-sm">
@@ -300,9 +367,16 @@ export function FarmJournalList({ entries, photos, onFollowUp }: { entries: Farm
         <li key={e.id} className="flex gap-3 px-3 py-2">
           <AppIcon icon={AREA_ICON[e.area as keyof typeof AREA_ICON] ?? 'erfassen'} size={32} />
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-2">
-              <span className="font-semibold text-gray-900">{e.title}</span>
-              <span className="text-xs tabular-nums text-gray-600">{fmtDate(e.entry_date)}</span>
+            <div className="flex items-start gap-2">
+              <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-2">
+                <span className="font-semibold text-gray-900">{e.title}</span>
+                <span className="text-xs tabular-nums text-gray-600">{fmtDate(e.entry_date)}</span>
+              </div>
+              {onEdit && (
+                <button type="button" onClick={() => onEdit(e)} className="-my-1 grid min-h-11 min-w-11 shrink-0 place-items-center rounded-lg text-lg text-gray-600 active:bg-gray-100" aria-label={`Eintrag «${e.title}» ändern`}>
+                  ✎
+                </button>
+              )}
             </div>
             <div className="text-gray-700">
               {e.targets.map((t) => t.label).join(', ')}
@@ -328,5 +402,88 @@ export function FarmJournalList({ entries, photos, onFollowUp }: { entries: Farm
         </li>
       ))}
     </ul>
+  )
+}
+
+/** Eintrag im Betriebsjournal ändern (Datum, Menge, Kunde, Lieferschein-Nr., Bemerkung) oder löschen. */
+export function FarmJournalEditDialog({ entry, onClose, onSaved }: { entry: FarmJournalEntry; onClose: () => void; onSaved: (msg: string) => void }) {
+  const split = splitCustomer(entry.customer)
+  const [date, setDate] = useState(entry.entry_date)
+  const [quantity, setQuantity] = useState(entry.quantity != null ? String(entry.quantity) : '')
+  const [customer, setCustomer] = useState(split.customer)
+  const [noteNo, setNoteNo] = useState(split.deliveryNoteNo)
+  const [notes, setNotes] = useState(entry.notes ?? '')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  async function run(fn: () => Promise<void>, msg: string) {
+    setBusy(true)
+    setErr(null)
+    try {
+      await fn()
+      onSaved(msg)
+    } catch (e) {
+      setErr(errorText(e))
+      setBusy(false)
+    }
+  }
+  function save() {
+    const q = quantity.trim() ? Number(quantity.replace(',', '.')) : null
+    if (q != null && !Number.isFinite(q)) return setErr('Menge ist keine Zahl.')
+    if (!date) return setErr('Datum angeben.')
+    void run(() => undoAction(`Betriebsjournal geändert: ${entry.title}`, () => updateFarmJournalEntry(entry, { entry_date: date, quantity: q, customer, deliveryNoteNo: noteNo, notes })), `${entry.title} geändert`)
+  }
+  return (
+    <Modal title={`Ändern: ${entry.title}`} onClose={onClose} onSubmit={save}>
+      <div className="space-y-2 text-sm">
+        <label className="block">
+          <span className="text-gray-600">Datum</span>
+          <input type="date" className={`${field} w-full`} value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="text-gray-600">Menge {entry.unit ? `(${entry.unit})` : ''}</span>
+          <input inputMode="decimal" className={`${field} w-full`} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="text-gray-600">Für wen</span>
+          <input className={`${field} w-full`} value={customer} onChange={(e) => setCustomer(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className="text-gray-600">Lieferschein-Nr.</span>
+          <input className={`${field} w-full`} value={noteNo} onChange={(e) => setNoteNo(e.target.value)} />
+        </label>
+        <p className="text-xs text-gray-600">Nur der Vermerk hier — der Lieferschein im Shop ändert sich nicht.</p>
+        <label className="block">
+          <span className="text-gray-600">Bemerkung</span>
+          <textarea className={`${field} w-full`} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </label>
+        {err && <p className="text-red-700">{err}</p>}
+        <button type="button" disabled={busy} onClick={save} className="min-h-12 w-full rounded-lg bg-brand-700 font-semibold text-white disabled:opacity-40">
+          Speichern
+        </button>
+        <div className="border-t pt-2">
+          {confirmDelete ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="flex-1 text-gray-700">Eintrag löschen? Die erledigte Arbeit dahinter bleibt erledigt.</span>
+              <button type="button" onClick={() => setConfirmDelete(false)} className="min-h-11 rounded-lg border border-gray-300 px-3">
+                Nein
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void run(() => undoAction(`Betriebsjournal gelöscht: ${entry.title}`, () => deleteFarmJournalEntry(entry.id)), `${entry.title} gelöscht`)}
+                className="min-h-11 rounded-lg bg-red-600 px-3 font-medium text-white disabled:opacity-40"
+              >
+                Ja, löschen
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmDelete(true)} className="min-h-11 rounded-lg border border-red-200 px-3 text-red-700">
+              Eintrag löschen …
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
   )
 }
