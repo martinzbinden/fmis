@@ -100,6 +100,8 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
   const checks = useMemo(() => data?.checks ?? [], [data])
   const rounds = useMemo(() => groupRounds(checks), [checks])
   const knownExaminers = useMemo(() => examiners(checks), [checks])
+  // Frühere Durchgänge: zuerst die letzten 12, auf Wunsch alle
+  const [allRounds, setAllRounds] = useState(false)
 
   // ---- Durchgang
   const [round, setRoundState] = useState<PregnancyRound | null>(() => {
@@ -519,7 +521,7 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
           <section className="space-y-1">
             <h2 className="px-1 text-sm font-semibold text-gray-700">Frühere Durchgänge</h2>
             <ul className="divide-y rounded-xl bg-white shadow-sm">
-              {rounds.slice(0, 12).map((r) => (
+              {(allRounds ? rounds : rounds.slice(0, 12)).map((r) => (
                 <li key={r.id}>
                   <button
                     type="button"
@@ -536,6 +538,13 @@ export default function PregnancyEntry({ moduleKey }: { moduleKey: string }) {
                   </button>
                 </li>
               ))}
+              {!allRounds && rounds.length > 12 && (
+                <li>
+                  <button type="button" className="min-h-11 w-full px-3 text-left text-sm font-medium text-brand-700 active:bg-gray-50" onClick={() => setAllRounds(true)}>
+                    Alle {rounds.length} anzeigen
+                  </button>
+                </li>
+              )}
             </ul>
             <CompareLink />
           </section>

@@ -11,6 +11,7 @@ import { DEFAULT_SELECTION_SETTINGS, rankLambs, type LambRow, type SelectionSett
 import { choiceOfKey, loadLambSelection, recommendationsFor, saveDecision, SIRE_TRAIT } from '../lib/lambSelectionData'
 import { PRESELECTIONS, preselectionLabel, type Preselection, type Recommendation } from '../lib/lambRecommendation'
 import ChoiceScale from '../components/ChoiceScale'
+import TapInfo from '../components/TapInfo'
 import { speciesOf } from '../lib/species'
 import { InbreedingBadge } from './AnimalDetail'
 import NumberInput from '@fmis/core/NumberInput'
@@ -310,7 +311,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     <td className="px-2 py-2 text-right font-bold">{r.rank ?? ''}</td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {r.animal_id ? (
-                        <Link to={`../tiere/${r.animal_id}`} relative="path" className="font-semibold">
+                        <Link to={`../tiere/${r.animal_id}`} relative="path" className="-my-2 inline-flex min-h-10 items-center font-semibold">
                           {animalLabel(r)}
                         </Link>
                       ) : (
@@ -325,7 +326,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     <td className="whitespace-nowrap px-2 py-2 text-gray-600">{ageText(r.age_days)}</td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {r.dam ? (
-                        <Link to={`../tiere/${r.dam.id}`} relative="path">
+                        <Link to={`../tiere/${r.dam.id}`} relative="path" className="-my-2 inline-flex min-h-10 items-center">
                           {r.dam.lauf_nr && <span className="mr-1 font-bold">{r.dam.lauf_nr}</span>}
                           {animalLabel(r.dam)}
                         </Link>
@@ -349,7 +350,9 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     <td className="whitespace-nowrap px-2 py-2 text-right">{scc != null ? fmtCells(scc) : '–'}</td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {r.sire_key ? (
-                        <Link to={`/${moduleKey}/stammbaum/${encodeURIComponent(r.sire_key)}`}>{shortEarTag(r.sire_key)}</Link>
+                        <Link to={`/${moduleKey}/stammbaum/${encodeURIComponent(r.sire_key)}`} className="-my-2 inline-flex min-h-10 items-center">
+                          {shortEarTag(r.sire_key)}
+                        </Link>
                       ) : (
                         '–'
                       )}
@@ -366,15 +369,28 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                     <td className="bg-brand-50 px-2 py-2 text-right text-base font-bold text-brand-900">
                       {r.index != null ? r.index.toLocaleString('de-CH', { minimumFractionDigits: 1 }) : '–'}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-right" title={values.get(r.key) && data?.herdLactationKg ? lambValueTip(values.get(r.key)!, valueSettings, data.herdLactationKg, milkPrice) : undefined}>
+                    <td className="px-2 py-2 text-right">
                       {values.get(r.key) ? (
-                        <>
-                          <span className={`font-semibold ${values.get(r.key)!.francs < 0 ? 'text-red-800' : 'text-gray-900'}`}>{fr(values.get(r.key)!.francs)}</span>
-                          <div className="text-xs text-gray-500">
-                            Milch {values.get(r.key)!.pct > 0 ? '+' : values.get(r.key)!.pct < 0 ? '−' : '±'}
-                            {Math.abs(values.get(r.key)!.pct).toLocaleString('de-CH')} %
-                          </div>
-                        </>
+                        (() => {
+                          const v = values.get(r.key)!
+                          const inner = (
+                            <>
+                              <span className={`block whitespace-nowrap font-semibold ${v.francs < 0 ? 'text-red-800' : 'text-gray-900'}`}>{fr(v.francs)}</span>
+                              <span className="block whitespace-nowrap text-xs text-gray-500">
+                                Milch {v.pct > 0 ? '+' : v.pct < 0 ? '−' : '±'}
+                                {Math.abs(v.pct).toLocaleString('de-CH')} %
+                              </span>
+                            </>
+                          )
+                          if (!data?.herdLactationKg) return inner
+                          // Rechenweg nach Antippen (am Handy gibt es kein title)
+                          const tip = lambValueTip(v, valueSettings, data.herdLactationKg, milkPrice)
+                          return (
+                            <TapInfo info={<span className="block max-w-[14rem] whitespace-normal text-left">{tip}</span>} title={tip} className="ml-auto block min-h-10 text-right">
+                              {inner}
+                            </TapInfo>
+                          )
+                        })()
                       ) : (
                         '–'
                       )}

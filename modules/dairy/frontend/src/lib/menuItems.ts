@@ -13,7 +13,7 @@ export interface MenuItem extends FunctionEntry {
 
 export function menuItems(sheep: boolean, weanFromDays: number): MenuItem[] {
   const sire = sheep ? 'Widder' : 'Stier'
-  return [
+  const items: MenuItem[] = [
     { to: 'tiere', icon: 'tierliste', label: 'Tierliste', short: 'Tierliste', desc: 'Alle Tiere der Herde als Liste: suchen, filtern, Spalten wählen', keywords: 'tiere herde bestand' },
     { to: 'leistung', icon: 'milch', label: 'Leistung', short: 'Leistung', desc: 'Milchleistung und Zuchtwerte, je Tier und Gruppe', keywords: 'milch zuchtwert' },
     { to: 'tierinfo', icon: 'tierinfo', label: 'Tier-Info', short: 'Tier-Info', desc: 'Nummer tippen oder lesen: Alter, Abstammung, Index, Geburten, Belegung, Trächtigkeit, Merklisten, Verlauf', keywords: 'tier suchen nummer' },
@@ -38,6 +38,9 @@ export function menuItems(sheep: boolean, weanFromDays: number): MenuItem[] {
     { to: '/import', icon: 'import', label: 'Datenimport', short: 'Import', desc: 'TVD-Tierbestand, Herdebuch- und weitere Dateien hochladen (gemeinsame Seite für alle Module)' },
     { to: 'anpaarung', icon: 'anpaarung', label: 'Anpaarung planen', short: 'Anpaarung', desc: `Erwartete Inzucht je Mutter × ${sire}`, keywords: 'inzucht' },
   ]
+  // Joghurt-Milch gibt es nur bei den Milchkühen (Reiter in «Leistung», pages/Milk.tsx)
+  if (!sheep) items.push({ to: 'leistung?ansicht=joghurt', icon: 'milch', label: 'Joghurt-Milch', short: 'Joghurt', desc: 'Kühe für die Joghurt-Milch wählen, gemolken abhaken, Vorgang beenden', keywords: 'joghurt jogurt milch verarbeitung' })
+  return items
 }
 
 /** Pfad eines Eintrags ohne Suchteil, wie er im Verlauf «zuletzt geöffnet» steht. */

@@ -217,7 +217,11 @@ function CowRow({
 export default function YogurtPlanner() {
   const db = useDb()
   const { data, loading } = useQuery(loadCows, [])
-  const { data: batches } = useQuery((pg) => loadYogurtBatches(pg), [])
+  // erledigte: zuerst die letzten 10, «ältere anzeigen» lädt je 30 mehr (eine Zeile mehr zeigt, ob es weitere gibt)
+  const [batchLimit, setBatchLimit] = useState(10)
+  const { data: batchRows } = useQuery((pg) => loadYogurtBatches(pg, batchLimit + 1), [batchLimit])
+  const batches = batchRows?.slice(0, batchLimit)
+  const moreBatches = (batchRows?.length ?? 0) > batchLimit
   const [opts, setOptsState] = useState<YogurtOptions>(loadSettings)
   const setOpts = (patch: Partial<YogurtOptions>) => {
     const next = { ...opts, ...patch }
@@ -521,7 +525,7 @@ export default function YogurtPlanner() {
 
       {batches && batches.length > 0 && (
         <details className="rounded-lg bg-white shadow-sm">
-          <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-gray-700">Erledigte Joghurt-Milch ({batches.length})</summary>
+          <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-gray-700">Erledigte Joghurt-Milch ({batches.length}{moreBatches ? '+' : ''})</summary>
           <ul className="divide-y text-sm">
             {batches.map((b) => (
               <li key={b.id} className="px-3 py-2">
@@ -532,7 +536,7 @@ export default function YogurtPlanner() {
                   <button
                     type="button"
                     onClick={() => window.confirm(`Joghurt-Milch vom ${fmtDate(b.batch_date)} löschen?`) && softDeleteRow(db, 'yogurt_batches', b.id)}
-                    className="min-h-9 px-2 text-xs text-gray-500"
+                    className="min-h-11 px-2 text-xs text-gray-500"
                   >
                     Löschen
                   </button>
@@ -544,6 +548,11 @@ export default function YogurtPlanner() {
               </li>
             ))}
           </ul>
+          {moreBatches && (
+            <button type="button" onClick={() => setBatchLimit((n) => n + 30)} className="min-h-11 w-full border-t px-3 text-left text-sm font-medium text-brand-700">
+              Ältere anzeigen
+            </button>
+          )}
         </details>
       )}
 

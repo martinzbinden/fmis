@@ -75,7 +75,7 @@ function loadCurrentMilk(analysedOnly: boolean) {
  * bestimmter Tiere: ?tier=<id> oder ?tiere=<id,id,…>&gruppe=<Name>. */
 export default function Milk({ moduleKey }: { moduleKey: string }) {
   const terms = speciesTerms(moduleKey)
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const single = params.get('tier')
   const idList = single ?? params.get('tiere') ?? ''
   const only = useMemo(() => {
@@ -96,10 +96,26 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
   const cows = useMemo(() => (data ?? []).filter((c) => !only || only.has(c.animal_id)), [data, only])
   const [sortKey, setSortKey] = useState<SortKey>('protein_pct')
   // Zwei Tabs: Laktationsleistung (Abschlüsse) und letzte Milchwägung.
-  // ?ansicht=joghurt (Link aus dem Verlauf) oder ein laufender Joghurt-Vorgang öffnet gleich den Joghurt
-  const [tab, setTab] = useState<'laktation' | 'waegung' | 'joghurt'>(() =>
-    moduleKey === 'dairy' && (params.get('ansicht') === 'joghurt' || loadRun()) ? 'joghurt' : 'laktation',
-  )
+  // Der Reiter steht in ?ansicht= (damit «Zurück» ihn behält); ?ansicht=joghurt (Menü, Verlauf) oder ein
+  // laufender Joghurt-Vorgang öffnet gleich den Joghurt
+  type Tab = 'laktation' | 'waegung' | 'joghurt'
+  const ansicht = params.get('ansicht')
+  const [runAtStart] = useState(() => moduleKey === 'dairy' && !!loadRun())
+  const tab: Tab =
+    ansicht === 'waegung' || ansicht === 'laktation'
+      ? ansicht
+      : moduleKey === 'dairy' && (ansicht === 'joghurt' || (!ansicht && runAtStart))
+        ? 'joghurt'
+        : 'laktation'
+  const setTab = (t: Tab) =>
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p)
+        next.set('ansicht', t)
+        return next
+      },
+      { replace: true },
+    )
   // Joghurt-Auswahl nur für Milchkühe — Nebengeleise, deshalb eingeklappt
   // unter "Benutzerdefinierte Filter und Aktionen".
   const showYogurt = moduleKey === 'dairy'
@@ -162,7 +178,7 @@ export default function Milk({ moduleKey }: { moduleKey: string }) {
             key={key}
             type="button"
             onClick={() => setTab(key)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+            className={`-mb-px min-h-11 border-b-2 px-3 py-2 text-sm font-medium ${
               tab === key ? 'border-brand-600 text-brand-800' : 'border-transparent text-gray-500'
             }`}
           >

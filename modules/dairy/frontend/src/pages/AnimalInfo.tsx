@@ -34,6 +34,7 @@ import { loadSettings } from './LambSelection'
 import { preselectionLabel, type Preselection, type Recommendation } from '../lib/lambRecommendation'
 import { choiceOfKey, recommendationsFor, saveDecision, type LambSelectionData } from '../lib/lambSelectionData'
 import ChoiceScale from '../components/ChoiceScale'
+import TapInfo from '../components/TapInfo'
 import type { Animal, AnimalJournalEntry } from '../types'
 
 async function loadInfo(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: string) {
@@ -105,12 +106,16 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
       (p) => {
         const next = new URLSearchParams(p)
         next.set('tier', animalId)
+        next.delete('erfassen')
         return next
       },
       { replace: true },
     )
   const [picking, setPicking] = useState(false)
-  const [capturing, setCapturing] = useState(false)
+  // ?erfassen=1 (Suche/Menü «Gewicht / CH-TAX schätzen»): mit Tier gleich das Erfassen-Menü öffnen,
+  // ohne Tier zuerst das Suchfeld (das Menü öffnet dann beim gewählten Tier)
+  const [wantCapture, setWantCapture] = useState(() => params.get('erfassen') === '1')
+  const [capturing, setCapturing] = useState(() => wantCapture && !!id)
   const [changingGroup, setChangingGroup] = useState(false)
   // nach einem Gruppenwechsel den Knopf «Gruppe …» neu lesen
   const [groupVersion, setGroupVersion] = useState(0)
@@ -133,7 +138,8 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
   function show(animalId: string) {
     setId(animalId)
     setPicking(false)
-    setCapturing(false)
+    setCapturing(wantCapture)
+    setWantCapture(false)
     setChangingGroup(false)
     setListMsg(null)
     input.current?.blur()
@@ -151,6 +157,11 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
   })
 
   const ctx = id ? data?.context.get(id) : undefined
+  useEffect(() => {
+    if (wantCapture && !id) input.current?.focus()
+    // nur beim Öffnen der Seite
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className={`mx-auto flex max-w-lg flex-col gap-2 p-3 ${embedded ? '' : 'pb-24'}`}>
@@ -219,6 +230,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
       {query.trim() && matches.length === 0 && <p className="text-sm text-gray-700">Kein Tier für «{query.trim()}».</p>}
 
       {!data && <p className="text-center text-gray-500">Lädt…</p>}
+      {data && !ctx && wantCapture && <p className="rounded-lg border-2 border-brand-700 bg-white p-3 text-sm font-medium text-brand-900">Zuerst das Tier wählen, dann öffnet sich «＋ Erfassen» (Gewicht, CH-TAX und mehr).</p>}
       {data && !ctx && !query && !listOpen && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Laufnummer, die letzten Ziffern der Ohrmarke, den Namen oder das Geburtsdatum eintippen, z.B. «12.3.2021», «12.3.» (jedes Jahr) oder «3.2021» (ganzer Monat). Name und Datum lassen sich kombinieren. Oder mit dem Lesegerät lesen.</p>}
 
       {data && ctx && (() => {
@@ -277,11 +289,18 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
             )}
             {ev.lists.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {ev.lists.map((l) => (
-                  <span key={l.entryId} className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900" title={l.reason ?? undefined}>
-                    📋 {l.name}
-                  </span>
-                ))}
+                {ev.lists.map((l) =>
+                  l.reason ? (
+                    // Grund nur nach Antippen (am Handy gibt es kein title)
+                    <TapInfo key={l.entryId} info={`${l.name}: ${l.reason}`} title={l.reason} className="min-h-8 rounded-full bg-sky-100 px-2 text-xs font-medium text-sky-900">
+                      📋 {l.name} <span aria-hidden>ⓘ</span>
+                    </TapInfo>
+                  ) : (
+                    <span key={l.entryId} className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900">
+                      📋 {l.name}
+                    </span>
+                  ),
+                )}
               </div>
             )}
 

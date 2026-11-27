@@ -35,6 +35,8 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
   const [name, setName] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
+  // archivierte Liste nur ansehen (ohne wiederherzustellen)
+  const [peekId, setPeekId] = useState<string | null>(null)
   const byId = useMemo(() => new Map((data?.animals ?? []).map((a) => [a.id, a])), [data])
   const lists = data?.lists ?? []
   const active = lists.filter((l) => !l.archived_at)
@@ -110,16 +112,39 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
             {showArchived ? 'Archivierte ausblenden' : `${archived.length} archivierte anzeigen`}
           </button>
           {showArchived &&
-            archived.map((l) => (
-              <div key={l.id} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm shadow-sm">
-                <span className="text-gray-700">
-                  {l.name} · {entriesOf(l.id).length} Tiere
-                </span>
-                <button type="button" onClick={() => void saveWatchlist(db, { ...l, archived_at: null })} className="min-h-11 px-2 text-brand-700">
-                  wiederherstellen
-                </button>
-              </div>
-            ))}
+            archived.map((l) => {
+              const peek = peekId === l.id
+              const es = entriesOf(l.id)
+              return (
+                <div key={l.id} className="rounded-lg bg-white text-sm shadow-sm">
+                  <div className="flex items-center gap-2 px-3">
+                    <button type="button" onClick={() => setPeekId(peek ? null : l.id)} aria-expanded={peek} className="flex min-h-11 min-w-0 flex-1 items-center gap-1 text-left text-gray-700">
+                      <span aria-hidden>{peek ? '▾' : '▸'}</span>
+                      <span className="truncate">
+                        {l.name} · {es.length} Tiere
+                      </span>
+                    </button>
+                    <button type="button" onClick={() => void saveWatchlist(db, { ...l, archived_at: null })} className="min-h-11 shrink-0 px-2 text-brand-700">
+                      wiederherstellen
+                    </button>
+                  </div>
+                  {peek && (
+                    <ul className="divide-y border-t px-3 text-gray-700">
+                      {es.length === 0 && <li className="py-2 text-gray-500">Keine Tiere.</li>}
+                      {es.map((e) => (
+                        <li key={e.id} className="py-1.5">
+                          <Link to={`/${moduleKey}/tiere/${e.animal_id}`} className="inline-flex min-h-10 items-center font-medium text-brand-800">
+                            {tierLabel(byId.get(e.animal_id))}
+                          </Link>
+                          {e.done_at && <span className="ml-2 text-xs text-gray-500">✓ erledigt {fmtDate(e.done_at)}</span>}
+                          {e.reason && <span className="block text-xs text-gray-600">{e.reason}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )
+            })}
         </section>
       )}
     </div>

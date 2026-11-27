@@ -25,6 +25,7 @@ import { loadMilkFeedData, milkFeed, milkFeedInputFor, milkFeedPoints, useMilkFe
 import { loadLambMilkSettings } from '../lib/lambMilk'
 import { loadRules } from '../lib/stallRules'
 import { MilkFeedChip, MilkFeedSettingsPanel } from '../components/MilkFeedChip'
+import TapInfo from '../components/TapInfo'
 import { loadCattleData, useCattlePrices } from '../lib/carcassData'
 import { cattleBoundary, loadCattleSettings, type CattleBoundary } from '../lib/carcassValue'
 
@@ -328,7 +329,7 @@ export default function Culling({ moduleKey }: { moduleKey: string }) {
         {visible.map((r) => (
           <li key={r.id} id={`tier-${r.id}`} className={`scroll-mt-20 rounded-lg bg-white p-3 shadow-sm ${r.id === jumpTo ? 'ring-2 ring-brand-700' : ''}`}>
             <div className="flex items-start justify-between gap-2">
-              <Link to={`../tiere/${r.id}`} relative="path" className="font-semibold text-gray-800">
+              <Link to={`../tiere/${r.id}`} relative="path" className="-my-2 inline-flex min-h-10 items-center font-semibold text-gray-800">
                 {r.laufNr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{r.laufNr}</span>}
                 {r.label}
               </Link>
@@ -484,7 +485,7 @@ function CullingPlanView({
               <div className="flex items-stretch gap-2 p-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Link to={`../tiere/${r.id}`} relative="path" className="font-semibold text-gray-800">
+                    <Link to={`../tiere/${r.id}`} relative="path" className="-my-2 inline-flex min-h-10 items-center font-semibold text-gray-800">
                       {r.laufNr && <span className="mr-2 rounded bg-gray-100 px-1.5 py-0.5 text-sm font-bold">{r.laufNr}</span>}
                       {r.label}
                     </Link>
@@ -493,9 +494,13 @@ function CullingPlanView({
                     </span>
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${STATE_TEXT[e.state].chip}`}>{STATE_TEXT[e.state].label}</span>
                     {r.value != null && (
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${isValuable(r.value, valueThreshold) ? 'bg-sky-100 text-sky-900' : 'bg-gray-100 text-gray-700'}`} title="Wert: Leistung, Zuchtwert, Wurfgrösse (Herdenmittel 100)">
+                      <TapInfo
+                        info="Wert: Leistung, Zuchtwert, Wurfgrösse (Herdenmittel 100)"
+                        title="Wert: Leistung, Zuchtwert, Wurfgrösse (Herdenmittel 100)"
+                        className={`min-h-8 rounded-full px-2 text-xs font-semibold ${isValuable(r.value, valueThreshold) ? 'bg-sky-100 text-sky-900' : 'bg-gray-100 text-gray-700'}`}
+                      >
                         💎 {Math.round(r.value)}
-                      </span>
+                      </TapInfo>
                     )}
                   </div>
                   <p className="mt-1 text-xs text-gray-600">

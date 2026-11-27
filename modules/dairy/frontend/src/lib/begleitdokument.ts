@@ -345,6 +345,12 @@ export async function loadMovementDocs(pg: PGlite, sinceIso: string): Promise<Mo
   })
 }
 
+/** Anzahl gemeldeter Begleitdokumente vor sinceIso (die loadMovementDocs weglässt). */
+export async function countOlderReported(pg: PGlite, sinceIso: string): Promise<number> {
+  const { rows } = await pg.query<{ n: number }>('select count(*)::int as n from movement_docs where deleted_at is null and tvd_reported_on is not null and doc_date < $1', [sinceIso])
+  return Number(rows[0]?.n ?? 0)
+}
+
 export async function setMovementReported(pg: PGlite, id: string, date: string | null): Promise<void> {
   const { rows } = await pg.query<Record<string, unknown>>('select * from movement_docs where id = $1', [id])
   if (!rows[0]) throw new Error('Begleitdokument nicht gefunden.')

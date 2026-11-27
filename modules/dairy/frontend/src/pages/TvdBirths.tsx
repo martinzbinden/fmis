@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useDb } from '@fmis/core/DbContext'
 import { shortEarTag } from '@fmis/core/earTag'
 import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
+import { useJumpTo } from '../hooks/useJumpTo'
 import { useQuery } from '../hooks/useQuery'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
@@ -49,7 +50,11 @@ export default function TvdBirths({ moduleKey }: { moduleKey: string }) {
   const today = localTodayIso()
   const deadline = deadlineDays(species)
   const [tab, setTab] = useState<'offen' | 'gemeldet'>('offen')
-  const { data } = useQuery((pg) => loadTvdBirths(pg, addDays(today, -120), species, loadRules(moduleKey, species).vaterGewaehlt === 1))
+  // gemeldete der letzten 120 Tage, ältere auf Wunsch (je ein Jahr mehr)
+  const [days, setDays] = useState(120)
+  const { data } = useQuery((pg) => loadTvdBirths(pg, addDays(today, -days), species, loadRules(moduleKey, species).vaterGewaehlt === 1), [days])
+  // #abgaenge (Begleitdokument, Pendenz «Abgang melden»): React Router springt nicht selbst
+  useJumpTo(!!data)
 
   const { open, done } = useMemo(() => {
     const all = data ?? []
@@ -116,8 +121,16 @@ export default function TvdBirths({ moduleKey }: { moduleKey: string }) {
       {list.map((b) => (
         <BirthCard key={b.id} b={b} today={today} deadline={deadline} young={young} youngPl={youngPl} onMark={mark} />
       ))}
+      {tab === 'gemeldet' && data && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
+          <span>Gemeldete der letzten {days} Tage</span>
+          <button type="button" onClick={() => setDays((d) => d + 365)} className="min-h-11 rounded-lg border-2 border-gray-300 bg-white px-3 font-medium text-gray-800">
+            Ältere laden
+          </button>
+        </div>
+      )}
       <p className="text-xs text-gray-500">
-        Es erscheinen nur {terms.calving}en, die hier in FMIS erfasst wurden (nicht der Herdebuch-Import), der letzten 120 Tage und alles, was noch offen ist. Spalten der Kopie: {COLUMNS.join(', ')}.
+        Es erscheinen nur {terms.calving}en, die hier in FMIS erfasst wurden (nicht der Herdebuch-Import), der letzten {days} Tage und alles, was noch offen ist. Spalten der Kopie: {COLUMNS.join(', ')}.
       </p>
     </div>
   )
@@ -183,7 +196,7 @@ function BirthCard({
                 )}
                 {st === 'nicht_noetig' && 'vor der Ohrmarke verendet, meist keine Meldung'}
                 {st === 'offen' && (
-                  <button type="button" onClick={() => void copy([COLUMNS.join('\t'), lambFields(b, l).join('\t')].join('\n'), 'Zeile')} className="min-h-9 rounded border border-gray-300 px-2 text-gray-800">
+                  <button type="button" onClick={() => void copy([COLUMNS.join('\t'), lambFields(b, l).join('\t')].join('\n'), 'Zeile')} className="min-h-11 rounded border border-gray-300 px-2 text-gray-800">
                     Zeile kopieren
                   </button>
                 )}

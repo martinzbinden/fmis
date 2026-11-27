@@ -128,6 +128,17 @@ async function loadBanks(pg: PGlite, date: string): Promise<BankWithSlots[]> {
   }))
 }
 
+/** Frühere Wägungen: je Tag Anzahl Tiere und gewogene Milch (kg), neueste zuerst. */
+async function loadPastDays(pg: PGlite): Promise<{ date: string; animals: number; kg: number | null }[]> {
+  const { rows } = await pg.query<{ session_date: unknown; animals: number; kg: number | string | null }>(
+    `select b.session_date, count(distinct s.animal_id)::int as animals, sum(s.milk_kg) as kg
+     from milking_banks b join milking_slots s on s.bank_id = b.id and s.deleted_at is null
+     where b.deleted_at is null
+     group by b.session_date order by b.session_date desc limit 60`,
+  )
+  return rows.map((r) => ({ date: isoDate(r.session_date)!, animals: Number(r.animals), kg: r.kg == null ? null : Number(r.kg) }))
+}
+
 // Frist: sonst bleibt bei hängender Verbindung der automatische Abruf für immer stehen (er wartet auf die Antwort)
 const API_TIMEOUT_MS = 45_000
 
@@ -168,6 +179,7 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   })
   const { data, refresh } = useQuery((db) => loadBanks(db, date), [date])
+  const { data: pastDays } = useQuery(loadPastDays, [])
   const [readerEnabled, setReaderEnabled] = useState<boolean | null>(null)
   const [session, setSession] = useState<SessionState | null>(null)
   const [busy, setBusy] = useState(false)
@@ -545,6 +557,29 @@ export default function Milchwaegung({ moduleKey }: { moduleKey: string }) {
           </span>
         )}
       </div>
+      {pastDays && pastDays.some((d) => d.date !== date) && (
+        <details className="rounded-lg bg-white shadow-sm">
+          <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium text-gray-700">Frühere Wägungen</summary>
+          <ul className="divide-y text-sm">
+            {pastDays.map((d) => (
+              <li key={d.date}>
+                <button
+                  type="button"
+                  onClick={() => setDate(d.date)}
+                  aria-current={d.date === date ? 'date' : undefined}
+                  className={`flex min-h-11 w-full items-center gap-2 px-3 text-left ${d.date === date ? 'bg-brand-50 font-semibold' : 'active:bg-gray-50'}`}
+                >
+                  <span className="flex-1">{new Date(`${d.date}T12:00:00`).toLocaleDateString('de-CH', { weekday: 'short', day: 'numeric', month: 'numeric', year: 'numeric' })}</span>
+                  <span className="tabular-nums text-gray-700">
+                    {d.animals} {d.animals === 1 ? terms.singular : terms.plural}
+                    {d.kg != null && d.kg > 0 ? ` · ${d.kg.toLocaleString('de-CH', { maximumFractionDigits: 1 })} kg` : ''}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {showGuide && <MilkingGuide plural={terms.plural} onClose={() => setShowGuide(false)} />}
 
       {/* Leser-Sitzung */}
@@ -1431,9 +1466,9 @@ function BankTable({
                         value={noteText}
                         onChange={(e) => setNoteText(e.target.value)}
                         autoFocus
-                        className="w-full min-w-[8rem] rounded border border-gray-300 px-2 py-1 text-xs"
+                        className="min-h-11 w-full min-w-[8rem] rounded border border-gray-300 px-2 py-1 text-base"
                       />
-                      <button type="submit" className="link-btn rounded bg-brand-700 px-2 py-1 text-xs text-white">
+                      <button type="submit" className="link-btn min-h-11 rounded bg-brand-700 px-3 py-1 text-sm text-white">
                         OK
                       </button>
                     </form>

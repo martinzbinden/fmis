@@ -88,9 +88,9 @@ export default function MatingPlanner({ moduleKey }: { moduleKey: string }) {
             onChange={(e) => setNewSire(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addSire()}
             placeholder={`weiteren ${species === 'sheep' ? 'Widder' : 'Stier'} per Ohrmarke/ID`}
-            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="min-h-11 min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-base"
           />
-          <button type="button" onClick={addSire} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <button type="button" onClick={addSire} className="min-h-11 rounded-lg border border-gray-300 px-3 py-2 text-sm">
             Hinzufügen
           </button>
         </div>
@@ -127,7 +127,7 @@ export default function MatingPlanner({ moduleKey }: { moduleKey: string }) {
                 return (
                   <tr key={a.id} className="border-b last:border-0">
                     <td className="sticky left-0 whitespace-nowrap bg-white px-3 py-1.5">
-                      <Link to={`../tiere/${a.id}`} relative="path" className="text-gray-800">
+                      <Link to={`../tiere/${a.id}`} relative="path" className="-my-1.5 inline-flex min-h-10 items-center text-gray-800">
                         {a.lauf_nr && <span className="mr-1.5 font-bold">{a.lauf_nr}</span>}
                         {animalLabel(a)}
                       </Link>

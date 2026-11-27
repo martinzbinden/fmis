@@ -4,7 +4,10 @@ import { useDb } from '@fmis/core/DbContext'
 import Modal from '@fmis/core/Modal'
 import { errorText, notifyError, notifySuccess } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
-import { upsertRow } from '../db/write'
+import { softDeleteRow, upsertRow } from '../db/write'
+import { undoAction } from '@fmis/core/undo'
+import { loadAnimalWeights, type WeightRecord } from '../lib/animalRecords'
+import { DeleteButton } from './AnimalRecords'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadCattleData, loadEstimates, useCattlePrices, type EstimateRow } from '../lib/carcassData'
 import { CATEGORY_LABEL, cattleBoundary, cattleValue, chtaxLabel, FAT_CLASSES, FLESHINESS, girthToLiveKg, loadCattleSettings, METHOD_LABEL, type FatClass, type Fleshiness, type WeightMethod } from '../lib/carcassValue'
@@ -19,10 +22,10 @@ export default function CarcassSection({ moduleKey, animalId }: { moduleKey: str
   const { prices, week } = useCattlePrices()
   const settings = useMemo(() => loadCattleSettings(moduleKey), [moduleKey])
   const date = settings.slaughterDate || localTodayIso()
-  const { data } = useQuery((pg) => Promise.all([loadCattleData(pg, prices), loadEstimates(pg, animalId)]), [prices, animalId])
+  const { data } = useQuery((pg) => Promise.all([loadCattleData(pg, prices), loadEstimates(pg, animalId), loadAnimalWeights(pg, animalId)]), [prices, animalId])
   const [dialog, setDialog] = useState<'gewicht' | 'chtax' | null>(null)
   if (!data) return <p className="text-sm text-gray-500">Lädt…</p>
-  const [cattle, history] = data
+  const [cattle, history, weights] = data
   const input = cattle.inputs.get(animalId)
   const v = input ? cattleValue(input, date, prices, settings, cattle.calibration) : null
   const limit = input ? cattleBoundary(input, localTodayIso(), prices, settings, cattle.calibration) : null
@@ -76,35 +79,56 @@ export default function CarcassSection({ moduleKey, animalId }: { moduleKey: str
           🏷️ CH-TAX schätzen
         </button>
       </div>
-      {history.length > 0 && <History rows={history.slice(0, 6)} />}
+      {history.length + weights.length > 0 && <History rows={history} weights={weights} />}
       {dialog === 'gewicht' && <WeightDialog animalId={animalId} onClose={() => setDialog(null)} />}
       {dialog === 'chtax' && <ChTaxDialog animalId={animalId} current={v ? { f: v.fleshiness, fat: v.fat } : null} onClose={() => setDialog(null)} />}
     </div>
   )
 }
 
-function History({ rows }: { rows: EstimateRow[] }) {
+const HISTORY_SHORT = 6
+
+/** Verlauf: eigene Schätzungen und Waage-Gewichte (animal_weights), neueste zuerst; anfangs die letzten sechs. */
+function History({ rows, weights }: { rows: EstimateRow[]; weights: WeightRecord[] }) {
   const db = useDb()
+  const [all, setAll] = useState(false)
+  const items = [
+    ...rows.map((r) => ({
+      key: `s:${r.id}`,
+      date: r.estimate_date,
+      text:
+        r.kind === 'chtax' && r.fleshiness && r.fat_class
+          ? `CH-TAX ${chtaxLabel(r.fleshiness, r.fat_class)}`
+          : `${r.method ? METHOD_LABEL[r.method] : ''} ${r.weight_kg} kg ${r.basis === 'sg' ? 'SG' : 'lebend'}${r.girth_cm ? ` (Brustumfang ${r.girth_cm} cm)` : ''}`,
+      remove: () => undoAction(`Schätzung vom ${fmtDate(r.estimate_date)} gelöscht`, () => softDeleteRow(db, 'carcass_estimates', r.id)),
+    })),
+    ...weights.map((w) => ({
+      key: `w:${w.id}`,
+      date: w.weigh_date,
+      text: `${METHOD_LABEL.waage} ${w.weight_kg.toLocaleString('de-CH')} kg lebend${w.notes && w.notes !== 'Waage' ? ` · ${w.notes}` : ''}`,
+      remove: () => undoAction(`Gewicht vom ${fmtDate(w.weigh_date)} gelöscht`, () => softDeleteRow(db, 'animal_weights', w.id)),
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date))
+  const shown = all ? items : items.slice(0, HISTORY_SHORT)
   return (
-    <ul className="divide-y rounded-lg border text-sm">
-      {rows.map((r) => (
-        <li key={r.id} className="flex items-center gap-2 px-2 py-1">
-          <span className="w-20 shrink-0 tabular-nums text-gray-600">{fmtDate(r.estimate_date)}</span>
-          <span className="min-w-0 flex-1 text-gray-800">
-            {r.kind === 'chtax' && r.fleshiness && r.fat_class
-              ? `CH-TAX ${chtaxLabel(r.fleshiness, r.fat_class)}`
-              : `${r.method ? METHOD_LABEL[r.method] : ''} ${r.weight_kg} kg ${r.basis === 'sg' ? 'SG' : 'lebend'}${r.girth_cm ? ` (Brustumfang ${r.girth_cm} cm)` : ''}`}
-          </span>
-          <button
-            type="button"
-            className="min-h-11 shrink-0 rounded-lg px-2 text-xs text-gray-600 active:bg-gray-100"
-            onClick={() => void upsertRow(db, 'carcass_estimates', { ...r, deleted_at: new Date().toISOString() } as never).catch((e: unknown) => notifyError(errorText(e)))}
-          >
-            löschen
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div>
+      <ul className="divide-y rounded-lg border text-sm">
+        {shown.map((r) => (
+          <li key={r.key} className="flex items-center gap-2 py-0.5 pl-2">
+            <span className="w-20 shrink-0 tabular-nums text-gray-600">{fmtDate(r.date)}</span>
+            <span className="min-w-0 flex-1 text-gray-800">{r.text}</span>
+            <span className="shrink-0 print:hidden">
+              <DeleteButton onConfirm={r.remove} />
+            </span>
+          </li>
+        ))}
+      </ul>
+      {items.length > HISTORY_SHORT && (
+        <button type="button" onClick={() => setAll(!all)} className="mt-1 min-h-11 text-sm font-medium text-brand-700 print:hidden">
+          {all ? 'Nur die letzten sechs zeigen' : `Alle ${items.length} zeigen`}
+        </button>
+      )}
+    </div>
   )
 }
 

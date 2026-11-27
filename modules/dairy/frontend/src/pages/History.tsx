@@ -195,7 +195,7 @@ export default function History({ moduleKey }: { moduleKey: string }) {
       </div>
       <div className="mt-1 font-semibold text-gray-800">
         {link ? (
-          <Link to={link} className="text-brand-700">
+          <Link to={link} className="-my-2 inline-flex min-h-10 items-center text-brand-700">
             {label}
           </Link>
         ) : (

@@ -1,4 +1,4 @@
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Navigate, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { animalLabel } from '@fmis/core/earTag'
 import { useQuery } from '../hooks/useQuery'
@@ -9,6 +9,7 @@ import { hasCertificateDetails, loadCertificateDetails } from '../lib/certificat
 import { speciesOf } from '../lib/species'
 import PedigreeTree, { loadPedigreeData, pedigreeLink } from '../components/PedigreeTree'
 import CertificateDetailsView from '../components/CertificateDetails'
+import BackLink from '../components/BackLink'
 
 async function load(pg: PGlite, key: string, species: 'cattle' | 'sheep') {
   const herd = await loadHerdContext(pg, species, todayIso())
@@ -23,20 +24,25 @@ export default function PedigreeAnimal({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
   const { data, loading } = useQuery((pg) => load(pg, key, species), [key, species])
 
-  if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
-  if (!data) return null
+  const back = <BackLink allLabel="← Tiere" to={`/${moduleKey}/tiere`} />
+  // ohne Daten (noch nicht geladen oder Fehler) nie eine leere Seite: Ladezustand bzw. Weg zurück
+  const notice = (text: string) => (
+    <div className="mx-auto max-w-2xl p-4">
+      {back}
+      <p className="mt-2 text-center text-gray-500">{text}</p>
+    </div>
+  )
+  if (!data) return loading ? <p className="p-4 text-center text-gray-500">Lädt…</p> : notice('Stammbaum konnte nicht geladen werden.')
   const herdId = data.herdIdByKey.get(key)
   if (herdId) return <Navigate to={`/${moduleKey}/tiere/${herdId}`} replace />
   const node = data.pedigreeByKey.get(key)
-  if (!node) return <p className="p-4 text-center text-gray-500">Tier nicht im Stammbaum.</p>
+  if (!node) return notice('Tier nicht im Stammbaum.')
   const f = data.inbreeding.inbreeding(key)
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
       <div>
-        <Link to={`/${moduleKey}/tiere`} className="link-btn text-sm text-brand-700">
-          ← Tiere
-        </Link>
+        {back}
         <h1 className="mt-1 text-xl font-bold text-gray-800">{animalLabel(node)}</h1>
         <p className="text-sm text-gray-500">
           {node.ear_tag}

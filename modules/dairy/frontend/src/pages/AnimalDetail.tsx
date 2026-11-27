@@ -2,12 +2,12 @@ import AnimalLocationCard from '@fmis/core/AnimalLocationCard'
 import PhotoThumbs from '../components/PhotoThumbs'
 import PhotoStrip from '@fmis/core/PhotoStrip'
 import { useWorkPhotos } from '../lib/workPhotos'
-import { loadProvisionalYoung } from '../lib/provisional'
+import { loadDamYoung, loadProvisionalYoung } from '../lib/provisional'
 // Pendenz als Folgearbeit im Arbeitsplan (Modul Betrieb), erst bei Bedarf geladen
 const FollowUpDialog = lazy(() => import('@fmis/betrieb/components/FollowUpDialog'))
 import { loadPhotos, uploadPendingPhotos, type JournalPhoto } from '../lib/photos'
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useDb } from '@fmis/core/DbContext'
 import { notifyError, errorText } from '@fmis/core/toast'
@@ -16,6 +16,10 @@ import { useHasPermission } from '@fmis/core/AuthContext'
 import { softDeleteRow } from '../db/write'
 import JournalForm from '../components/JournalForm'
 import BirthEdit from '../components/BirthEdit'
+import BackLink from '../components/BackLink'
+import { DeleteButton, MatingEditDialog, PenButton, PregnancyList, ReminderList, Section, WeightsList, type EditableMating } from '../components/AnimalRecords'
+import { loadAnimalWeanings, loadAnimalWeights, loadPregnancyChecks } from '../lib/animalRecords'
+import { loadAnimalReminders, type AnimalReminder } from '../lib/reminders'
 import { canChangeEntry, categoryIcon, categoryLabel, groupCases, journalSummary, supersededBy } from '../lib/journal'
 import { withdrawalUntil } from '../lib/treatments'
 import { examSummary, loadClawExams, worstMh } from '../lib/clawHealth'
@@ -69,35 +73,22 @@ async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
     certificate,
     lactations: lactations.rows,
     tests: tests.rows.map((t) => ({ date: isoDate(t.test_date)!, milk: num(t.milk_kg), scc: num(t.cell_count) })),
-    journal: journal.rows.map((j) => ({
-      ...j,
-      entry_date: isoDate(j.entry_date)!,
-      last_date: isoDate(j.last_date),
-      release_milk_date: isoDate(j.release_milk_date),
-      release_meat_date: isoDate(j.release_meat_date),
-      withdrawal_milk_days: num(j.withdrawal_milk_days),
-      withdrawal_meat_days: num(j.withdrawal_meat_days),
-      withdrawal_factor: num(j.withdrawal_factor),
-    })),
+    journal: journal.rows.map(journalRow),
   }
 }
 
-/** «‹ Zurück» zur vorigen Seite der App (Tier-Info, Merkliste, Durchgang …); ohne
- * Vorgeschichte (direkt geöffnet) zur Tierliste. */
-function BackLink({ allLabel }: { allLabel: string }) {
-  const navigate = useNavigate()
-  const canGoBack = ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0
-  if (canGoBack)
-    return (
-      <button type="button" onClick={() => navigate(-1)} className="link-btn text-sm text-brand-700">
-        ‹ Zurück
-      </button>
-    )
-  return (
-    <Link to=".." relative="path" className="link-btn text-sm text-brand-700">
-      {allLabel}
-    </Link>
-  )
+/** Journalzeile aus pglite: Datum als JJJJ-MM-TT, Zahlen als number. */
+function journalRow<T extends AnimalJournalEntry>(j: T): T {
+  return {
+    ...j,
+    entry_date: isoDate(j.entry_date)!,
+    last_date: isoDate(j.last_date),
+    release_milk_date: isoDate(j.release_milk_date),
+    release_meat_date: isoDate(j.release_meat_date),
+    withdrawal_milk_days: num(j.withdrawal_milk_days),
+    withdrawal_meat_days: num(j.withdrawal_meat_days),
+    withdrawal_factor: num(j.withdrawal_factor),
+  }
 }
 
 /** Sprungleiste zu den Abschnitten, angeheftet unter der Kopfzeile. */
@@ -112,15 +103,6 @@ function JumpBar({ items }: { items: [string, string][] }) {
         ))}
       </div>
     </nav>
-  )
-}
-
-function Section({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
-  return (
-    <section id={id} className="scroll-mt-32 rounded-lg bg-white p-4 shadow-sm">
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">{title}</h2>
-      {children}
-    </section>
   )
 }
 
@@ -224,13 +206,28 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const { data: clawPhotos } = useQuery((pg) => loadPhotos(pg, id), [id])
   const { data: lambs } = useQuery((pg) => loadLambs(pg, localTodayIso()))
   const [editBirth, setEditBirth] = useState<string | null>(null)
+  const [editMating, setEditMating] = useState<EditableMating | null>(null)
+  // einzeln korrigierbare Erfassungen (components/AnimalRecords.tsx)
+  const { data: records } = useQuery(
+    async (pg) => {
+      const [checks, weights, weanings, reminders] = await Promise.all([loadPregnancyChecks(pg, id), loadAnimalWeights(pg, id), loadAnimalWeanings(pg, id), loadAnimalReminders(pg, id)])
+      return { checks, weights, weanings, reminders }
+    },
+    [id],
+  )
   // Zuchtauswahl: Geburt, aus der das Tier stammt (lib/breedingChoice.ts)
   const earTag = data?.ctx?.animal.ear_tag ?? ''
   const { data: origin } = useQuery((pg) => birthOfAnimal(pg, earTag), [earTag])
   useJumpTo(!!data && origin !== undefined)
 
   if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
-  if (!data?.ctx) return <p className="p-4 text-center text-gray-500">Tier nicht gefunden.</p>
+  if (!data?.ctx)
+    return (
+      <div className="mx-auto max-w-2xl p-4">
+        <BackLink allLabel={`← Alle ${terms.plural}`} />
+        <p className="mt-2 text-center text-gray-500">Tier nicht gefunden.</p>
+      </div>
+    )
 
   const { ctx, inbreeding, sires, pedigreeByKey, herdIdByKey, lactations, tests, journal, certificate, claws } = data
   const a = ctx.animal
@@ -252,6 +249,9 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const nursingLambs = (lambs ?? []).filter((l) => l.damId === a.id && l.nursing)
   const asLamb = (lambs ?? []).find((l) => l.animalId === a.id)
   // Jungtier aus eigener Geburt, selbst noch nicht geboren: Zuchtauswahl mit Empfehlung zeigen
+  const checks = records?.checks ?? []
+  const weights = records?.weights ?? []
+  const weanings = records?.weanings ?? []
   const showChoice = !!origin && ctx.births.length === 0 && (!a.birth_date || daysBetween(a.birth_date, today) <= AUTO_LIST_MAX_DAYS)
 
   return (
@@ -304,9 +304,11 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
           ['journal', 'Journal'],
           ['geburten', `${birthWord}en`],
           ['belegungen', 'Belegungen'],
+          ...(checks.length > 0 ? [['traechtigkeit', 'Trächtigkeit'] as [string, string]] : []),
           ['abstammung', 'Abstammung'],
           ['milchproben', 'Milchproben'],
           ...(claws.length > 0 ? [['klauen', 'Klauen'] as [string, string]] : []),
+          ...(weights.length + weanings.length > 0 ? [['gewichte', 'Gewichte'] as [string, string]] : []),
           ['kennzahlen', 'Kennzahlen'],
           ...(species === 'cattle' ? [['schlachtwert', 'Schlachtwert'] as [string, string]] : []),
           ['zuchtwerte', 'Zuchtwerte'],
@@ -364,24 +366,38 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         </Section>
       )}
 
-      <JournalSection animalId={a.id} animalLabelOf={[a.lauf_nr, a.name].filter(Boolean).join(' ') || a.ear_tag} journal={journal} />
+      <JournalSection animalId={a.id} animalLabelOf={[a.lauf_nr, a.name].filter(Boolean).join(' ') || a.ear_tag} journal={journal} reminders={records?.reminders ?? []} />
       <UnmarkedYoungJournal damId={a.id} />
 
       {claws.length > 0 && (
         <Section title="Klauen" id="klauen">
           <ul className="divide-y text-sm">
             {claws.map((e) => (
-              <li key={e.id} className="flex gap-3 py-1.5">
-                <span className="w-20 shrink-0 text-gray-500">{fmtDate(e.exam_date)}</span>
+              <li key={e.id} className="flex items-start gap-3 py-1">
+                <span className="w-20 shrink-0 pt-1.5 text-gray-500">{fmtDate(e.exam_date)}</span>
                 <span className={`min-w-0 flex-1 ${(worstMh(e) ?? 0) >= 3 ? 'font-semibold text-red-700' : 'text-gray-800'}`}>
                   {examSummary(e, species)}
                   {e.examiner ? <span className="text-gray-500"> · {e.examiner}</span> : null}
                   {e.notes ? <span className="block text-xs text-gray-600">{e.notes}</span> : null}
                   <PhotoThumbs moduleKey={moduleKey} photos={(clawPhotos ?? []).filter((p) => p.claw_exam_id === e.id)} />
                 </span>
+                {/* Korrigieren in der Klauen-Erfassung (Tier und Tag vorgewählt) */}
+                <Link
+                  to={`/${moduleKey}/klauen?tier=${a.id}&datum=${e.exam_date}`}
+                  className="grid h-11 w-11 shrink-0 place-items-center text-base leading-none text-gray-600 print:hidden"
+                  aria-label={`Klauen vom ${fmtDate(e.exam_date)} bearbeiten`}
+                >
+                  ✎
+                </Link>
               </li>
             ))}
           </ul>
+        </Section>
+      )}
+
+      {weights.length + weanings.length > 0 && (
+        <Section title="Gewichte / Absetzen" id="gewichte">
+          <WeightsList weights={weights} weanings={weanings} />
         </Section>
       )}
 
@@ -423,8 +439,11 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
         </Section>
       )}
 
-      {tests.length > 0 && (
-        <Section title="Milchproben" id="milchproben">
+      <Section title="Milchproben" id="milchproben">
+        {tests.length === 0 ? (
+          <p className="text-sm text-gray-500">Keine Milchproben.</p>
+        ) : (
+          <>
           <div className="h-48">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={tests} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
@@ -443,8 +462,9 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
             Blau kg Milch (links), orange Zellzahl in 1000/ml (rechts, logarithmisch), gestrichelt die Grenze{' '}
             {fmtCells(sccLimit)} Zellen.
           </p>
-        </Section>
-      )}
+          </>
+        )}
+      </Section>
 
       <Section title={`${birthWord}en`} id="geburten">
         {ctx.births.length === 0 ? (
@@ -544,13 +564,28 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
                   ) : (
                     (m.sire_name ?? m.sire_ear_tag ?? '?')
                   )}
-                  {m.source === 'manual' && <DeleteButton onConfirm={() => softDeleteRow(db, 'matings', m.id)} />}
+                  {m.source === 'manual' && (
+                    <>
+                      <PenButton open={editMating?.id === m.id} onClick={() => setEditMating(m)} label={`Belegung vom ${fmtDate(m.service_date)} bearbeiten`} />
+                      <DeleteButton onConfirm={() => softDeleteRow(db, 'matings', m.id)} />
+                    </>
+                  )}
                 </span>
               </li>
             ))}
           </ul>
         )}
       </Section>
+
+      {checks.length > 0 && (
+        <Section title="Trächtigkeit" id="traechtigkeit">
+          <PregnancyList checks={checks} />
+        </Section>
+      )}
+
+      {editMating && (
+        <MatingEditDialog mating={editMating} damEarTag={a.ear_tag} sires={sires} sireLabel={species === 'sheep' ? 'Widder' : 'Stier'} onClose={() => setEditMating(null)} />
+      )}
 
       <Section title="Laktationen" id="laktationen">
         {lactations.length === 0 ? (
@@ -595,33 +630,9 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   )
 }
 
-/** Löschen mit Rückfrage — nur für in FMIS erfasste Einträge; importierte
- * kämen mit dem nächsten Herdebuch-Export ohnehin wieder. Bei einer Geburt
- * bleiben die angelegten Jungtiere im Bestand. */
-function DeleteButton({ onConfirm }: { onConfirm: () => Promise<void> }) {
-  const [confirm, setConfirm] = useState(false)
-  const [busy, setBusy] = useState(false)
-  return confirm ? (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={() => {
-        setBusy(true)
-        onConfirm()
-          .then(() => setConfirm(false))
-          .catch((e) => notifyError(`Nicht gelöscht: ${errorText(e)}`))
-          .finally(() => setBusy(false))
-      }}
-      className="min-h-11 rounded-lg bg-red-700 px-3 text-sm font-semibold text-white disabled:opacity-50"
-    >
-      Wirklich löschen?
-    </button>
-  ) : (
-    <button type="button" onClick={() => setConfirm(true)} className="grid h-11 w-11 place-items-center text-lg leading-none text-gray-600" aria-label="löschen">
-      ×
-    </button>
-  )
-}
+/* Löschen mit Rückfrage (components/AnimalRecords.tsx DeleteButton) nur für in FMIS erfasste Einträge;
+ * importierte kämen mit dem nächsten Herdebuch-Export ohnehin wieder. Bei einer Geburt bleiben die
+ * angelegten Jungtiere im Bestand. */
 
 /** Ein Journaleintrag. Korrigierte Einträge bleiben stehen (gedämpft, mit Verweis),
  * die Korrektur ist ein eigener Eintrag. */
@@ -635,7 +646,10 @@ function JournalEntryRow({
   onDelete,
   onFollowUp,
   photos,
+  prefix,
 }: {
+  /** vor Datum und Art, z.B. das Jungtier ohne Ohrmarke */
+  prefix?: ReactNode
   j: AnimalJournalEntry
   correctedBy: AnimalJournalEntry | undefined
   corrects: AnimalJournalEntry | undefined
@@ -654,6 +668,7 @@ function JournalEntryRow({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <span className="text-xs text-gray-500">
+            {prefix}
             {fmtDate(j.entry_date)}
             {j.treatment_time ? ` ${j.treatment_time}` : ''} · {categoryIcon(j.category)} {categoryLabel(j.category)}
             {j.source === 'import' ? ' · cownect' : ''}
@@ -706,7 +721,19 @@ type JournalMode = { kind: 'new' } | { kind: 'case'; caseId: string } | { kind: 
  * Folgebehandlungen, Verlauf), älteste zuerst. Das Journal wird nur ergänzt:
  * Korrekturen und Folgeeinträge sind neue Einträge. Löschen nur kurz nach dem
  * Eintrag (ausser mit Recht «Korrektur»). */
-function JournalSection({ animalId, animalLabelOf, journal }: { animalId: string; /** Anzeige des Tiers (Pendenz) */ animalLabelOf?: string; journal: AnimalJournalEntry[] }) {
+function JournalSection({
+  animalId,
+  animalLabelOf,
+  journal,
+  reminders,
+}: {
+  animalId: string
+  /** Anzeige des Tiers (Pendenz) */
+  animalLabelOf?: string
+  journal: AnimalJournalEntry[]
+  /** offene Pendenzen des Tiers (lib/reminders.ts), oben im Journal */
+  reminders: AnimalReminder[]
+}) {
   const db = useDb()
   const canCorrectLater = useHasPermission('core:korrektur:write')
   const [mode, setMode] = useState<JournalMode | null>(null)
@@ -738,7 +765,7 @@ function JournalSection({ animalId, animalLabelOf, journal }: { animalId: string
         caseId={mode.kind === 'case' ? mode.caseId : undefined}
         corrects={mode.kind === 'correct' ? mode.entry : undefined}
       />
-      <button type="button" onClick={done} className="mt-2 w-full text-sm text-gray-500">
+      <button type="button" onClick={done} className="mt-2 min-h-11 w-full rounded-lg border border-gray-300 bg-white text-sm text-gray-700">
         Abbrechen
       </button>
     </div>
@@ -766,6 +793,7 @@ function JournalSection({ animalId, animalLabelOf, journal }: { animalId: string
   )
   return (
     <Section title="Journal" id="journal">
+      {reminders.length > 0 && <ReminderList reminders={reminders} />}
       {followUp && (
         <Suspense fallback={null}>
           <FollowUpDialog
@@ -819,46 +847,82 @@ function JournalSection({ animalId, animalLabelOf, journal }: { animalId: string
 }
 
 /** Einträge zu Jungtieren dieser Mutter, die noch auf die Ohrmarke warten (provisorische Nummer, schema/0028).
- * Mit der Ohrmarke gehen sie ans Tier (lib/earTagPending.ts adoptJournal) und verschwinden hier. */
+ * Mit der Ohrmarke gehen sie ans Tier (lib/earTagPending.ts adoptJournal) und verschwinden hier. Verendete
+ * Junge bekommen keine Ohrmarke mehr: ihre Einträge bleiben hier stehen (mit †). */
 function UnmarkedYoungJournal({ damId }: { damId: string }) {
+  const db = useDb()
+  const canCorrectLater = useHasPermission('core:korrektur:write')
+  const [correct, setCorrect] = useState<YoungJournalEntry | null>(null)
   const { data } = useQuery(
     async (pg) => {
-      const [young, rows] = await Promise.all([
+      const [young, labels, rows] = await Promise.all([
         loadProvisionalYoung(pg),
-        pg.query<Record<string, unknown>>(
-          `select j.id, j.offspring_id, j.entry_date, j.category, j.text, j.medication, j.dose
-           from animal_journal j join birth_offspring o on o.id = j.offspring_id join births b on b.id = o.birth_id
+        loadDamYoung(pg, damId),
+        pg.query<YoungJournalEntry>(
+          `select j.* from animal_journal j join birth_offspring o on o.id = j.offspring_id join births b on b.id = o.birth_id
            where b.dam_id = $1 and j.animal_id is null and j.deleted_at is null and o.deleted_at is null and o.ear_tag is null
-           order by j.entry_date desc`,
+           order by j.entry_date desc, j.updated_at desc`,
           [damId],
         ),
       ])
-      return { young: young.filter((y) => y.damId === damId), rows: rows.rows }
+      return { young: young.filter((y) => y.damId === damId), labels, rows: rows.rows.map(journalRow) }
     },
     [damId],
   )
-  if (!data || data.young.length === 0) return null
-  const nr = (offspringId: unknown) => data.young.find((y) => y.offspringId === offspringId)?.nr ?? '?'
+  const superseded = useMemo(() => supersededBy(data?.rows ?? []), [data])
+  // sichtbar, sobald Einträge da sind, auch wenn das Junge inzwischen verendet ist
+  if (!data || (data.young.length === 0 && data.rows.length === 0)) return null
+  const now = Date.now()
+  const label = (offspringId: string) => {
+    const y = data.labels.get(offspringId)
+    return y ? `prov. ${y.nr}${y.sex === 'w' ? ' ♀' : y.sex === 'm' ? ' ♂' : ''}${y.dead ? ' † verendet' : ''}` : 'prov. ?'
+  }
   return (
     <Section title="Jungtiere ohne Ohrmarke" id="jungtiere-ohne-ohrmarke">
-      <p className="mb-1 text-xs text-gray-600">
-        {data.young.map((y) => `prov. ${y.nr}${y.sex === 'w' ? ' ♀' : y.sex === 'm' ? ' ♂' : ''}`).join(' · ')} — Einträge gehen mit der Ohrmarke ans Tier.
-      </p>
+      {data.young.length > 0 && (
+        <p className="mb-1 text-xs text-gray-600">
+          {data.young.map((y) => `prov. ${y.nr}${y.sex === 'w' ? ' ♀' : y.sex === 'm' ? ' ♂' : ''}`).join(' · ')} — Einträge gehen mit der Ohrmarke ans Tier.
+        </p>
+      )}
+      {correct && (
+        <div className="mb-3 rounded-lg border border-gray-200 p-3">
+          <JournalForm
+            key={correct.id}
+            animalIds={[]}
+            unmarked={[{ offspringId: correct.offspring_id, label: label(correct.offspring_id) }]}
+            corrects={correct}
+            onSaved={() => setCorrect(null)}
+          />
+          <button type="button" onClick={() => setCorrect(null)} className="mt-2 min-h-11 w-full rounded-lg border border-gray-300 bg-white text-sm text-gray-700">
+            Abbrechen
+          </button>
+        </div>
+      )}
       {data.rows.length === 0 ? (
         <p className="text-sm text-gray-600">Noch keine Einträge.</p>
       ) : (
         <ul className="divide-y text-sm">
           {data.rows.map((j) => (
-            <li key={String(j.id)} className="py-1.5">
-              <span className="text-xs text-gray-500">
-                {fmtDate(isoDate(j.entry_date)!)} · prov. {nr(j.offspring_id)} · {categoryIcon(j.category as never)} {categoryLabel(j.category as never)}
-              </span>
-              <div className="text-gray-800">{String(j.text ?? '')}</div>
-              {Boolean(j.medication || j.dose) && <div className="text-xs text-gray-600">{[j.medication, j.dose].filter(Boolean).join(' ')}</div>}
-            </li>
+            <JournalEntryRow
+              key={j.id}
+              j={j}
+              prefix={
+                <span className={`mr-1 font-medium ${data.labels.get(j.offspring_id)?.dead ? 'text-gray-700' : 'text-gray-800'}`}>
+                  {label(j.offspring_id)} ·{' '}
+                </span>
+              }
+              correctedBy={superseded.get(j.id)}
+              corrects={j.corrects_id ? data.rows.find((x) => x.id === j.corrects_id) : undefined}
+              canCorrect={j.source === 'manual'}
+              canDelete={canChangeEntry(j, canCorrectLater, now)}
+              onCorrect={() => setCorrect(j)}
+              onDelete={() => softDeleteRow(db, 'animal_journal', j.id)}
+            />
           ))}
         </ul>
       )}
     </Section>
   )
 }
+
+type YoungJournalEntry = AnimalJournalEntry & { offspring_id: string }

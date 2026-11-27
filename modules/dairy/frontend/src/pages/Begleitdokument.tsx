@@ -84,6 +84,22 @@ export default function Begleitdokument({ moduleKey }: { moduleKey: string }) {
   const [templates, setTemplates] = useState<TierDocument[]>(() => storedDocuments())
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<{ tags: string; count: number } | null>(null)
+  // ?dokument=<id> (TVD → Abgänge → ✎ «PDF erneut»): Angaben eines erfassten Dokuments übernehmen,
+  // PDF nochmals erstellen, ohne einen zweiten Abgang zu erfassen
+  const docId = params.get('dokument')
+  const [again, setAgain] = useState<string | null>(null)
+  useEffect(() => {
+    if (!docId) return
+    void loadMovementDocs(db, '1900-01-01').then((docs) => {
+      const d = docs.find((x) => x.id === docId)
+      if (!d) return notifyError('Begleitdokument nicht gefunden.')
+      setIds(d.animals.map((a) => a.id))
+      setDate(d.doc_date)
+      setPurpose(d.purpose)
+      setDestination(d.destination ?? '')
+      setAgain(d.doc_date)
+    })
+  }, [db, docId])
 
   useEffect(() => {
     void farmHolder().then((f) =>
@@ -117,6 +133,10 @@ export default function Begleitdokument({ moduleKey }: { moduleKey: string }) {
       } catch {
         /* Speicher gesperrt */
       }
+      if (again) {
+        notifySuccess('PDF erneut erstellt — der Abgang war schon erfasst')
+        return
+      }
       await undoAction(`Begleitdokument ${fmtDay(date)}, ${animals.length} Tiere`, () => saveMovementDoc(db, input, getCurrentUserEmail()))
       setDone({ tags: tagList({ animals }), count: animals.length })
       notifySuccess('Begleitdokument erstellt — ausdrucken, unterschreiben')
@@ -135,6 +155,11 @@ export default function Begleitdokument({ moduleKey }: { moduleKey: string }) {
       <p className="text-sm text-gray-700">
         Papierformular des BLV für Klauentiere, z.B. wenn die TVD nicht geht. FMIS füllt aus, was es weiss; ausdrucken, unterschreiben, Original mit den Tieren mitgeben, Kopie 2 drei Jahre aufbewahren.
       </p>
+      {again && (
+        <p className="rounded-lg border-2 border-brand-700 bg-brand-50 p-3 text-sm text-brand-900">
+          PDF erneut erstellen: Angaben vom Begleitdokument {fmtDay(again)} übernommen. Der Abgang ist schon erfasst und wird nicht nochmals als Pendenz angelegt.
+        </p>
+      )}
 
       {done && (
         <section className="space-y-2 rounded-lg border-2 border-green-700 bg-green-50 p-3 text-sm text-green-950">
@@ -175,11 +200,11 @@ export default function Begleitdokument({ moduleKey }: { moduleKey: string }) {
                   )}
                 </span>
                 {species === 'cattle' && a.sex === 'm' && (
-                  <button type="button" aria-pressed={!!a.castrated} onClick={() => patchO(a.id, { castrated: !a.castrated })} className={`min-h-9 rounded-lg px-2 text-xs ${a.castrated ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                  <button type="button" aria-pressed={!!a.castrated} onClick={() => patchO(a.id, { castrated: !a.castrated })} className={`min-h-11 rounded-lg px-2 text-xs ${a.castrated ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700'}`}>
                     kastriert
                   </button>
                 )}
-                <button type="button" onClick={() => setIds(ids.filter((x) => x !== a.id))} aria-label={`${shortEarTag(a.ear_tag)} entfernen`} className="min-h-9 shrink-0 px-2 text-red-700">
+                <button type="button" onClick={() => setIds(ids.filter((x) => x !== a.id))} aria-label={`${shortEarTag(a.ear_tag)} entfernen`} className="min-h-11 shrink-0 px-2 text-red-700">
                   ✕
                 </button>
               </div>
@@ -187,7 +212,7 @@ export default function Begleitdokument({ moduleKey }: { moduleKey: string }) {
                 <div className="flex items-center gap-2 text-xs">
                   <span className={a.pregnant ? 'text-gray-600' : 'font-semibold text-amber-800'}>Trächtig?</span>
                   {(['ja', 'nein'] as const).map((v) => (
-                    <button key={v} type="button" aria-pressed={a.pregnant === v} onClick={() => patchO(a.id, { pregnant: v })} className={`min-h-9 rounded-lg px-3 ${a.pregnant === v ? 'bg-brand-700 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                    <button key={v} type="button" aria-pressed={a.pregnant === v} onClick={() => patchO(a.id, { pregnant: v })} className={`min-h-11 rounded-lg px-3 ${a.pregnant === v ? 'bg-brand-700 text-white' : 'bg-gray-100 text-gray-700'}`}>
                       {v}
                     </button>
                   ))}
@@ -306,7 +331,7 @@ export default function Begleitdokument({ moduleKey }: { moduleKey: string }) {
         </ul>
       )}
       <button type="button" disabled={busy || problems.length > 0} onClick={() => void create()} className="min-h-12 w-full rounded-lg bg-brand-700 text-base font-semibold text-white disabled:opacity-40">
-        {busy ? 'Erstellt…' : `📄 Begleitdokument erstellen (PDF${animals.length > 3 ? ' mit Tierliste' : ''})`}
+        {busy ? 'Erstellt…' : `📄 ${again ? 'PDF erneut erstellen' : 'Begleitdokument erstellen'} (PDF${animals.length > 3 ? ' mit Tierliste' : ''})`}
       </button>
     </div>
   )

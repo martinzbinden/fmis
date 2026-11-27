@@ -156,7 +156,7 @@ export default function BoardCardView({
             ✓
           </span>
         </button>
-        <button type="button" onClick={onToggle} aria-expanded={expanded} className={`min-w-0 flex-1 text-left ${stall ? 'min-h-12' : ''}`}>
+        <button type="button" onClick={onToggle} aria-expanded={expanded} className={`flex min-w-0 flex-1 flex-col items-stretch justify-start self-stretch text-left ${stall ? 'min-h-12' : 'min-h-10'}`}>
           {/* Ohrmarke immer ganz: lieber Geschlecht/Alter auf die nächste Zeile umbrechen als die Nummer abschneiden */}
           <span className="flex flex-wrap items-baseline gap-x-2">
             <span className="shrink-0 text-lg font-bold leading-tight text-gray-900">{card.laufNr ?? '–'}</span>
@@ -261,12 +261,12 @@ export default function BoardCardView({
       {/* Werte über die ganze Kartenbreite (nicht nur neben Griff und ⇄) */}
       {fields.length > 0 && (
         <button type="button" onClick={onToggle} tabIndex={-1} className="block w-full text-left">
-          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} milkFeed={milkFeed ?? null} lastMilk={lastMilk} lambValue={lambValue} milkFeedSettings={milkFeedSettings} />
+          <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} milkFeed={milkFeed ?? null} lastMilk={lastMilk} lambValue={lambValue} milkFeedSettings={milkFeedSettings} expanded={expanded} />
         </button>
       )}
       {fields.includes('choice') && choice && (
         // eigener Knopf (nicht im Knopf der Werte): öffnet die Skala
-        <button type="button" onClick={onChoice} disabled={!onChoice} className="mt-0.5 flex min-h-7 w-full items-center justify-between gap-2 text-left text-[0.73rem]" title="Zuchtauswahl ändern">
+        <button type="button" onClick={onChoice} disabled={!onChoice} className="-mb-1.5 -mt-1 flex min-h-10 w-full items-center justify-between gap-2 text-left text-[0.73rem]" title="Zuchtauswahl ändern">
           <span className="text-gray-500">Zuchtauswahl</span>
           <span className={`rounded px-1.5 font-medium ${CHOICE_TONE[choice] ?? ''}`}>
             {preselectionLabel(choice as Preselection) ?? 'offen'}
@@ -289,7 +289,7 @@ export default function BoardCardView({
               onMoveToGroup(id === 'none' ? null : id)
             }}
           />
-          <button type="button" onClick={() => setPicking(false)} aria-label="Abbrechen" className="grid h-9 w-9 place-items-center rounded text-gray-600 active:bg-gray-100">
+          <button type="button" onClick={() => setPicking(false)} aria-label="Abbrechen" className="grid h-11 w-11 place-items-center rounded text-gray-600 active:bg-gray-100">
             ✕
           </button>
         </div>
@@ -314,6 +314,13 @@ export default function BoardCardView({
       {expanded && (
         <div className={`mt-2 space-y-2 border-t pt-2 text-gray-700 ${stall ? 'text-sm' : 'text-xs'}`} data-no-drag>
           {money && <MoneyBalance money={money} />}
+          {/* was im Kopf nur als title steht (am Handy unsichtbar): aufgeklappt als Text */}
+          {meat && !fields.includes('meat') && (
+            <p className="text-[0.73rem] text-gray-600">
+              Schlachtwert ≈ {Math.round(meat.net)} Fr.: {meat.kind}, {meat.ageDays} Tage am Schlachttermin, ca. {meat.kg} kg SG, {meat.pricePerKg.toFixed(2)} Fr./kg, nach Abzügen
+            </p>
+          )}
+          {meat?.boundary && !fields.includes('meat') && <p className="text-[0.73rem] text-amber-900">⏳ Preisgrenze: {meat.boundary.text}</p>}
           {verdict && verdict.parts.length > 0 && (
             <p className="text-[0.73rem] text-gray-600">
               {VERDICT_LABEL[verdict.verdict]}: {verdict.points} Punkte ({verdict.parts.map((p) => `${p.label} ${p.points > 0 ? '+' : ''}${p.points}`).join(', ')})
@@ -395,9 +402,12 @@ function CardProps({
   lastMilk,
   lambValue,
   milkFeedSettings,
+  expanded = false,
 }: {
   card: BoardCard
   fields: CardFieldKey[]
+  /** Karte aufgeklappt: Erklärungen (sonst nur im title) als Zweitzeile */
+  expanded?: boolean
   meat: MeatValue | null
   meatLimits?: MeatLimit[]
   milkFeed: MilkFeed | null
@@ -462,6 +472,7 @@ function CardProps({
         </span>
       </div>,
     )
+    if (expanded) rows.push(<div key="lambValueTip" className="text-[0.73rem] font-normal text-gray-600">{v?.tip ?? 'Keine Schätzung: weder bewertete Mutter noch Zuchtwert des Vaters'}</div>)
   }
   if (has('litter')) rows.push(line('Wurf', card.lastLitterSize == null ? '–' : `letzter ${card.lastLitterSize}${card.litterMean != null ? ` · Ø ${n1(card.litterMean)}` : ''}`, 'litter'))
   if (has('lambing')) {

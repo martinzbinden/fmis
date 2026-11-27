@@ -1,16 +1,17 @@
 // Verlauf eines Tiers für die Tier-Info: alle Erfassungen (Geburten, Belegungen,
-// Trächtigkeit, Journal, Klauen, Milchproben, Merklisten, Pendenzen) als eine
+// Trächtigkeit, Journal, Klauen, Milchproben, Gewichte, Merklisten, Pendenzen) als eine
 // Liste nach Datum, nach Thema einschränkbar.
 import type { PGlite } from '@electric-sql/pglite'
 import { examSummary, loadClawExams, type ClawExam } from './clawHealth'
 import { fmtCells } from './culling'
+import { loadAnimalWeights } from './animalRecords'
 import { addDays, fmtDate, isoDate, num } from './format'
 import { categoryIcon, categoryLabel, journalSummary, supersededBy } from './journal'
 import { METHOD_LABEL, RESULT_LABEL } from './pregnancy'
 import type { Species } from './fertility'
 import type { JournalCategory, PregnancyMethod, PregnancyResult } from '../types'
 
-export type TimelineTopic = 'tier' | 'geburt' | 'belegung' | 'traechtigkeit' | 'gesundheit' | 'klauen' | 'milch' | 'beobachtung' | 'merkliste'
+export type TimelineTopic = 'tier' | 'geburt' | 'belegung' | 'traechtigkeit' | 'gesundheit' | 'klauen' | 'milch' | 'gewicht' | 'beobachtung' | 'merkliste'
 
 export interface TimelineItem {
   id: string
@@ -33,6 +34,7 @@ export function timelineTopics(species: Species): { key: TimelineTopic; label: s
     { key: 'gesundheit', label: 'Gesundheit' },
     { key: 'klauen', label: 'Klauen' },
     { key: 'milch', label: 'Milchproben' },
+    { key: 'gewicht', label: 'Gewichte' },
     { key: 'beobachtung', label: 'Notizen' },
     { key: 'merkliste', label: 'Merklisten' },
     { key: 'tier', label: 'Geburt/Abgang' },
@@ -59,7 +61,9 @@ export interface TimelineInput {
   }[]
   claws: ClawExam[]
   tests: { id: string; test_date: string; milk_kg: number | null; fat_pct: number | null; protein_pct: number | null; cell_count: number | null }[]
-  weighings: { id: string; session_date: string; bank_number: number; position: number; notes: string | null }[]
+  weighings: { id: string; session_date: string; bank_number: number; position: number; milk_kg?: number | null; notes: string | null }[]
+  /** Gewichte (Waage, animal_weights), auch aus der Zeit vor der Ohrmarke */
+  weights?: { id: string; weigh_date: string; weight_kg: number; notes: string | null }[]
   lists: { id: string; name: string; reason: string | null; added_at: string; done_at: string | null }[]
   reminders: { id: string; due_date: string; title: string; done_at: string | null }[]
 }
@@ -110,7 +114,7 @@ export function buildTimeline(input: TimelineInput, species: Species): TimelineI
       title: `Trächtigkeit: ${RESULT_LABEL[c.result]}`,
       detail: join(c.weeks != null && `${c.weeks} ${c.duration_unit === 'tage' ? 'Tage' : 'Wochen'}`, c.method && METHOD_LABEL[c.method], c.examiner, c.notes),
       tone: c.result === 'ja' ? 'good' : c.result === 'nein' ? 'bad' : undefined,
-      to: '#kennzahlen',
+      to: '#traechtigkeit',
     })
 
   const superseded = supersededBy(input.journal)
@@ -161,9 +165,19 @@ export function buildTimeline(input: TimelineInput, species: Species): TimelineI
       date: w.session_date,
       topic: 'milch',
       icon: '⚖️',
-      title: 'Milchwägung',
-      detail: join(`Bank ${w.bank_number}, Platz ${w.position}`, w.notes),
+      title: `Milchwägung${w.milk_kg != null ? ` ${w.milk_kg.toLocaleString('de-CH')} kg` : ''}, Bank ${w.bank_number} Platz ${w.position}`,
+      detail: w.notes ?? undefined,
       to: '#milchproben',
+    })
+  for (const w of input.weights ?? [])
+    out.push({
+      id: `gewicht:${w.id}`,
+      date: w.weigh_date,
+      topic: 'gewicht',
+      icon: '⚖️',
+      title: `Gewicht ${w.weight_kg.toLocaleString('de-CH')} kg`,
+      detail: w.notes ?? undefined,
+      to: '#gewichte',
     })
   for (const l of input.lists) {
     out.push({ id: `liste:${l.id}`, date: l.added_at, topic: 'merkliste', icon: '📋', title: `Auf Merkliste «${l.name}»`, detail: l.reason ?? undefined, to: '../merklisten' })
@@ -199,7 +213,7 @@ const localDay = (v: unknown) => (v instanceof Date ? v.toLocaleDateString('sv-S
 export async function loadTimelineInput(pg: PGlite, animalId: string): Promise<Omit<TimelineInput, 'animal'>> {
   type Row = Record<string, unknown>
   const q = (sql: string) => pg.query<Row>(sql, [animalId]).then((r) => r.rows)
-  const [births, offspring, matings, checks, journal, claws, tests, weighings, lists, reminders] = await Promise.all([
+  const [births, offspring, matings, checks, journal, claws, tests, weighings, lists, reminders, weights] = await Promise.all([
     q('select id, birth_date, sire_name, sire_ear_tag, ease, notes from births where dam_id = $1 and deleted_at is null'),
     q('select o.birth_id, o.sex, o.stillborn, o.died_24h from birth_offspring o join births b on b.id = o.birth_id where b.dam_id = $1 and o.deleted_at is null and b.deleted_at is null'),
     q('select id, service_date, service_to, kind, sire_name, sire_ear_tag, notes from matings where animal_id = $1 and deleted_at is null'),
@@ -207,10 +221,11 @@ export async function loadTimelineInput(pg: PGlite, animalId: string): Promise<O
     q('select id, entry_date, category, text, diagnosis, medication, dose, withdrawal_milk_days, withdrawal_meat_days, corrects_id, updated_at from animal_journal where animal_id = $1 and deleted_at is null'),
     loadClawExams(pg, animalId),
     q('select id, test_date, milk_kg, fat_pct, protein_pct, cell_count from milk_tests where animal_id = $1 and deleted_at is null'),
-    q(`select s.id, b.session_date, b.bank_number, s.position, s.notes from milking_slots s join milking_banks b on b.id = s.bank_id
-       where s.animal_id = $1 and s.weighed and s.deleted_at is null and b.deleted_at is null`),
+    q(`select s.id, b.session_date, b.bank_number, s.position, s.milk_kg, s.notes from milking_slots s join milking_banks b on b.id = s.bank_id
+       where s.animal_id = $1 and (s.weighed or s.milk_kg is not null) and s.deleted_at is null and b.deleted_at is null`),
     q('select e.id, l.name, e.reason, e.added_at, e.done_at from watchlist_entries e join watchlists l on l.id = e.list_id where e.animal_id = $1 and e.deleted_at is null'),
     q('select id, due_date, title, done_at from reminders where animal_id = $1 and deleted_at is null'),
+    loadAnimalWeights(pg, animalId),
   ])
   const byBirth = new Map<string, TimelineInput['births'][number]['offspring']>()
   for (const o of offspring) {
@@ -246,7 +261,8 @@ export async function loadTimelineInput(pg: PGlite, animalId: string): Promise<O
     })),
     claws,
     tests: tests.map((t) => ({ id: String(t.id), test_date: day(t.test_date), milk_kg: num(t.milk_kg), fat_pct: num(t.fat_pct), protein_pct: num(t.protein_pct), cell_count: num(t.cell_count) })),
-    weighings: weighings.map((w) => ({ id: String(w.id), session_date: day(w.session_date), bank_number: Number(w.bank_number), position: Number(w.position), notes: s(w.notes) })),
+    weighings: weighings.map((w) => ({ id: String(w.id), session_date: day(w.session_date), bank_number: Number(w.bank_number), position: Number(w.position), milk_kg: num(w.milk_kg), notes: s(w.notes) })),
+    weights,
     lists: lists.map((l) => ({ id: String(l.id), name: String(l.name), reason: s(l.reason), added_at: localDay(l.added_at)!, done_at: localDay(l.done_at) })),
     reminders: reminders.map((r) => ({ id: String(r.id), due_date: day(r.due_date), title: String(r.title), done_at: localDay(r.done_at) })),
   }

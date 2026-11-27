@@ -227,15 +227,15 @@ function TemplateEditor({ template, ctx, onDone }: { template: Partial<Treatment
             onClick={() => {
               if (confirm(`Favorit «${t.title}» löschen? Erfasste Behandlungen bleiben.`)) void deleteTemplate(db, t.id!).then(onDone)
             }}
-            className="rounded-lg border border-red-200 px-3 py-1.5 text-red-700"
+            className="min-h-11 rounded-lg border border-red-200 px-3 py-1.5 text-red-700"
           >
             Löschen
           </button>
         )}
-        <button type="button" onClick={onDone} className="link-btn rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700">
+        <button type="button" onClick={onDone} className="link-btn min-h-11 rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700">
           Abbrechen
         </button>
-        <button type="button" disabled={busy || !t.title.trim()} onClick={() => void save()} className="flex-1 rounded-lg bg-brand-700 py-1.5 font-semibold text-white disabled:opacity-50">
+        <button type="button" disabled={busy || !t.title.trim()} onClick={() => void save()} className="min-h-11 flex-1 rounded-lg bg-brand-700 py-1.5 font-semibold text-white disabled:opacity-50">
           Favorit speichern
         </button>
       </div>

@@ -520,18 +520,18 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
               disabled={list.length === 0}
               aria-label={`Alle in «${col.title}» auswählen`}
               title="Alle auswählen"
-              className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200 disabled:opacity-30"
+              className="grid h-11 w-11 place-items-center rounded text-lg text-gray-600 active:bg-gray-200 disabled:opacity-30"
             >
               ☑
             </button>
           )}
           {col.kind === 'group' && col.id && canMove && (
-            <button type="button" onClick={() => setEditGroup(col.id)} aria-label={`Gruppe «${col.title}» umbenennen oder löschen`} title="Umbenennen oder löschen" className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
+            <button type="button" onClick={() => setEditGroup(col.id)} aria-label={`Gruppe «${col.title}» umbenennen oder löschen`} title="Umbenennen oder löschen" className="grid h-11 w-11 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
               ⋮
             </button>
           )}
           {col.kind === 'list' && col.id && (
-            <button type="button" onClick={() => setEditList(col.id)} aria-label={`Merkliste «${col.title}»: umbenennen, archivieren, löschen`} title="Umbenennen, archivieren, löschen" className="grid h-9 w-9 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
+            <button type="button" onClick={() => setEditList(col.id)} aria-label={`Merkliste «${col.title}»: umbenennen, archivieren, löschen`} title="Umbenennen, archivieren, löschen" className="grid h-11 w-11 place-items-center rounded text-lg text-gray-600 active:bg-gray-200">
               ⋮
             </button>
           )}
@@ -963,6 +963,22 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
         </p>
       )}
 
+      {columns.length > 0 && visibleColumns.length === 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-sm text-amber-950" role="status">
+          <span className="flex-1">Keine Spalte gezeigt: alle ausgeblendet{kinds !== 'beides' ? ` oder nur ${kinds === 'gruppen' ? 'Gruppen' : 'Merklisten'} gewählt` : ''}.</span>
+          <button
+            type="button"
+            onClick={() => {
+              setHiddenCols(new Set())
+              setKinds('beides')
+            }}
+            className="min-h-11 rounded-lg bg-brand-700 px-3 font-semibold text-white"
+          >
+            Alle Spalten zeigen
+          </button>
+        </div>
+      )}
+
       <div ref={bar} className="follow-header z-10 -mx-1.5 flex items-center gap-2 bg-gray-50 px-1.5 py-1 sm:-mx-3 sm:px-3">
         <ViewTabs />
         <ColumnJump columns={shownColumns.map((c) => ({ key: c.key, kind: c.kind, title: c.title, count: columnCards(c).length }))} scroller={scroller} onJump={jumpToColumn} />
@@ -1187,7 +1203,7 @@ function ColumnTotals({
     <div className="mb-1.5 rounded-lg bg-white px-2 py-1.5 text-xs sm:mb-2" aria-label="Summen der Spalte" title="Summen über alle Tiere dieser Spalte (Σ Summen: Kennzahlen und Zeitraum wählen). Eine Schätzung.">
       {meat && (
         <div className="mb-0.5">
-          <button type="button" onClick={() => setMeatOpen((v) => !v)} aria-expanded={meatOpen} className="flex w-full items-center gap-2 text-left">
+          <button type="button" onClick={() => setMeatOpen((v) => !v)} aria-expanded={meatOpen} className="-my-1 flex min-h-10 w-full items-center gap-2 text-left">
             <span className="text-gray-600">
               <span aria-hidden>🥩</span> Schlachtwert
             </span>

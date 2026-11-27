@@ -3,7 +3,7 @@
 
 import type { PGlite } from '@electric-sql/pglite'
 import { getCurrentUserEmail } from '@fmis/core/auth'
-import { upsertRow } from '../db/write'
+import { softDeleteRow, upsertRow } from '../db/write'
 import { isoDate } from './format'
 
 export interface Reminder {
@@ -15,6 +15,16 @@ export interface Reminder {
   ear_tag: string
   lauf_nr: string | null
   name: string | null
+  /** Tier nicht mehr im Bestand (Status nicht «aktiv» oder Abgangsdatum gesetzt): Pendenz wohl hinfällig */
+  exited: boolean
+}
+
+/** Offene Pendenz eines Tiers (Tierseite) */
+export interface AnimalReminder {
+  id: string
+  case_id: string | null
+  due_date: string
+  title: string
 }
 
 const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
@@ -49,12 +59,32 @@ export function reminderRow(animalId: string, caseId: string | null, dueDate: st
 
 export async function loadOpenReminders(pg: PGlite): Promise<Reminder[]> {
   const { rows } = await pg.query<Reminder & { due_date: unknown }>(
-    `select r.id, r.animal_id, r.case_id, r.due_date, r.title, a.ear_tag, a.lauf_nr, a.name
+    `select r.id, r.animal_id, r.case_id, r.due_date, r.title, a.ear_tag, a.lauf_nr, a.name,
+            (a.status <> 'aktiv' or a.exit_date is not null) as exited
      from reminders r join animals a on a.id = r.animal_id
      where r.deleted_at is null and r.done_at is null and a.deleted_at is null
      order by r.due_date, a.lauf_nr`,
   )
-  return rows.map((r) => ({ ...r, due_date: isoDate(r.due_date)! }))
+  return rows.map((r) => ({ ...r, due_date: isoDate(r.due_date)!, exited: Boolean(r.exited) }))
+}
+
+/** Offene Pendenzen eines Tiers, früheste zuerst. */
+export async function loadAnimalReminders(pg: PGlite, animalId: string): Promise<AnimalReminder[]> {
+  const { rows } = await pg.query<Record<string, unknown>>(
+    'select id, case_id, due_date, title from reminders where animal_id = $1 and deleted_at is null and done_at is null order by due_date, created_at',
+    [animalId],
+  )
+  return rows.map((r) => ({ id: String(r.id), case_id: r.case_id == null ? null : String(r.case_id), due_date: isoDate(r.due_date)!, title: String(r.title) }))
+}
+
+/** Text und Fälligkeit ändern (Teilzeile: übrige Felder bleiben). */
+export async function updateReminder(pg: PGlite, id: string, change: { title: string; due_date: string }): Promise<void> {
+  await upsertRow(pg, 'reminders', { id, title: change.title, due_date: change.due_date })
+}
+
+/** Löschen (weich, mit Verlauf und Rückgängig). */
+export async function deleteReminder(pg: PGlite, id: string): Promise<void> {
+  await softDeleteRow(pg, 'reminders', id)
 }
 
 /** Als erledigt markieren (bleibt im Verlauf; Rückgängig über die Leiste). */

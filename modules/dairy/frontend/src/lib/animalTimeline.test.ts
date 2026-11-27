@@ -75,3 +75,33 @@ describe('Tier-Verlauf', () => {
     expect(filterTimeline(items, 'belegung', 'alt').map((i) => i.id)).toEqual(['journal:j3', 'belegung:m1'])
   })
 })
+
+describe('Tier-Verlauf: Trächtigkeit, Milchwägung, Gewichte', () => {
+  const items = buildTimeline(
+    {
+      ...empty,
+      checks: [{ id: 'c1', check_date: '2025-01-10', result: 'nein', method: 'auge', examiner: null, weeks: null, duration_unit: null, notes: null }],
+      weighings: [{ id: 'w1', session_date: '2025-02-01', bank_number: 3, position: 5, milk_kg: 2.4, notes: null }],
+      weights: [{ id: 'g1', weigh_date: '2025-03-01', weight_kg: 18.5, notes: 'beim Absetzen' }],
+    },
+    'sheep',
+  )
+  const byId = (id: string) => items.find((i) => i.id === id)!
+
+  it('verlinkt Trächtigkeitsbefunde auf den eigenen Abschnitt', () => {
+    expect(byId('traechtigkeit:c1').to).toBe('#traechtigkeit')
+  })
+
+  it('zeigt die gewogene Milchmenge im Titel', () => {
+    expect(byId('waegung:w1').title).toBe('Milchwägung 2.4 kg, Bank 3 Platz 5')
+  })
+
+  it('nimmt Gewichte als eigenes Thema auf', () => {
+    expect(byId('gewicht:g1')).toMatchObject({ topic: 'gewicht', title: 'Gewicht 18.5 kg', detail: 'beim Absetzen', to: '#gewichte' })
+  })
+
+  it('Milchwägung ohne Menge bleibt lesbar', () => {
+    const [w] = buildTimeline({ ...empty, weighings: [{ id: 'w2', session_date: '2025-02-01', bank_number: 1, position: 2, notes: null }] }, 'sheep').filter((i) => i.id === 'waegung:w2')
+    expect(w.title).toBe('Milchwägung, Bank 1 Platz 2')
+  })
+})
