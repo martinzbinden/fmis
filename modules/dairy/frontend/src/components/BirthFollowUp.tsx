@@ -9,20 +9,14 @@ import { localTodayIso } from '../lib/format'
 import { loadFollowUpLambs, loadFollowUpParents, savePreselection, saveLoss, type FollowUpLamb, type FollowUpParents, type TraitValue } from '../lib/birthFollowUp'
 import type { LambSelectionData } from '../lib/lambSelectionData'
 import { ABORT_MONTHS, DEFECTS, isAbort, LOSS_GROUPS, parseDefects, toggleDefect } from '../lib/lambLoss'
-import { PRESELECTIONS, preselectionLabel, recommendLamb, type Preselection, type Recommendation } from '../lib/lambRecommendation'
+import { preselectionLabel, recommendLamb, type Preselection, type Recommendation } from '../lib/lambRecommendation'
 import { speciesOf } from '../lib/species'
 import { loadSettings } from '../pages/LambSelection'
 import { InbreedingBadge } from '../pages/AnimalDetail'
 import TrendBadge from './TrendBadge'
+import ChoiceScale from './ChoiceScale'
 
 const num = (v: number) => v.toLocaleString('de-CH', { maximumFractionDigits: 1 })
-const CHOICE_STYLE: Record<string, string> = {
-  zucht: 'bg-green-700 text-white',
-  eher_ja: 'bg-green-200 text-green-950',
-  spaeter: 'bg-gray-600 text-white',
-  eher_nein: 'bg-amber-200 text-amber-950',
-  mast: 'bg-amber-700 text-white',
-}
 
 function Traits({ values, empty }: { values: TraitValue[]; empty: string }) {
   if (values.length === 0) return <p className="text-sm text-gray-600">{empty}</p>
@@ -206,8 +200,7 @@ function LiveLamb({
   useEffect(() => setShown(lamb.preselection), [lamb.preselection])
   const shown = draft?.has ? (draft.value ?? null) : saved
   const rowId = useRef(lamb.selection?.id ?? crypto.randomUUID())
-  function choose(key: Preselection) {
-    const next = shown === key ? null : key
+  function choose(next: Preselection | null) {
     if (draft) return draft.set(next)
     setShown(next)
     savePreselection(db, lamb, rowId.current, next, today).catch((e) => {
@@ -229,19 +222,7 @@ function LiveLamb({
         </p>
       )}
       {draft && lamb.preselection && !draft.has && <p className="text-xs text-gray-600">Bisher gewählt: {preselectionLabel(lamb.preselection)}</p>}
-      <div className="grid grid-cols-5 gap-1" role="group" aria-label={`Vorauswahl ${young} ${nr}`}>
-        {PRESELECTIONS.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            aria-pressed={shown === c.key}
-            onClick={() => choose(c.key)}
-            className={`min-h-11 rounded-lg px-0.5 text-xs font-medium leading-tight sm:text-sm ${shown === c.key ? CHOICE_STYLE[c.key] : 'bg-gray-100 text-gray-800'} ${rec?.choice === c.key ? 'ring-2 ring-brand-700' : ''}`}
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
+      <ChoiceScale value={shown} recommended={rec?.choice} onChoose={choose} label={`Vorauswahl ${young} ${nr}`} />
       {error && <p className="text-red-600">{error}</p>}
     </section>
   )

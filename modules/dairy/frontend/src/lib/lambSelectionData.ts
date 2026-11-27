@@ -11,6 +11,7 @@ import { loadInbreeding } from './pedigreeData'
 import { SIRE_TRAIT } from './breedingTraits'
 import type { Inbreeding } from './inbreeding'
 import type { DamInfo, LambCandidate, Purpose } from './lambSelection'
+import type { Preselection } from './lambRecommendation'
 import { herdMeanLactationKg } from './lambValue'
 import type { Animal } from '../types'
 
@@ -145,22 +146,22 @@ export async function loadLambSelection(pg: PGlite, species: Species, today: str
   return { candidates: [...candidates.values()], dams, sireValues, sireValueBasis, decisions: decisionMap, inbreeding, context, herdLactationKg }
 }
 
-/** Entscheid speichern bzw. zurücknehmen (purpose null) — immer dieselbe
- * Zeile je Tier, damit kein Verlauf aus Einzelzeilen entsteht. */
+/** Zuchtauswahl speichern bzw. zurücknehmen (null). Zucht und Mast sind der Entscheid, die übrigen Stufen
+ * (eher ja, später, eher nein) eine Vorauswahl — immer dieselbe Zeile je Tier. */
 export async function saveDecision(
   pg: PGlite,
   key: string,
-  purpose: Purpose | null,
-  existing: { id: string; notes: string | null; offspring_id?: string | null; leaning?: string | null } | undefined,
+  choice: Preselection | null,
+  existing: { id: string; notes: string | null; offspring_id?: string | null } | undefined,
   today: string,
 ): Promise<void> {
+  const purpose = choice === 'zucht' || choice === 'mast' ? choice : null
   await upsertRow(pg, 'lamb_selection', {
     id: existing?.id ?? crypto.randomUUID(),
     animal_key: key,
     offspring_id: existing?.offspring_id ?? null,
     purpose,
-    // der Entscheid ersetzt die Vorauswahl; zurückgenommen gilt sie wieder
-    leaning: purpose ? null : (existing?.leaning ?? null),
+    leaning: choice && !purpose ? choice : null,
     decided_on: purpose ? today : null,
     notes: existing?.notes ?? null,
   })

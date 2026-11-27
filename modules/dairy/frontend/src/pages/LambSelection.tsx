@@ -7,9 +7,10 @@ import { useQuery } from '../hooks/useQuery'
 import { useJumpTarget, useJumpTo } from '../hooks/useJumpTo'
 import { fmtCells } from '../lib/culling'
 import { todayIso } from '../lib/format'
-import { DEFAULT_SELECTION_SETTINGS, rankLambs, type LambRow, type Purpose, type SelectionSettings } from '../lib/lambSelection'
+import { damTrendIndex, DEFAULT_SELECTION_SETTINGS, lambIndex, rankLambs, type LambRow, type SelectionSettings } from '../lib/lambSelection'
 import { loadLambSelection, saveDecision, SIRE_TRAIT } from '../lib/lambSelectionData'
-import { preselectionLabel, type Preselection } from '../lib/lambRecommendation'
+import { PRESELECTIONS, preselectionLabel, recommendLamb, type Preselection, type Recommendation } from '../lib/lambRecommendation'
+import ChoiceScale from '../components/ChoiceScale'
 import { speciesOf } from '../lib/species'
 import { InbreedingBadge } from './AnimalDetail'
 import NumberInput from '@fmis/core/NumberInput'
@@ -32,7 +33,7 @@ export function loadSettings(moduleKey: string): SelectionSettings {
 }
 
 type SexFilter = 'w' | 'alle' | 'm'
-type DecisionFilter = 'alle' | 'offen' | 'zucht' | 'mast'
+type DecisionFilter = 'alle' | 'offen' | Preselection
 
 const BASIS_LABEL: Record<string, string> = { gut: 'gut', mittel: 'mittel', duenn: 'dünn' }
 
@@ -46,7 +47,7 @@ function ageText(days: number): string {
 }
 
 /** Jungtier-Selektion: Rangliste der weiblichen Jungtiere nach dem Index
- * ihrer Mutter (lib/lambSelection.ts), Entscheid Remonte/Mast je Tier. Die
+ * ihrer Mutter (lib/lambSelection.ts), Zuchtauswahl je Tier mit Skala und Empfehlung wie nach der Geburt. Die
  * Mast-Tiere übernimmt der Mastplaner ("Eigene Lämmer übernehmen"). */
 export default function LambSelection({ moduleKey }: { moduleKey: string }) {
   const species = speciesOf(moduleKey)
@@ -96,6 +97,24 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
     }
     return m
   }, [rows, valueSettings, data, milkPrice])
+  // Zuchtauswahl je Tier: Entscheid (Zucht/Mast) oder Vorauswahl (eher ja, später, eher nein)
+  const choiceOf = (r: LambRow): Preselection | null => {
+    const d = data?.decisions.get(r.key)
+    return d?.purpose ?? ((d?.leaning as Preselection | null | undefined) ?? null)
+  }
+  // Empfehlung wie nach der Geburt (components/BirthFollowUp.tsx): Index der Mutter ohne Vater, erwarteter Zuchtwert der Eltern
+  const recommendations = useMemo(() => {
+    const m = new Map<string, Recommendation>()
+    if (!data) return m
+    const trend = damTrendIndex(data.dams)
+    for (const r of rows) {
+      const p = r.dam?.performance
+      const damIndex = p ? lambIndex(p.idx_performance, settings.scc12m ? p.idx_scc_12m : p.idx_scc, null, { ...settings, weightSire: 0 }, r.dam_key ? (trend.get(r.dam_key) ?? null) : null) : null
+      const damValue = r.dam ? (data.context.get(r.dam.id)?.breedingValues[sireTrait.trait]?.value ?? null) : null
+      m.set(r.key, recommendLamb({ sex: r.sex, damIndex, damBasis: p?.data_basis ?? null, damValue, sireValue: r.sire_value, inbreeding: r.inbreeding }))
+    }
+    return m
+  }, [data, rows, settings, sireTrait.trait])
   const fr = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toLocaleString('de-CH')} Fr.`
 
   const jumpTo = useJumpTarget()
@@ -103,23 +122,23 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
     (r) =>
       r.animal_id === jumpTo ||
       (sexFilter === 'alle' || r.sex === sexFilter || (sexFilter === 'w' && r.sex == null)) &&
-      (decisionFilter === 'alle' || (decisionFilter === 'offen' ? r.purpose == null : r.purpose === decisionFilter)),
+      (decisionFilter === 'alle' || (decisionFilter === 'offen' ? r.purpose == null : choiceOf(r) === decisionFilter)),
   )
   useJumpTo(!!data, jumpTo ? `tier-${jumpTo}` : null)
-  const count = (p: Purpose | null) => rows.filter((r) => r.purpose === p).length
+  const count = (f: DecisionFilter) => rows.filter((r) => (f === 'offen' ? r.purpose == null : choiceOf(r) === f)).length
 
-  async function decide(r: LambRow, purpose: Purpose) {
+  async function decide(r: LambRow, next: Preselection | null) {
     if (!data) return
     setSaving(r.key)
     try {
-      await saveDecision(db, r.key, r.purpose === purpose ? null : purpose, data.decisions.get(r.key), today)
+      await saveDecision(db, r.key, next, data.decisions.get(r.key), today)
     } finally {
       setSaving(null)
     }
   }
 
   function exportCsv() {
-    const header = ['Rang', youngWord, 'Geburt', 'Geschlecht', 'Wurf', 'Mutter', 'Leistung rel.', 'Basis', 'Tendenz Mutter je Lakt.', `Zellzahl ('000)`, 'Datenbasis', 'Vater', sireTrait.label, 'Inzucht %', 'Index', 'Zucht-Mehrwert Fr.', 'Milch erwartet %', 'Entscheid']
+    const header = ['Rang', youngWord, 'Geburt', 'Geschlecht', 'Wurf', 'Mutter', 'Leistung rel.', 'Basis', 'Tendenz Mutter je Lakt.', `Zellzahl ('000)`, 'Datenbasis', 'Vater', sireTrait.label, 'Inzucht %', 'Index', 'Zucht-Mehrwert Fr.', 'Milch erwartet %', 'Empfehlung', 'Zuchtauswahl']
     const lines = visible.map((r) =>
       [
         r.rank,
@@ -139,7 +158,8 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
         r.index,
         values.get(r.key)?.francs,
         values.get(r.key)?.pct,
-        r.purpose,
+        preselectionLabel(recommendations.get(r.key)?.choice),
+        preselectionLabel(choiceOf(r)),
       ]
         .map(csvEscape)
         .join(';'),
@@ -197,9 +217,12 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
           className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
         >
           <option value="alle">alle Entscheide</option>
-          <option value="offen">offen ({count(null)})</option>
-          <option value="zucht">Remonte ({count('zucht')})</option>
-          <option value="mast">Mast ({count('mast')})</option>
+          <option value="offen">offen, ohne Zucht/Mast ({count('offen')})</option>
+          {PRESELECTIONS.map((c) => (
+            <option key={c.key} value={c.key}>
+              {c.label} ({count(c.key)})
+            </option>
+          ))}
         </select>
         <button type="button" onClick={() => setShowSettings((v) => !v)} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700">
           ⚙ Gewichtung und Geldwert
@@ -291,7 +314,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                 <th className="px-2 py-2 text-right" title="Mehr- oder Minderwert als Zuchttier gegenüber einem Durchschnittstier, nur aus der Milchmenge der Eltern">
                   Zucht-Mehrwert
                 </th>
-                <th className="px-2 py-2 print:hidden">Entscheid</th>
+                <th className="px-2 py-2">Zuchtauswahl</th>
               </tr>
             </thead>
             <tbody>
@@ -299,7 +322,7 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                 const p = r.dam?.performance
                 const scc = settings.scc12m ? p?.scc_geo_12m : p?.scc_geo
                 return (
-                  <tr key={r.key} id={r.animal_id ? `tier-${r.animal_id}` : undefined} className={`scroll-mt-20 border-b align-top last:border-0 ${r.purpose === 'mast' ? 'text-gray-500' : ''} ${r.animal_id && r.animal_id === jumpTo ? 'bg-brand-50 outline outline-2 outline-brand-700' : ''}`}>
+                  <tr key={r.key} id={r.animal_id ? `tier-${r.animal_id}` : undefined} className={`scroll-mt-20 border-b align-top last:border-0 ${choiceOf(r) === 'mast' ? 'text-gray-500' : ''} ${r.animal_id && r.animal_id === jumpTo ? 'bg-brand-50 outline outline-2 outline-brand-700' : ''}`}>
                     <td className="px-2 py-2 text-right font-bold">{r.rank ?? ''}</td>
                     <td className="whitespace-nowrap px-2 py-2">
                       {r.animal_id ? (
@@ -372,29 +395,16 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
                         '–'
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 print:hidden">
-                      <div className="flex gap-1">
-                        {(
-                          [
-                            ['zucht', 'Remonte', 'bg-green-700'],
-                            ['mast', 'Mast', 'bg-amber-700'],
-                          ] as const
-                        ).map(([purpose, label, active]) => (
-                          <button
-                            key={purpose}
-                            type="button"
-                            disabled={saving === r.key}
-                            onClick={() => void decide(r, purpose)}
-                            className={`rounded-full px-3 py-1 text-xs font-medium ${
-                              r.purpose === purpose ? `${active} text-white` : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
+                    <td className="px-2 py-2">
+                      <div className="print:hidden">
+                        <ChoiceScale compact value={choiceOf(r)} recommended={recommendations.get(r.key)?.choice} onChoose={(next) => void decide(r, next)} disabled={saving === r.key} label={`Zuchtauswahl ${animalLabel(r)}`} />
                       </div>
-                      {!r.purpose && data?.decisions.get(r.key)?.leaning && (
-                        <div className="mt-0.5 text-xs text-gray-600">Vorauswahl: {preselectionLabel(data.decisions.get(r.key)!.leaning as Preselection)}</div>
+                      <div className="hidden print:block">{preselectionLabel(choiceOf(r)) ?? '–'}</div>
+                      {recommendations.get(r.key) && (
+                        <div className="mt-0.5 max-w-[17rem] text-xs text-gray-600" title={recommendations.get(r.key)!.reasons.join(', ')}>
+                          Empfehlung <b>{preselectionLabel(recommendations.get(r.key)!.choice)}</b>
+                          {recommendations.get(r.key)!.reasons.length > 0 && <span> · {recommendations.get(r.key)!.reasons.join(', ')}</span>}
+                        </div>
                       )}
                     </td>
                   </tr>
