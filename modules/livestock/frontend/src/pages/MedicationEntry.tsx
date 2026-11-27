@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { useEarTagFilter } from '../hooks/useEarTagFilter'
@@ -9,14 +9,11 @@ import { todayIso } from '../lib/format'
 import type { MedicationReference } from '../types'
 import { shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
+import { groupOptionLabel, loadGroupOptions } from '../lib/groups'
 
 interface AnimalOption {
   id: string
   ear_tag: string
-}
-interface GroupOption {
-  id: string
-  name: string
 }
 interface GroupMember {
   animal_id: string
@@ -26,12 +23,6 @@ interface GroupMember {
 async function loadAnimals(pg: PGlite): Promise<AnimalOption[]> {
   const { rows } = await pg.query<AnimalOption>(
     "select id, ear_tag from animals where deleted_at is null and status = 'aktiv' order by ear_tag",
-  )
-  return rows
-}
-async function loadGroups(pg: PGlite): Promise<GroupOption[]> {
-  const { rows } = await pg.query<GroupOption>(
-    "select id, name from animal_groups where deleted_at is null and status = 'aktiv' order by created_date desc",
   )
   return rows
 }
@@ -56,12 +47,16 @@ function loadGroupMembers(groupId: string | null) {
 }
 
 export default function MedicationEntry() {
-  const [wholeGroup, setWholeGroup] = useState(false)
+  // ?gruppe=<id> aus der Gruppe: ganze Gruppe mit dieser Gruppe vorwählen,
+  // auch wenn sie abgeschlossen ist
+  const [params] = useSearchParams()
+  const presetGroup = params.get('gruppe')
+  const [wholeGroup, setWholeGroup] = useState(!!presetGroup)
   const { data: animals } = useQuery(loadAnimals)
-  const { data: groups } = useQuery(loadGroups)
+  const { data: groups } = useQuery((pg) => loadGroupOptions(pg, presetGroup), [presetGroup])
 
   const [animalId, setAnimalId] = useState('')
-  const [groupId, setGroupId] = useState('')
+  const [groupId, setGroupId] = useState(presetGroup ?? '')
   const { data: members } = useQuery(loadGroupMembers(wholeGroup ? groupId || null : null), [
     wholeGroup,
     groupId,
@@ -178,7 +173,7 @@ export default function MedicationEntry() {
               <option value="">Bitte wählen…</option>
               {(groups ?? []).map((g) => (
                 <option key={g.id} value={g.id}>
-                  {g.name}
+                  {groupOptionLabel(g)}
                 </option>
               ))}
             </select>

@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
-import { upsertRow } from '../db/write'
+import { softDeleteRow, upsertRow } from '../db/write'
+import { errorText, notifyError } from '@fmis/core/toast'
+import PenButton from '../components/PenButton'
 import { fmtChf, fmtDate, num, todayIso } from '../lib/format'
 import { shortEarTag } from '@fmis/core/earTag'
 import {
@@ -16,7 +18,13 @@ import {
   type DirectMarketingSettings,
   type MarketPrices,
 } from '../lib/marketing'
-import { loadMarketing, type MarketingData } from '../lib/marketingData'
+import {
+  loadMarketing,
+  loadMarketingHistory,
+  type MarketingData,
+  type StoredDirectMarketing,
+  type StoredMarketPrices,
+} from '../lib/marketingData'
 import NumberInput from '@fmis/core/NumberInput'
 
 interface ActiveAnimal {
@@ -32,6 +40,7 @@ interface ActiveAnimal {
 interface PageData {
   marketing: MarketingData
   animals: ActiveAnimal[]
+  history: { prices: StoredMarketPrices[]; direct: StoredDirectMarketing[] }
 }
 
 async function loadPage(pg: PGlite): Promise<PageData> {
@@ -54,7 +63,8 @@ async function loadPage(pg: PGlite): Promise<PageData> {
     where a.deleted_at is null and a.status = 'aktiv'
     order by a.ear_tag
   `)
-  return { marketing, animals }
+  const history = await loadMarketingHistory(pg)
+  return { marketing, animals, history }
 }
 
 // Ab 421 Tagen ist ein Tier kein Lamm mehr (Proviande: Schafe SM).
@@ -69,8 +79,9 @@ export default function Vermarktung() {
   const { data, loading } = useQuery(loadPage)
   // Der Betrieb schätzt seine Tiere im Mittel auf T3+.
   const [gradeText, setGradeText] = useState('T3+')
-  const [editPrices, setEditPrices] = useState(false)
-  const [editDirect, setEditDirect] = useState(false)
+  // true = neuer Stand, Zeile = diesen Stand bearbeiten
+  const [editPrices, setEditPrices] = useState<boolean | StoredMarketPrices>(false)
+  const [editDirect, setEditDirect] = useState<boolean | StoredDirectMarketing>(false)
   const grade = parseGrade(gradeText)
 
   const rows = useMemo(() => {
@@ -97,6 +108,7 @@ export default function Vermarktung() {
   if (loading && !data) return <div className="p-4 text-center text-gray-500">Lädt…</div>
   if (!data) return null
   const { prices, direct } = data.marketing
+  const today = todayIso()
 
   // Was das Mastziel der Gruppen am Markt kostet (Abzug ab 43 kg LG).
   const examples = [36, 40, 43, 45, 50, 55].map((live) => {
@@ -108,7 +120,7 @@ export default function Vermarktung() {
     <div className="mx-auto max-w-3xl space-y-6 p-4 pb-24">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Vermarktung</h1>
-        <Link to="/livestock/wirtschaftlichkeit" className="text-sm text-brand-700">
+        <Link to="/livestock/wirtschaftlichkeit" className="inline-flex min-h-10 items-center text-sm text-brand-700">
           Wirtschaftlichkeit →
         </Link>
       </div>
@@ -200,7 +212,7 @@ export default function Vermarktung() {
                 return (
                   <tr key={a.id} className="border-t">
                     <td className="py-1">
-                      <Link to={`/livestock/tiere/${a.id}`} className="font-medium text-brand-700">
+                      <Link to={`/livestock/tiere/${a.id}`} className="inline-flex min-h-10 items-center font-medium text-brand-700">
                         {shortEarTag(a.ear_tag)}
                       </Link>
                     </td>
@@ -226,13 +238,18 @@ export default function Vermarktung() {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-600">Proviande-Wochenpreis</h2>
           {!editPrices && (
-            <button type="button" className="text-xs text-brand-700" onClick={() => setEditPrices(true)}>
+            <button type="button" className="min-h-11 px-2 text-sm text-brand-700" onClick={() => setEditPrices(true)}>
               Neue Preise erfassen
             </button>
           )}
         </div>
         {editPrices ? (
-          <PricesForm initial={prices} onDone={() => setEditPrices(false)} />
+          <PricesForm
+            key={editPrices === true ? 'neu' : editPrices.id}
+            initial={prices}
+            row={editPrices === true ? undefined : editPrices}
+            onDone={() => setEditPrices(false)}
+          />
         ) : (
           <dl className="grid grid-cols-2 gap-1 text-sm">
             <Row label="Lämmer LA, T3" value={`${prices.la_t3.toFixed(2)} Fr./kg SG`} />
@@ -243,19 +260,32 @@ export default function Vermarktung() {
             <Row label="Quelle" value={prices.source ?? '–'} />
           </dl>
         )}
+        {!editPrices && (
+          <StandList
+            rows={data.history.prices}
+            today={today}
+            summary={(p) => `LA ${p.la_t3.toFixed(2)} · SM ${p.sm_t3.toFixed(2)} · Bio +${p.bio_premium.toFixed(2)} · Gebühr ${p.fee_per_animal.toFixed(2)}${p.source ? ` · ${p.source}` : ''}`}
+            onEdit={(p) => setEditPrices(p)}
+          />
+        )}
       </section>
 
       <section className="rounded-lg bg-white p-4 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-600">Direktvermarktung — Metzger und Verkauf</h2>
           {!editDirect && (
-            <button type="button" className="text-xs text-brand-700" onClick={() => setEditDirect(true)}>
-              Ändern
+            <button type="button" className="min-h-11 px-2 text-sm text-brand-700" onClick={() => setEditDirect(true)}>
+              Neuer Tarif
             </button>
           )}
         </div>
         {editDirect ? (
-          <DirectForm initial={direct} onDone={() => setEditDirect(false)} />
+          <DirectForm
+            key={editDirect === true ? 'neu' : editDirect.id}
+            initial={direct}
+            row={editDirect === true ? undefined : editDirect}
+            onDone={() => setEditDirect(false)}
+          />
         ) : (
           <>
             <dl className="grid grid-cols-2 gap-1 text-sm">
@@ -279,19 +309,80 @@ export default function Vermarktung() {
             </p>
           </>
         )}
+        {!editDirect && (
+          <StandList
+            rows={data.history.direct}
+            today={today}
+            summary={(d) =>
+              `${d.butcher ?? 'Metzger?'} · ${d.fee_per_kg_carcass.toFixed(2)}/kg SG · ${d.meat_yield_pct} % Fleisch · Verkauf ${d.meat_price_per_kg.toFixed(2)}/kg`
+            }
+            onEdit={(d) => setEditDirect(d)}
+          />
+        )}
       </section>
     </div>
   )
 }
 
-function PricesForm({ initial, onDone }: { initial: MarketPrices; onDone: () => void }) {
+/** Gespeicherte Stände: je Zeile ein Stift, Hinweis bei «Gültig ab» in der Zukunft. */
+function StandList<T extends { id: string; valid_from: string }>({
+  rows,
+  today,
+  summary,
+  onEdit,
+}: {
+  rows: T[]
+  today: string
+  summary: (r: T) => string
+  onEdit: (r: T) => void
+}) {
+  if (rows.length === 0) {
+    return <p className="mt-3 text-xs text-gray-500">Noch keine eigenen Stände gespeichert, es gelten die eingebauten Werte.</p>
+  }
+  return (
+    <div className="mt-3 border-t pt-2">
+      <h3 className="text-xs font-semibold text-gray-500">Gespeicherte Stände</h3>
+      <ul className="divide-y text-sm">
+        {rows.map((r) => (
+          <li key={r.id} className="flex items-center gap-2 py-1">
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-gray-800">
+                ab {fmtDate(r.valid_from)}
+                {r.valid_from > today && (
+                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                    gilt erst ab {fmtDate(r.valid_from)}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-gray-500">{summary(r)}</div>
+            </div>
+            <PenButton label={`Stand ab ${fmtDate(r.valid_from)} bearbeiten`} onClick={() => onEdit(r)} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function FutureHint({ validFrom }: { validFrom: string }) {
+  if (!validFrom || validFrom <= todayIso()) return null
+  return (
+    <p className="rounded bg-amber-50 p-2 text-xs text-amber-800">
+      «Gültig ab» liegt in der Zukunft: Diese Werte gelten erst ab {fmtDate(validFrom)}, bis dahin rechnet die App mit
+      dem vorherigen Stand.
+    </p>
+  )
+}
+
+function PricesForm({ initial, row, onDone }: { initial: MarketPrices; row?: StoredMarketPrices; onDone: () => void }) {
+  const base = row ?? initial
   const [form, setForm] = useState({
-    valid_from: todayIso(),
-    la_t3: String(initial.la_t3),
-    sm_t3: String(initial.sm_t3),
-    bio_premium: String(initial.bio_premium),
-    fee_per_animal: String(initial.fee_per_animal),
-    source: 'Proviande',
+    valid_from: row?.valid_from ?? todayIso(),
+    la_t3: String(base.la_t3),
+    sm_t3: String(base.sm_t3),
+    bio_premium: String(base.bio_premium),
+    fee_per_animal: String(base.fee_per_animal),
+    source: row ? (row.source ?? '') : 'Proviande',
   })
   const [saving, setSaving] = useState(false)
   async function save(e: React.FormEvent) {
@@ -299,18 +390,29 @@ function PricesForm({ initial, onDone }: { initial: MarketPrices; onDone: () => 
     setSaving(true)
     try {
       await upsertRow('market_prices', {
-        id: crypto.randomUUID(),
+        id: row?.id ?? crypto.randomUUID(),
         valid_from: form.valid_from,
         la_t3: Number(form.la_t3),
         sm_t3: Number(form.sm_t3),
         bio_premium: Number(form.bio_premium) || 0,
         fee_per_animal: Number(form.fee_per_animal) || 0,
         source: form.source || null,
-        notes: null,
+        notes: row?.notes ?? null,
       })
       onDone()
+    } catch (err) {
+      notifyError(errorText(err))
     } finally {
       setSaving(false)
+    }
+  }
+  async function remove() {
+    if (!row || !confirm(`Preisstand ab ${fmtDate(row.valid_from)} löschen?`)) return
+    try {
+      await softDeleteRow('market_prices', row.id)
+      onDone()
+    } catch (err) {
+      notifyError(errorText(err))
     }
   }
   return (
@@ -338,7 +440,8 @@ function PricesForm({ initial, onDone }: { initial: MarketPrices; onDone: () => 
           className="w-full rounded border border-gray-300 px-2 py-1"
         />
       </label>
-      <FormButtons saving={saving} onCancel={onDone} />
+      <FutureHint validFrom={form.valid_from} />
+      <FormButtons saving={saving} onCancel={onDone} onDelete={row ? () => void remove() : undefined} />
     </form>
   )
 }
@@ -358,14 +461,18 @@ const DIRECT_FIELDS: [keyof DirectMarketingSettings, string][] = [
 
 function DirectForm({
   initial,
+  row,
   onDone,
 }: {
   initial: DirectMarketingSettings & { butcher: string | null }
+  row?: StoredDirectMarketing
   onDone: () => void
 }) {
-  const [butcher, setButcher] = useState(initial.butcher?.replace(' (eingebaut)', '') ?? '')
+  const base = row ?? initial
+  const [butcher, setButcher] = useState(base.butcher?.replace(' (eingebaut)', '') ?? '')
+  const [validFrom, setValidFrom] = useState(row?.valid_from ?? todayIso())
   const [values, setValues] = useState<Record<string, string>>(
-    Object.fromEntries(DIRECT_FIELDS.map(([k]) => [k, String(initial[k])])),
+    Object.fromEntries(DIRECT_FIELDS.map(([k]) => [k, String(base[k])])),
   )
   const [saving, setSaving] = useState(false)
   async function save(e: React.FormEvent) {
@@ -373,15 +480,26 @@ function DirectForm({
     setSaving(true)
     try {
       await upsertRow('direct_marketing_settings', {
-        id: crypto.randomUUID(),
-        valid_from: todayIso(),
+        id: row?.id ?? crypto.randomUUID(),
+        valid_from: validFrom,
         butcher: butcher || null,
         ...Object.fromEntries(DIRECT_FIELDS.map(([k]) => [k, Number(values[k]) || 0])),
-        notes: null,
+        notes: row?.notes ?? null,
       })
       onDone()
+    } catch (err) {
+      notifyError(errorText(err))
     } finally {
       setSaving(false)
+    }
+  }
+  async function remove() {
+    if (!row || !confirm(`Tarif ab ${fmtDate(row.valid_from)} löschen?`)) return
+    try {
+      await softDeleteRow('direct_marketing_settings', row.id)
+      onDone()
+    } catch (err) {
+      notifyError(errorText(err))
     }
   }
   return (
@@ -394,12 +512,22 @@ function DirectForm({
           className="w-full rounded border border-gray-300 px-2 py-1"
         />
       </label>
+      <label className="block">
+        <span className="mb-1 block text-xs text-gray-600">Gültig ab</span>
+        <input
+          type="date"
+          value={validFrom}
+          onChange={(e) => setValidFrom(e.target.value)}
+          className="w-full rounded border border-gray-300 px-2 py-1"
+        />
+      </label>
       <div className="grid grid-cols-2 gap-2">
         {DIRECT_FIELDS.map(([k, label]) => (
           <NumField key={k} label={label} value={values[k]} onChange={(v) => setValues({ ...values, [k]: v })} />
         ))}
       </div>
-      <FormButtons saving={saving} onCancel={onDone} />
+      <FutureHint validFrom={validFrom} />
+      <FormButtons saving={saving} onCancel={onDone} onDelete={row ? () => void remove() : undefined} />
     </form>
   )
 }
@@ -419,15 +547,20 @@ function NumField({ label, value, onChange }: { label: string; value: string; on
   )
 }
 
-function FormButtons({ saving, onCancel }: { saving: boolean; onCancel: () => void }) {
+function FormButtons({ saving, onCancel, onDelete }: { saving: boolean; onCancel: () => void; onDelete?: () => void }) {
   return (
-    <div className="flex gap-2">
-      <button type="submit" disabled={saving} className="rounded bg-brand-700 px-3 py-1 text-white disabled:opacity-50">
+    <div className="flex flex-wrap gap-2">
+      <button type="submit" disabled={saving} className="min-h-11 rounded-lg bg-brand-700 px-3 text-white disabled:opacity-50">
         {saving ? 'Speichert…' : 'Speichern'}
       </button>
-      <button type="button" onClick={onCancel} className="rounded border border-gray-300 px-3 py-1 text-gray-700">
+      <button type="button" onClick={onCancel} className="min-h-11 rounded-lg border border-gray-300 px-3 text-gray-700">
         Abbrechen
       </button>
+      {onDelete && (
+        <button type="button" onClick={onDelete} className="ml-auto min-h-11 rounded-lg border border-red-300 px-3 text-red-700">
+          Löschen
+        </button>
+      )}
     </div>
   )
 }

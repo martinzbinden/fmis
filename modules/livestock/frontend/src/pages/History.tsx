@@ -48,40 +48,40 @@ function describeEntry(entry: DataHistory): { label: string; link: string | null
 
   switch (entry.table_name) {
     case 'animals':
-      return { label: snap.ear_tag ? shortEarTag(String(snap.ear_tag)) : entry.row_id, link: `/tiere/${entry.row_id}` }
+      return { label: snap.ear_tag ? shortEarTag(String(snap.ear_tag)) : entry.row_id, link: `/livestock/tiere/${entry.row_id}` }
     case 'animal_groups':
-      return { label: s(snap.name) ?? entry.row_id, link: `/gruppen/${entry.row_id}` }
+      return { label: s(snap.name) ?? entry.row_id, link: `/livestock/gruppen/${entry.row_id}` }
     case 'weighings':
       return {
         label: `${s(snap.weight_kg) ?? '?'} kg am ${s(snap.date) ?? '?'}`,
-        link: snap.animal_id ? `/tiere/${s(snap.animal_id)}` : null,
+        link: snap.animal_id ? `/livestock/tiere/${s(snap.animal_id)}` : null,
       }
     case 'medications':
       return {
         label: s(snap.medication_name) ?? 'Medikament',
-        link: snap.animal_id ? `/tiere/${s(snap.animal_id)}` : null,
+        link: snap.animal_id ? `/livestock/tiere/${s(snap.animal_id)}` : null,
       }
     case 'feed_records':
       return {
         label: s(snap.feed_type) ?? 'Futtereintrag',
-        link: snap.group_id ? `/gruppen/${s(snap.group_id)}` : null,
+        link: snap.group_id ? `/livestock/gruppen/${s(snap.group_id)}` : null,
       }
     case 'expenses':
       return {
         label: s(snap.category) ?? 'Kosten',
-        link: snap.group_id ? `/gruppen/${s(snap.group_id)}` : null,
+        link: snap.group_id ? `/livestock/gruppen/${s(snap.group_id)}` : null,
       }
     case 'slaughter_records':
-      return { label: `${s(snap.category) ?? 'Schlachtung'} ${s(snap.ear_tag) ?? ''} ${s(snap.slaughter_date) ?? ''}`.replace(/\s+/g, ' ').trim(), link: '/schlachtungen' }
+      return { label: `${s(snap.category) ?? 'Schlachtung'} ${s(snap.ear_tag) ?? ''} ${s(snap.slaughter_date) ?? ''}`.replace(/\s+/g, ' ').trim(), link: '/livestock/schlachtungen' }
     case 'slaughter_results':
       return {
         label: `Schlachtung ${s(snap.slaughter_date) ?? ''}`.trim(),
-        link: snap.animal_id ? `/tiere/${s(snap.animal_id)}` : null,
+        link: snap.animal_id ? `/livestock/tiere/${s(snap.animal_id)}` : null,
       }
     case 'group_memberships':
       return {
         label: 'Gruppenmitgliedschaft',
-        link: snap.animal_id ? `/tiere/${s(snap.animal_id)}` : null,
+        link: snap.animal_id ? `/livestock/tiere/${s(snap.animal_id)}` : null,
       }
     default:
       return { label: entry.row_id, link: null }

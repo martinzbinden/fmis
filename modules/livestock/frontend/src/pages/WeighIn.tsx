@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PGlite } from '@electric-sql/pglite'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '../hooks/useQuery'
 import { useEarTagFilter } from '../hooks/useEarTagFilter'
 import EarTagFilterInput from '../components/EarTagFilterInput'
@@ -16,11 +17,8 @@ import {
 import { shortEarTag } from '@fmis/core/earTag'
 import NumberInput from '@fmis/core/NumberInput'
 import { errorText } from '@fmis/core/toast'
+import { groupOptionLabel, loadGroupOptions } from '../lib/groups'
 
-interface GroupOption {
-  id: string
-  name: string
-}
 
 interface AnimalRow {
   animal_id: string
@@ -28,12 +26,6 @@ interface AnimalRow {
   last_weight: unknown
 }
 
-async function loadGroups(pg: PGlite): Promise<GroupOption[]> {
-  const { rows } = await pg.query<GroupOption>(
-    "select id, name from animal_groups where deleted_at is null and status = 'aktiv' order by created_date desc",
-  )
-  return rows
-}
 
 function loadAnimalsForGroup(groupId: string | null) {
   return async (pg: PGlite): Promise<AnimalRow[]> => {
@@ -249,7 +241,10 @@ function CsvImportForm({ onDone }: { onDone: () => void }) {
 }
 
 export default function WeighIn() {
-  const { data: groups, loading: groupsLoading } = useQuery(loadGroups)
+  // ?gruppe=<id> aus der Gruppe: diese Gruppe vorwählen, auch wenn sie abgeschlossen ist
+  const [params] = useSearchParams()
+  const presetGroup = params.get('gruppe')
+  const { data: groups, loading: groupsLoading } = useQuery((pg) => loadGroupOptions(pg, presetGroup), [presetGroup])
   const [showCsvImport, setShowCsvImport] = useState(false)
   const [groupId, setGroupId] = useState<string | null>(null)
   const [date, setDate] = useState(todayIso())
@@ -258,8 +253,9 @@ export default function WeighIn() {
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!groupId && groups && groups.length > 0) setGroupId(groups[0].id)
-  }, [groups, groupId])
+    if (groupId || !groups || groups.length === 0) return
+    setGroupId(groups.find((g) => g.id === presetGroup)?.id ?? groups[0].id)
+  }, [groups, groupId, presetGroup])
 
   const { data: animals, loading: animalsLoading } = useQuery(loadAnimalsForGroup(groupId), [groupId])
   const { filter, setFilter, filtered: visibleAnimals } = useEarTagFilter(animals, (a) => a.ear_tag)
@@ -317,7 +313,7 @@ export default function WeighIn() {
             {groupsLoading && <option>Lädt…</option>}
             {(groups ?? []).map((g) => (
               <option key={g.id} value={g.id}>
-                {g.name}
+                {groupOptionLabel(g)}
               </option>
             ))}
           </select>

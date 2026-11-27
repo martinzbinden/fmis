@@ -22,10 +22,13 @@ async function loadGroups(pg: PGlite): Promise<Row[]> {
       coalesce(m.member_count, 0) as member_count
     from animal_groups g
     left join (
-      select group_id, count(*) as member_count
-      from group_memberships
-      where deleted_at is null and end_date is null
-      group by group_id
+      -- nur Tiere, die noch da sind: ältere Mitgliedschaften wurden beim
+      -- Schlachten/Verkaufen nicht beendet, darum zusätzlich der Tierstatus
+      select gm.group_id, count(*) as member_count
+      from group_memberships gm
+      join animals a on a.id = gm.animal_id and a.deleted_at is null and a.status = 'aktiv'
+      where gm.deleted_at is null and gm.end_date is null
+      group by gm.group_id
     ) m on m.group_id = g.id
     where g.deleted_at is null
     order by g.created_date desc
@@ -59,7 +62,7 @@ export default function Groups() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-mono text-sm text-gray-700">{g.member_count} Tiere</div>
+                  <div className="font-mono text-sm text-gray-700">{g.member_count} aktive Tiere</div>
                   <div className="text-xs text-gray-500">{g.status}</div>
                 </div>
               </Link>

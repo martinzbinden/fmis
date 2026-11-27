@@ -4,7 +4,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { useQuery } from '../hooks/useQuery'
-import { upsertRow, softDeleteRow } from '../db/write'
+import { upsertRow, softDeleteRow, writeBatch } from '../db/write'
+import { useDb } from '@fmis/core/DbContext'
+import PenButton from '../components/PenButton'
+import { animalDeleteBlocker, closeMemberships, countAnimalDependents, LEAVING_STATUSES, loadOpenMemberships } from '../lib/groups'
+import { loadSlaughterRecordsForEarTag, type SlaughterRecord } from '../lib/slaughterRecords'
 import { fmtKg, fmtChf, fmtDate, fmtAge, num, todayIso } from '../lib/format'
 import { computeForecast } from '../lib/forecast'
 import type { Animal, Weighing, Medication, SlaughterResult, AnimalGroup, AnimalSex, AnimalStatus } from '../types'
@@ -29,6 +33,8 @@ interface Detail {
   medications: Medication[]
   slaughter: SlaughterResult | null
   group: AnimalGroup | null
+  /** Zeilen aus den Schlachtabrechnungen (slaughter_records) zur Ohrmarke */
+  records: SlaughterRecord[]
 }
 
 function loadDetail(id: string) {
@@ -54,8 +60,8 @@ function loadDetail(id: string) {
     const { rows: groupRows } = await pg.query<AnimalGroup>(
       `select g.* from animal_groups g
        join group_memberships gm on gm.group_id = g.id
-       where gm.animal_id = $1 and gm.deleted_at is null and gm.end_date is null and g.deleted_at is null
-       order by gm.start_date desc limit 1`,
+       where gm.animal_id = $1 and gm.deleted_at is null and g.deleted_at is null
+       order by (gm.end_date is null) desc, gm.start_date desc limit 1`,
       [id],
     )
 
@@ -65,6 +71,7 @@ function loadDetail(id: string) {
       medications,
       slaughter: slaughterRows[0] ?? null,
       group: groupRows[0] ?? null,
+      records: await loadSlaughterRecordsForEarTag(pg, animalRows[0].ear_tag),
     }
   }
 }
@@ -72,7 +79,10 @@ function loadDetail(id: string) {
 export default function AnimalDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const db = useDb()
   const { data, loading, refresh } = useQuery(loadDetail(id!), [id])
+  const [leaveDate, setLeaveDate] = useState(todayIso())
+  const [deleteBlocked, setDeleteBlocked] = useState<string | null>(null)
 
   const [editingAnimal, setEditingAnimal] = useState(false)
   const [animalForm, setAnimalForm] = useState<Partial<Animal>>({})
@@ -95,18 +105,46 @@ export default function AnimalDetail() {
     )
   }
 
-  const { animal, weighings, medications, slaughter, group } = data
+  const { animal, weighings, medications, slaughter, group, records } = data
   const today = todayIso()
 
+  const newStatus = animalForm.status ?? animal.status
+  const leaving = animal.status === 'aktiv' && LEAVING_STATUSES.includes(newStatus)
+
   async function saveAnimal() {
-    await upsertRow('animals', { ...animal, ...animalForm })
+    if (!leaving) {
+      await upsertRow('animals', { ...animal, ...animalForm })
+    } else {
+      // Tier verlässt den Betrieb: Status und Ende der offenen
+      // Gruppen-Mitgliedschaft in EINEM Schreibvorgang
+      const open = await loadOpenMemberships(db, animal.id)
+      await writeBatch(async (w) => {
+        await w.upsert('animals', { ...animal, ...animalForm })
+        for (const m of closeMemberships(open, leaveDate)) await w.upsert('group_memberships', m)
+      })
+    }
     setEditingAnimal(false)
     refresh()
   }
 
   async function deleteAnimal() {
+    // Nur Tiere ohne Einträge löschen: Wägungen, Medikamente usw. würden sonst
+    // auf ein ausgeblendetes Tier zeigen.
+    const blocker = animalDeleteBlocker(await countAnimalDependents(db, animal.id))
+    if (blocker) {
+      setDeleteBlocked(blocker)
+      return
+    }
     if (!confirm(`${animal.ear_tag} wirklich löschen?`)) return
-    await softDeleteRow('animals', animal.id)
+    // Mitgliedschaften des (fälschlich erfassten) Tiers mit ausblenden
+    const { rows: memberships } = await db.query<{ id: string }>(
+      'select id from group_memberships where animal_id = $1 and deleted_at is null',
+      [animal.id],
+    )
+    await writeBatch(async (w) => {
+      for (const m of memberships) await w.softDelete('group_memberships', m.id)
+      await w.softDelete('animals', animal.id)
+    })
     navigate('/livestock/tiere')
   }
 
@@ -119,6 +157,7 @@ export default function AnimalDetail() {
   async function deleteWeighing(w: Weighing) {
     if (!confirm('Diese Wägung wirklich löschen?')) return
     await softDeleteRow('weighings', w.id)
+    setEditingWeighingId(null)
     refresh()
   }
 
@@ -131,6 +170,7 @@ export default function AnimalDetail() {
   async function deleteMedication(m: Medication) {
     if (!confirm('Diesen Medikamenteneintrag wirklich löschen?')) return
     await softDeleteRow('medications', m.id)
+    setEditingMedicationId(null)
     refresh()
   }
 
@@ -145,6 +185,7 @@ export default function AnimalDetail() {
     if (!slaughter) return
     if (!confirm('Schlachtresultat wirklich löschen?')) return
     await softDeleteRow('slaughter_results', slaughter.id)
+    setEditingSlaughter(false)
     refresh()
   }
 
@@ -176,22 +217,20 @@ export default function AnimalDetail() {
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4">
       <div>
-        <Link to="/livestock/tiere" className="text-sm text-brand-700">
+        <Link to="/livestock/tiere" className="inline-flex min-h-10 items-center text-sm text-brand-700">
           ← Alle Tiere
         </Link>
         <div className="mt-1 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-800">{shortEarTag(animal.ear_tag)}</h1>
           {!editingAnimal && (
-            <button
-              type="button"
-              className="text-sm text-brand-700"
+            <PenButton
+              label="Tier bearbeiten"
               onClick={() => {
                 setAnimalForm(animal)
+                setLeaveDate(todayIso())
                 setEditingAnimal(true)
               }}
-            >
-              Bearbeiten
-            </button>
+            />
           )}
         </div>
       </div>
@@ -242,6 +281,16 @@ export default function AnimalDetail() {
               </select>
             </Field>
           </div>
+          {leaving && (
+            <Field label="Abgangsdatum (beendet die Gruppen-Mitgliedschaft)">
+              <input
+                type="date"
+                value={leaveDate}
+                onChange={(e) => setLeaveDate(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2"
+              />
+            </Field>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Geburtsdatum">
               <input
@@ -405,44 +454,31 @@ export default function AnimalDetail() {
                       className="w-24 rounded border border-gray-300 px-2 py-1"
                     />
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => saveWeighing(w)}
-                      className="rounded bg-brand-700 px-3 py-1 text-white"
-                    >
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => saveWeighing(w)} className="min-h-11 rounded-lg bg-brand-700 px-3 text-white">
                       Speichern
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingWeighingId(null)}
-                      className="rounded border border-gray-300 px-3 py-1 text-gray-700"
-                    >
+                    <button type="button" onClick={() => setEditingWeighingId(null)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-gray-700">
                       Abbrechen
+                    </button>
+                    <button type="button" onClick={() => deleteWeighing(w)} className="ml-auto min-h-11 rounded-lg border border-red-300 px-3 text-red-700">
+                      Löschen
                     </button>
                   </div>
                 </li>
               ) : (
-                <li key={w.id} className="flex items-center justify-between py-2 text-sm">
+                <li key={w.id} className="flex items-center justify-between py-1 text-sm">
                   <div>
                     <span className="font-medium text-gray-800">{fmtKg(num(w.weight_kg))}</span>
                     <span className="ml-2 text-gray-500">{fmtDate(w.date)}</span>
                   </div>
-                  <div className="flex gap-3 text-xs">
-                    <button
-                      type="button"
-                      className="text-brand-700"
-                      onClick={() => {
-                        setWeighingForm(w)
-                        setEditingWeighingId(w.id)
-                      }}
-                    >
-                      Bearbeiten
-                    </button>
-                    <button type="button" className="text-red-600" onClick={() => deleteWeighing(w)}>
-                      Löschen
-                    </button>
-                  </div>
+                  <PenButton
+                    label="Wägung bearbeiten"
+                    onClick={() => {
+                      setWeighingForm(w)
+                      setEditingWeighingId(w.id)
+                    }}
+                  />
                 </li>
               ),
             )}
@@ -488,20 +524,15 @@ export default function AnimalDetail() {
                         placeholder="Absetzfrist (Tage)"
                       />
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => saveMedication(m)}
-                        className="rounded bg-brand-700 px-3 py-1 text-white"
-                      >
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => saveMedication(m)} className="min-h-11 rounded-lg bg-brand-700 px-3 text-white">
                         Speichern
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingMedicationId(null)}
-                        className="rounded border border-gray-300 px-3 py-1 text-gray-700"
-                      >
+                      <button type="button" onClick={() => setEditingMedicationId(null)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-gray-700">
                         Abbrechen
+                      </button>
+                      <button type="button" onClick={() => deleteMedication(m)} className="ml-auto min-h-11 rounded-lg border border-red-300 px-3 text-red-700">
+                        Löschen
                       </button>
                     </div>
                   </li>
@@ -509,34 +540,26 @@ export default function AnimalDetail() {
               }
 
               return (
-                <li key={m.id} className="py-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-800">{m.medication_name}</span>
-                    <span className="text-gray-500">{fmtDate(m.date)}</span>
-                  </div>
-                  <div className="text-gray-500">
-                    {m.reason ?? ''} {m.dose ? `· ${m.dose}` : ''}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className={open ? 'text-red-600' : 'text-gray-500'}>
+                <li key={m.id} className="flex items-start gap-2 py-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex justify-between gap-2">
+                      <span className="font-medium text-gray-800">{m.medication_name}</span>
+                      <span className="text-gray-500">{fmtDate(m.date)}</span>
+                    </div>
+                    <div className="text-gray-500">
+                      {m.reason ?? ''} {m.dose ? `· ${m.dose}` : ''}
+                    </div>
+                    <div className={open ? 'text-red-600' : 'text-gray-500'}>
                       Absetzfrist bis {fmtDate(untilIso)} {open ? '(offen)' : '(abgelaufen)'}
-                    </span>
-                    <span className="flex gap-3 text-xs">
-                      <button
-                        type="button"
-                        className="text-brand-700"
-                        onClick={() => {
-                          setMedicationForm(m)
-                          setEditingMedicationId(m.id)
-                        }}
-                      >
-                        Bearbeiten
-                      </button>
-                      <button type="button" className="text-red-600" onClick={() => deleteMedication(m)}>
-                        Löschen
-                      </button>
-                    </span>
+                    </div>
                   </div>
+                  <PenButton
+                    label="Medikament bearbeiten"
+                    onClick={() => {
+                      setMedicationForm(m)
+                      setEditingMedicationId(m.id)
+                    }}
+                  />
                 </li>
               )
             })}
@@ -548,25 +571,19 @@ export default function AnimalDetail() {
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-600">Schlachtresultat</h2>
           {slaughter && !editingSlaughter && (
-            <span className="flex gap-3 text-xs">
-              <button
-                type="button"
-                className="text-brand-700"
-                onClick={() => {
-                  setSlaughterForm(slaughter)
-                  setEditingSlaughter(true)
-                }}
-              >
-                Bearbeiten
-              </button>
-              <button type="button" className="text-red-600" onClick={deleteSlaughter}>
-                Löschen
-              </button>
-            </span>
+            <PenButton
+              label="Schlachtresultat bearbeiten"
+              onClick={() => {
+                setSlaughterForm(slaughter)
+                setEditingSlaughter(true)
+              }}
+            />
           )}
         </div>
         {!slaughter ? (
-          <p className="text-sm text-gray-500">Noch nicht geschlachtet.</p>
+          <p className="text-sm text-gray-500">
+            {records.length > 0 ? 'Im Mastplaner nicht erfasst (siehe Abrechnung unten).' : 'Noch nicht geschlachtet.'}
+          </p>
         ) : editingSlaughter ? (
           <div className="space-y-2 text-sm">
             <div className="grid grid-cols-2 gap-2">
@@ -638,20 +655,15 @@ export default function AnimalDetail() {
                 />
               </Field>
             </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={saveSlaughter}
-                className="rounded bg-brand-700 px-3 py-1 text-white"
-              >
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={saveSlaughter} className="min-h-11 rounded-lg bg-brand-700 px-3 text-white">
                 Speichern
               </button>
-              <button
-                type="button"
-                onClick={() => setEditingSlaughter(false)}
-                className="rounded border border-gray-300 px-3 py-1 text-gray-700"
-              >
+              <button type="button" onClick={() => setEditingSlaughter(false)} className="min-h-11 rounded-lg border border-gray-300 px-3 text-gray-700">
                 Abbrechen
+              </button>
+              <button type="button" onClick={deleteSlaughter} className="ml-auto min-h-11 rounded-lg border border-red-300 px-3 text-red-700">
+                Löschen
               </button>
             </div>
           </div>
@@ -675,12 +687,54 @@ export default function AnimalDetail() {
         )}
       </section>
 
+      {records.length > 0 && (
+        <section className="rounded-lg bg-white p-4 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold text-gray-600">Aus den Schlachtabrechnungen</h2>
+          <p className="mb-2 text-xs text-gray-500">
+            Zeilen von «Schlachtungen» mit dieser Ohrmarke (unabhängig vom Schlachtresultat oben).
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-gray-500">
+                <tr>
+                  <th className="py-1 pr-2">Datum</th>
+                  <th className="pr-2 text-right">kg</th>
+                  <th className="pr-2">Tax.</th>
+                  <th className="pr-2 text-right">Fr./kg</th>
+                  <th className="pr-2 text-right">Betrag</th>
+                  <th className="pr-2">Abnehmer</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {records.map((r) => (
+                  <tr key={r.id}>
+                    <td className="py-1 pr-2 tabular-nums">{fmtDate(r.slaughter_date)}</td>
+                    <td className="pr-2 text-right tabular-nums">{r.carcass_kg ?? '–'}</td>
+                    <td className="pr-2">{r.classification ?? ''}</td>
+                    <td className="pr-2 text-right tabular-nums">{r.price_per_kg != null ? r.price_per_kg.toFixed(2) : ''}</td>
+                    <td className="pr-2 text-right tabular-nums">{r.amount != null ? fmtChf(r.amount) : ''}</td>
+                    <td className="pr-2">
+                      {r.buyer ?? ''}
+                      {r.settlement_no ? <span className="text-xs text-gray-500"> · Nr. {r.settlement_no}</span> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Link to="/livestock/schlachtungen" className="mt-1 inline-flex min-h-10 items-center text-sm text-brand-700">
+            Zu den Schlachtungen →
+          </Link>
+        </section>
+      )}
+
       <section className="rounded-lg border border-red-200 bg-white p-4">
         <h2 className="mb-2 text-sm font-semibold text-red-700">Danger Zone</h2>
+        {deleteBlocked && <p className="mb-2 rounded bg-amber-50 p-2 text-sm text-amber-800">{deleteBlocked}</p>}
         <button
           type="button"
-          onClick={deleteAnimal}
-          className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700"
+          onClick={() => void deleteAnimal()}
+          className="min-h-11 rounded border border-red-300 px-4 text-sm font-medium text-red-700"
         >
           Tier löschen
         </button>

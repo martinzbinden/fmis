@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('../db/write', () => ({ upsertRows: vi.fn() }))
 vi.mock('@fmis/core/db', () => ({ getSharedDbRaw: vi.fn() }))
 
-import { ageAt, byAge, byClassification, byLactation, bySeason, deliveries, lactationDaysAt, stats, type AnimalInfo, type SlaughterRecord } from './slaughterRecords'
+import { ageAt, stillActiveAnimals, byAge, byClassification, byLactation, bySeason, deliveries, lactationDaysAt, stats, type AnimalInfo, type SlaughterRecord } from './slaughterRecords'
 import { checkSlaughter, readCategory } from './pasteSlaughter'
 
 const rec = (p: Partial<SlaughterRecord>): SlaughterRecord => ({
@@ -93,5 +93,22 @@ describe('Schlachtungen einfügen', () => {
     expect(rows[2].warnings.join()).toContain('ungewöhnlich')
     expect(rows[3].warnings.join()).toContain('passt nicht')
     expect(rows[3].value).toMatchObject({ slaughter_date: '2026-08-27', category: 'Schaf' })
+  })
+})
+
+describe('Abgleich Abrechnung ↔ Mastplaner', () => {
+  it('meldet aktive Mastplaner-Tiere mit Abrechnung, früheste Schlachtung zählt', () => {
+    const records = [
+      rec({ animal_key: 'CH99990001', slaughter_date: '2026-09-10' }),
+      rec({ animal_key: 'CH99990001', slaughter_date: '2026-09-03' }),
+      rec({ animal_key: 'CH99990002' }),
+      rec({ animal_key: null }),
+    ]
+    const animals = [
+      { id: 'a1', ear_tag: 'CH 9999.0001', status: 'aktiv' },
+      { id: 'a2', ear_tag: 'CH99990002', status: 'geschlachtet' },
+      { id: 'a3', ear_tag: 'CH99990003', status: 'aktiv' },
+    ]
+    expect(stillActiveAnimals(records, animals)).toEqual([{ animal_id: 'a1', ear_tag: 'CH 9999.0001', slaughter_date: '2026-09-03' }])
   })
 })

@@ -18,6 +18,7 @@ import {
   normalizeSettings,
   OUTSIDE_FLAG_SHARE,
   saveFatteningSettings,
+  settingsDiffer,
   SEX_LABELS,
   sexKey,
   summarize,
@@ -83,13 +84,28 @@ export default function Fattening() {
     <div className="mx-auto max-w-3xl space-y-4 p-4 pb-24">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Mastauswertung</h1>
-        <Link to="/livestock/schlachtungen" className="text-sm text-brand-700">
+        <Link to="/livestock/schlachtungen" className="inline-flex min-h-10 items-center text-sm text-brand-700">
           Schlachtungen →
         </Link>
       </div>
       <p className="text-xs text-gray-600">
         Lämmer aus den Schlachtabrechnungen: Tageszunahmen, geschätzter Futterverzehr in der Mast, Futterverwertung und Deckungsbeitrag. Geburt, Absetzen und Wägungen kommen aus Mastplaner und Milchschafen (über die Ohrmarke). Wie gerechnet wird, steht unten unter «Methode und Annahmen».
       </p>
+
+      {settingsDiffer(settings) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <span>
+            <b>Eigene Annahmen aktiv</b> (nur in diesem Browser): die Zahlen weichen von den Vorgaben ab.
+          </span>
+          <button
+            type="button"
+            onClick={() => document.getElementById('methode')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="min-h-10 rounded-lg border border-amber-400 bg-white px-3 font-medium"
+          >
+            Zu den Annahmen
+          </button>
+        </div>
+      )}
 
       {data && rows.length === 0 && (
         <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">
@@ -279,7 +295,7 @@ const COLUMNS: Column[] = [
     render: (r) => {
       const t = r.input.ear_tag || r.input.animal_key ? shortEarTag(r.input.animal_key ?? r.input.ear_tag) : '–'
       return r.input.livestock_id ? (
-        <Link to={`/livestock/tiere/${r.input.livestock_id}`} className="font-medium text-brand-700">
+        <Link to={`/livestock/tiere/${r.input.livestock_id}`} className="inline-flex min-h-10 items-center font-medium text-brand-700">
           {t}
         </Link>
       ) : (
@@ -471,7 +487,35 @@ function AnimalTable({ rows }: { rows: LambResult[] }) {
               ))}
             </tbody>
           </table>
-          <p className="mt-2 text-xs text-gray-500">LG: g = gewogen (mit gemessener Ausbeute), s = geschätzt. Kosten: e = Futterkosten aus dem Mastplaner erfasst, sonst geschätzt. NEV/TS: nötiger Energiegehalt der Ration in MJ NEV je kg TS; * = Energiebedarf an mindestens {Math.round(OUTSIDE_FLAG_SHARE * 100)} % der Masttage ausserhalb der Tabellen fortgeschrieben.</p>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-gray-600">
+            <dt className="font-semibold">Alter</dt>
+            <dd>Alter am Schlachttag in Tagen</dd>
+            <dt className="font-semibold">SG</dt>
+            <dd>Schlachtgewicht in kg</dd>
+            <dt className="font-semibold">Tax.</dt>
+            <dd>Taxation nach CH-TAX (Fleischigkeit und Fettklasse)</dd>
+            <dt className="font-semibold">LG</dt>
+            <dd>Lebendgewicht am Schlachttag in kg; g = gewogen (höchstens 7 Tage davor, mit gemessener Ausbeute in %), s = geschätzt aus SG und Ausbeute</dd>
+            <dt className="font-semibold">NTZ</dt>
+            <dd>Netto-Tageszunahme in g/Tag: Schlachtgewicht je Lebenstag</dd>
+            <dt className="font-semibold">LTZ</dt>
+            <dd>Lebenstageszunahme in g/Tag: Lebendgewicht minus Geburtsgewicht, je Lebenstag</dd>
+            <dt className="font-semibold">MTZ</dt>
+            <dd>Masttageszunahme in g/Tag, nur mit gemessenem Gewicht bei Mastbeginn</dd>
+            <dt className="font-semibold">TS kg</dt>
+            <dd>Trockensubstanz-Verzehr in der Mast, geschätzt</dd>
+            <dt className="font-semibold">FVW</dt>
+            <dd>Futterverwertung: kg TS je kg Zuwachs in der Mast</dd>
+            <dt className="font-semibold">NEV/TS</dt>
+            <dd>
+              nötiger Energiegehalt der Ration in MJ NEV (Nettoenergie Fleischbildung) je kg TS; * = Energiebedarf an mindestens{' '}
+              {Math.round(OUTSIDE_FLAG_SHARE * 100)} % der Masttage ausserhalb der Tabellen fortgeschrieben
+            </dd>
+            <dt className="font-semibold">Kosten</dt>
+            <dd>Mastkosten in Fr.; e = Futterkosten aus dem Mastplaner erfasst, sonst aus TS-Verzehr geschätzt</dd>
+            <dt className="font-semibold">DB, DB/Tag</dt>
+            <dd>Deckungsbeitrag je Tier und je Masttag in Fr. (Erlös minus Kosten)</dd>
+          </dl>
         </div>
       )}
     </section>
@@ -480,7 +524,7 @@ function AnimalTable({ rows }: { rows: LambResult[] }) {
 
 function Method({ settings, onSave }: { settings: FatteningSettings; onSave: (s: FatteningSettings) => void }) {
   return (
-    <section className="space-y-3 rounded-lg bg-white p-3 text-sm text-gray-700 shadow-sm">
+    <section id="methode" className="scroll-mt-16 space-y-3 rounded-lg bg-white p-3 text-sm text-gray-700 shadow-sm">
       <h2 className="text-sm font-semibold text-gray-700">Methode und Annahmen</h2>
       <ul className="list-disc space-y-1 pl-5 text-xs">
         <li>

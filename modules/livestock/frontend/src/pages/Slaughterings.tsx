@@ -2,9 +2,14 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { animalKey, shortEarTag } from '@fmis/core/earTag'
 import { openImport } from '@fmis/core/importModal'
+import Modal from '@fmis/core/Modal'
 import { errorText, notifyError } from '@fmis/core/toast'
 import { useQuery } from '../hooks/useQuery'
-import { softDeleteRow, upsertRow } from '../db/write'
+import { softDeleteRow, upsertRow, writeBatch } from '../db/write'
+import type { PGlite } from '@electric-sql/pglite'
+import PenButton from '../components/PenButton'
+import { useDb } from '@fmis/core/DbContext'
+import { closeMemberships, loadOpenMemberships } from '../lib/groups'
 import { fmtDate, todayIso } from '../lib/format'
 import {
   ageAt,
@@ -19,7 +24,9 @@ import {
   loadAnimalInfo,
   loadSlaughterRecords,
   stats,
+  stillActiveAnimals,
   type Group,
+  type StillActive,
   type SlaughterRecord,
 } from '../lib/slaughterRecords'
 
@@ -27,13 +34,35 @@ const fr = (v: number) => v.toLocaleString('de-CH', { minimumFractionDigits: 2, 
 
 /** Schlachtungen aller Tiere (Lämmer, Schafe, Kälber, Rinder …) aus den Abrechnungen: Lieferungen, Auswertungen nach
  * Alter, Laktationstagen, Jahreszeit, Geschlecht und Taxation, die einzelnen Tiere. */
+interface MastAnimal {
+  id: string
+  ear_tag: string
+  status: string
+}
+
 export default function Slaughterings() {
   const { data } = useQuery(async (pg) => {
-    const [records, info] = await Promise.all([loadSlaughterRecords(pg), loadAnimalInfo(pg)])
-    return { records, info }
+    const [records, info, animals] = await Promise.all([
+      loadSlaughterRecords(pg),
+      loadAnimalInfo(pg),
+      pg.query<MastAnimal>('select id, ear_tag, status from animals where deleted_at is null').then((r) => r.rows),
+    ])
+    return { records, info, animals }
   })
   const records = data?.records ?? []
   const info = data?.info ?? new Map()
+  // Ohrmarke → Tierseite im Mastplaner (über animal_key)
+  const mastIdByKey = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const a of data?.animals ?? []) {
+      const k = animalKey(a.ear_tag)
+      if (k) m.set(k, a.id)
+    }
+    return m
+  }, [data?.animals])
+  const stillActive = useMemo(() => stillActiveAnimals(records, data?.animals ?? []), [records, data?.animals])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const editingRecord = editingId ? (records.find((r) => r.id === editingId) ?? null) : null
   const years = useMemo(() => [...new Set(records.map((r) => r.slaughter_date.slice(0, 4)))].sort().reverse(), [records])
   const cats = useMemo(() => CATEGORIES.filter((c) => records.some((r) => r.category === c)), [records])
   const [year, setYear] = useState('')
@@ -65,7 +94,14 @@ export default function Slaughterings() {
         Alle geschlachteten Tiere aus den Abrechnungen, ob Mastlamm, Milchschaf oder Rind. Alter, Geschlecht und Ablammungen kommen aus den Tierlisten (über die Ohrmarke).
       </p>
 
-      {adding && <AddForm onDone={() => setAdding(false)} />}
+      {adding && <RecordForm onDone={() => setAdding(false)} />}
+      {editingRecord && (
+        <Modal title="Schlachtung bearbeiten" onClose={() => setEditingId(null)}>
+          <RecordForm record={editingRecord} onDone={() => setEditingId(null)} inDialog />
+        </Modal>
+      )}
+
+      {stillActive.length > 0 && <StillActiveHint list={stillActive} />}
 
       {data && records.length === 0 && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Noch keine Schlachtungen erfasst. Abrechnungen über «📥 Abrechnung einfügen» oder von Hand.</p>}
 
@@ -158,7 +194,14 @@ export default function Slaughterings() {
                 </thead>
                 <tbody className="divide-y">
                   {shown.map((r) => (
-                    <RecordRow key={r.id} r={r} age={ageAt(r, info)} lact={r.category === 'Schaf' ? lactationDaysAt(r, info) : null} />
+                    <RecordRow
+                      key={r.id}
+                      r={r}
+                      age={ageAt(r, info)}
+                      lact={r.category === 'Schaf' ? lactationDaysAt(r, info) : null}
+                      mastId={r.animal_key ? mastIdByKey.get(r.animal_key) : undefined}
+                      onEdit={() => setEditingId(r.id)}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -197,7 +240,20 @@ function GroupTable({ title, groups, showPrice = false }: { title: string; group
   )
 }
 
-function RecordRow({ r, age, lact }: { r: SlaughterRecord; age: number | null; lact: number | null }) {
+function RecordRow({
+  r,
+  age,
+  lact,
+  mastId,
+  onEdit,
+}: {
+  r: SlaughterRecord
+  age: number | null
+  lact: number | null
+  mastId: string | undefined
+  onEdit: () => void
+}) {
+  const tag = r.ear_tag ? shortEarTag(r.animal_key ?? r.ear_tag) : '–'
   return (
     <tr>
       <td className="py-1 pr-2 tabular-nums">{fmtDate(r.slaughter_date)}</td>
@@ -205,32 +261,110 @@ function RecordRow({ r, age, lact }: { r: SlaughterRecord; age: number | null; l
         {r.category}
         {r.remark ? <span className="text-xs text-gray-500"> · {r.remark}</span> : null}
       </td>
-      <td className="pr-2 tabular-nums">{r.ear_tag ? shortEarTag(r.animal_key ?? r.ear_tag) : '–'}</td>
+      <td className="pr-2 tabular-nums">
+        {mastId ? (
+          <Link to={`/livestock/tiere/${mastId}`} className="inline-flex min-h-10 items-center font-medium text-brand-700">
+            {tag}
+          </Link>
+        ) : (
+          tag
+        )}
+      </td>
       <td className="pr-2 text-right tabular-nums">{r.carcass_kg ?? '–'}</td>
       <td className="pr-2">{r.classification ?? ''}</td>
       <td className="pr-2 text-right tabular-nums">{r.price_per_kg != null ? fr(r.price_per_kg) : ''}</td>
-      <td className="pr-2 text-right text-xs tabular-nums text-gray-600" title={lact != null ? `${lact} Laktationstage` : undefined}>
+      <td className="pr-2 text-right text-xs tabular-nums text-gray-600">
         {age != null ? (age < 730 ? `${age} T.` : `${(age / 365).toFixed(1)} J.`) : '–'}
         {lact != null ? ` · L${lact}` : ''}
       </td>
       <td className="text-right">
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm('Diese Schlachtung löschen?')) void softDeleteRow('slaughter_records', r.id).catch((e) => notifyError(errorText(e)))
-          }}
-          className="min-h-9 px-2 text-gray-400 active:text-red-700"
-          aria-label="Löschen"
-        >
-          ✕
-        </button>
+        <PenButton label="Schlachtung bearbeiten" onClick={onEdit} />
       </td>
     </tr>
   )
 }
 
-function AddForm({ onDone }: { onDone: () => void }) {
-  const [f, setF] = useState({ date: todayIso(), category: 'Lamm', ear_tag: '', kg: '', tax: '', price: '', remark: '', buyer: '' })
+/** Hinweis: laut Abrechnung geschlachtet, im Mastplaner noch «aktiv». Schreibt
+ * erst nach Antippen und Bestätigen (mit Liste der Ohrmarken). */
+function StillActiveHint({ list }: { list: StillActive[] }) {
+  const db = useDb()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  async function apply() {
+    setBusy(true)
+    try {
+      for (const a of list) {
+        await markSlaughtered(db, a)
+      }
+      setOpen(false)
+    } catch (e) {
+      notifyError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>
+          <b>{list.length} {list.length === 1 ? 'Tier' : 'Tiere'} im Mastplaner noch aktiv</b>, obwohl in einer Abrechnung geschlachtet.
+        </span>
+        {!open && (
+          <button type="button" onClick={() => setOpen(true)} className="min-h-11 rounded-lg border border-amber-400 bg-white px-3 font-medium">
+            als geschlachtet eintragen
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <p>Diese Tiere werden auf «geschlachtet» gesetzt, ihre Gruppen-Mitgliedschaft endet am Schlachtdatum:</p>
+          <ul className="list-inside list-disc">
+            {list.map((a) => (
+              <li key={a.animal_id}>
+                {shortEarTag(a.ear_tag)} · {fmtDate(a.slaughter_date)}
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => void apply()} className="min-h-11 rounded-lg bg-brand-700 px-4 font-semibold text-white disabled:opacity-50">
+              {busy ? 'Trägt ein…' : `${list.length} eintragen`}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="min-h-11 px-3 text-gray-700">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Status «geschlachtet» und Ende der offenen Mitgliedschaft je Tier in einem Schreibvorgang. */
+async function markSlaughtered(pg: PGlite, a: StillActive) {
+  const open = await loadOpenMemberships(pg, a.animal_id)
+  await writeBatch(async (w) => {
+    await w.upsert('animals', { id: a.animal_id, status: 'geschlachtet' })
+    for (const m of closeMemberships(open, a.slaughter_date)) await w.upsert('group_memberships', m)
+  })
+}
+
+/** Neue Schlachtung von Hand oder eine bestehende Zeile bearbeiten (alle Felder). */
+function RecordForm({ record, onDone, inDialog = false }: { record?: SlaughterRecord; onDone: () => void; inDialog?: boolean }) {
+  const str = (v: number | null | undefined) => (v == null ? '' : String(v))
+  const [f, setF] = useState({
+    date: record?.slaughter_date ?? todayIso(),
+    category: record?.category ?? 'Lamm',
+    ear_tag: record?.ear_tag ?? '',
+    kg: str(record?.carcass_kg),
+    tax: record?.classification ?? '',
+    price: str(record?.price_per_kg),
+    amount: str(record?.amount),
+    remark: record?.remark ?? '',
+    buyer: record?.buyer ?? '',
+    settlement_no: record?.settlement_no ?? '',
+    weigh_slip_no: record?.weigh_slip_no ?? '',
+    notes: record?.notes ?? '',
+  })
   const [busy, setBusy] = useState(false)
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value })
   const n = (v: string) => (v.trim() === '' ? null : Number(v.replace(',', '.')))
@@ -239,8 +373,10 @@ function AddForm({ onDone }: { onDone: () => void }) {
     try {
       const kg = n(f.kg)
       const price = n(f.price)
+      // Betrag: was eingetragen ist; leer = Gewicht × Preis
+      const amount = n(f.amount) ?? (kg != null && price != null ? Math.round(kg * price * 100) / 100 : null)
       await upsertRow('slaughter_records', {
-        id: crypto.randomUUID(),
+        id: record?.id ?? crypto.randomUUID(),
         slaughter_date: f.date,
         ear_tag: f.ear_tag.trim() || null,
         animal_key: animalKey(f.ear_tag.trim()) ?? null,
@@ -248,13 +384,13 @@ function AddForm({ onDone }: { onDone: () => void }) {
         carcass_kg: kg,
         classification: f.tax.trim().toUpperCase() || null,
         price_per_kg: price,
-        amount: kg != null && price != null ? Math.round(kg * price * 100) / 100 : null,
+        amount,
         remark: f.remark.trim() || null,
         buyer: f.buyer.trim() || null,
-        settlement_no: null,
-        weigh_slip_no: null,
-        source: 'manuell',
-        notes: null,
+        settlement_no: f.settlement_no.trim() || null,
+        weigh_slip_no: f.weigh_slip_no.trim() || null,
+        source: record ? record.source : 'manuell',
+        notes: f.notes.trim() || null,
         deleted_at: null,
       } as never)
       onDone()
@@ -264,9 +400,19 @@ function AddForm({ onDone }: { onDone: () => void }) {
       setBusy(false)
     }
   }
-  const input = 'w-full rounded-lg border border-gray-300 px-2 py-2 text-sm'
+  async function remove() {
+    if (!record || !window.confirm('Diese Schlachtung löschen?')) return
+    try {
+      await softDeleteRow('slaughter_records', record.id)
+      onDone()
+    } catch (e) {
+      notifyError(errorText(e))
+    }
+  }
+  const input = 'w-full min-h-11 rounded-lg border border-gray-300 px-2 text-sm'
   return (
-    <section className="grid grid-cols-2 gap-2 rounded-lg bg-white p-3 shadow-sm sm:grid-cols-4">
+    <section className={`grid grid-cols-2 gap-2 ${inDialog ? '' : 'rounded-lg bg-white p-3 shadow-sm sm:grid-cols-4'}`}>
+      {record && !inDialog && <h3 className="col-span-2 text-sm font-semibold text-gray-700 sm:col-span-4">Schlachtung bearbeiten</h3>}
       <label className="text-xs text-gray-600">
         Datum
         <input type="date" value={f.date} onChange={set('date')} className={input} />
@@ -274,6 +420,7 @@ function AddForm({ onDone }: { onDone: () => void }) {
       <label className="text-xs text-gray-600">
         Tier
         <select value={f.category} onChange={set('category')} className={input}>
+          {(CATEGORIES as readonly string[]).includes(f.category) ? null : <option>{f.category}</option>}
           {CATEGORIES.map((c) => (
             <option key={c}>{c}</option>
           ))}
@@ -296,6 +443,10 @@ function AddForm({ onDone }: { onDone: () => void }) {
         <input value={f.price} onChange={set('price')} inputMode="decimal" className={input} />
       </label>
       <label className="text-xs text-gray-600">
+        Betrag Fr. (leer = kg × Preis)
+        <input value={f.amount} onChange={set('amount')} inputMode="decimal" className={input} />
+      </label>
+      <label className="text-xs text-gray-600">
         Vermerk
         <input value={f.remark} onChange={set('remark')} placeholder="klein, nass" className={input} />
       </label>
@@ -303,13 +454,30 @@ function AddForm({ onDone }: { onDone: () => void }) {
         Abnehmer
         <input value={f.buyer} onChange={set('buyer')} className={input} />
       </label>
-      <div className="col-span-2 flex gap-2 sm:col-span-4">
+      <label className="text-xs text-gray-600">
+        Abrechnungs-Nr.
+        <input value={f.settlement_no} onChange={set('settlement_no')} className={input} />
+      </label>
+      <label className="text-xs text-gray-600">
+        Waagschein-Nr.
+        <input value={f.weigh_slip_no} onChange={set('weigh_slip_no')} className={input} />
+      </label>
+      <label className="text-xs text-gray-600">
+        Notiz
+        <input value={f.notes} onChange={set('notes')} className={input} />
+      </label>
+      <div className={`col-span-2 flex flex-wrap gap-2 ${inDialog ? '' : 'sm:col-span-4'}`}>
         <button type="button" disabled={busy || !f.date} onClick={() => void save()} className="min-h-11 rounded-lg bg-brand-700 px-4 font-semibold text-white disabled:opacity-50">
           Speichern
         </button>
         <button type="button" onClick={onDone} className="min-h-11 px-3 text-gray-700">
           Abbrechen
         </button>
+        {record && (
+          <button type="button" onClick={() => void remove()} className="ml-auto min-h-11 rounded-lg border border-red-300 px-3 text-red-700">
+            Löschen
+          </button>
+        )}
       </div>
     </section>
   )

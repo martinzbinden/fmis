@@ -1,23 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
 import { useQuery } from '../hooks/useQuery'
 import { upsertRow } from '../db/write'
 import { todayIso } from '../lib/format'
 import type { FeedReference } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
+import { groupOptionLabel, loadGroupOptions } from '../lib/groups'
 
-interface GroupOption {
-  id: string
-  name: string
-}
 
-async function loadGroups(pg: PGlite): Promise<GroupOption[]> {
-  const { rows } = await pg.query<GroupOption>(
-    "select id, name from animal_groups where deleted_at is null and status = 'aktiv' order by created_date desc",
-  )
-  return rows
-}
 async function loadFeedReferences(pg: PGlite): Promise<FeedReference[]> {
   const { rows } = await pg.query<FeedReference>(
     'select * from feed_reference where deleted_at is null order by name',
@@ -26,7 +17,10 @@ async function loadFeedReferences(pg: PGlite): Promise<FeedReference[]> {
 }
 
 export default function FeedEntry() {
-  const { data: groups } = useQuery(loadGroups)
+  // ?gruppe=<id> aus der Gruppe: diese Gruppe vorwählen, auch wenn sie abgeschlossen ist
+  const [params] = useSearchParams()
+  const presetGroup = params.get('gruppe')
+  const { data: groups } = useQuery((pg) => loadGroupOptions(pg, presetGroup), [presetGroup])
   const { data: feedRefs } = useQuery(loadFeedReferences)
   const [groupId, setGroupId] = useState('')
   const [date, setDate] = useState(todayIso())
@@ -44,8 +38,9 @@ export default function FeedEntry() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!groupId && groups && groups.length > 0) setGroupId(groups[0].id)
-  }, [groups, groupId])
+    if (groupId || !groups || groups.length === 0) return
+    setGroupId(groups.find((g) => g.id === presetGroup)?.id ?? groups[0].id)
+  }, [groups, groupId, presetGroup])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -92,7 +87,7 @@ export default function FeedEntry() {
             <option value="">Bitte wählen…</option>
             {(groups ?? []).map((g) => (
               <option key={g.id} value={g.id}>
-                {g.name}
+                {groupOptionLabel(g)}
               </option>
             ))}
           </select>

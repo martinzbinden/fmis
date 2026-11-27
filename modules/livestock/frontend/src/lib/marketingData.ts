@@ -71,3 +71,47 @@ export async function loadMarketing(pg: PGlite, day?: string): Promise<Marketing
       : { ...DEFAULT_DIRECT_MARKETING, id: null, valid_from: null, butcher: 'Schärer GmbH, Schwarzenburg (eingebaut)' },
   }
 }
+
+export interface StoredMarketPrices extends MarketPrices {
+  id: string
+  valid_from: string
+  source: string | null
+  notes: string | null
+}
+
+export interface StoredDirectMarketing extends DirectMarketingSettings {
+  id: string
+  valid_from: string
+  butcher: string | null
+  notes: string | null
+}
+
+const day = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? '').slice(0, 10))
+
+/** Alle gespeicherten Stände (neueste zuerst), zum Ansehen, Bearbeiten und Löschen. */
+export async function loadMarketingHistory(
+  pg: PGlite,
+): Promise<{ prices: StoredMarketPrices[]; direct: StoredDirectMarketing[] }> {
+  const { rows: p } = await pg.query<Record<string, unknown>>(
+    'select * from market_prices where deleted_at is null order by valid_from desc, updated_at desc',
+  )
+  const { rows: d } = await pg.query<Record<string, unknown>>(
+    'select * from direct_marketing_settings where deleted_at is null order by valid_from desc, updated_at desc',
+  )
+  return {
+    prices: p.map((r) => ({
+      ...numbers(r, PRICE_KEYS, DEFAULT_MARKET_PRICES),
+      id: String(r.id),
+      valid_from: day(r.valid_from),
+      source: (r.source as string | null) ?? null,
+      notes: (r.notes as string | null) ?? null,
+    })),
+    direct: d.map((r) => ({
+      ...numbers(r, DIRECT_KEYS, DEFAULT_DIRECT_MARKETING),
+      id: String(r.id),
+      valid_from: day(r.valid_from),
+      butcher: (r.butcher as string | null) ?? null,
+      notes: (r.notes as string | null) ?? null,
+    })),
+  }
+}

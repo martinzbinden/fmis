@@ -4,7 +4,8 @@ import { useQuery } from '../hooks/useQuery'
 import { useEarTagFilter } from '../hooks/useEarTagFilter'
 import EarTagFilterInput from '../components/EarTagFilterInput'
 import { useDb } from '@fmis/core/DbContext'
-import { upsertRow } from '../db/write'
+import { writeBatch } from '../db/write'
+import { closeMemberships, loadOpenMemberships } from '../lib/groups'
 import { todayIso } from '../lib/format'
 import { directValue, marketValue, parseGrade } from '../lib/marketing'
 import { loadMarketing } from '../lib/marketingData'
@@ -97,29 +98,29 @@ export default function SlaughterEntry() {
     }
     setSaving(true)
     try {
-      await upsertRow('slaughter_results', {
-        id: crypto.randomUUID(),
-        animal_id: animalId,
-        slaughter_date: date,
-        slaughterhouse: slaughterhouse || null,
-        carcass_weight_kg: carcassWeight ? Number(carcassWeight) : null,
-        classification: classification || null,
-        fat_class: fatClass || null,
-        price_per_kg: pricePerKg ? Number(pricePerKg) : null,
-        total_revenue: totalRevenue ? Number(totalRevenue) : null,
-        notes: notes || null,
-        channel,
-        butcher_cost: channel === 'direkt' && butcherCost ? Number(butcherCost) : null,
+      // upsert schreibt alle Spalten neu (fehlende -> null), daher die volle
+      // Tierzeile laden und nur den Status ändern. Schlachtresultat, Status und
+      // Ende der Gruppen-Mitgliedschaft in EINEM Schreibvorgang.
+      const { rows: animalRows } = await db.query<Animal>('select * from animals where id = $1', [animalId])
+      const open = await loadOpenMemberships(db, animalId)
+      await writeBatch(async (w) => {
+        await w.upsert('slaughter_results', {
+          id: crypto.randomUUID(),
+          animal_id: animalId,
+          slaughter_date: date,
+          slaughterhouse: slaughterhouse || null,
+          carcass_weight_kg: carcassWeight ? Number(carcassWeight) : null,
+          classification: classification || null,
+          fat_class: fatClass || null,
+          price_per_kg: pricePerKg ? Number(pricePerKg) : null,
+          total_revenue: totalRevenue ? Number(totalRevenue) : null,
+          notes: notes || null,
+          channel,
+          butcher_cost: channel === 'direkt' && butcherCost ? Number(butcherCost) : null,
+        })
+        if (animalRows.length > 0) await w.upsert('animals', { ...animalRows[0], status: 'geschlachtet' })
+        for (const m of closeMemberships(open, date)) await w.upsert('group_memberships', m)
       })
-      // upsertRow schreibt alle Spalten neu (fehlende -> null), daher die
-      // volle Tierzeile laden, status patchen und komplett zurückschreiben.
-      const { rows: animalRows } = await db.query<Animal>(
-        'select * from animals where id = $1',
-        [animalId],
-      )
-      if (animalRows.length > 0) {
-        await upsertRow('animals', { ...animalRows[0], status: 'geschlachtet' })
-      }
       setSavedMsg('Schlachtresultat gespeichert.')
       setAnimalId('')
       setSlaughterhouse('')

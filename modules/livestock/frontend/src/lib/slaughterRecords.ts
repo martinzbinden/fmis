@@ -199,7 +199,22 @@ const iso = (v: unknown): string | null => (v == null ? null : v instanceof Date
 
 export async function loadSlaughterRecords(pg: PGlite): Promise<SlaughterRecord[]> {
   const { rows } = await pg.query<Record<string, unknown>>('select * from slaughter_records where deleted_at is null order by slaughter_date desc, ear_tag')
-  return rows.map((r) => ({
+  return rows.map(toRecord)
+}
+
+/** Schlachtungen aus den Abrechnungen zu einer Ohrmarke (über animal_key). */
+export async function loadSlaughterRecordsForEarTag(pg: PGlite, earTag: string | null): Promise<SlaughterRecord[]> {
+  const key = animalKey(earTag)
+  if (!key) return []
+  const { rows } = await pg.query<Record<string, unknown>>(
+    'select * from slaughter_records where deleted_at is null and animal_key = $1 order by slaughter_date desc',
+    [key],
+  )
+  return rows.map(toRecord)
+}
+
+function toRecord(r: Record<string, unknown>): SlaughterRecord {
+  return {
     id: String(r.id),
     slaughter_date: iso(r.slaughter_date)!,
     ear_tag: (r.ear_tag as string | null) ?? null,
@@ -215,7 +230,36 @@ export async function loadSlaughterRecords(pg: PGlite): Promise<SlaughterRecord[
     weigh_slip_no: (r.weigh_slip_no as string | null) ?? null,
     source: (r.source as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
-  }))
+  }
+}
+
+export interface StillActive {
+  animal_id: string
+  ear_tag: string
+  slaughter_date: string
+}
+
+/** Tiere des Mastplaners, die laut Abrechnung geschlachtet, im Mastplaner aber
+ * noch «aktiv» sind. Abgleich über animal_key; bei mehreren Abrechnungen zählt
+ * die früheste. */
+export function stillActiveAnimals(
+  records: SlaughterRecord[],
+  animals: { id: string; ear_tag: string; status: string }[],
+): StillActive[] {
+  const firstByKey = new Map<string, string>()
+  for (const r of records) {
+    if (!r.animal_key) continue
+    const prev = firstByKey.get(r.animal_key)
+    if (!prev || r.slaughter_date < prev) firstByKey.set(r.animal_key, r.slaughter_date)
+  }
+  const out: StillActive[] = []
+  for (const a of animals) {
+    if (a.status !== 'aktiv') continue
+    const key = animalKey(a.ear_tag)
+    const date = key ? firstByKey.get(key) : undefined
+    if (date) out.push({ animal_id: a.id, ear_tag: a.ear_tag, slaughter_date: date })
+  }
+  return out.sort((x, y) => x.ear_tag.localeCompare(y.ear_tag))
 }
 
 /** Geburtsdatum, Geschlecht und Geburten aus allen Tierlisten, die auf diesem Gerät da sind (Mastplaner, Milchschafe,

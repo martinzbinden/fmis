@@ -69,10 +69,10 @@ export default function Economics() {
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-xl font-bold text-gray-800">Wirtschaftlichkeit</h1>
         <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <Link to="/livestock/mastauswertung" className="text-sm text-brand-700">
+          <Link to="/livestock/mastauswertung" className="inline-flex min-h-10 items-center text-sm text-brand-700">
             Mastauswertung →
           </Link>
-          <Link to="/livestock/vermarktung" className="text-sm text-brand-700">
+          <Link to="/livestock/vermarktung" className="inline-flex min-h-10 items-center text-sm text-brand-700">
             Markt oder Direktvermarktung →
           </Link>
         </div>
@@ -141,7 +141,7 @@ export default function Economics() {
               {rows.map((r) => (
                 <tr key={r.animal_id} className="border-t">
                   <td className="px-3 py-2">
-                    <Link to={`/livestock/tiere/${r.animal_id}`} className="font-medium text-brand-700">
+                    <Link to={`/livestock/tiere/${r.animal_id}`} className="inline-flex min-h-10 items-center font-medium text-brand-700">
                       {shortEarTag(r.ear_tag)}
                     </Link>
                   </td>

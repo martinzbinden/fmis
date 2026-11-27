@@ -8,6 +8,7 @@ import {
   histogram,
   nevPerDay,
   normalizeSettings,
+  settingsDiffer,
   slopeOn,
   summarize,
   weightOn,
@@ -228,5 +229,13 @@ describe('Zusammenfassung und Gruppen', () => {
   it('Einstellungen: Vorgaben für Fehlendes und Ungültiges', () => {
     expect(normalizeSettings(null)).toEqual(S)
     expect(normalizeSettings({ dressingPct: '48', growthPotential: 'gering', feedCostPerKgDm: -1 })).toEqual({ ...S, dressingPct: 48, growthPotential: 'gering' })
+  })
+})
+
+describe('settingsDiffer', () => {
+  it('erkennt eigene Annahmen', () => {
+    expect(settingsDiffer({ ...DEFAULT_FATTENING_SETTINGS })).toBe(false)
+    expect(settingsDiffer({ ...DEFAULT_FATTENING_SETTINGS, dressingPct: 48 })).toBe(true)
+    expect(settingsDiffer({ ...DEFAULT_FATTENING_SETTINGS, growthPotential: 'gering' })).toBe(true)
   })
 })

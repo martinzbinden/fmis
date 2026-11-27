@@ -205,6 +205,12 @@ export function normalizeSettings(raw: unknown): FatteningSettings {
   }
 }
 
+/** Weichen die Einstellungen von den eingebauten Vorgaben ab? (Hinweis «eigene Annahmen aktiv») */
+export function settingsDiffer(s: FatteningSettings): boolean {
+  const d = DEFAULT_FATTENING_SETTINGS
+  return (Object.keys(d) as (keyof FatteningSettings)[]).some((k) => s[k] !== d[k])
+}
+
 export function loadFatteningSettings(): FatteningSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
