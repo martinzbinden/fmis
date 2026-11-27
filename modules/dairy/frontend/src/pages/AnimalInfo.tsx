@@ -1,6 +1,8 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { PGlite } from '@electric-sql/pglite'
+import { useDb } from '@fmis/core/DbContext'
+import { errorText } from '@fmis/core/toast'
 import { animalKey, shortEarTag } from '@fmis/core/earTag'
 import AnimalOption from '@fmis/core/AnimalOption'
 import { matchRead, useTagReader } from '@fmis/core/tagReader'
@@ -29,21 +31,21 @@ import { speciesOf } from '../lib/species'
 import { withdrawalUntil } from '../lib/treatments'
 import { clawStatusByAnimal, examSummary, loadClawExams } from '../lib/clawHealth'
 import { loadSettings } from './LambSelection'
-import { loadChoicesByKey } from '../lib/breedingChoice'
-import { preselectionLabel } from '../lib/lambRecommendation'
+import { preselectionLabel, type Preselection, type Recommendation } from '../lib/lambRecommendation'
+import { choiceOfKey, recommendationsFor, saveDecision, type LambSelectionData } from '../lib/lambSelectionData'
+import ChoiceScale from '../components/ChoiceScale'
 import type { Animal, AnimalJournalEntry } from '../types'
 
 async function loadInfo(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: string) {
   const today = localTodayIso()
   const sel = await loadLambSelection(pg, species, today)
-  const [pedigree, events, journal, claws, choices] = await Promise.all([
+  const [pedigree, events, journal, claws] = await Promise.all([
     loadPedigreeData(pg, sel.context, species),
     loadAnimalEvents(pg),
     pg.query<AnimalJournalEntry>(
       "select * from animal_journal where deleted_at is null and (category in ('krankheit', 'behandlung') or withdrawal_milk_days is not null or withdrawal_meat_days is not null) order by entry_date desc",
     ),
     loadClawExams(pg),
-    loadChoicesByKey(pg),
   ])
   const lambs = rankLambs({
     candidates: sel.candidates,
@@ -74,7 +76,8 @@ async function loadInfo(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: stri
     context: sel.context,
     animals: [...sel.context.values()].map((c) => c.animal),
     lambByAnimal: new Map(lambs.filter((l) => l.animal_id).map((l) => [l.animal_id!, l])),
-    choices,
+    sel,
+    recommendations: recommendationsFor(lambs, sel, loadSettings(moduleKey), species),
     pedigree,
     events,
     journalByAnimal,
@@ -292,7 +295,6 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
                 {lamb && !p?.idx_performance ? (
                   <>
                     <Big tone={lamb.index != null && lamb.index < 95 ? 'bad' : lamb.index != null && lamb.index > 105 ? 'good' : undefined}>{lamb.index != null ? Math.round(lamb.index) : '–'}</Big>
-                    {data.choices.get(key) && <Line>Zuchtauswahl: {preselectionLabel(data.choices.get(key))}</Line>}
                   </>
                 ) : (
                   <>
@@ -380,6 +382,11 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
               </Tile>
             </div>
 
+            {/* Jungtier ohne eigene Laktation: Zuchtauswahl gleich hier (lib/lambSelectionData.ts) */}
+            {lamb && !ctx.lactationNumber && !inactive && (
+              <InfoChoice key={lamb.key} moduleKey={moduleKey} animalId={a.id} lambKey={lamb.key} sel={data.sel} rec={data.recommendations.get(lamb.key) ?? null} today={today} />
+            )}
+
             {/* Knöpfe zwei pro Zeile (Handy); das Erfassen-Menü öffnet sich darunter über die ganze Breite */}
             <div className="flex flex-wrap gap-2 [&>a]:basis-[calc(50%-0.25rem)] [&>button]:basis-[calc(50%-0.25rem)]">
               <Link to={`../tiere/${a.id}`} relative="path" className="flex min-h-11 flex-1 items-center justify-center rounded-lg border-2 border-gray-300 bg-white font-semibold text-brand-800">
@@ -439,6 +446,42 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
         )
       })()}
     </div>
+  )
+}
+
+/** Zuchtauswahl in der Tier-Info: Empfehlung mit Begründung und die Skala wie nach der Geburt; ein Tipp speichert. */
+function InfoChoice({ moduleKey, animalId, lambKey, sel, rec, today }: { moduleKey: string; animalId: string; lambKey: string; sel: LambSelectionData; rec: Recommendation | null; today: string }) {
+  const db = useDb()
+  const saved = choiceOfKey(sel, lambKey)
+  // sofort anzeigen; die Tier-Info lädt danach neu
+  const [shown, setShown] = useState<Preselection | null>(saved)
+  useEffect(() => setShown(saved), [saved])
+  const [error, setError] = useState<string | null>(null)
+  function choose(next: Preselection | null) {
+    setShown(next)
+    setError(null)
+    saveDecision(db, lambKey, next, sel.decisions.get(lambKey), today).catch((e) => {
+      setShown(saved)
+      setError(errorText(e, 'Speichern fehlgeschlagen'))
+    })
+  }
+  return (
+    <section className="space-y-1.5 rounded-lg bg-white p-2 shadow-sm">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Zuchtauswahl</h2>
+        <Link to={`/${moduleKey}/selektion?tier=${animalId}`} className="text-xs text-brand-700">
+          Selektion ›
+        </Link>
+      </div>
+      {rec && (
+        <p className="text-sm text-gray-800">
+          Empfehlung: <b>{preselectionLabel(rec.choice)}</b>
+          {rec.reasons.length > 0 && <span className="text-gray-600"> ({rec.reasons.join(', ')})</span>}
+        </p>
+      )}
+      <ChoiceScale value={shown} recommended={rec?.choice} onChoose={choose} label="Zuchtauswahl" />
+      {error && <p className="text-sm text-red-600">{error}</p>}
+    </section>
   )
 }
 

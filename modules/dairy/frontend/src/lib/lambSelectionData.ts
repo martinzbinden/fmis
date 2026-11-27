@@ -10,8 +10,8 @@ import { loadHerdContext, type AnimalContext } from './herdContext'
 import { loadInbreeding } from './pedigreeData'
 import { SIRE_TRAIT } from './breedingTraits'
 import type { Inbreeding } from './inbreeding'
-import type { DamInfo, LambCandidate, Purpose } from './lambSelection'
-import type { Preselection } from './lambRecommendation'
+import { damTrendIndex, lambIndex, type DamInfo, type LambCandidate, type LambRow, type Purpose, type SelectionSettings } from './lambSelection'
+import { recommendLamb, type Preselection, type Recommendation } from './lambRecommendation'
 import { herdMeanLactationKg } from './lambValue'
 import type { Animal } from '../types'
 
@@ -165,4 +165,25 @@ export async function saveDecision(
     decided_on: purpose ? today : null,
     notes: existing?.notes ?? null,
   })
+}
+
+/** Zuchtauswahl eines Tiers: Entscheid (Zucht/Mast) oder Vorauswahl (eher ja, später, eher nein); null ohne. */
+export function choiceOfKey(data: LambSelectionData, key: string): Preselection | null {
+  const d = data.decisions.get(key)
+  return d?.purpose ?? ((d?.leaning as Preselection | null | undefined) ?? null)
+}
+
+/** Empfehlung je Jungtier wie nach der Geburt (lib/birthFollowUp.ts): Index der Mutter ohne Vater,
+ * erwarteter Zuchtwert als Mittel beider Eltern, Inzucht. */
+export function recommendationsFor(rows: LambRow[], data: LambSelectionData, settings: SelectionSettings, species: Species): Map<string, Recommendation> {
+  const trend = damTrendIndex(data.dams)
+  const trait = SIRE_TRAIT[species].trait
+  const out = new Map<string, Recommendation>()
+  for (const r of rows) {
+    const p = r.dam?.performance
+    const damIndex = p ? lambIndex(p.idx_performance, settings.scc12m ? p.idx_scc_12m : p.idx_scc, null, { ...settings, weightSire: 0 }, r.dam_key ? (trend.get(r.dam_key) ?? null) : null) : null
+    const damValue = r.dam ? (data.context.get(r.dam.id)?.breedingValues[trait]?.value ?? null) : null
+    out.set(r.key, recommendLamb({ sex: r.sex, damIndex, damBasis: p?.data_basis ?? null, damValue, sireValue: r.sire_value, inbreeding: r.inbreeding }))
+  }
+  return out
 }

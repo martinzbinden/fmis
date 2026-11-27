@@ -7,9 +7,9 @@ import { useQuery } from '../hooks/useQuery'
 import { useJumpTarget, useJumpTo } from '../hooks/useJumpTo'
 import { fmtCells } from '../lib/culling'
 import { todayIso } from '../lib/format'
-import { damTrendIndex, DEFAULT_SELECTION_SETTINGS, lambIndex, rankLambs, type LambRow, type SelectionSettings } from '../lib/lambSelection'
-import { loadLambSelection, saveDecision, SIRE_TRAIT } from '../lib/lambSelectionData'
-import { PRESELECTIONS, preselectionLabel, recommendLamb, type Preselection, type Recommendation } from '../lib/lambRecommendation'
+import { DEFAULT_SELECTION_SETTINGS, rankLambs, type LambRow, type SelectionSettings } from '../lib/lambSelection'
+import { choiceOfKey, loadLambSelection, recommendationsFor, saveDecision, SIRE_TRAIT } from '../lib/lambSelectionData'
+import { PRESELECTIONS, preselectionLabel, type Preselection, type Recommendation } from '../lib/lambRecommendation'
 import ChoiceScale from '../components/ChoiceScale'
 import { speciesOf } from '../lib/species'
 import { InbreedingBadge } from './AnimalDetail'
@@ -97,24 +97,8 @@ export default function LambSelection({ moduleKey }: { moduleKey: string }) {
     }
     return m
   }, [rows, valueSettings, data, milkPrice])
-  // Zuchtauswahl je Tier: Entscheid (Zucht/Mast) oder Vorauswahl (eher ja, später, eher nein)
-  const choiceOf = (r: LambRow): Preselection | null => {
-    const d = data?.decisions.get(r.key)
-    return d?.purpose ?? ((d?.leaning as Preselection | null | undefined) ?? null)
-  }
-  // Empfehlung wie nach der Geburt (components/BirthFollowUp.tsx): Index der Mutter ohne Vater, erwarteter Zuchtwert der Eltern
-  const recommendations = useMemo(() => {
-    const m = new Map<string, Recommendation>()
-    if (!data) return m
-    const trend = damTrendIndex(data.dams)
-    for (const r of rows) {
-      const p = r.dam?.performance
-      const damIndex = p ? lambIndex(p.idx_performance, settings.scc12m ? p.idx_scc_12m : p.idx_scc, null, { ...settings, weightSire: 0 }, r.dam_key ? (trend.get(r.dam_key) ?? null) : null) : null
-      const damValue = r.dam ? (data.context.get(r.dam.id)?.breedingValues[sireTrait.trait]?.value ?? null) : null
-      m.set(r.key, recommendLamb({ sex: r.sex, damIndex, damBasis: p?.data_basis ?? null, damValue, sireValue: r.sire_value, inbreeding: r.inbreeding }))
-    }
-    return m
-  }, [data, rows, settings, sireTrait.trait])
+  const choiceOf = (r: LambRow): Preselection | null => (data ? choiceOfKey(data, r.key) : null)
+  const recommendations = useMemo(() => (data ? recommendationsFor(rows, data, settings, species) : new Map<string, Recommendation>()), [data, rows, settings, species])
   const fr = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : '±'}${Math.abs(v).toLocaleString('de-CH')} Fr.`
 
   const jumpTo = useJumpTarget()
