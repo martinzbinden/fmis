@@ -10,7 +10,7 @@ import { undoAction, useOnUndo } from '@fmis/core/undo'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
 import AnimalPicker from '../components/AnimalPicker'
-import BirthFollowUp from '../components/BirthFollowUp'
+import BreedingChoiceDialog from '../components/BreedingChoiceDialog'
 import BirthEdit from '../components/BirthEdit'
 import AnimalWarnings from '../components/AnimalWarnings'
 import { animalWarnings, eventsOf, loadAnimalEvents } from '../lib/animalWarnings'
@@ -94,7 +94,10 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
   // frühere Geburt bearbeiten (Datum, Vater, weiteres Jungtier …)
   const [editBirth, setEditBirth] = useState<string | null>(null)
   // nach «↶ Rückgängig» stimmt «Gespeichert» nicht mehr
-  useOnUndo(() => setDone(null))
+  useOnUndo(() => {
+    setDone(null)
+    setOpenBirth(null)
+  })
 
   const females = useMemo(() => (data?.animals ?? []).filter((a) => a.status === 'aktiv' && a.sex !== 'm'), [data])
   const dam = females.find((a) => a.id === damIds[0])
@@ -176,6 +179,8 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
       const n = offspring.length
       const result = await undoAction(`${word.event} ${animalLabel(dam)}, ${n} ${n === 1 ? word.young : word.youngPl}`, () => inTransaction(db, (tx) => recordBirth(tx, input)))
       setDone({ birthId: result.birthId, damId: dam.id, count: result.newAnimalIds.length, later: offspring.filter((o) => o.fate === 'lebend' && o.tag_later && !o.ear_tag.trim()).length })
+      // Zuchtauswahl (und Ursache bei toten Jungtieren) gleich im Dialog
+      setOpenBirth(result.birthId)
       setDamIds([])
       setOffspring([{ ...EMPTY_OFFSPRING }])
       setNotes('')
@@ -214,6 +219,10 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
           <Link to={`../tiere/${done.damId}`} relative="path" className="link-btn font-medium text-brand-700">
             Zur {word.mother}
           </Link>
+          {' · '}
+          <button type="button" onClick={() => setOpenBirth(done.birthId)} className="link-btn font-medium text-brand-700">
+            Zuchtauswahl ›
+          </button>
           <div className="mt-1 text-xs text-green-800">
             Die Geburtsmeldung an die TVD machst du im Agate-Portal;{' '}
             <Link to="../tvd" relative="path" className="link-btn font-medium text-brand-700">
@@ -223,7 +232,7 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
           </div>
         </div>
       )}
-      {done && <BirthFollowUp birthId={done.birthId} moduleKey={moduleKey} />}
+      {openBirth && <BreedingChoiceDialog moduleKey={moduleKey} births={[{ birthId: openBirth }]} title="Zuchtauswahl" onClose={() => setOpenBirth(null)} />}
 
       <TagReaderButton reader={reader} hint={`erst ${word.mother}, dann ${word.youngPl}`} />
 
@@ -411,8 +420,8 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                     })}
                   </ul>
                   <div className="flex flex-wrap gap-x-4">
-                    <button type="button" aria-expanded={openBirth === b.id} onClick={() => setOpenBirth(openBirth === b.id ? null : b.id)} className="link-btn text-sm font-medium text-brand-700">
-                      {openBirth === b.id ? 'Eltern und Entscheid schliessen' : 'Eltern und Entscheid ›'}
+                    <button type="button" onClick={() => setOpenBirth(b.id)} className="link-btn text-sm font-medium text-brand-700">
+                      Eltern und Entscheid ›
                     </button>
                     <button type="button" aria-expanded={editBirth === b.id} onClick={() => setEditBirth(editBirth === b.id ? null : b.id)} className="link-btn text-sm font-medium text-brand-700">
                       ✎ bearbeiten
@@ -422,11 +431,6 @@ export default function BirthEntry({ moduleKey }: { moduleKey: string }) {
                 {editBirth === b.id && (
                   <div className="w-full">
                     <BirthEdit birthId={b.id} moduleKey={moduleKey} onClose={() => setEditBirth(null)} />
-                  </div>
-                )}
-                {openBirth === b.id && (
-                  <div className="w-full">
-                    <BirthFollowUp birthId={b.id} moduleKey={moduleKey} />
                   </div>
                 )}
               </li>

@@ -2,12 +2,13 @@ import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from
 import { useStallMode } from '@fmis/core/stallMode'
 import { Link } from 'react-router-dom'
 import { colorOf } from '@fmis/core/filters/filterModel'
-import { areaLabel, breedingBadge, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib/board'
+import { areaLabel, breedingBadge, choiceValue, SEX_LABEL, weanedOfLastLitter, type BoardCard } from '../lib/board'
 import { fmtAge, fmtDate } from '../lib/format'
 import { RESULT_LABEL, METHOD_LABEL } from '../lib/pregnancy'
 import { speciesTerms } from '../lib/species'
 import { meatBarColor, meatBarMax, meatBarPercent, MEAT_BAND_LABEL, type MeatLimit, type MeatValue } from '../lib/meatValue'
 import type { CardFieldKey } from '../lib/cardFields'
+import { preselectionLabel, type Preselection } from '../lib/lambRecommendation'
 import LactationSpark from './LactationSpark'
 import SearchPick from '@fmis/core/SearchPick'
 import { fmtCells } from '../lib/culling'
@@ -15,6 +16,15 @@ import { MilkFeedChip } from './MilkFeedChip'
 import type { MilkFeed, MilkFeedSettings, MilkSample } from '../lib/milkFeed'
 import NursingLambs, { WeanedLambs } from './NursingLambs'
 import { VERDICT_LABEL, type Verdict, type VerdictResult } from '../lib/cardVerdict'
+
+const CHOICE_TONE: Record<string, string> = {
+  zucht: 'bg-green-700 text-white',
+  eher_ja: 'bg-green-100 text-green-950',
+  spaeter: 'bg-gray-200 text-gray-900',
+  eher_nein: 'bg-amber-100 text-amber-950',
+  mast: 'bg-amber-700 text-white',
+  offen: 'text-gray-600',
+}
 
 /** Ampel-Kante links und Empfehlung (lib/cardVerdict.ts) */
 const VERDICT_EDGE: Record<Verdict, string> = {
@@ -426,6 +436,16 @@ function CardProps({
         </div>,
       )
     } else rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
+  }
+  if (has('choice')) {
+    const v = choiceValue(card)
+    if (v)
+      rows.push(
+        <div key="choice" className="flex justify-between gap-2">
+          <span className="text-gray-500">Zuchtauswahl</span>
+          <span className={`rounded px-1.5 text-right font-medium ${CHOICE_TONE[v] ?? ''}`}>{preselectionLabel(v as Preselection) ?? 'offen'}</span>
+        </div>,
+      )
   }
   if (has('lambValue') && card.ageMonths != null && card.ageMonths < 12 && card.sex !== 'm') {
     const v = lambValue

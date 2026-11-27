@@ -2,6 +2,7 @@
 // animals.ts, Wiesenjournal → Herden): aktive Tiere mit Laktationszahl und
 // Trocken-Status; Trockenstellen beim Zügeln aus einer gemolkenen Gruppe.
 
+import { AUTO_LIST_ID, autoListName, loadAutoList } from './breedingChoice'
 import type { AnimalProvider, AnimalRef, ReaderFacts } from '@fmis/core/animals'
 import { shortEarTag } from '@fmis/core/earTag'
 import { getDb } from '../db/pglite'
@@ -61,7 +62,10 @@ export function createDairyAnimalProvider(moduleKey: string, title: string): Ani
          where l.deleted_at is null and l.archived_at is null
          group by l.id, l.name order by l.name`,
       )
-      return rows.map((r) => ({ id: String(r.id), name: r.name, animalIds: r.animal_ids ?? [] }))
+      const lists = rows.map((r) => ({ id: String(r.id), name: r.name, animalIds: r.animal_ids ?? [] }))
+      // automatisch nachgeführt: zur Zucht gewählte Jungtiere (lib/breedingChoice.ts)
+      const auto = await loadAutoList(pg, localTodayIso())
+      return auto.length ? [{ id: AUTO_LIST_ID, name: `${autoListName(speciesOf(moduleKey))} (automatisch)`, animalIds: auto.map((a) => a.id) }, ...lists] : lists
     },
     async readerFacts() {
       // gleiche Auswertung wie Tierdetail und Ausmerzliste: letzte Geburt, Untersuchung seit dieser Geburt

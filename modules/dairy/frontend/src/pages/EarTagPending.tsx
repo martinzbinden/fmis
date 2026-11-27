@@ -12,7 +12,7 @@ import { upsertRow } from '../db/write'
 import { useQuery } from '../hooks/useQuery'
 import { inTransaction } from '../db/transaction'
 import { addSibling, assignEarTag, checkEarTag, daysSince, loadPendingOffspring, markDied, MARKING_DAYS, setOffspringSex, type LitterMember, type PendingOffspring } from '../lib/earTagPending'
-import BirthFollowUp from '../components/BirthFollowUp'
+import BreedingChoiceDialog from '../components/BreedingChoiceDialog'
 import { undoAction } from '@fmis/core/undo'
 import { loadTagStock } from '../lib/earTagStock'
 import { fmtDate, localTodayIso } from '../lib/format'
@@ -330,8 +330,8 @@ function PendingCard({
         </button>
       )}
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-sm">
-        <button type="button" aria-expanded={openBirth} onClick={() => setOpenBirth((v) => !v)} className="link-btn font-medium text-brand-700">
-          {openBirth ? 'Wurf schliessen' : 'Wurf: Eltern, Verluste, Entscheid ›'}
+        <button type="button" onClick={() => setOpenBirth(true)} className="link-btn font-medium text-brand-700">
+          Wurf: Eltern, Verluste, Entscheid ›
         </button>
         <button
           type="button"
@@ -342,7 +342,7 @@ function PendingCard({
           + Geschwister nachtragen
         </button>
       </div>
-      {openBirth && <BirthFollowUp birthId={p.birth_id} moduleKey={moduleKey} />}
+      {openBirth && <BreedingChoiceDialog moduleKey={moduleKey} births={[{ birthId: p.birth_id }]} title="Wurf: Eltern und Zuchtauswahl" onClose={() => setOpenBirth(false)} />}
     </div>
   )
 }

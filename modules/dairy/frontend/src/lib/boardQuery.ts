@@ -4,7 +4,9 @@
 
 import { describeCondition, matchesQuery as engineMatches, norm, parseQuery as engineParse, suggest as engineSuggest, type ParsedQuery, type QueryField } from '@fmis/core/query/engine'
 import type { QueryPreset } from '@fmis/core/query/presets'
-import { weanedOfLastLitter, type BoardCard } from './board'
+import { choiceValue, weanedOfLastLitter, type BoardCard } from './board'
+import { isOpenChoice } from './breedingChoice'
+import { preselectionLabel, type Preselection } from './lambRecommendation'
 
 export interface QueryContext {
   /** heute (ISO) */
@@ -77,6 +79,22 @@ export const QUERY_FIELDS: QueryField<BoardCard, QueryContext>[] = [
   { kind: 'flag', key: 'maennlich', label: 'männlich', aliases: ['maennlich', 'widder'], test: (c) => c.sex === 'm' },
   { kind: 'flag', key: 'weiblich', label: 'weiblich', aliases: ['weiblich'], test: (c) => c.sex === 'w' },
   { kind: 'flag', key: 'ohnegruppe', label: 'ohne Gruppe', aliases: ['ohnegruppe'], test: (c) => c.groupId == null },
+  { kind: 'flag', key: 'zucht', label: 'zur Zucht gewählt (Zuchtauswahl «Zucht»)', aliases: ['zuchtlaemmer', 'zuchtlamm', 'zuchtkaelber', 'zuchtkalb', 'zurzucht', 'remonte'], test: (c) => c.choice === 'zucht' },
+  { kind: 'flag', key: 'mast', label: 'zur Mast gewählt (Zuchtauswahl «Mast»)', aliases: ['mastlaemmer', 'mastlamm', 'mastkaelber', 'zurmast'], test: (c) => c.choice === 'mast' },
+  {
+    kind: 'flag',
+    key: 'auswahloffen',
+    label: 'Zuchtauswahl offen (Jungtier ohne Zucht/Mast)',
+    aliases: ['auswahloffen', 'zuchtauswahloffen', 'offen'],
+    test: (c) => {
+      const v = choiceValue(c)
+      return v != null && isOpenChoice(v === 'offen' ? null : (v as Preselection))
+    },
+  },
+  { kind: 'choice', key: 'zuchtauswahl', label: 'Zuchtauswahl (Zucht, eher ja, später, eher nein, Mast, offen)', aliases: ['zuchtauswahl', 'auswahl', 'zuchtwahl'], options: (c) => {
+    const v = choiceValue(c)
+    return v ? [v === 'offen' ? 'offen' : (preselectionLabel(v as Preselection) ?? v)] : []
+  } },
   { kind: 'choice', key: 'gruppe', label: 'Tiergruppe', aliases: ['gruppe', 'herde'], options: (c, ctx) => [ctx.groupName(c) ?? ''] },
   { kind: 'choice', key: 'vater', label: 'Belegt mit (Vatertier)', aliases: ['belegtmit', 'vatertier', 'bock', 'stier'], options: (c) => [c.lastService?.sire ?? ''] },
   { kind: 'choice', key: 'liste', label: 'Merkliste', aliases: ['liste', 'merkliste'], options: (c, ctx) => ctx.listNames(c) },
@@ -94,6 +112,7 @@ export const BOARD_EXAMPLES = [
   { q: 'Fleischwert > 150', text: 'geschätzter Fleischwert über 150 Franken (Schafe)' },
   { q: 'Bilanz < 0', text: 'Milch bis zur Geburt deckt das Futter nicht' },
   { q: 'Tagesmilch < 0.8', text: 'heute weniger als 0.8 kg Milch (aus der letzten Wägung)' },
+  { q: 'Zuchtlämmer', text: 'Jungtiere mit Zuchtauswahl «Zucht» (auch «Auswahl offen», «Zuchtauswahl = eher ja»)' },
   { q: '101', text: 'Nummer, Ohrmarke oder Name enthält «101»' },
 ]
 
@@ -116,5 +135,6 @@ export function boardPresets(sheep: boolean): QueryPreset[] {
     { id: 'p-cull', name: 'Mit Ausmerzgründen', short: 'Ausm.', formula: 'Gründe >= 1', color: 'rot' },
     { id: 'p-old', name: sheep ? 'Über 6 Jahre alt' : 'Über 8 Jahre alt', short: sheep ? '>6 J' : '>8 J', formula: sheep ? 'Alter > 6 J' : 'Alter > 8 J', color: 'gelb' },
     { id: 'p-unchecked', name: 'Trächtigkeit nicht untersucht', short: 'n.unt.', formula: 'nicht untersucht', color: 'rosa' },
+    { id: 'p-breed', name: sheep ? 'Zuchtlämmer (Zuchtauswahl «Zucht»)' : 'Zuchtkälber (Zuchtauswahl «Zucht»)', short: 'Zucht', formula: sheep ? 'Zuchtlämmer' : 'Zuchtkälber', color: 'tuerkis' },
   ].map((p) => ({ ...p, builtin: true }))
 }

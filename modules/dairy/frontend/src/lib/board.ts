@@ -2,7 +2,7 @@
 // Hier die Daten der Karten, die Felder für eigene Filter, die mitgelieferten Filter und die Spalten.
 
 import type { AnimalRef } from '@fmis/core/animals'
-import { shortEarTag } from '@fmis/core/earTag'
+import { animalKey, shortEarTag } from '@fmis/core/earTag'
 import type { FieldDef, FilterDef } from '@fmis/core/filters/filterModel'
 import { presetFilter } from '@fmis/core/filters/useSavedFilters'
 import { cullingReasons, reasonScore, type CullingReason, type CullingThresholds } from './culling'
@@ -15,6 +15,7 @@ import { speciesTerms } from './species'
 import { daysBetween } from './format'
 import type { PregnancyStatus } from './pregnancy'
 import type { Watchlist, WatchlistEntry } from './watchlists'
+import type { Preselection } from './lambRecommendation'
 
 export interface BoardCard {
   id: string
@@ -29,6 +30,8 @@ export interface BoardCard {
   /** heutige Tiergruppe (Modul Tiere) */
   groupId: string | null
   listIds: string[]
+  /** Zuchtauswahl als Jungtier (lib/breedingChoice.ts); null ohne Wahl */
+  choice?: Preselection | null
   dry: boolean
   /** Anzahl saugende Lämmer/Kälber (bei der Mutter, nicht am Eimer) */
   nursing: number
@@ -99,6 +102,8 @@ export interface BoardInput {
   lambMilk?: ReadonlyMap<string, DamMilk>
   breedingEstimates?: ReadonlyMap<string, BreedingEstimate>
   breedingTrait: string
+  /** Zuchtauswahl je Tierschlüssel (Ohrmarke) */
+  choices?: ReadonlyMap<string, Preselection>
 }
 
 /** Karten aller aktiven Tiere; Reihenfolge wie `refs`. */
@@ -133,6 +138,7 @@ export function buildCards(input: BoardInput): BoardCard[] {
       sex: ref.sex,
       birthDate: ref.birth_date,
       ageMonths: ctx.ageMonths,
+      choice: input.choices?.get(animalKey(ref.ear_tag) ?? '') ?? null,
       groupId: input.groupOf.get(ref.id) ?? null,
       listIds: lists.get(ref.id) ?? [],
       dry: !!ref.dry,
@@ -223,6 +229,12 @@ export const areaLabel = (a: string) => AREA_LABEL[a] ?? a
 export interface BoardRefs {
   groups: { id: string; name: string }[]
   lists: { id: string; name: string }[]
+}
+
+/** Zuchtauswahl für Filter: ohne Wahl gilt ein Jungtier (unter 2 Jahren, selbst noch nicht geboren) als «offen». */
+export function choiceValue(c: Pick<BoardCard, 'choice' | 'lastBirth' | 'ageMonths'>): string | null {
+  if (c.choice) return c.choice
+  return c.lastBirth == null && c.ageMonths != null && c.ageMonths < 24 ? 'offen' : null
 }
 
 /** Felder für eigene Filter. Gruppen und Merklisten kommen aus den Daten. */

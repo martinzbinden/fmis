@@ -34,9 +34,12 @@ import PedigreeTree, { loadPedigreeData, pedigreeLink } from '../components/Pedi
 import CertificateDetailsView from '../components/CertificateDetails'
 import { hasCertificateDetails, loadCertificateDetails } from '../lib/certificateData'
 import { loadSireOptions, sireLabel } from '../lib/sires'
-import { fmtAge, fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
+import { daysBetween, fmtAge, fmtDate, isoDate, localTodayIso, num, todayIso } from '../lib/format'
 import { speciesOf, speciesTerms } from '../lib/species'
 import { loadLambs } from '../lib/lambs'
+import { AUTO_LIST_MAX_DAYS, birthOfAnimal } from '../lib/breedingChoice'
+// lazy: BirthFollowUp nutzt InbreedingBadge aus dieser Datei
+const BirthFollowUp = lazy(() => import('../components/BirthFollowUp'))
 import type { AnimalJournalEntry, LactationSummary } from '../types'
 
 async function loadDetail(pg: PGlite, id: string, species: 'cattle' | 'sheep') {
@@ -221,7 +224,10 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   const { data: clawPhotos } = useQuery((pg) => loadPhotos(pg, id), [id])
   const { data: lambs } = useQuery((pg) => loadLambs(pg, localTodayIso()))
   const [editBirth, setEditBirth] = useState<string | null>(null)
-  useJumpTo(!!data)
+  // Zuchtauswahl: Geburt, aus der das Tier stammt (lib/breedingChoice.ts)
+  const earTag = data?.ctx?.animal.ear_tag ?? ''
+  const { data: origin } = useQuery((pg) => birthOfAnimal(pg, earTag), [earTag])
+  useJumpTo(!!data && origin !== undefined)
 
   if (loading && !data) return <p className="p-4 text-center text-gray-500">Lädt…</p>
   if (!data?.ctx) return <p className="p-4 text-center text-gray-500">Tier nicht gefunden.</p>
@@ -245,6 +251,8 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
   // saugende Lämmer dieser Mutter bzw. dieses Tier als Lamm (lib/lambs.ts)
   const nursingLambs = (lambs ?? []).filter((l) => l.damId === a.id && l.nursing)
   const asLamb = (lambs ?? []).find((l) => l.animalId === a.id)
+  // Jungtier aus eigener Geburt, selbst noch nicht geboren: Zuchtauswahl mit Empfehlung zeigen
+  const showChoice = !!origin && ctx.births.length === 0 && (!a.birth_date || daysBetween(a.birth_date, today) <= AUTO_LIST_MAX_DAYS)
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 p-4 pb-24">
@@ -292,6 +300,7 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
 
       <JumpBar
         items={[
+          ...(showChoice ? [['zuchtauswahl', 'Zuchtauswahl'] as [string, string]] : []),
           ['journal', 'Journal'],
           ['geburten', `${birthWord}en`],
           ['belegungen', 'Belegungen'],
@@ -313,6 +322,12 @@ export default function AnimalDetail({ moduleKey }: { moduleKey: string }) {
       )}
 
       <AnimalLocationCard moduleKey={moduleKey} animalId={a.id} active={a.status === 'aktiv'} />
+
+      {showChoice && (
+        <Suspense fallback={null}>
+          <BirthFollowUp id="zuchtauswahl" title="Zuchtauswahl" birthId={origin.birthId} only={[origin.offspringId]} moduleKey={moduleKey} />
+        </Suspense>
+      )}
 
       {reasons.length > 0 && (
         <Section title="Hinweise (Ausmerzliste)" id="hinweise">

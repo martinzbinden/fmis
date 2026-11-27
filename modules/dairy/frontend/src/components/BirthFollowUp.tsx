@@ -7,6 +7,7 @@ import { useQuery } from '../hooks/useQuery'
 import { fmtCells } from '../lib/culling'
 import { localTodayIso } from '../lib/format'
 import { loadFollowUpLambs, loadFollowUpParents, savePreselection, saveLoss, type FollowUpLamb, type FollowUpParents, type TraitValue } from '../lib/birthFollowUp'
+import type { LambSelectionData } from '../lib/lambSelectionData'
 import { ABORT_MONTHS, DEFECTS, isAbort, LOSS_GROUPS, parseDefects, toggleDefect } from '../lib/lambLoss'
 import { PRESELECTIONS, preselectionLabel, recommendLamb, type Preselection, type Recommendation } from '../lib/lambRecommendation'
 import { speciesOf } from '../lib/species'
@@ -39,9 +40,39 @@ function Traits({ values, empty }: { values: TraitValue[]; empty: string }) {
   )
 }
 
-/** Gleich nach der Geburt: Leistung und Zuchtwert beider Eltern, je Jungtier Empfehlung und Vorauswahl,
- * bei toten Jungtieren die Ursache. Auch später aus der Liste der letzten Geburten erreichbar. */
-export default function BirthFollowUp({ birthId, moduleKey }: { birthId: string; moduleKey: string }) {
+type LossPatch = Parameters<typeof saveLoss>[2]
+
+/** Eingaben im Dialog (components/BreedingChoiceDialog.tsx): erst mit «Speichern» geschrieben. */
+export interface FollowUpDraft {
+  choices: Record<string, Preselection | null>
+  losses: Record<string, LossPatch>
+}
+export const EMPTY_DRAFT: FollowUpDraft = { choices: {}, losses: {} }
+export const draftSize = (d: FollowUpDraft) => Object.keys(d.choices).length + Object.keys(d.losses).length
+
+/** Leistung und Zuchtwert beider Eltern, je Jungtier Empfehlung und Zuchtauswahl, bei toten Jungtieren die Ursache.
+ * Mit `draft` sammelt die Ansicht die Eingaben (Dialog mit «Speichern»), ohne speichert jeder Tipp sofort
+ * (Tierseite). `only`: nur diese Nachkommen (Nummerierung bleibt die des Wurfs). */
+export default function BirthFollowUp({
+  birthId,
+  moduleKey,
+  only,
+  draft,
+  onDraft,
+  base,
+  title,
+  id,
+}: {
+  /** Überschrift in der Box (Tierseite) */
+  title?: string
+  id?: string
+  birthId: string
+  moduleKey: string
+  only?: string[]
+  draft?: FollowUpDraft
+  onDraft?: (change: (d: FollowUpDraft) => FollowUpDraft) => void
+  base?: Promise<LambSelectionData>
+}) {
   const db = useDb()
   const species = speciesOf(moduleKey)
   const young = species === 'sheep' ? 'Lamm' : 'Kalb'
@@ -52,25 +83,40 @@ export default function BirthFollowUp({ birthId, moduleKey }: { birthId: string;
   useEffect(() => {
     let current = true
     setParents(undefined)
-    loadFollowUpParents(db, species, birthId, today, loadSettings(moduleKey))
+    loadFollowUpParents(db, species, birthId, today, loadSettings(moduleKey), base)
       .then((p) => current && setParents(p))
       .catch(() => current && setParents(null))
     return () => {
       current = false
     }
-  }, [db, species, birthId, today, moduleKey])
+  }, [db, species, birthId, today, moduleKey, base])
   if (error) return <p className="text-sm text-red-600">{error}</p>
   return (
-    <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3 text-sm shadow-sm">
+    <div id={id} className="scroll-mt-32 space-y-3 rounded-lg border border-gray-200 bg-white p-3 text-sm shadow-sm">
+      {title && <h2 className="text-sm font-semibold text-gray-700">{title}</h2>}
       {parents === undefined && <p className="text-gray-600">Lade Daten zu den Eltern …</p>}
       {parents === null && <p className="text-gray-600">Daten zu den Eltern nicht verfügbar.</p>}
       {parents && <Parents p={parents} />}
       {data?.lambs.length === 0 && <p className="text-gray-600">Keine Nachkommen erfasst.</p>}
       {data?.lambs.map((lamb, i) =>
-        lamb.dead ? (
-          <DeadLamb key={lamb.id} lamb={lamb} nr={i + 1} young={young} abortsRecent={data.abortsRecent} />
+        only && !only.includes(lamb.id) ? null : lamb.dead ? (
+          <DeadLamb
+            key={lamb.id}
+            lamb={lamb}
+            nr={i + 1}
+            young={young}
+            abortsRecent={data.abortsRecent}
+            draft={draft && onDraft ? { patch: draft.losses[lamb.id], set: (p) => onDraft((d) => ({ ...d, losses: { ...d.losses, [lamb.id]: { ...d.losses[lamb.id], ...p } } })) } : undefined}
+          />
         ) : (
-          <LiveLamb key={lamb.id} lamb={lamb} nr={i + 1} young={young} recommendation={parents ? recommendLamb({ sex: lamb.sex, ...parents.basis }) : null} />
+          <LiveLamb
+            key={lamb.id}
+            lamb={lamb}
+            nr={i + 1}
+            young={young}
+            recommendation={parents ? recommendLamb({ sex: lamb.sex, ...parents.basis }) : null}
+            draft={draft && onDraft ? { value: draft.choices[lamb.id], has: lamb.id in draft.choices, set: (v) => onDraft((d) => ({ ...d, choices: { ...d.choices, [lamb.id]: v } })) } : undefined}
+          />
         ),
       )}
     </div>
@@ -139,16 +185,30 @@ function Parents({ p: { dam, sire, inbreeding } }: { p: FollowUpParents }) {
 
 const sexSign = (s: 'w' | 'm' | null) => (s === 'w' ? '♀ ' : s === 'm' ? '♂ ' : '')
 
-function LiveLamb({ lamb, nr, young, recommendation: rec }: { lamb: FollowUpLamb; nr: number; young: string; recommendation: Recommendation | null }) {
+function LiveLamb({
+  lamb,
+  nr,
+  young,
+  recommendation: rec,
+  draft,
+}: {
+  lamb: FollowUpLamb
+  nr: number
+  young: string
+  recommendation: Recommendation | null
+  draft?: { value: Preselection | null | undefined; has: boolean; set: (v: Preselection | null) => void }
+}) {
   const db = useDb()
   const today = localTodayIso()
   const [error, setError] = useState<string | null>(null)
   // sofort anzeigen, gespeichert wird im Hintergrund
-  const [shown, setShown] = useState(lamb.preselection)
+  const [saved, setShown] = useState(lamb.preselection)
   useEffect(() => setShown(lamb.preselection), [lamb.preselection])
+  const shown = draft?.has ? (draft.value ?? null) : saved
   const rowId = useRef(lamb.selection?.id ?? crypto.randomUUID())
   function choose(key: Preselection) {
     const next = shown === key ? null : key
+    if (draft) return draft.set(next)
     setShown(next)
     savePreselection(db, lamb, rowId.current, next, today).catch((e) => {
       setShown(lamb.preselection)
@@ -168,6 +228,7 @@ function LiveLamb({ lamb, nr, young, recommendation: rec }: { lamb: FollowUpLamb
           {rec.reasons.length > 0 && <span className="text-gray-600"> ({rec.reasons.join(', ')})</span>}
         </p>
       )}
+      {draft && lamb.preselection && !draft.has && <p className="text-xs text-gray-600">Bisher gewählt: {preselectionLabel(lamb.preselection)}</p>}
       <div className="grid grid-cols-5 gap-1" role="group" aria-label={`Vorauswahl ${young} ${nr}`}>
         {PRESELECTIONS.map((c) => (
           <button
@@ -186,20 +247,34 @@ function LiveLamb({ lamb, nr, young, recommendation: rec }: { lamb: FollowUpLamb
   )
 }
 
-function DeadLamb({ lamb, nr, young, abortsRecent }: { lamb: FollowUpLamb; nr: number; young: string; abortsRecent: number }) {
+function DeadLamb({
+  lamb,
+  nr,
+  young,
+  abortsRecent,
+  draft,
+}: {
+  lamb: FollowUpLamb
+  nr: number
+  young: string
+  abortsRecent: number
+  draft?: { patch: LossPatch | undefined; set: (p: LossPatch) => void }
+}) {
   const db = useDb()
-  const [note, setNote] = useState(lamb.loss_note ?? '')
+  const start = { ...{ loss_cause: lamb.loss_cause, defects: lamb.defects.join(',') || null, loss_note: lamb.loss_note }, ...draft?.patch }
+  const [note, setNote] = useState(start.loss_note ?? '')
   const [error, setError] = useState<string | null>(null)
   useEffect(() => setNote(lamb.loss_note ?? ''), [lamb.loss_note])
   // sofort anzeigen, gespeichert wird im Hintergrund
-  const [cause, setCause] = useState(lamb.loss_cause)
+  const [cause, setCause] = useState(start.loss_cause ?? null)
   useEffect(() => setCause(lamb.loss_cause), [lamb.loss_cause])
   const savedDefects = lamb.defects.join(',')
-  const [defects, setDefects] = useState(lamb.defects)
+  const [defects, setDefects] = useState(parseDefects(start.defects ?? null))
   useEffect(() => setDefects(parseDefects(savedDefects)), [savedDefects])
   // nacheinander: saveLoss liest die Zeile und schreibt sie ganz, parallel ginge eine Änderung verloren
   const queue = useRef<Promise<unknown>>(Promise.resolve())
-  const save = (patch: Parameters<typeof saveLoss>[2]) => {
+  const save = (patch: LossPatch) => {
+    if (draft) return draft.set(patch)
     queue.current = queue.current.then(() => saveLoss(db, lamb.id, patch)).catch((e) => setError(errorText(e, 'Speichern fehlgeschlagen')))
   }
   return (
@@ -259,7 +334,7 @@ function DeadLamb({ lamb, nr, young, abortsRecent }: { lamb: FollowUpLamb; nr: n
       <input
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        onBlur={() => note !== (lamb.loss_note ?? '') && save({ loss_note: note.trim() || null })}
+        onBlur={() => note !== (start.loss_note ?? '') && save({ loss_note: note.trim() || null })}
         placeholder="Bemerkung"
         aria-label={`Bemerkung ${young} ${nr}`}
         className="min-h-11 w-full rounded-lg border border-gray-300 px-2 text-base"

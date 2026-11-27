@@ -47,6 +47,7 @@ import { useCullingThresholds } from '../lib/cullingSettings'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadHerdContext } from '../lib/herdContext'
 import { loadLambSelection } from '../lib/lambSelectionData'
+import { loadChoicesByKey } from '../lib/breedingChoice'
 import { lambValue as computeLambValue, lambValueTip, loadLambValueSettings } from '../lib/lambValue'
 import { bucketByDam, loadLambs, nursingByDam } from '../lib/lambs'
 import { estimateAll, loadParentLinks } from '../lib/breedingEstimate'
@@ -63,8 +64,8 @@ import { addToWatchlist, createWatchlist, deleteWatchlist, loadWatchlists, remov
 
 async function loadBoard(pg: PGlite, species: 'cattle' | 'sheep', today: string, milk: LambMilkSettings) {
   const trait = SIRE_TRAIT[species].trait
-  const [context, lists, lambs, links] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadLambs(pg, today), loadParentLinks(pg, trait)])
-  return { context, nursing: nursingByDam(lambs), bucket: bucketByDam(lambs), lambMilk: milkByDam(lambs, milk), breedingEstimates: estimateAll(context, links, trait), ...lists }
+  const [context, lists, lambs, links, choices] = await Promise.all([loadHerdContext(pg, species, today), loadWatchlists(pg), loadLambs(pg, today), loadParentLinks(pg, trait), loadChoicesByKey(pg)])
+  return { context, nursing: nursingByDam(lambs), bucket: bucketByDam(lambs), lambMilk: milkByDam(lambs, milk), breedingEstimates: estimateAll(context, links, trait), choices, ...lists }
 }
 
 const hiddenKey = (moduleKey: string) => `${moduleKey}_board_hidden_columns`
@@ -152,6 +153,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
             lambMilk: data.lambMilk,
             breedingEstimates: data.breedingEstimates,
             breedingTrait: SIRE_TRAIT[species].trait,
+            choices: data.choices,
           })
         : [],
     [data, refs, species, today, thresholds, current],

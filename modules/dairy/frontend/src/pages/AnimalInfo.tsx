@@ -29,18 +29,21 @@ import { speciesOf } from '../lib/species'
 import { withdrawalUntil } from '../lib/treatments'
 import { clawStatusByAnimal, examSummary, loadClawExams } from '../lib/clawHealth'
 import { loadSettings } from './LambSelection'
+import { loadChoicesByKey } from '../lib/breedingChoice'
+import { preselectionLabel } from '../lib/lambRecommendation'
 import type { Animal, AnimalJournalEntry } from '../types'
 
 async function loadInfo(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: string) {
   const today = localTodayIso()
   const sel = await loadLambSelection(pg, species, today)
-  const [pedigree, events, journal, claws] = await Promise.all([
+  const [pedigree, events, journal, claws, choices] = await Promise.all([
     loadPedigreeData(pg, sel.context, species),
     loadAnimalEvents(pg),
     pg.query<AnimalJournalEntry>(
       "select * from animal_journal where deleted_at is null and (category in ('krankheit', 'behandlung') or withdrawal_milk_days is not null or withdrawal_meat_days is not null) order by entry_date desc",
     ),
     loadClawExams(pg),
+    loadChoicesByKey(pg),
   ])
   const lambs = rankLambs({
     candidates: sel.candidates,
@@ -71,6 +74,7 @@ async function loadInfo(pg: PGlite, species: 'cattle' | 'sheep', moduleKey: stri
     context: sel.context,
     animals: [...sel.context.values()].map((c) => c.animal),
     lambByAnimal: new Map(lambs.filter((l) => l.animal_id).map((l) => [l.animal_id!, l])),
+    choices,
     pedigree,
     events,
     journalByAnimal,
@@ -288,7 +292,7 @@ export default function AnimalInfo({ moduleKey, embedded = false }: { moduleKey:
                 {lamb && !p?.idx_performance ? (
                   <>
                     <Big tone={lamb.index != null && lamb.index < 95 ? 'bad' : lamb.index != null && lamb.index > 105 ? 'good' : undefined}>{lamb.index != null ? Math.round(lamb.index) : '–'}</Big>
-                    {lamb.purpose && <Line>Entscheid: {lamb.purpose === 'zucht' ? 'Remonte' : 'Mast'}</Line>}
+                    {data.choices.get(key) && <Line>Zuchtauswahl: {preselectionLabel(data.choices.get(key))}</Line>}
                   </>
                 ) : (
                   <>

@@ -13,6 +13,8 @@ import { upsertRow } from '../db/write'
 import { inTransaction } from '../db/transaction'
 import HoldButton from '../components/HoldButton'
 import JournalForm from '../components/JournalForm'
+import BreedingChoiceDialog from '../components/BreedingChoiceDialog'
+import { openChoices, type OpenBirth } from '../lib/breedingChoice'
 import { fmtDate, localTodayIso } from '../lib/format'
 import { loadLambs, unmarkedLabel, WEAN_FROM_DAYS, type Lamb } from '../lib/lambs'
 import { speciesOf } from '../lib/species'
@@ -80,6 +82,8 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
   const [group, setGroup] = useState('')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // beim Absetzen nachfragen, wenn die Zuchtauswahl noch offen ist
+  const [openChoice, setOpenChoice] = useState<OpenBirth[] | null>(null)
 
   // Vorauswahl aus dem Link, sobald die Liste da ist
   const [preselected, setPreselected] = useState(false)
@@ -243,7 +247,7 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
           {chosen.length === 0 ? (
             <p className="text-sm text-gray-700">{word.many} oben antippen, dann hier {ACTIONS.find((a) => a.key === action)?.label}.</p>
           ) : action === 'absetzen' ? (
-            <WeanPanel moduleKey={moduleKey} lambs={chosen} word={word} onDone={done} />
+            <WeanPanel moduleKey={moduleKey} lambs={chosen} word={word} onDone={done} onOpenChoices={setOpenChoice} />
           ) : action === 'eimer' ? (
             <BucketPanel lambs={chosen} word={word} onDone={done} />
           ) : action === 'waegen' ? (
@@ -268,11 +272,32 @@ export default function Lambs({ moduleKey }: { moduleKey: string }) {
           )}
         </section>
       )}
+      {openChoice && (
+        <BreedingChoiceDialog
+          moduleKey={moduleKey}
+          births={openChoice}
+          title="Zuchtauswahl noch offen"
+          intro={`Für ${openChoice.reduce((n, b) => n + b.offspringIds.length, 0) === 1 ? `dieses ${word.one}` : `diese ${word.many}`} ist noch nicht Zucht oder Mast gewählt. Jetzt entscheiden oder überspringen.`}
+          onClose={() => setOpenChoice(null)}
+        />
+      )}
     </div>
   )
 }
 
-function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey: string; lambs: Row[]; word: { one: string; many: string }; onDone: () => void }) {
+function WeanPanel({
+  moduleKey,
+  lambs: chosenLambs,
+  word,
+  onDone,
+  onOpenChoices,
+}: {
+  moduleKey: string
+  lambs: Row[]
+  word: { one: string; many: string }
+  onDone: () => void
+  onOpenChoices: (births: OpenBirth[]) => void
+}) {
   const db = useDb()
   const today = localTodayIso()
   const sheep = speciesOf(moduleKey) === 'sheep'
@@ -327,7 +352,9 @@ function WeanPanel({ moduleKey, lambs: chosenLambs, word, onDone }: { moduleKey:
         }
       })
       notifySuccess(`${chosenLambs.length} abgesetzt${target ? ` → «${groups.find((g) => g.id === target)?.name}»` : ''}`)
+      const open = await openChoices(db, chosenLambs.flatMap((l) => (l.offspringId ? [l.offspringId] : []))).catch(() => [])
       onDone()
+      if (open.length > 0) onOpenChoices(open)
     } catch (e) {
       notifyError(errorText(e))
     } finally {

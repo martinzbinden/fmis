@@ -12,13 +12,16 @@ import { animalProvider, herdLocator, refreshHerdData } from '@fmis/core/animals
 import { fmtAge, fmtDate, localTodayIso } from '../lib/format'
 import { addToWatchlist, createWatchlist, duplicateEntries, loadWatchlists, removeDuplicateEntries, removeEntry, saveWatchlist, setEntryDone, setEntryReason, type Watchlist, type WatchlistEntry } from '../lib/watchlists'
 import type { Animal } from '../types'
+import { autoListName, AUTO_LIST_MAX_DAYS, loadAutoList } from '../lib/breedingChoice'
+import { speciesOf } from '../lib/species'
 
 async function loadData(pg: PGlite) {
-  const [lists, animals] = await Promise.all([
+  const [lists, animals, auto] = await Promise.all([
     loadWatchlists(pg),
     pg.query<Animal>('select * from animals where deleted_at is null order by lauf_nr nulls last, ear_tag'),
+    loadAutoList(pg, localTodayIso()),
   ])
-  return { ...lists, animals: animals.rows }
+  return { ...lists, animals: animals.rows, auto }
 }
 
 const sexText = (sex: string | null) => (sex === 'w' ? '♀ weiblich' : sex === 'm' ? '♂ männlich' : 'Geschlecht ?')
@@ -83,6 +86,8 @@ export default function Watchlists({ moduleKey }: { moduleKey: string }) {
           Anlegen
         </button>
       </form>
+
+      {data && <AutoListCard moduleKey={moduleKey} ids={data.auto.map((a) => a.id)} byId={byId} />}
 
       {data && active.length === 0 && <p className="rounded-lg bg-white p-4 text-sm text-gray-700 shadow-sm">Noch keine Merkliste. Tiere kommen auch aus Warnungen bei der Erfassung dazu («+ Merkliste»).</p>}
 
@@ -313,6 +318,70 @@ function ListCard({
               </button>
             )}
           </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Von FMIS geführt: Jungtiere mit Zuchtauswahl «Zucht» (lib/breedingChoice.ts). Tiere kommen dazu oder fallen weg,
+ * wenn die Wahl ändert (Tierseite, Geburt, Absetzen, Jungtier-Selektion), mit der ersten eigenen Geburt oder mit 2 Jahren. */
+function AutoListCard({ moduleKey, ids, byId }: { moduleKey: string; ids: string[]; byId: Map<string, Animal> }) {
+  const today = localTodayIso()
+  const name = autoListName(speciesOf(moduleKey))
+  const [open, setOpen] = useState(false)
+  const [toGroup, setToGroup] = useState(false)
+  const canHerd = useHasPermission('tiere:herden:write') && !!animalProvider(moduleKey)
+  const [groupOf, setGroupOf] = useState<Map<string, string>>(new Map())
+  const key = ids.join(',')
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    void herdLocator()?.groupNames?.(key.split(',').filter(Boolean), today).then((m) => live && setGroupOf(m))
+    return () => {
+      live = false
+    }
+  }, [key, today, open])
+  const animals = ids.map((id) => byId.get(id)).filter((a): a is Animal => !!a).sort((a, b) => String(a.birth_date ?? '').localeCompare(String(b.birth_date ?? '')))
+  return (
+    <section className="rounded-lg border border-teal-300 bg-white shadow-sm">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex min-h-12 w-full items-center justify-between gap-2 px-3 text-left" aria-expanded={open}>
+        <span className="font-semibold text-gray-900">
+          {name} <span className="rounded bg-teal-100 px-1.5 py-0.5 text-xs font-medium text-teal-900">automatisch</span>
+        </span>
+        <span className="text-sm text-gray-600">
+          {animals.length} {animals.length === 1 ? 'Tier' : 'Tiere'} {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-3 border-t px-3 pb-3 pt-2">
+          <p className="text-xs text-gray-600">
+            Jungtiere mit Zuchtauswahl «Zucht», bis zur ersten eigenen Geburt bzw. höchstens {Math.round(AUTO_LIST_MAX_DAYS / 365)} Jahre alt. Ändern auf der Tierseite (Abschnitt Zuchtauswahl) oder in der{' '}
+            <Link to="../selektion" relative="path" className="text-brand-700 underline">
+              Jungtier-Selektion
+            </Link>
+            .
+          </p>
+          <ul className="divide-y">
+            {animals.map((a) => (
+              <li key={a.id} className="py-1.5">
+                <Link to={`/${moduleKey}/tiere/${a.id}#zuchtauswahl`} className="font-medium text-brand-700">
+                  {tierLabel(a)}
+                </Link>
+                <span className="ml-1.5 whitespace-nowrap text-xs text-gray-500">
+                  {sexText(a.sex)} · {fmtAge(a.birth_date, today)}
+                  {groupOf.get(a.id) ? ` · Gruppe «${groupOf.get(a.id)}»` : ''}
+                </span>
+              </li>
+            ))}
+            {animals.length === 0 && <li className="py-2 text-sm text-gray-600">Noch kein Jungtier zur Zucht gewählt.</li>}
+          </ul>
+          {toGroup && <ToHerdGroup moduleKey={moduleKey} listName={name} animalIds={animals.map((a) => a.id)} onDone={() => setToGroup(false)} />}
+          {canHerd && animals.length > 0 && !toGroup && (
+            <button type="button" onClick={() => setToGroup(true)} className="min-h-11 rounded-lg border border-sky-600 px-3 text-sm text-sky-800">
+              → Tiergruppe
+            </button>
+          )}
         </div>
       )}
     </section>

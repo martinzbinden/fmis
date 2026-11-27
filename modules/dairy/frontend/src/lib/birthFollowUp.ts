@@ -8,7 +8,8 @@ import { TRAIT_LABEL, TRAIT_ORDER, SIRE_TRAIT } from './breedingTraits'
 import type { Species } from './fertility'
 import { num } from './format'
 import { damTrendIndex, lambIndex, type SelectionSettings } from './lambSelection'
-import { loadLambSelection } from './lambSelectionData'
+import { loadLambSelection, type LambSelectionData } from './lambSelectionData'
+import { indexChoices, rowFor, type ChoiceRow } from './breedingChoice'
 import { ABORT_MONTHS, parseDefects } from './lambLoss'
 import type { Preselection, RecommendationInput } from './lambRecommendation'
 import type { PerformanceMetrics } from './herdPerformance'
@@ -73,11 +74,19 @@ const ordered = (byTrait: Map<string, number>): TraitValue[] =>
 export const preselectionOf = (s: Pick<SelectionRow, 'purpose' | 'leaning'> | null | undefined): Preselection | null => s?.purpose ?? s?.leaning ?? null
 
 /** Eltern: rechnet den Herdenvergleich und dauert darum einen Moment. Einmal laden, nicht bei jeder Änderung. */
-export async function loadFollowUpParents(pg: PGlite, species: Species, birthId: string, today: string, settings: SelectionSettings): Promise<FollowUpParents | null> {
+export async function loadFollowUpParents(
+  pg: PGlite,
+  species: Species,
+  birthId: string,
+  today: string,
+  settings: SelectionSettings,
+  /** schon geladener Herdenvergleich (mehrere Geburten in einem Dialog) */
+  preloaded?: Promise<LambSelectionData>,
+): Promise<FollowUpParents | null> {
   const [birthRes, pedigreeValues, base] = await Promise.all([
     pg.query<Record<string, unknown>>('select * from births where id = $1 and deleted_at is null', [birthId]),
     pg.query<{ animal_key: string; trait: string; value: unknown }>('select animal_key, trait, value from pedigree_breeding_values where deleted_at is null order by eval_date'),
-    loadLambSelection(pg, species, today),
+    preloaded ?? loadLambSelection(pg, species, today),
   ])
   const birth = birthRes.rows[0]
   if (!birth) return null
@@ -134,16 +143,10 @@ export async function loadFollowUpLambs(pg: PGlite, birthId: string, today: stri
       [today],
     ),
   ])
-  // neueste Zeile gewinnt (aufsteigend geladen)
-  const byOffspring = new Map<string, SelectionRow>()
-  const byKey = new Map<string, SelectionRow>()
-  for (const s of selectionRes.rows) {
-    if (s.offspring_id) byOffspring.set(s.offspring_id, s)
-    if (s.animal_key) byKey.set(s.animal_key, s)
-  }
+  const index = indexChoices(selectionRes.rows as ChoiceRow[])
   const lambs = offspringRes.rows.map((o) => {
     const key = (o.animal_key as string | null) ?? animalKey(o.ear_tag as string | null)
-    const selection = byOffspring.get(String(o.id)) ?? (key ? byKey.get(key) : undefined) ?? null
+    const selection = (rowFor(index, String(o.id), key) as SelectionRow | null) ?? null
     return {
       id: String(o.id),
       ear_tag: (o.ear_tag as string | null) ?? null,
