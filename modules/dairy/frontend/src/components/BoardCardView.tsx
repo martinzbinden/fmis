@@ -79,6 +79,7 @@ export default function BoardCardView({
   fields = [],
   verdict = null,
   money = null,
+  onChoice,
   onDragCard,
   onDragHandle,
 }: {
@@ -118,6 +119,8 @@ export default function BoardCardView({
   verdict?: VerdictResult | null
   /** Geldbilanz zum Aufklappen: Schlachtwert jetzt gegen Milch − Futter bis zur Geburt */
   money?: { slaughter: number; keep: number; diff: number } | null
+  /** Kartenfeld «Zuchtauswahl» antippen: Dialog mit Empfehlung und Skala (components/ChoiceDialog.tsx) */
+  onChoice?: () => void
   onDragCard: (e: ReactPointerEvent) => void
   onDragHandle: (e: ReactPointerEvent) => void
 }) {
@@ -125,6 +128,7 @@ export default function BoardCardView({
   const main = colors[0] ? colorOf(colors[0]) : null
   const age = card.birthDate ? fmtAge(card.birthDate, today) : null
   const badge = breedingBadge(card, today)
+  const choice = choiceValue(card)
   const [picking, setPicking] = useState(false)
   // Stallmodus: grössere Karte, ganze Kopfzeile mindestens 48 px hoch
   const stall = useStallMode()
@@ -258,6 +262,16 @@ export default function BoardCardView({
       {fields.length > 0 && (
         <button type="button" onClick={onToggle} tabIndex={-1} className="block w-full text-left">
           <CardProps card={card} fields={fields} meat={meat ?? null} meatLimits={meatLimits} milkFeed={milkFeed ?? null} lastMilk={lastMilk} lambValue={lambValue} milkFeedSettings={milkFeedSettings} />
+        </button>
+      )}
+      {fields.includes('choice') && choice && (
+        // eigener Knopf (nicht im Knopf der Werte): öffnet die Skala
+        <button type="button" onClick={onChoice} disabled={!onChoice} className="mt-0.5 flex min-h-7 w-full items-center justify-between gap-2 text-left text-[0.73rem]" title="Zuchtauswahl ändern">
+          <span className="text-gray-500">Zuchtauswahl</span>
+          <span className={`rounded px-1.5 font-medium ${CHOICE_TONE[choice] ?? ''}`}>
+            {preselectionLabel(choice as Preselection) ?? 'offen'}
+            {onChoice && <span className="ml-1 opacity-70">✎</span>}
+          </span>
         </button>
       )}
 
@@ -436,16 +450,6 @@ function CardProps({
         </div>,
       )
     } else rows.push(line('Zuchtwert', f0(card.breedingValue), 'zw'))
-  }
-  if (has('choice')) {
-    const v = choiceValue(card)
-    if (v)
-      rows.push(
-        <div key="choice" className="flex justify-between gap-2">
-          <span className="text-gray-500">Zuchtauswahl</span>
-          <span className={`rounded px-1.5 text-right font-medium ${CHOICE_TONE[v] ?? ''}`}>{preselectionLabel(v as Preselection) ?? 'offen'}</span>
-        </div>,
-      )
   }
   if (has('lambValue') && card.ageMonths != null && card.ageMonths < 12 && card.sex !== 'm') {
     const v = lambValue

@@ -48,6 +48,7 @@ import { fmtDate, localTodayIso } from '../lib/format'
 import { loadHerdContext } from '../lib/herdContext'
 import { loadLambSelection } from '../lib/lambSelectionData'
 import { loadChoicesByKey } from '../lib/breedingChoice'
+import ChoiceDialog from '../components/ChoiceDialog'
 import { lambValue as computeLambValue, lambValueTip, loadLambValueSettings } from '../lib/lambValue'
 import { bucketByDam, loadLambs, nursingByDam } from '../lib/lambs'
 import { estimateAll, loadParentLinks } from '../lib/breedingEstimate'
@@ -358,6 +359,8 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
   const kindShown = (kind: string) => kinds === 'beides' || (kinds === 'gruppen' ? kind === 'group' : kind === 'list')
   const visibleColumns = columns.filter((c) => (kindShown(c.kind) && !hidden.has(c.key)) || c.key === jumpKey)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Kartenfeld «Zuchtauswahl» angetippt
+  const [choiceFor, setChoiceFor] = useState<BoardCard | null>(null)
   const [open, setOpen] = useState<Set<string>>(new Set())
   const toggle = (set: Set<string>, id: string) => {
     const next = new Set(set)
@@ -579,6 +582,7 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
                   verdict={verdictById.get(c.id)?.verdict ?? null}
                   money={verdictById.get(c.id)?.money ?? null}
                   pointerDown={pointerDown}
+                  onChoice={() => setChoiceFor(c)}
                 />
               ))}
               {list.length === 0 && <p className="rounded-lg border-2 border-dashed border-gray-300 p-3 text-center text-xs text-gray-500">{hover === col.key ? 'Hier ablegen' : 'keine Tiere'}</p>}
@@ -895,6 +899,16 @@ function BoardPage({ moduleKey, reload }: { moduleKey: string; reload: () => voi
       <p className="hidden text-xs text-gray-600 sm:block">
         {shown.length} von {cards.length} {terms.plural} sichtbar. Antippen klappt eine Karte auf, am Griff ⠿ ziehen verschiebt. Spalten: Griff ⠿ im Kopf ordnet um, ▾ klappt ein (gestapelt).
       </p>
+
+      {choiceFor && (
+        <ChoiceDialog
+          moduleKey={moduleKey}
+          animalId={choiceFor.id}
+          earTag={choiceFor.earTag}
+          title={choiceFor.laufNr ? `${choiceFor.laufNr} · ${choiceFor.shortTag}` : choiceFor.shortTag}
+          onClose={() => setChoiceFor(null)}
+        />
+      )}
 
       {chosen.length > 0 && (
         <SelectionBar
@@ -1249,7 +1263,9 @@ function ColumnCard({
   verdict,
   money,
   pointerDown,
+  onChoice,
 }: {
+  onChoice?: () => void
   card: BoardCard
   col: BoardColumn
   moduleKey: string
@@ -1304,6 +1320,7 @@ function ColumnCard({
       fields={fields}
       verdict={verdict ?? null}
       money={money ?? null}
+      onChoice={onChoice}
       onDragCard={pointerDown(card.id, false)}
       onDragHandle={pointerDown(card.id, true)}
     />
