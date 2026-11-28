@@ -7,6 +7,7 @@ import { todayIso } from '../lib/format'
 import type { FeedReference } from '../types'
 import NumberInput from '@fmis/core/NumberInput'
 import { groupOptionLabel, loadGroupOptions } from '../lib/groups'
+import { FEED_UNITS } from '../lib/pasteFeed'
 
 
 async function loadFeedReferences(pg: PGlite): Promise<FeedReference[]> {
@@ -144,10 +145,11 @@ export default function FeedEntry() {
               onChange={(e) => setUnit(e.target.value)}
               className="w-full rounded border border-gray-300 px-3 py-3 text-base"
             >
-              <option value="kg">kg</option>
-              <option value="dt">dt</option>
-              <option value="Ballen">Ballen</option>
-              <option value="Liter">Liter</option>
+              {FEED_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
             </select>
           </Field>
         </div>

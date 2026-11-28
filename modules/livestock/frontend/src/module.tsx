@@ -19,6 +19,7 @@ import SlaughterEntry from './pages/SlaughterEntry'
 import Slaughterings from './pages/Slaughterings'
 import Fattening from './pages/Fattening'
 import { slaughterPasteImporter } from './lib/pasteSlaughter'
+import { feedPasteImporter } from './lib/pasteFeed'
 import Economics from './pages/Economics'
 import Vermarktung from './pages/Vermarktung'
 import History from './pages/History'
@@ -81,7 +82,7 @@ const livestockModule: ModuleDescriptor = {
   DbProvider: LivestockDbProvider,
   sync: syncClient,
   animals: livestockAnimalProvider,
-  pasteImporters: [slaughterPasteImporter],
+  pasteImporters: [slaughterPasteImporter, feedPasteImporter],
   importer: createLivestockImporter(({ claim, ...run }) => (
     <IntakePanel rows={intakeOf(claim).rows} warnings={intakeOf(claim).warnings} {...run} />
   )),
