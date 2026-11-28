@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  allocateLabour,
   buildCurve,
   bySire,
   DEFAULT_FATTENING_SETTINGS,
@@ -229,6 +230,38 @@ describe('Zusammenfassung und Gruppen', () => {
   it('Einstellungen: Vorgaben für Fehlendes und Ungültiges', () => {
     expect(normalizeSettings(null)).toEqual(S)
     expect(normalizeSettings({ dressingPct: '48', growthPotential: 'gering', feedCostPerKgDm: -1 })).toEqual({ ...S, dressingPct: 48, growthPotential: 'gering' })
+  })
+})
+
+describe('Arbeitszeit', () => {
+  // A: Einstallung 1.6., Schlachtung 21.7. (50 Masttage); B: Einstallung 1.6., Schlachtung 11.6. (10 Masttage); C nicht im Mastplaner
+  const input = [
+    lamb({ livestock_id: 'a1', entry_date: '2026-06-01', entry_weight_kg: 20, weights: [{ date: '2026-07-21', kg: 30 }] }),
+    lamb({ ear_tag: 'CH99990002', animal_key: 'CH99990002', livestock_id: 'a2', entry_date: '2026-06-01', entry_weight_kg: 28, slaughter_date: '2026-06-11' }),
+    lamb({ ear_tag: 'CH99990003', animal_key: 'CH99990003' }),
+  ]
+
+  it('Stunden des Tages teilen sich die Tiere, die in der Mast stehen', () => {
+    const rows = allocateLabour(input.map((l) => evaluateLamb(l, S)), 1)
+    // 10 Tage zu zweit (je 5 h), danach 40 Tage allein
+    expect(rows.map((r) => r.labourHours)).toEqual([45, 5, null])
+    const s = summarize(rows)
+    expect(s.sumLabourHours).toBe(50)
+    expect(rows[0].margin).not.toBeNull()
+    expect(rows[1].margin).not.toBeNull()
+    expect(s.marginPerHour).toBe(Math.round(((rows[0].margin! + rows[1].margin!) / 50) * 100) / 100)
+  })
+
+  it('ohne Arbeitszeit kein Arbeitsverdienst', () => {
+    const rows = allocateLabour(input.map((l) => evaluateLamb(l, S)), 0)
+    expect(rows.every((r) => r.labourHours == null)).toBe(true)
+    expect(summarize(rows).marginPerHour).toBeNull()
+    expect(summarize(rows).sumLabourHours).toBeNull()
+  })
+
+  it('Einstellung: 0 bis 24 Stunden', () => {
+    expect(normalizeSettings({ labourHoursPerDay: 0.75 }).labourHoursPerDay).toBe(0.75)
+    expect(normalizeSettings({ labourHoursPerDay: 30 }).labourHoursPerDay).toBe(0)
   })
 })
 

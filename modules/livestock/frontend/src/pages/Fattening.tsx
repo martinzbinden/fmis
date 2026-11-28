@@ -11,6 +11,7 @@ import {
   bySire,
   DEFAULT_FATTENING_SETTINGS,
   deliveryKey,
+  allocateLabour,
   evaluateLamb,
   groupRows,
   histogram,
@@ -36,7 +37,7 @@ const dash = (v: number | null | undefined, f: (x: number) => string = String) =
 export default function Fattening() {
   const { data, loading } = useQuery(loadFatteningInputs)
   const [settings, setSettings] = useState<FatteningSettings>(loadFatteningSettings)
-  const rows = useMemo(() => (data ?? []).map((l) => evaluateLamb(l, settings)), [data, settings])
+  const rows = useMemo(() => allocateLabour((data ?? []).map((l) => evaluateLamb(l, settings)), settings.labourHoursPerDay), [data, settings])
   const [year, setYear] = useState('')
   const [delivery, setDelivery] = useState('')
   const [sex, setSex] = useState('')
@@ -177,12 +178,19 @@ export default function Fattening() {
             <Tile label="Ø DB je Tier" value={dash(sum.meanMargin, (v) => `${fr(v)} Fr.`)} sub={sum.nMargin < sum.n ? `n = ${sum.nMargin}` : undefined} />
             <Tile label="DB je Masttag" value={dash(sum.marginPerDay, (v) => `${fr(v)} Fr.`)} />
             <Tile label="Summe DB" value={dash(sum.sumMargin, (v) => `${fr(v)} Fr.`)} />
+            {settings.labourHoursPerDay > 0 && (
+              <Tile
+                label="Arbeitsverdienst"
+                value={dash(sum.marginPerHour, (v) => `${fr(v)} Fr./h`)}
+                sub={sum.sumLabourHours != null ? `DB je Arbeitsstunde, ${n1(sum.sumLabourHours)} h` : 'nur Tiere aus dem Mastplaner'}
+              />
+            )}
           </section>
 
           <LtzHistogram rows={shown} />
 
           {groups.map((g) => (
-            <GroupTable key={g.title} title={g.title} groups={g.groups} />
+            <GroupTable key={g.title} title={g.title} groups={g.groups} labour={settings.labourHoursPerDay > 0} />
           ))}
 
           <AnimalTable rows={shown} />
@@ -237,7 +245,7 @@ function LtzHistogram({ rows }: { rows: LambResult[] }) {
   )
 }
 
-function GroupTable({ title, groups }: { title: string; groups: FatteningGroup[] }) {
+function GroupTable({ title, groups, labour }: { title: string; groups: FatteningGroup[]; labour?: boolean }) {
   return (
     <section className="rounded-lg bg-white p-3 shadow-sm">
       <h2 className="mb-1 text-sm font-semibold text-gray-700">{title}</h2>
@@ -253,6 +261,7 @@ function GroupTable({ title, groups }: { title: string; groups: FatteningGroup[]
               <th className="whitespace-nowrap pr-2 text-right">Ø LTZ</th>
               <th className="whitespace-nowrap pr-2 text-right">Ø TS/Tier</th>
               <th className="whitespace-nowrap pr-2 text-right">Ø DB</th>
+              {labour && <th className="whitespace-nowrap pr-2 text-right">Fr./h</th>}
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -266,6 +275,7 @@ function GroupTable({ title, groups }: { title: string; groups: FatteningGroup[]
                 <td className="whitespace-nowrap pr-2 text-right tabular-nums">{dash(g.summary.meanLtz, (v) => `${v} g`)}</td>
                 <td className="whitespace-nowrap pr-2 text-right tabular-nums">{dash(g.summary.meanDm, (v) => `${n1(v)} kg`)}</td>
                 <td className="whitespace-nowrap pr-2 text-right font-semibold tabular-nums">{dash(g.summary.meanMargin, fr)}</td>
+                {labour && <td className="whitespace-nowrap pr-2 text-right tabular-nums">{dash(g.summary.marginPerHour, fr)}</td>}
               </tr>
             ))}
           </tbody>
@@ -405,6 +415,8 @@ const CSV_EXTRA: Column[] = [
   { key: 'other', label: 'übrige Kosten Fr.', value: (r) => r.otherCost },
   { key: 'dbkg', label: 'DB je kg Zuwachs Fr.', value: (r) => r.marginPerKgGain },
   { key: 'feedkg', label: 'Futterkosten je kg Zuwachs Fr.', value: (r) => r.feedCostPerKgGain },
+  { key: 'labour', label: 'Arbeit h', value: (r) => r.labourHours },
+  { key: 'dbh', label: 'DB je Arbeitsstunde Fr.', value: (r) => (r.margin != null && r.labourHours != null && r.labourHours > 0 ? Math.round((r.margin / r.labourHours) * 100) / 100 : null) },
   { key: 'group', label: 'Mastplaner-Gruppe', value: (r) => r.input.group_name },
   { key: 'sire', label: 'Vater', value: (r) => r.input.sire },
   { key: 'dam', label: 'Mutter', value: (r) => (r.input.dam ? shortEarTag(r.input.dam) : null) },
@@ -554,6 +566,9 @@ function Method({ settings, onSave }: { settings: FatteningSettings; onSave: (s:
         <li>
           <b>Deckungsbeitrag (DB)</b> = Erlös (Betrag der Abrechnung, sonst SG × Preis) − Wert bei Mastbeginn (Kaufpreis im Mastplaner, sonst Gewicht × Fr./kg LG) − Futterkosten (im Mastplaner erfasste Gruppenkosten, sonst TS × Fr./kg TS) − Medikamente (Mastplaner) − Abzüge − übrige Kosten. Fehlt eine Angabe, bleibt der DB leer.
         </li>
+        <li>
+          <b>Arbeitsverdienst</b> = Σ DB / Σ Arbeitsstunden (Fr./h), wenn unten die Arbeitszeit je Tag eingetragen ist. Die Stunden eines Tages teilen sich die Tiere aus dem Mastplaner, die an diesem Tag in der Mast stehen; die Arbeit ist im DB nicht abgezogen. Tiere ohne Schlachtung fehlen in der Auswertung, ihre Stunden liegen bei den ausgewerteten Tieren.
+        </li>
       </ul>
       <p className="rounded bg-amber-50 p-2 text-xs text-amber-900">
         Der TS-Verzehr ist ein Normwert, kein gemessener Wert. Die Tabellen gelten für Stallhaltung; auf der Weide ist der Erhaltungsbedarf laut Grünem Buch um 25 % höher – das ist hier nicht eingerechnet.
@@ -599,6 +614,7 @@ function Method({ settings, onSave }: { settings: FatteningSettings; onSave: (s:
               {numField('feedCostPerKgDm', 'Futterkosten Fr./kg TS (wenn nicht erfasst)')}
               {numField('feePerAnimal', 'Abzüge je Tier Fr. (Waagschein, Abgaben)')}
               {numField('otherCostPerAnimal', 'übrige Kosten je Tier Fr.')}
+              {numField('labourHoursPerDay', 'Arbeitszeit Mast h/Tag, alle Tiere zusammen (0 = nicht eingerechnet)')}
             </div>
           )
         }}

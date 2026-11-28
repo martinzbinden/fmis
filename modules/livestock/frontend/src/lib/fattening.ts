@@ -170,6 +170,8 @@ export interface FatteningSettings {
   feePerAnimal: number
   /** übrige Kosten je Tier Fr. */
   otherCostPerAnimal: number
+  /** Arbeitszeit für die Mast in Stunden je Tag, für alle Tiere im Mastplaner zusammen (0 = nicht eingerechnet) */
+  labourHoursPerDay: number
 }
 
 export const DEFAULT_FATTENING_SETTINGS: FatteningSettings = {
@@ -181,6 +183,7 @@ export const DEFAULT_FATTENING_SETTINGS: FatteningSettings = {
   feedCostPerKgDm: 0.3,
   feePerAnimal: 3.72,
   otherCostPerAnimal: 0,
+  labourHoursPerDay: 0,
 }
 
 const STORAGE_KEY = 'fmis.livestock.mastauswertung'
@@ -202,6 +205,7 @@ export function normalizeSettings(raw: unknown): FatteningSettings {
     feedCostPerKgDm: n('feedCostPerKgDm', 0, 100),
     feePerAnimal: n('feePerAnimal', 0, 10000),
     otherCostPerAnimal: n('otherCostPerAnimal', 0, 10000),
+    labourHoursPerDay: n('labourHoursPerDay', 0, 24),
   }
 }
 
@@ -310,6 +314,8 @@ export interface LambResult {
   marginPerDay: number | null
   marginPerKgGain: number | null
   feedCostPerKgGain: number | null
+  /** Anteil an der Arbeitszeit der Mast in Stunden (allocateLabour); null = nicht eingerechnet */
+  labourHours: number | null
 }
 
 const r1 = (v: number) => Math.round(v * 10) / 10
@@ -459,7 +465,32 @@ export function evaluateLamb(input: LambInput, s: FatteningSettings): LambResult
     marginPerDay: margin != null && days != null ? r2(margin / days) : null,
     marginPerKgGain: margin != null && gain != null && gain > 0 ? r2(margin / gain) : null,
     feedCostPerKgGain: feedCost != null && gain != null && gain > 0 ? r2(feedCost / gain) : null,
+    labourHours: null,
   }
+}
+
+/**
+ * Arbeitszeit der Mast auf die Tiere verteilen: An jedem Masttag teilen sich die Tiere, die an diesem Tag in der Mast
+ * stehen, die Stunden des Tages zu gleichen Teilen. Es zählen nur Tiere aus dem Mastplaner (Einstallung bekannt);
+ * Masttage = Mastbeginn bis Vortag der Schlachtung, wie fatteningDays. Tiere ohne Schlachtung kommen in der
+ * Auswertung nicht vor und tragen deshalb nichts – ihre Stunden liegen bei den ausgewerteten Tieren.
+ */
+export function allocateLabour(rows: LambResult[], hoursPerDay: number): LambResult[] {
+  if (!(hoursPerDay > 0)) return rows
+  const span = (r: LambResult): [number, number] | null =>
+    r.input.livestock_id != null && r.startDate && r.fatteningDays != null && r.fatteningDays > 0 ? [dayNo(r.startDate), dayNo(r.input.slaughter_date)] : null
+  const present = new Map<number, number>()
+  for (const r of rows) {
+    const sp = span(r)
+    if (sp) for (let d = sp[0]; d < sp[1]; d++) present.set(d, (present.get(d) ?? 0) + 1)
+  }
+  return rows.map((r) => {
+    const sp = span(r)
+    if (!sp) return r
+    let h = 0
+    for (let d = sp[0]; d < sp[1]; d++) h += hoursPerDay / present.get(d)!
+    return { ...r, labourHours: r2(h) }
+  })
 }
 
 /** Ab diesem Anteil Masttage ausserhalb der Tabellen wird ein Tier gekennzeichnet. */
@@ -490,6 +521,10 @@ export interface Summary {
   /** Σ DB / Σ Masttage */
   marginPerDay: number | null
   sumMargin: number | null
+  /** Σ Arbeitsstunden der Tiere mit DB und Arbeitsanteil */
+  sumLabourHours: number | null
+  /** Arbeitsverdienst Fr./h: Σ DB / Σ Arbeitsstunden */
+  marginPerHour: number | null
 }
 
 const mean = (vs: (number | null)[]): number | null => {
@@ -506,6 +541,8 @@ export function summarize(rows: LambResult[]): Summary {
   const margins = rows.map((r) => r.margin).filter((v): v is number => v != null)
   const withDay = rows.filter((r) => r.margin != null && r.fatteningDays != null)
   const daySum = withDay.reduce((s, r) => s + r.fatteningDays!, 0)
+  const withHours = rows.filter((r) => r.margin != null && r.labourHours != null && r.labourHours > 0)
+  const hourSum = withHours.reduce((s, r) => s + r.labourHours!, 0)
   const opt = (v: number | null, f: (x: number) => number) => (v == null ? null : f(v))
   return {
     n: rows.length,
@@ -526,6 +563,8 @@ export function summarize(rows: LambResult[]): Summary {
     nMargin: margins.length,
     marginPerDay: daySum > 0 ? r2(withDay.reduce((s, r) => s + r.margin!, 0) / daySum) : null,
     sumMargin: margins.length ? r2(margins.reduce((s, v) => s + v, 0)) : null,
+    sumLabourHours: hourSum > 0 ? r1(hourSum) : null,
+    marginPerHour: hourSum > 0 ? r2(withHours.reduce((s, r) => s + r.margin!, 0) / hourSum) : null,
   }
 }
 
